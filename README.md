@@ -11,6 +11,7 @@
 | [methodology.md](methodology.md) | RSS 실험 시나리오, A형 절차, F1 관측 경계, 재현기 기록과 단계별 검증 기준 |
 | [rss-theory.md](rss-theory.md) | RSS 원리: 단계별 자원 할당, 조작 파라미터, 고갈 동역학, OCUDU 대입 |
 | [rss-landscape.md](rss-landscape.md) | RSS 변종 분류, 논문·공개 도구 비교, 재현기 요구사항 |
+| [comparison-5g.md](comparison-5g.md) | 5G 기준 기존 연구·공격 도구 비교 요약판. 주장별 원본 대조 여부 표시, 독립 재검색 결과 |
 | [design.md](design.md) | A형 재현기 설계: 아키텍처, 상태 기계, 노브, 라벨 스키마, 단계별 계획 |
 | [sources/](sources/) | 1차 자료: 논문 PDF 2건 + 5gattacks 공격 패치 |
 

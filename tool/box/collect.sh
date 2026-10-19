@@ -14,7 +14,8 @@ timedout=$(cut_log | grep -c '"RRC Setup Procedure" timed out' || true)
 finished=$(cut_log | grep -c '"RRC Setup Procedure" finished successfully' || true)
 req=$(cut_log | grep -c 'rrcSetupRequest' || true)
 comp=$(cut_log | grep -c 'rrcSetupComplete' || true)
-ngap=$(cut_log | grep -c 'Tx InitialUEMessage' || true)
+# OCUDU 26.10 writes: [NGAP] Tx PDU ue=0 ...: InitialUEMessage (box-verified 2026-10-20)
+ngap=$(cut_log | grep -cE 'NGAP.*InitialUEMessage' || true)
 printf 'rrcSetupRequest   %s\nprocedure started %s\ntimed out (2000ms) %s\nfinished OK       %s\nrrcSetupComplete  %s\nNGAP InitialUEMsg %s\n' \
   "$req" "$started" "$timedout" "$finished" "$comp" "$ngap"
 

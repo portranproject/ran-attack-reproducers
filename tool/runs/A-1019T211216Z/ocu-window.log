@@ -1,0 +1,720 @@
+2026-10-19T21:12:42.548911 [RRC     ] [D] ue=1 c-rnti=0x4601: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:42.548912 [RRC     ] [D] ue=1 c-rnti=0x4601: Containerized rrcSetupRequest: [
+2026-10-19T21:12:42.548916 [RRC     ] [I] ue=1 c-rnti=0x4601: "RRC Setup Procedure" started...
+2026-10-19T21:12:42.549005 [RRC     ] [D] ue=1 c-rnti=0x4601: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:42.549006 [RRC     ] [D] ue=1 c-rnti=0x4601: Containerized rrcSetup: [
+2026-10-19T21:12:42.831153 [RRC     ] [D] ue=2 c-rnti=0x4602: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:42.831154 [RRC     ] [D] ue=2 c-rnti=0x4602: Containerized rrcSetupRequest: [
+2026-10-19T21:12:42.831158 [RRC     ] [I] ue=2 c-rnti=0x4602: "RRC Setup Procedure" started...
+2026-10-19T21:12:42.831341 [RRC     ] [D] ue=2 c-rnti=0x4602: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:42.831343 [RRC     ] [D] ue=2 c-rnti=0x4602: Containerized rrcSetup: [
+2026-10-19T21:12:43.159176 [RRC     ] [D] ue=3 c-rnti=0x4603: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:43.159178 [RRC     ] [D] ue=3 c-rnti=0x4603: Containerized rrcSetupRequest: [
+2026-10-19T21:12:43.159182 [RRC     ] [I] ue=3 c-rnti=0x4603: "RRC Setup Procedure" started...
+2026-10-19T21:12:43.159403 [RRC     ] [D] ue=3 c-rnti=0x4603: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:43.159405 [RRC     ] [D] ue=3 c-rnti=0x4603: Containerized rrcSetup: [
+2026-10-19T21:12:43.514551 [RRC     ] [D] ue=4 c-rnti=0x4604: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:43.514553 [RRC     ] [D] ue=4 c-rnti=0x4604: Containerized rrcSetupRequest: [
+2026-10-19T21:12:43.514556 [RRC     ] [I] ue=4 c-rnti=0x4604: "RRC Setup Procedure" started...
+2026-10-19T21:12:43.514753 [RRC     ] [D] ue=4 c-rnti=0x4604: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:43.514754 [RRC     ] [D] ue=4 c-rnti=0x4604: Containerized rrcSetup: [
+2026-10-19T21:12:43.913801 [RRC     ] [D] ue=5 c-rnti=0x4605: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:43.913802 [RRC     ] [D] ue=5 c-rnti=0x4605: Containerized rrcSetupRequest: [
+2026-10-19T21:12:43.913806 [RRC     ] [I] ue=5 c-rnti=0x4605: "RRC Setup Procedure" started...
+2026-10-19T21:12:43.913991 [RRC     ] [D] ue=5 c-rnti=0x4605: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:43.913992 [RRC     ] [D] ue=5 c-rnti=0x4605: Containerized rrcSetup: [
+2026-10-19T21:12:44.265455 [RRC     ] [D] ue=6 c-rnti=0x4606: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:44.265457 [RRC     ] [D] ue=6 c-rnti=0x4606: Containerized rrcSetupRequest: [
+2026-10-19T21:12:44.265461 [RRC     ] [I] ue=6 c-rnti=0x4606: "RRC Setup Procedure" started...
+2026-10-19T21:12:44.265682 [RRC     ] [D] ue=6 c-rnti=0x4606: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:44.265683 [RRC     ] [D] ue=6 c-rnti=0x4606: Containerized rrcSetup: [
+2026-10-19T21:12:44.547723 [RRC     ] [W] ue=1 c-rnti=0x4601: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:44.547746 [CU-CP   ] [D] ue=1: "UE Context Release Routine" started...
+2026-10-19T21:12:44.572842 [RRC     ] [D] ue=7 c-rnti=0x4607: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:44.572842 [RRC     ] [D] ue=7 c-rnti=0x4607: Containerized rrcSetupRequest: [
+2026-10-19T21:12:44.572846 [RRC     ] [I] ue=7 c-rnti=0x4607: "RRC Setup Procedure" started...
+2026-10-19T21:12:44.573027 [RRC     ] [D] ue=7 c-rnti=0x4607: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:44.573028 [RRC     ] [D] ue=7 c-rnti=0x4607: Containerized rrcSetup: [
+2026-10-19T21:12:44.830746 [RRC     ] [W] ue=2 c-rnti=0x4602: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:44.830767 [CU-CP   ] [D] ue=2: "UE Context Release Routine" started...
+2026-10-19T21:12:44.978500 [RRC     ] [D] ue=8 c-rnti=0x4608: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:44.978501 [RRC     ] [D] ue=8 c-rnti=0x4608: Containerized rrcSetupRequest: [
+2026-10-19T21:12:44.978505 [RRC     ] [I] ue=8 c-rnti=0x4608: "RRC Setup Procedure" started...
+2026-10-19T21:12:44.978732 [RRC     ] [D] ue=8 c-rnti=0x4608: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:44.978733 [RRC     ] [D] ue=8 c-rnti=0x4608: Containerized rrcSetup: [
+2026-10-19T21:12:45.011621 [CU-CP   ] [D] ue=1: "UE Removal Routine" started...
+2026-10-19T21:12:45.011696 [CU-CP   ] [I] ue=1: "UE Removal Routine" finished successfully
+2026-10-19T21:12:45.011698 [CU-CP   ] [D] ue=1: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:45.157719 [RRC     ] [W] ue=3 c-rnti=0x4603: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:45.157734 [CU-CP   ] [D] ue=3: "UE Context Release Routine" started...
+2026-10-19T21:12:45.344506 [CU-CP   ] [D] ue=2: "UE Removal Routine" started...
+2026-10-19T21:12:45.344552 [CU-CP   ] [I] ue=2: "UE Removal Routine" finished successfully
+2026-10-19T21:12:45.344553 [CU-CP   ] [D] ue=2: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:45.513708 [RRC     ] [W] ue=4 c-rnti=0x4604: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:45.513729 [CU-CP   ] [D] ue=4: "UE Context Release Routine" started...
+2026-10-19T21:12:45.514333 [RRC     ] [D] ue=9 c-rnti=0x4609: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:45.514335 [RRC     ] [D] ue=9 c-rnti=0x4609: Containerized rrcSetupRequest: [
+2026-10-19T21:12:45.514339 [RRC     ] [I] ue=9 c-rnti=0x4609: "RRC Setup Procedure" started...
+2026-10-19T21:12:45.514436 [RRC     ] [D] ue=9 c-rnti=0x4609: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:45.514437 [RRC     ] [D] ue=9 c-rnti=0x4609: Containerized rrcSetup: [
+2026-10-19T21:12:45.635041 [CU-CP   ] [D] ue=3: "UE Removal Routine" started...
+2026-10-19T21:12:45.635085 [CU-CP   ] [I] ue=3: "UE Removal Routine" finished successfully
+2026-10-19T21:12:45.635087 [CU-CP   ] [D] ue=3: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:45.912705 [RRC     ] [W] ue=5 c-rnti=0x4605: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:45.912723 [CU-CP   ] [D] ue=5: "UE Context Release Routine" started...
+2026-10-19T21:12:45.922519 [RRC     ] [D] ue=10 c-rnti=0x460a: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:45.922520 [RRC     ] [D] ue=10 c-rnti=0x460a: Containerized rrcSetupRequest: [
+2026-10-19T21:12:45.922524 [RRC     ] [I] ue=10 c-rnti=0x460a: "RRC Setup Procedure" started...
+2026-10-19T21:12:45.922618 [RRC     ] [D] ue=10 c-rnti=0x460a: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:45.922619 [RRC     ] [D] ue=10 c-rnti=0x460a: Containerized rrcSetup: [
+2026-10-19T21:12:45.966761 [CU-CP   ] [D] ue=4: "UE Removal Routine" started...
+2026-10-19T21:12:45.966809 [CU-CP   ] [I] ue=4: "UE Removal Routine" finished successfully
+2026-10-19T21:12:45.966810 [CU-CP   ] [D] ue=4: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:46.264745 [RRC     ] [W] ue=6 c-rnti=0x4606: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:46.264769 [CU-CP   ] [D] ue=6: "UE Context Release Routine" started...
+2026-10-19T21:12:46.281499 [RRC     ] [D] ue=11 c-rnti=0x460b: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:46.281500 [RRC     ] [D] ue=11 c-rnti=0x460b: Containerized rrcSetupRequest: [
+2026-10-19T21:12:46.281504 [RRC     ] [I] ue=11 c-rnti=0x460b: "RRC Setup Procedure" started...
+2026-10-19T21:12:46.281598 [RRC     ] [D] ue=11 c-rnti=0x460b: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:46.281599 [RRC     ] [D] ue=11 c-rnti=0x460b: Containerized rrcSetup: [
+2026-10-19T21:12:46.326680 [CU-CP   ] [D] ue=5: "UE Removal Routine" started...
+2026-10-19T21:12:46.326723 [CU-CP   ] [I] ue=5: "UE Removal Routine" finished successfully
+2026-10-19T21:12:46.326724 [CU-CP   ] [D] ue=5: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:46.571708 [RRC     ] [W] ue=7 c-rnti=0x4607: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:46.571732 [CU-CP   ] [D] ue=7: "UE Context Release Routine" started...
+2026-10-19T21:12:46.770094 [RRC     ] [D] ue=12 c-rnti=0x460c: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:46.770095 [RRC     ] [D] ue=12 c-rnti=0x460c: Containerized rrcSetupRequest: [
+2026-10-19T21:12:46.770099 [RRC     ] [I] ue=12 c-rnti=0x460c: "RRC Setup Procedure" started...
+2026-10-19T21:12:46.770185 [RRC     ] [D] ue=12 c-rnti=0x460c: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:46.770187 [RRC     ] [D] ue=12 c-rnti=0x460c: Containerized rrcSetup: [
+2026-10-19T21:12:46.770681 [CU-CP   ] [D] ue=6: "UE Removal Routine" started...
+2026-10-19T21:12:46.770722 [CU-CP   ] [I] ue=6: "UE Removal Routine" finished successfully
+2026-10-19T21:12:46.770723 [CU-CP   ] [D] ue=6: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:46.977745 [RRC     ] [W] ue=8 c-rnti=0x4608: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:46.977765 [CU-CP   ] [D] ue=8: "UE Context Release Routine" started...
+2026-10-19T21:12:47.043880 [CU-CP   ] [D] ue=7: "UE Removal Routine" started...
+2026-10-19T21:12:47.043924 [CU-CP   ] [I] ue=7: "UE Removal Routine" finished successfully
+2026-10-19T21:12:47.043925 [CU-CP   ] [D] ue=7: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:47.249130 [RRC     ] [D] ue=13 c-rnti=0x460d: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:47.249131 [RRC     ] [D] ue=13 c-rnti=0x460d: Containerized rrcSetupRequest: [
+2026-10-19T21:12:47.249136 [RRC     ] [I] ue=13 c-rnti=0x460d: "RRC Setup Procedure" started...
+2026-10-19T21:12:47.249231 [RRC     ] [D] ue=13 c-rnti=0x460d: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:47.249232 [RRC     ] [D] ue=13 c-rnti=0x460d: Containerized rrcSetup: [
+2026-10-19T21:12:47.411116 [CU-CP   ] [D] ue=8: "UE Removal Routine" started...
+2026-10-19T21:12:47.411158 [CU-CP   ] [I] ue=8: "UE Removal Routine" finished successfully
+2026-10-19T21:12:47.411159 [CU-CP   ] [D] ue=8: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:47.513714 [RRC     ] [W] ue=9 c-rnti=0x4609: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:47.513735 [CU-CP   ] [D] ue=9: "UE Context Release Routine" started...
+2026-10-19T21:12:47.689569 [RRC     ] [D] ue=14 c-rnti=0x460e: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:47.689570 [RRC     ] [D] ue=14 c-rnti=0x460e: Containerized rrcSetupRequest: [
+2026-10-19T21:12:47.689575 [RRC     ] [I] ue=14 c-rnti=0x460e: "RRC Setup Procedure" started...
+2026-10-19T21:12:47.689694 [RRC     ] [D] ue=14 c-rnti=0x460e: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:47.689696 [RRC     ] [D] ue=14 c-rnti=0x460e: Containerized rrcSetup: [
+2026-10-19T21:12:47.921724 [RRC     ] [W] ue=10 c-rnti=0x460a: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:47.921741 [CU-CP   ] [D] ue=10: "UE Context Release Routine" started...
+2026-10-19T21:12:48.005491 [CU-CP   ] [D] ue=9: "UE Removal Routine" started...
+2026-10-19T21:12:48.005541 [CU-CP   ] [I] ue=9: "UE Removal Routine" finished successfully
+2026-10-19T21:12:48.005542 [CU-CP   ] [D] ue=9: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:48.209224 [RRC     ] [D] ue=15 c-rnti=0x460f: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:48.209225 [RRC     ] [D] ue=15 c-rnti=0x460f: Containerized rrcSetupRequest: [
+2026-10-19T21:12:48.209229 [RRC     ] [I] ue=15 c-rnti=0x460f: "RRC Setup Procedure" started...
+2026-10-19T21:12:48.209314 [RRC     ] [D] ue=15 c-rnti=0x460f: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:48.209316 [RRC     ] [D] ue=15 c-rnti=0x460f: Containerized rrcSetup: [
+2026-10-19T21:12:48.280724 [RRC     ] [W] ue=11 c-rnti=0x460b: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:48.280741 [CU-CP   ] [D] ue=11: "UE Context Release Routine" started...
+2026-10-19T21:12:48.359320 [CU-CP   ] [D] ue=10: "UE Removal Routine" started...
+2026-10-19T21:12:48.359364 [CU-CP   ] [I] ue=10: "UE Removal Routine" finished successfully
+2026-10-19T21:12:48.359366 [CU-CP   ] [D] ue=10: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:48.589864 [RRC     ] [D] ue=16 c-rnti=0x4610: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:48.589866 [RRC     ] [D] ue=16 c-rnti=0x4610: Containerized rrcSetupRequest: [
+2026-10-19T21:12:48.589870 [RRC     ] [I] ue=16 c-rnti=0x4610: "RRC Setup Procedure" started...
+2026-10-19T21:12:48.589953 [RRC     ] [D] ue=16 c-rnti=0x4610: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:48.589955 [RRC     ] [D] ue=16 c-rnti=0x4610: Containerized rrcSetup: [
+2026-10-19T21:12:48.769711 [RRC     ] [W] ue=12 c-rnti=0x460c: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:48.769734 [CU-CP   ] [D] ue=12: "UE Context Release Routine" started...
+2026-10-19T21:12:48.774111 [CU-CP   ] [D] ue=11: "UE Removal Routine" started...
+2026-10-19T21:12:48.774155 [CU-CP   ] [I] ue=11: "UE Removal Routine" finished successfully
+2026-10-19T21:12:48.774156 [CU-CP   ] [D] ue=11: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:48.982211 [RRC     ] [D] ue=17 c-rnti=0x4611: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:48.982212 [RRC     ] [D] ue=17 c-rnti=0x4611: Containerized rrcSetupRequest: [
+2026-10-19T21:12:48.982216 [RRC     ] [I] ue=17 c-rnti=0x4611: "RRC Setup Procedure" started...
+2026-10-19T21:12:48.982323 [RRC     ] [D] ue=17 c-rnti=0x4611: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:48.982324 [RRC     ] [D] ue=17 c-rnti=0x4611: Containerized rrcSetup: [
+2026-10-19T21:12:49.177477 [CU-CP   ] [D] ue=12: "UE Removal Routine" started...
+2026-10-19T21:12:49.177523 [CU-CP   ] [I] ue=12: "UE Removal Routine" finished successfully
+2026-10-19T21:12:49.177524 [CU-CP   ] [D] ue=12: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:49.248747 [RRC     ] [W] ue=13 c-rnti=0x460d: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:49.248772 [CU-CP   ] [D] ue=13: "UE Context Release Routine" started...
+2026-10-19T21:12:49.333338 [RRC     ] [D] ue=18 c-rnti=0x4612: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:49.333339 [RRC     ] [D] ue=18 c-rnti=0x4612: Containerized rrcSetupRequest: [
+2026-10-19T21:12:49.333343 [RRC     ] [I] ue=18 c-rnti=0x4612: "RRC Setup Procedure" started...
+2026-10-19T21:12:49.333452 [RRC     ] [D] ue=18 c-rnti=0x4612: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:49.333453 [RRC     ] [D] ue=18 c-rnti=0x4612: Containerized rrcSetup: [
+2026-10-19T21:12:49.642600 [CU-CP   ] [D] ue=13: "UE Removal Routine" started...
+2026-10-19T21:12:49.642679 [CU-CP   ] [I] ue=13: "UE Removal Routine" finished successfully
+2026-10-19T21:12:49.642680 [CU-CP   ] [D] ue=13: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:49.688708 [RRC     ] [W] ue=14 c-rnti=0x460e: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:49.688728 [CU-CP   ] [D] ue=14: "UE Context Release Routine" started...
+2026-10-19T21:12:49.689349 [RRC     ] [D] ue=19 c-rnti=0x4613: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:49.689350 [RRC     ] [D] ue=19 c-rnti=0x4613: Containerized rrcSetupRequest: [
+2026-10-19T21:12:49.689353 [RRC     ] [I] ue=19 c-rnti=0x4613: "RRC Setup Procedure" started...
+2026-10-19T21:12:49.689459 [RRC     ] [D] ue=19 c-rnti=0x4613: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:49.689460 [RRC     ] [D] ue=19 c-rnti=0x4613: Containerized rrcSetup: [
+2026-10-19T21:12:50.162223 [CU-CP   ] [D] ue=14: "UE Removal Routine" started...
+2026-10-19T21:12:50.162269 [CU-CP   ] [I] ue=14: "UE Removal Routine" finished successfully
+2026-10-19T21:12:50.162270 [CU-CP   ] [D] ue=14: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:50.208707 [RRC     ] [W] ue=15 c-rnti=0x460f: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:50.208720 [CU-CP   ] [D] ue=15: "UE Context Release Routine" started...
+2026-10-19T21:12:50.209332 [RRC     ] [D] ue=20 c-rnti=0x4614: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:50.209333 [RRC     ] [D] ue=20 c-rnti=0x4614: Containerized rrcSetupRequest: [
+2026-10-19T21:12:50.209336 [RRC     ] [I] ue=20 c-rnti=0x4614: "RRC Setup Procedure" started...
+2026-10-19T21:12:50.209437 [RRC     ] [D] ue=20 c-rnti=0x4614: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:50.209438 [RRC     ] [D] ue=20 c-rnti=0x4614: Containerized rrcSetup: [
+2026-10-19T21:12:50.588690 [RRC     ] [W] ue=16 c-rnti=0x4610: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:50.588710 [CU-CP   ] [D] ue=16: "UE Context Release Routine" started...
+2026-10-19T21:12:50.590274 [RRC     ] [D] ue=21 c-rnti=0x4615: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:50.590275 [RRC     ] [D] ue=21 c-rnti=0x4615: Containerized rrcSetupRequest: [
+2026-10-19T21:12:50.590278 [RRC     ] [I] ue=21 c-rnti=0x4615: "RRC Setup Procedure" started...
+2026-10-19T21:12:50.590357 [RRC     ] [D] ue=21 c-rnti=0x4615: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:50.590358 [RRC     ] [D] ue=21 c-rnti=0x4615: Containerized rrcSetup: [
+2026-10-19T21:12:50.633557 [CU-CP   ] [D] ue=15: "UE Removal Routine" started...
+2026-10-19T21:12:50.633603 [CU-CP   ] [I] ue=15: "UE Removal Routine" finished successfully
+2026-10-19T21:12:50.633605 [CU-CP   ] [D] ue=15: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:50.981746 [RRC     ] [W] ue=17 c-rnti=0x4611: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:50.981770 [CU-CP   ] [D] ue=17: "UE Context Release Routine" started...
+2026-10-19T21:12:51.035698 [RRC     ] [D] ue=22 c-rnti=0x4616: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:51.035699 [RRC     ] [D] ue=22 c-rnti=0x4616: Containerized rrcSetupRequest: [
+2026-10-19T21:12:51.035703 [RRC     ] [I] ue=22 c-rnti=0x4616: "RRC Setup Procedure" started...
+2026-10-19T21:12:51.035787 [RRC     ] [D] ue=22 c-rnti=0x4616: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:51.035789 [RRC     ] [D] ue=22 c-rnti=0x4616: Containerized rrcSetup: [
+2026-10-19T21:12:51.090490 [CU-CP   ] [D] ue=16: "UE Removal Routine" started...
+2026-10-19T21:12:51.090534 [CU-CP   ] [I] ue=16: "UE Removal Routine" finished successfully
+2026-10-19T21:12:51.090535 [CU-CP   ] [D] ue=16: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:51.332746 [RRC     ] [W] ue=18 c-rnti=0x4612: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:51.332768 [CU-CP   ] [D] ue=18: "UE Context Release Routine" started...
+2026-10-19T21:12:51.451917 [RRC     ] [D] ue=23 c-rnti=0x4617: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:51.451919 [RRC     ] [D] ue=23 c-rnti=0x4617: Containerized rrcSetupRequest: [
+2026-10-19T21:12:51.451923 [RRC     ] [I] ue=23 c-rnti=0x4617: "RRC Setup Procedure" started...
+2026-10-19T21:12:51.452035 [RRC     ] [D] ue=23 c-rnti=0x4617: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:51.452036 [RRC     ] [D] ue=23 c-rnti=0x4617: Containerized rrcSetup: [
+2026-10-19T21:12:51.463859 [CU-CP   ] [D] ue=17: "UE Removal Routine" started...
+2026-10-19T21:12:51.463900 [CU-CP   ] [I] ue=17: "UE Removal Routine" finished successfully
+2026-10-19T21:12:51.463901 [CU-CP   ] [D] ue=17: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:51.688709 [RRC     ] [W] ue=19 c-rnti=0x4613: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:51.688729 [CU-CP   ] [D] ue=19: "UE Context Release Routine" started...
+2026-10-19T21:12:51.793097 [CU-CP   ] [D] ue=18: "UE Removal Routine" started...
+2026-10-19T21:12:51.793146 [CU-CP   ] [I] ue=18: "UE Removal Routine" finished successfully
+2026-10-19T21:12:51.793147 [CU-CP   ] [D] ue=18: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:51.995117 [RRC     ] [D] ue=24 c-rnti=0x4618: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:51.995119 [RRC     ] [D] ue=24 c-rnti=0x4618: Containerized rrcSetupRequest: [
+2026-10-19T21:12:51.995122 [RRC     ] [I] ue=24 c-rnti=0x4618: "RRC Setup Procedure" started...
+2026-10-19T21:12:51.995204 [RRC     ] [D] ue=24 c-rnti=0x4618: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:51.995206 [RRC     ] [D] ue=24 c-rnti=0x4618: Containerized rrcSetup: [
+2026-10-19T21:12:52.112738 [CU-CP   ] [D] ue=19: "UE Removal Routine" started...
+2026-10-19T21:12:52.112787 [CU-CP   ] [I] ue=19: "UE Removal Routine" finished successfully
+2026-10-19T21:12:52.112789 [CU-CP   ] [D] ue=19: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:52.208717 [RRC     ] [W] ue=20 c-rnti=0x4614: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:52.208734 [CU-CP   ] [D] ue=20: "UE Context Release Routine" started...
+2026-10-19T21:12:52.394835 [RRC     ] [D] ue=25 c-rnti=0x4619: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:52.394836 [RRC     ] [D] ue=25 c-rnti=0x4619: Containerized rrcSetupRequest: [
+2026-10-19T21:12:52.394840 [RRC     ] [I] ue=25 c-rnti=0x4619: "RRC Setup Procedure" started...
+2026-10-19T21:12:52.394931 [RRC     ] [D] ue=25 c-rnti=0x4619: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:52.394932 [RRC     ] [D] ue=25 c-rnti=0x4619: Containerized rrcSetup: [
+2026-10-19T21:12:52.589718 [RRC     ] [W] ue=21 c-rnti=0x4615: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:52.589740 [CU-CP   ] [D] ue=21: "UE Context Release Routine" started...
+2026-10-19T21:12:52.655863 [CU-CP   ] [D] ue=20: "UE Removal Routine" started...
+2026-10-19T21:12:52.655909 [CU-CP   ] [I] ue=20: "UE Removal Routine" finished successfully
+2026-10-19T21:12:52.655911 [CU-CP   ] [D] ue=20: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:52.857193 [RRC     ] [D] ue=26 c-rnti=0x461a: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:52.857194 [RRC     ] [D] ue=26 c-rnti=0x461a: Containerized rrcSetupRequest: [
+2026-10-19T21:12:52.857199 [RRC     ] [I] ue=26 c-rnti=0x461a: "RRC Setup Procedure" started...
+2026-10-19T21:12:52.857298 [RRC     ] [D] ue=26 c-rnti=0x461a: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:52.857299 [RRC     ] [D] ue=26 c-rnti=0x461a: Containerized rrcSetup: [
+2026-10-19T21:12:53.031206 [CU-CP   ] [D] ue=21: "UE Removal Routine" started...
+2026-10-19T21:12:53.031255 [CU-CP   ] [I] ue=21: "UE Removal Routine" finished successfully
+2026-10-19T21:12:53.031256 [CU-CP   ] [D] ue=21: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:53.034740 [RRC     ] [W] ue=22 c-rnti=0x4616: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:53.034751 [CU-CP   ] [D] ue=22: "UE Context Release Routine" started...
+2026-10-19T21:12:53.233703 [RRC     ] [D] ue=27 c-rnti=0x461b: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:53.233704 [RRC     ] [D] ue=27 c-rnti=0x461b: Containerized rrcSetupRequest: [
+2026-10-19T21:12:53.233708 [RRC     ] [I] ue=27 c-rnti=0x461b: "RRC Setup Procedure" started...
+2026-10-19T21:12:53.233794 [RRC     ] [D] ue=27 c-rnti=0x461b: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:53.233795 [RRC     ] [D] ue=27 c-rnti=0x461b: Containerized rrcSetup: [
+2026-10-19T21:12:53.450691 [RRC     ] [W] ue=23 c-rnti=0x4617: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:53.450711 [CU-CP   ] [D] ue=23: "UE Context Release Routine" started...
+2026-10-19T21:12:53.452090 [CU-CP   ] [D] ue=22: "UE Removal Routine" started...
+2026-10-19T21:12:53.452141 [CU-CP   ] [I] ue=22: "UE Removal Routine" finished successfully
+2026-10-19T21:12:53.452142 [CU-CP   ] [D] ue=22: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:53.657180 [RRC     ] [D] ue=28 c-rnti=0x461c: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:53.657181 [RRC     ] [D] ue=28 c-rnti=0x461c: Containerized rrcSetupRequest: [
+2026-10-19T21:12:53.657185 [RRC     ] [I] ue=28 c-rnti=0x461c: "RRC Setup Procedure" started...
+2026-10-19T21:12:53.657293 [RRC     ] [D] ue=28 c-rnti=0x461c: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:53.657295 [RRC     ] [D] ue=28 c-rnti=0x461c: Containerized rrcSetup: [
+2026-10-19T21:12:53.894691 [CU-CP   ] [D] ue=23: "UE Removal Routine" started...
+2026-10-19T21:12:53.894737 [CU-CP   ] [I] ue=23: "UE Removal Routine" finished successfully
+2026-10-19T21:12:53.894738 [CU-CP   ] [D] ue=23: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:53.994705 [RRC     ] [W] ue=24 c-rnti=0x4618: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:53.994718 [CU-CP   ] [D] ue=24: "UE Context Release Routine" started...
+2026-10-19T21:12:54.025716 [RRC     ] [D] ue=29 c-rnti=0x461d: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:54.025718 [RRC     ] [D] ue=29 c-rnti=0x461d: Containerized rrcSetupRequest: [
+2026-10-19T21:12:54.025721 [RRC     ] [I] ue=29 c-rnti=0x461d: "RRC Setup Procedure" started...
+2026-10-19T21:12:54.025805 [RRC     ] [D] ue=29 c-rnti=0x461d: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:54.025806 [RRC     ] [D] ue=29 c-rnti=0x461d: Containerized rrcSetup: [
+2026-10-19T21:12:54.383016 [RRC     ] [D] ue=30 c-rnti=0x461e: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:54.383017 [RRC     ] [D] ue=30 c-rnti=0x461e: Containerized rrcSetupRequest: [
+2026-10-19T21:12:54.383020 [RRC     ] [I] ue=30 c-rnti=0x461e: "RRC Setup Procedure" started...
+2026-10-19T21:12:54.383101 [RRC     ] [D] ue=30 c-rnti=0x461e: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:54.383102 [RRC     ] [D] ue=30 c-rnti=0x461e: Containerized rrcSetup: [
+2026-10-19T21:12:54.393743 [RRC     ] [W] ue=25 c-rnti=0x4619: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:54.393758 [CU-CP   ] [D] ue=25: "UE Context Release Routine" started...
+2026-10-19T21:12:54.405227 [CU-CP   ] [D] ue=24: "UE Removal Routine" started...
+2026-10-19T21:12:54.405269 [CU-CP   ] [I] ue=24: "UE Removal Routine" finished successfully
+2026-10-19T21:12:54.405270 [CU-CP   ] [D] ue=24: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:54.774744 [RRC     ] [D] ue=31 c-rnti=0x461f: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:54.774745 [RRC     ] [D] ue=31 c-rnti=0x461f: Containerized rrcSetupRequest: [
+2026-10-19T21:12:54.774748 [RRC     ] [I] ue=31 c-rnti=0x461f: "RRC Setup Procedure" started...
+2026-10-19T21:12:54.774860 [RRC     ] [D] ue=31 c-rnti=0x461f: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:54.774861 [RRC     ] [D] ue=31 c-rnti=0x461f: Containerized rrcSetup: [
+2026-10-19T21:12:54.819797 [CU-CP   ] [D] ue=25: "UE Removal Routine" started...
+2026-10-19T21:12:54.819843 [CU-CP   ] [I] ue=25: "UE Removal Routine" finished successfully
+2026-10-19T21:12:54.819844 [CU-CP   ] [D] ue=25: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:54.856686 [RRC     ] [W] ue=26 c-rnti=0x461a: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:54.856698 [CU-CP   ] [D] ue=26: "UE Context Release Routine" started...
+2026-10-19T21:12:55.141179 [RRC     ] [D] ue=32 c-rnti=0x4620: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:55.141180 [RRC     ] [D] ue=32 c-rnti=0x4620: Containerized rrcSetupRequest: [
+2026-10-19T21:12:55.141184 [RRC     ] [I] ue=32 c-rnti=0x4620: "RRC Setup Procedure" started...
+2026-10-19T21:12:55.141268 [RRC     ] [D] ue=32 c-rnti=0x4620: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:55.141269 [RRC     ] [D] ue=32 c-rnti=0x4620: Containerized rrcSetup: [
+2026-10-19T21:12:55.232723 [RRC     ] [W] ue=27 c-rnti=0x461b: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:55.232742 [CU-CP   ] [D] ue=27: "UE Context Release Routine" started...
+2026-10-19T21:12:55.309191 [CU-CP   ] [D] ue=26: "UE Removal Routine" started...
+2026-10-19T21:12:55.309239 [CU-CP   ] [I] ue=26: "UE Removal Routine" finished successfully
+2026-10-19T21:12:55.309240 [CU-CP   ] [D] ue=26: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:55.547520 [RRC     ] [D] ue=33 c-rnti=0x4621: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:55.547521 [RRC     ] [D] ue=33 c-rnti=0x4621: Containerized rrcSetupRequest: [
+2026-10-19T21:12:55.547526 [RRC     ] [I] ue=33 c-rnti=0x4621: "RRC Setup Procedure" started...
+2026-10-19T21:12:55.547684 [RRC     ] [D] ue=33 c-rnti=0x4621: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:55.547686 [RRC     ] [D] ue=33 c-rnti=0x4621: Containerized rrcSetup: [
+2026-10-19T21:12:55.656716 [RRC     ] [W] ue=28 c-rnti=0x461c: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:55.656734 [CU-CP   ] [D] ue=28: "UE Context Release Routine" started...
+2026-10-19T21:12:55.772472 [CU-CP   ] [D] ue=27: "UE Removal Routine" started...
+2026-10-19T21:12:55.772515 [CU-CP   ] [I] ue=27: "UE Removal Routine" finished successfully
+2026-10-19T21:12:55.772516 [CU-CP   ] [D] ue=27: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:55.978045 [RRC     ] [D] ue=34 c-rnti=0x4622: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:55.978046 [RRC     ] [D] ue=34 c-rnti=0x4622: Containerized rrcSetupRequest: [
+2026-10-19T21:12:55.978050 [RRC     ] [I] ue=34 c-rnti=0x4622: "RRC Setup Procedure" started...
+2026-10-19T21:12:55.978159 [RRC     ] [D] ue=34 c-rnti=0x4622: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:55.978161 [RRC     ] [D] ue=34 c-rnti=0x4622: Containerized rrcSetup: [
+2026-10-19T21:12:56.024708 [RRC     ] [W] ue=29 c-rnti=0x461d: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:56.024725 [CU-CP   ] [D] ue=29: "UE Context Release Routine" started...
+2026-10-19T21:12:56.203736 [CU-CP   ] [D] ue=28: "UE Removal Routine" started...
+2026-10-19T21:12:56.203785 [CU-CP   ] [I] ue=28: "UE Removal Routine" finished successfully
+2026-10-19T21:12:56.203787 [CU-CP   ] [D] ue=28: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:56.382714 [RRC     ] [W] ue=30 c-rnti=0x461e: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:56.382730 [CU-CP   ] [D] ue=30: "UE Context Release Routine" started...
+2026-10-19T21:12:56.385279 [RRC     ] [D] ue=35 c-rnti=0x4623: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:56.385280 [RRC     ] [D] ue=35 c-rnti=0x4623: Containerized rrcSetupRequest: [
+2026-10-19T21:12:56.385283 [RRC     ] [I] ue=35 c-rnti=0x4623: "RRC Setup Procedure" started...
+2026-10-19T21:12:56.385361 [RRC     ] [D] ue=35 c-rnti=0x4623: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:56.385362 [RRC     ] [D] ue=35 c-rnti=0x4623: Containerized rrcSetup: [
+2026-10-19T21:12:56.634370 [CU-CP   ] [D] ue=29: "UE Removal Routine" started...
+2026-10-19T21:12:56.634415 [CU-CP   ] [I] ue=29: "UE Removal Routine" finished successfully
+2026-10-19T21:12:56.634416 [CU-CP   ] [D] ue=29: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:56.771756 [RRC     ] [D] ue=36 c-rnti=0x4624: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:56.771757 [RRC     ] [D] ue=36 c-rnti=0x4624: Containerized rrcSetupRequest: [
+2026-10-19T21:12:56.771760 [RRC     ] [I] ue=36 c-rnti=0x4624: "RRC Setup Procedure" started...
+2026-10-19T21:12:56.771860 [RRC     ] [D] ue=36 c-rnti=0x4624: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:56.771862 [RRC     ] [D] ue=36 c-rnti=0x4624: Containerized rrcSetup: [
+2026-10-19T21:12:56.773724 [RRC     ] [W] ue=31 c-rnti=0x461f: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:56.773737 [CU-CP   ] [D] ue=31: "UE Context Release Routine" started...
+2026-10-19T21:12:56.826188 [CU-CP   ] [D] ue=30: "UE Removal Routine" started...
+2026-10-19T21:12:56.826230 [CU-CP   ] [I] ue=30: "UE Removal Routine" finished successfully
+2026-10-19T21:12:56.826231 [CU-CP   ] [D] ue=30: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:57.140704 [RRC     ] [W] ue=32 c-rnti=0x4620: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:57.140719 [CU-CP   ] [D] ue=32: "UE Context Release Routine" started...
+2026-10-19T21:12:57.236190 [RRC     ] [D] ue=37 c-rnti=0x4625: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:57.236191 [RRC     ] [D] ue=37 c-rnti=0x4625: Containerized rrcSetupRequest: [
+2026-10-19T21:12:57.236194 [RRC     ] [I] ue=37 c-rnti=0x4625: "RRC Setup Procedure" started...
+2026-10-19T21:12:57.236310 [RRC     ] [D] ue=37 c-rnti=0x4625: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:57.236312 [RRC     ] [D] ue=37 c-rnti=0x4625: Containerized rrcSetup: [
+2026-10-19T21:12:57.356945 [CU-CP   ] [D] ue=31: "UE Removal Routine" started...
+2026-10-19T21:12:57.356991 [CU-CP   ] [I] ue=31: "UE Removal Routine" finished successfully
+2026-10-19T21:12:57.356992 [CU-CP   ] [D] ue=31: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:57.546740 [RRC     ] [W] ue=33 c-rnti=0x4621: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:57.546760 [CU-CP   ] [D] ue=33: "UE Context Release Routine" started...
+2026-10-19T21:12:57.621164 [CU-CP   ] [D] ue=32: "UE Removal Routine" started...
+2026-10-19T21:12:57.621209 [CU-CP   ] [I] ue=32: "UE Removal Routine" finished successfully
+2026-10-19T21:12:57.621210 [CU-CP   ] [D] ue=32: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:57.825196 [RRC     ] [D] ue=38 c-rnti=0x4626: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:57.825197 [RRC     ] [D] ue=38 c-rnti=0x4626: Containerized rrcSetupRequest: [
+2026-10-19T21:12:57.825201 [RRC     ] [I] ue=38 c-rnti=0x4626: "RRC Setup Procedure" started...
+2026-10-19T21:12:57.825292 [RRC     ] [D] ue=38 c-rnti=0x4626: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:57.825294 [RRC     ] [D] ue=38 c-rnti=0x4626: Containerized rrcSetup: [
+2026-10-19T21:12:57.976690 [RRC     ] [W] ue=34 c-rnti=0x4622: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:57.976710 [CU-CP   ] [D] ue=34: "UE Context Release Routine" started...
+2026-10-19T21:12:58.003731 [CU-CP   ] [D] ue=33: "UE Removal Routine" started...
+2026-10-19T21:12:58.003777 [CU-CP   ] [I] ue=33: "UE Removal Routine" finished successfully
+2026-10-19T21:12:58.003778 [CU-CP   ] [D] ue=33: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:58.209212 [RRC     ] [D] ue=39 c-rnti=0x4627: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:58.209214 [RRC     ] [D] ue=39 c-rnti=0x4627: Containerized rrcSetupRequest: [
+2026-10-19T21:12:58.209218 [RRC     ] [I] ue=39 c-rnti=0x4627: "RRC Setup Procedure" started...
+2026-10-19T21:12:58.209305 [RRC     ] [D] ue=39 c-rnti=0x4627: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:58.209307 [RRC     ] [D] ue=39 c-rnti=0x4627: Containerized rrcSetup: [
+2026-10-19T21:12:58.384703 [RRC     ] [W] ue=35 c-rnti=0x4623: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:58.384725 [CU-CP   ] [D] ue=35: "UE Context Release Routine" started...
+2026-10-19T21:12:58.475673 [CU-CP   ] [D] ue=34: "UE Removal Routine" started...
+2026-10-19T21:12:58.475728 [CU-CP   ] [I] ue=34: "UE Removal Routine" finished successfully
+2026-10-19T21:12:58.475730 [CU-CP   ] [D] ue=34: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:58.659193 [RRC     ] [D] ue=40 c-rnti=0x4628: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:58.659194 [RRC     ] [D] ue=40 c-rnti=0x4628: Containerized rrcSetupRequest: [
+2026-10-19T21:12:58.659198 [RRC     ] [I] ue=40 c-rnti=0x4628: "RRC Setup Procedure" started...
+2026-10-19T21:12:58.659279 [RRC     ] [D] ue=40 c-rnti=0x4628: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:58.659280 [RRC     ] [D] ue=40 c-rnti=0x4628: Containerized rrcSetup: [
+2026-10-19T21:12:58.770718 [RRC     ] [W] ue=36 c-rnti=0x4624: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:58.770737 [CU-CP   ] [D] ue=36: "UE Context Release Routine" started...
+2026-10-19T21:12:58.814000 [CU-CP   ] [D] ue=35: "UE Removal Routine" started...
+2026-10-19T21:12:58.814047 [CU-CP   ] [I] ue=35: "UE Removal Routine" finished successfully
+2026-10-19T21:12:58.814048 [CU-CP   ] [D] ue=35: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:59.054589 [RRC     ] [D] ue=41 c-rnti=0x4629: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:59.054590 [RRC     ] [D] ue=41 c-rnti=0x4629: Containerized rrcSetupRequest: [
+2026-10-19T21:12:59.054595 [RRC     ] [I] ue=41 c-rnti=0x4629: "RRC Setup Procedure" started...
+2026-10-19T21:12:59.054725 [RRC     ] [D] ue=41 c-rnti=0x4629: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:59.054726 [RRC     ] [D] ue=41 c-rnti=0x4629: Containerized rrcSetup: [
+2026-10-19T21:12:59.235727 [RRC     ] [W] ue=37 c-rnti=0x4625: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:59.235747 [CU-CP   ] [D] ue=37: "UE Context Release Routine" started...
+2026-10-19T21:12:59.257771 [CU-CP   ] [D] ue=36: "UE Removal Routine" started...
+2026-10-19T21:12:59.257820 [CU-CP   ] [I] ue=36: "UE Removal Routine" finished successfully
+2026-10-19T21:12:59.257821 [CU-CP   ] [D] ue=36: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:59.484813 [RRC     ] [D] ue=42 c-rnti=0x462a: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:59.484814 [RRC     ] [D] ue=42 c-rnti=0x462a: Containerized rrcSetupRequest: [
+2026-10-19T21:12:59.484818 [RRC     ] [I] ue=42 c-rnti=0x462a: "RRC Setup Procedure" started...
+2026-10-19T21:12:59.484899 [RRC     ] [D] ue=42 c-rnti=0x462a: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:59.484900 [RRC     ] [D] ue=42 c-rnti=0x462a: Containerized rrcSetup: [
+2026-10-19T21:12:59.681472 [CU-CP   ] [D] ue=37: "UE Removal Routine" started...
+2026-10-19T21:12:59.681523 [CU-CP   ] [I] ue=37: "UE Removal Routine" finished successfully
+2026-10-19T21:12:59.681524 [CU-CP   ] [D] ue=37: "UE Context Release Routine" finished successfully.
+2026-10-19T21:12:59.824714 [RRC     ] [W] ue=38 c-rnti=0x4626: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:12:59.824735 [CU-CP   ] [D] ue=38: "UE Context Release Routine" started...
+2026-10-19T21:12:59.852169 [RRC     ] [D] ue=43 c-rnti=0x462b: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:12:59.852170 [RRC     ] [D] ue=43 c-rnti=0x462b: Containerized rrcSetupRequest: [
+2026-10-19T21:12:59.852173 [RRC     ] [I] ue=43 c-rnti=0x462b: "RRC Setup Procedure" started...
+2026-10-19T21:12:59.852256 [RRC     ] [D] ue=43 c-rnti=0x462b: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:12:59.852257 [RRC     ] [D] ue=43 c-rnti=0x462b: Containerized rrcSetup: [
+2026-10-19T21:13:00.208721 [RRC     ] [W] ue=39 c-rnti=0x4627: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:00.208746 [CU-CP   ] [D] ue=39: "UE Context Release Routine" started...
+2026-10-19T21:13:00.292017 [RRC     ] [D] ue=44 c-rnti=0x462c: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:13:00.292018 [RRC     ] [D] ue=44 c-rnti=0x462c: Containerized rrcSetupRequest: [
+2026-10-19T21:13:00.292022 [RRC     ] [I] ue=44 c-rnti=0x462c: "RRC Setup Procedure" started...
+2026-10-19T21:13:00.292111 [RRC     ] [D] ue=44 c-rnti=0x462c: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:13:00.292112 [RRC     ] [D] ue=44 c-rnti=0x462c: Containerized rrcSetup: [
+2026-10-19T21:13:00.292302 [CU-CP   ] [D] ue=38: "UE Removal Routine" started...
+2026-10-19T21:13:00.292346 [CU-CP   ] [I] ue=38: "UE Removal Routine" finished successfully
+2026-10-19T21:13:00.292347 [CU-CP   ] [D] ue=38: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:00.625997 [CU-CP   ] [D] ue=39: "UE Removal Routine" started...
+2026-10-19T21:13:00.626049 [CU-CP   ] [I] ue=39: "UE Removal Routine" finished successfully
+2026-10-19T21:13:00.626050 [CU-CP   ] [D] ue=39: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:00.658688 [RRC     ] [W] ue=40 c-rnti=0x4628: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:00.658702 [CU-CP   ] [D] ue=40: "UE Context Release Routine" started...
+2026-10-19T21:13:00.659254 [RRC     ] [D] ue=45 c-rnti=0x462d: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:13:00.659256 [RRC     ] [D] ue=45 c-rnti=0x462d: Containerized rrcSetupRequest: [
+2026-10-19T21:13:00.659259 [RRC     ] [I] ue=45 c-rnti=0x462d: "RRC Setup Procedure" started...
+2026-10-19T21:13:00.659340 [RRC     ] [D] ue=45 c-rnti=0x462d: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:13:00.659341 [RRC     ] [D] ue=45 c-rnti=0x462d: Containerized rrcSetup: [
+2026-10-19T21:13:01.053750 [RRC     ] [W] ue=41 c-rnti=0x4629: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:01.053772 [CU-CP   ] [D] ue=41: "UE Context Release Routine" started...
+2026-10-19T21:13:01.128840 [RRC     ] [D] ue=46 c-rnti=0x462e: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:13:01.128841 [RRC     ] [D] ue=46 c-rnti=0x462e: Containerized rrcSetupRequest: [
+2026-10-19T21:13:01.128845 [RRC     ] [I] ue=46 c-rnti=0x462e: "RRC Setup Procedure" started...
+2026-10-19T21:13:01.128932 [RRC     ] [D] ue=46 c-rnti=0x462e: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:13:01.128934 [RRC     ] [D] ue=46 c-rnti=0x462e: Containerized rrcSetup: [
+2026-10-19T21:13:01.151209 [CU-CP   ] [D] ue=40: "UE Removal Routine" started...
+2026-10-19T21:13:01.151256 [CU-CP   ] [I] ue=40: "UE Removal Routine" finished successfully
+2026-10-19T21:13:01.151258 [CU-CP   ] [D] ue=40: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:01.483706 [RRC     ] [W] ue=42 c-rnti=0x462a: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:01.483731 [CU-CP   ] [D] ue=42: "UE Context Release Routine" started...
+2026-10-19T21:13:01.504301 [CU-CP   ] [D] ue=41: "UE Removal Routine" started...
+2026-10-19T21:13:01.504351 [CU-CP   ] [I] ue=41: "UE Removal Routine" finished successfully
+2026-10-19T21:13:01.504352 [CU-CP   ] [D] ue=41: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:01.705159 [RRC     ] [D] ue=47 c-rnti=0x462f: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:13:01.705160 [RRC     ] [D] ue=47 c-rnti=0x462f: Containerized rrcSetupRequest: [
+2026-10-19T21:13:01.705165 [RRC     ] [I] ue=47 c-rnti=0x462f: "RRC Setup Procedure" started...
+2026-10-19T21:13:01.705257 [RRC     ] [D] ue=47 c-rnti=0x462f: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:13:01.705259 [RRC     ] [D] ue=47 c-rnti=0x462f: Containerized rrcSetup: [
+2026-10-19T21:13:01.851715 [RRC     ] [W] ue=43 c-rnti=0x462b: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:01.851736 [CU-CP   ] [D] ue=43: "UE Context Release Routine" started...
+2026-10-19T21:13:01.945060 [CU-CP   ] [D] ue=42: "UE Removal Routine" started...
+2026-10-19T21:13:01.945111 [CU-CP   ] [I] ue=42: "UE Removal Routine" finished successfully
+2026-10-19T21:13:01.945112 [CU-CP   ] [D] ue=42: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:02.153168 [RRC     ] [D] ue=48 c-rnti=0x4630: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:13:02.153169 [RRC     ] [D] ue=48 c-rnti=0x4630: Containerized rrcSetupRequest: [
+2026-10-19T21:13:02.153173 [RRC     ] [I] ue=48 c-rnti=0x4630: "RRC Setup Procedure" started...
+2026-10-19T21:13:02.153255 [RRC     ] [D] ue=48 c-rnti=0x4630: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:13:02.153257 [RRC     ] [D] ue=48 c-rnti=0x4630: Containerized rrcSetup: [
+2026-10-19T21:13:02.291747 [RRC     ] [W] ue=44 c-rnti=0x462c: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:02.291768 [CU-CP   ] [D] ue=44: "UE Context Release Routine" started...
+2026-10-19T21:13:02.325847 [CU-CP   ] [D] ue=43: "UE Removal Routine" started...
+2026-10-19T21:13:02.325898 [CU-CP   ] [I] ue=43: "UE Removal Routine" finished successfully
+2026-10-19T21:13:02.325900 [CU-CP   ] [D] ue=43: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:02.517800 [RRC     ] [D] ue=49 c-rnti=0x4631: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:13:02.517802 [RRC     ] [D] ue=49 c-rnti=0x4631: Containerized rrcSetupRequest: [
+2026-10-19T21:13:02.517805 [RRC     ] [I] ue=49 c-rnti=0x4631: "RRC Setup Procedure" started...
+2026-10-19T21:13:02.517891 [RRC     ] [D] ue=49 c-rnti=0x4631: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:13:02.517893 [RRC     ] [D] ue=49 c-rnti=0x4631: Containerized rrcSetup: [
+2026-10-19T21:13:02.658717 [RRC     ] [W] ue=45 c-rnti=0x462d: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:02.658739 [CU-CP   ] [D] ue=45: "UE Context Release Routine" started...
+2026-10-19T21:13:02.769389 [CU-CP   ] [D] ue=44: "UE Removal Routine" started...
+2026-10-19T21:13:02.769434 [CU-CP   ] [I] ue=44: "UE Removal Routine" finished successfully
+2026-10-19T21:13:02.769436 [CU-CP   ] [D] ue=44: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:02.977140 [RRC     ] [D] ue=50 c-rnti=0x4632: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:13:02.977141 [RRC     ] [D] ue=50 c-rnti=0x4632: Containerized rrcSetupRequest: [
+2026-10-19T21:13:02.977145 [RRC     ] [I] ue=50 c-rnti=0x4632: "RRC Setup Procedure" started...
+2026-10-19T21:13:02.977228 [RRC     ] [D] ue=50 c-rnti=0x4632: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:13:02.977229 [RRC     ] [D] ue=50 c-rnti=0x4632: Containerized rrcSetup: [
+2026-10-19T21:13:03.127707 [RRC     ] [W] ue=46 c-rnti=0x462e: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:03.127728 [CU-CP   ] [D] ue=46: "UE Context Release Routine" started...
+2026-10-19T21:13:03.205372 [CU-CP   ] [D] ue=45: "UE Removal Routine" started...
+2026-10-19T21:13:03.205431 [CU-CP   ] [I] ue=45: "UE Removal Routine" finished successfully
+2026-10-19T21:13:03.205433 [CU-CP   ] [D] ue=45: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:03.431560 [RRC     ] [D] ue=51 c-rnti=0x4633: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:13:03.431561 [RRC     ] [D] ue=51 c-rnti=0x4633: Containerized rrcSetupRequest: [
+2026-10-19T21:13:03.431565 [RRC     ] [I] ue=51 c-rnti=0x4633: "RRC Setup Procedure" started...
+2026-10-19T21:13:03.431707 [RRC     ] [D] ue=51 c-rnti=0x4633: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:13:03.431709 [RRC     ] [D] ue=51 c-rnti=0x4633: Containerized rrcSetup: [
+2026-10-19T21:13:03.595591 [CU-CP   ] [D] ue=46: "UE Removal Routine" started...
+2026-10-19T21:13:03.595653 [CU-CP   ] [I] ue=46: "UE Removal Routine" finished successfully
+2026-10-19T21:13:03.595655 [CU-CP   ] [D] ue=46: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:03.704684 [RRC     ] [W] ue=47 c-rnti=0x462f: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:03.704702 [CU-CP   ] [D] ue=47: "UE Context Release Routine" started...
+2026-10-19T21:13:03.812080 [RRC     ] [D] ue=52 c-rnti=0x4634: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:13:03.812081 [RRC     ] [D] ue=52 c-rnti=0x4634: Containerized rrcSetupRequest: [
+2026-10-19T21:13:03.812085 [RRC     ] [I] ue=52 c-rnti=0x4634: "RRC Setup Procedure" started...
+2026-10-19T21:13:03.812162 [RRC     ] [D] ue=52 c-rnti=0x4634: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:13:03.812164 [RRC     ] [D] ue=52 c-rnti=0x4634: Containerized rrcSetup: [
+2026-10-19T21:13:04.120659 [CU-CP   ] [D] ue=47: "UE Removal Routine" started...
+2026-10-19T21:13:04.120732 [CU-CP   ] [I] ue=47: "UE Removal Routine" finished successfully
+2026-10-19T21:13:04.120733 [CU-CP   ] [D] ue=47: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:04.152743 [RRC     ] [W] ue=48 c-rnti=0x4630: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:04.152757 [CU-CP   ] [D] ue=48: "UE Context Release Routine" started...
+2026-10-19T21:13:04.168826 [RRC     ] [D] ue=53 c-rnti=0x4635: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:13:04.168827 [RRC     ] [D] ue=53 c-rnti=0x4635: Containerized rrcSetupRequest: [
+2026-10-19T21:13:04.168831 [RRC     ] [I] ue=53 c-rnti=0x4635: "RRC Setup Procedure" started...
+2026-10-19T21:13:04.168912 [RRC     ] [D] ue=53 c-rnti=0x4635: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:13:04.168913 [RRC     ] [D] ue=53 c-rnti=0x4635: Containerized rrcSetup: [
+2026-10-19T21:13:04.516723 [RRC     ] [W] ue=49 c-rnti=0x4631: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:04.516746 [CU-CP   ] [D] ue=49: "UE Context Release Routine" started...
+2026-10-19T21:13:04.559616 [RRC     ] [D] ue=54 c-rnti=0x4636: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:13:04.559618 [RRC     ] [D] ue=54 c-rnti=0x4636: Containerized rrcSetupRequest: [
+2026-10-19T21:13:04.559621 [RRC     ] [I] ue=54 c-rnti=0x4636: "RRC Setup Procedure" started...
+2026-10-19T21:13:04.559735 [RRC     ] [D] ue=54 c-rnti=0x4636: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:13:04.559737 [RRC     ] [D] ue=54 c-rnti=0x4636: Containerized rrcSetup: [
+2026-10-19T21:13:04.559915 [CU-CP   ] [D] ue=48: "UE Removal Routine" started...
+2026-10-19T21:13:04.559954 [CU-CP   ] [I] ue=48: "UE Removal Routine" finished successfully
+2026-10-19T21:13:04.559955 [CU-CP   ] [D] ue=48: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:04.956724 [RRC     ] [D] ue=55 c-rnti=0x4637: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:13:04.956725 [RRC     ] [D] ue=55 c-rnti=0x4637: Containerized rrcSetupRequest: [
+2026-10-19T21:13:04.956729 [RRC     ] [I] ue=55 c-rnti=0x4637: "RRC Setup Procedure" started...
+2026-10-19T21:13:04.956811 [RRC     ] [D] ue=55 c-rnti=0x4637: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:13:04.956813 [RRC     ] [D] ue=55 c-rnti=0x4637: Containerized rrcSetup: [
+2026-10-19T21:13:04.976706 [RRC     ] [W] ue=50 c-rnti=0x4632: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:04.976722 [CU-CP   ] [D] ue=50: "UE Context Release Routine" started...
+2026-10-19T21:13:04.978936 [CU-CP   ] [D] ue=49: "UE Removal Routine" started...
+2026-10-19T21:13:04.978979 [CU-CP   ] [I] ue=49: "UE Removal Routine" finished successfully
+2026-10-19T21:13:04.978980 [CU-CP   ] [D] ue=49: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:05.313258 [RRC     ] [D] ue=56 c-rnti=0x4638: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:13:05.313260 [RRC     ] [D] ue=56 c-rnti=0x4638: Containerized rrcSetupRequest: [
+2026-10-19T21:13:05.313265 [RRC     ] [I] ue=56 c-rnti=0x4638: "RRC Setup Procedure" started...
+2026-10-19T21:13:05.313354 [RRC     ] [D] ue=56 c-rnti=0x4638: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:13:05.313356 [RRC     ] [D] ue=56 c-rnti=0x4638: Containerized rrcSetup: [
+2026-10-19T21:13:05.383252 [CU-CP   ] [D] ue=50: "UE Removal Routine" started...
+2026-10-19T21:13:05.383295 [CU-CP   ] [I] ue=50: "UE Removal Routine" finished successfully
+2026-10-19T21:13:05.383296 [CU-CP   ] [D] ue=50: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:05.430719 [RRC     ] [W] ue=51 c-rnti=0x4633: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:05.430731 [CU-CP   ] [D] ue=51: "UE Context Release Routine" started...
+2026-10-19T21:13:05.734099 [RRC     ] [D] ue=57 c-rnti=0x4639: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:13:05.734100 [RRC     ] [D] ue=57 c-rnti=0x4639: Containerized rrcSetupRequest: [
+2026-10-19T21:13:05.734104 [RRC     ] [I] ue=57 c-rnti=0x4639: "RRC Setup Procedure" started...
+2026-10-19T21:13:05.734190 [RRC     ] [D] ue=57 c-rnti=0x4639: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:13:05.734192 [RRC     ] [D] ue=57 c-rnti=0x4639: Containerized rrcSetup: [
+2026-10-19T21:13:05.811718 [RRC     ] [W] ue=52 c-rnti=0x4634: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:05.811734 [CU-CP   ] [D] ue=52: "UE Context Release Routine" started...
+2026-10-19T21:13:05.872143 [CU-CP   ] [D] ue=51: "UE Removal Routine" started...
+2026-10-19T21:13:05.872195 [CU-CP   ] [I] ue=51: "UE Removal Routine" finished successfully
+2026-10-19T21:13:05.872196 [CU-CP   ] [D] ue=51: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:06.167705 [RRC     ] [W] ue=53 c-rnti=0x4635: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:06.167720 [CU-CP   ] [D] ue=53: "UE Context Release Routine" started...
+2026-10-19T21:13:06.177869 [RRC     ] [D] ue=58 c-rnti=0x463a: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:13:06.177870 [RRC     ] [D] ue=58 c-rnti=0x463a: Containerized rrcSetupRequest: [
+2026-10-19T21:13:06.177874 [RRC     ] [I] ue=58 c-rnti=0x463a: "RRC Setup Procedure" started...
+2026-10-19T21:13:06.177971 [RRC     ] [D] ue=58 c-rnti=0x463a: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:13:06.177974 [RRC     ] [D] ue=58 c-rnti=0x463a: Containerized rrcSetup: [
+2026-10-19T21:13:06.304886 [CU-CP   ] [D] ue=52: "UE Removal Routine" started...
+2026-10-19T21:13:06.304937 [CU-CP   ] [I] ue=52: "UE Removal Routine" finished successfully
+2026-10-19T21:13:06.304938 [CU-CP   ] [D] ue=52: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:06.558744 [RRC     ] [W] ue=54 c-rnti=0x4636: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:06.558765 [CU-CP   ] [D] ue=54: "UE Context Release Routine" started...
+2026-10-19T21:13:06.564163 [RRC     ] [D] ue=59 c-rnti=0x463b: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:13:06.564164 [RRC     ] [D] ue=59 c-rnti=0x463b: Containerized rrcSetupRequest: [
+2026-10-19T21:13:06.564168 [RRC     ] [I] ue=59 c-rnti=0x463b: "RRC Setup Procedure" started...
+2026-10-19T21:13:06.564248 [RRC     ] [D] ue=59 c-rnti=0x463b: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:13:06.564253 [RRC     ] [D] ue=59 c-rnti=0x463b: Containerized rrcSetup: [
+2026-10-19T21:13:06.618030 [CU-CP   ] [D] ue=53: "UE Removal Routine" started...
+2026-10-19T21:13:06.618084 [CU-CP   ] [I] ue=53: "UE Removal Routine" finished successfully
+2026-10-19T21:13:06.618086 [CU-CP   ] [D] ue=53: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:06.955748 [RRC     ] [W] ue=55 c-rnti=0x4637: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:06.955773 [CU-CP   ] [D] ue=55: "UE Context Release Routine" started...
+2026-10-19T21:13:06.968351 [RRC     ] [D] ue=60 c-rnti=0x463c: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:13:06.968352 [RRC     ] [D] ue=60 c-rnti=0x463c: Containerized rrcSetupRequest: [
+2026-10-19T21:13:06.968356 [RRC     ] [I] ue=60 c-rnti=0x463c: "RRC Setup Procedure" started...
+2026-10-19T21:13:06.968450 [RRC     ] [D] ue=60 c-rnti=0x463c: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:13:06.968452 [RRC     ] [D] ue=60 c-rnti=0x463c: Containerized rrcSetup: [
+2026-10-19T21:13:07.013917 [CU-CP   ] [D] ue=54: "UE Removal Routine" started...
+2026-10-19T21:13:07.013962 [CU-CP   ] [I] ue=54: "UE Removal Routine" finished successfully
+2026-10-19T21:13:07.013964 [CU-CP   ] [D] ue=54: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:07.312718 [RRC     ] [W] ue=56 c-rnti=0x4638: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:07.312734 [CU-CP   ] [D] ue=56: "UE Context Release Routine" started...
+2026-10-19T21:13:07.360249 [RRC     ] [D] ue=61 c-rnti=0x463d: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:13:07.360250 [RRC     ] [D] ue=61 c-rnti=0x463d: Containerized rrcSetupRequest: [
+2026-10-19T21:13:07.360254 [RRC     ] [I] ue=61 c-rnti=0x463d: "RRC Setup Procedure" started...
+2026-10-19T21:13:07.360345 [RRC     ] [D] ue=61 c-rnti=0x463d: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:13:07.360346 [RRC     ] [D] ue=61 c-rnti=0x463d: Containerized rrcSetup: [
+2026-10-19T21:13:07.370147 [CU-CP   ] [D] ue=55: "UE Removal Routine" started...
+2026-10-19T21:13:07.370195 [CU-CP   ] [I] ue=55: "UE Removal Routine" finished successfully
+2026-10-19T21:13:07.370196 [CU-CP   ] [D] ue=55: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:07.733747 [RRC     ] [W] ue=57 c-rnti=0x4639: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:07.733775 [CU-CP   ] [D] ue=57: "UE Context Release Routine" started...
+2026-10-19T21:13:07.775331 [CU-CP   ] [D] ue=56: "UE Removal Routine" started...
+2026-10-19T21:13:07.775385 [CU-CP   ] [I] ue=56: "UE Removal Routine" finished successfully
+2026-10-19T21:13:07.775386 [CU-CP   ] [D] ue=56: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:07.977196 [RRC     ] [D] ue=62 c-rnti=0x463e: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:13:07.977197 [RRC     ] [D] ue=62 c-rnti=0x463e: Containerized rrcSetupRequest: [
+2026-10-19T21:13:07.977201 [RRC     ] [I] ue=62 c-rnti=0x463e: "RRC Setup Procedure" started...
+2026-10-19T21:13:07.977292 [RRC     ] [D] ue=62 c-rnti=0x463e: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:13:07.977294 [RRC     ] [D] ue=62 c-rnti=0x463e: Containerized rrcSetup: [
+2026-10-19T21:13:08.171685 [CU-CP   ] [D] ue=57: "UE Removal Routine" started...
+2026-10-19T21:13:08.171742 [CU-CP   ] [I] ue=57: "UE Removal Routine" finished successfully
+2026-10-19T21:13:08.171743 [CU-CP   ] [D] ue=57: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:08.176743 [RRC     ] [W] ue=58 c-rnti=0x463a: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:08.176756 [CU-CP   ] [D] ue=58: "UE Context Release Routine" started...
+2026-10-19T21:13:08.408407 [RRC     ] [D] ue=63 c-rnti=0x463f: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:13:08.408408 [RRC     ] [D] ue=63 c-rnti=0x463f: Containerized rrcSetupRequest: [
+2026-10-19T21:13:08.408413 [RRC     ] [I] ue=63 c-rnti=0x463f: "RRC Setup Procedure" started...
+2026-10-19T21:13:08.408493 [RRC     ] [D] ue=63 c-rnti=0x463f: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:13:08.408494 [RRC     ] [D] ue=63 c-rnti=0x463f: Containerized rrcSetup: [
+2026-10-19T21:13:08.563710 [RRC     ] [W] ue=59 c-rnti=0x463b: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:08.563731 [CU-CP   ] [D] ue=59: "UE Context Release Routine" started...
+2026-10-19T21:13:08.635743 [CU-CP   ] [D] ue=58: "UE Removal Routine" started...
+2026-10-19T21:13:08.635796 [CU-CP   ] [I] ue=58: "UE Removal Routine" finished successfully
+2026-10-19T21:13:08.635798 [CU-CP   ] [D] ue=58: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:08.841162 [RRC     ] [D] ue=64 c-rnti=0x4640: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:13:08.841164 [RRC     ] [D] ue=64 c-rnti=0x4640: Containerized rrcSetupRequest: [
+2026-10-19T21:13:08.841169 [RRC     ] [I] ue=64 c-rnti=0x4640: "RRC Setup Procedure" started...
+2026-10-19T21:13:08.841265 [RRC     ] [D] ue=64 c-rnti=0x4640: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:13:08.841267 [RRC     ] [D] ue=64 c-rnti=0x4640: Containerized rrcSetup: [
+2026-10-19T21:13:08.967714 [RRC     ] [W] ue=60 c-rnti=0x463c: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:08.967736 [CU-CP   ] [D] ue=60: "UE Context Release Routine" started...
+2026-10-19T21:13:09.083265 [CU-CP   ] [D] ue=59: "UE Removal Routine" started...
+2026-10-19T21:13:09.083317 [CU-CP   ] [I] ue=59: "UE Removal Routine" finished successfully
+2026-10-19T21:13:09.083318 [CU-CP   ] [D] ue=59: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:09.289285 [RRC     ] [D] ue=65 c-rnti=0x4641: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:13:09.289286 [RRC     ] [D] ue=65 c-rnti=0x4641: Containerized rrcSetupRequest: [
+2026-10-19T21:13:09.289291 [RRC     ] [I] ue=65 c-rnti=0x4641: "RRC Setup Procedure" started...
+2026-10-19T21:13:09.289402 [RRC     ] [D] ue=65 c-rnti=0x4641: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:13:09.289403 [RRC     ] [D] ue=65 c-rnti=0x4641: Containerized rrcSetup: [
+2026-10-19T21:13:09.359702 [RRC     ] [W] ue=61 c-rnti=0x463d: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:09.359721 [CU-CP   ] [D] ue=61: "UE Context Release Routine" started...
+2026-10-19T21:13:09.502126 [CU-CP   ] [D] ue=60: "UE Removal Routine" started...
+2026-10-19T21:13:09.502174 [CU-CP   ] [I] ue=60: "UE Removal Routine" finished successfully
+2026-10-19T21:13:09.502175 [CU-CP   ] [D] ue=60: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:09.705187 [RRC     ] [D] ue=66 c-rnti=0x4642: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:13:09.705189 [RRC     ] [D] ue=66 c-rnti=0x4642: Containerized rrcSetupRequest: [
+2026-10-19T21:13:09.705192 [RRC     ] [I] ue=66 c-rnti=0x4642: "RRC Setup Procedure" started...
+2026-10-19T21:13:09.705285 [RRC     ] [D] ue=66 c-rnti=0x4642: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:13:09.705288 [RRC     ] [D] ue=66 c-rnti=0x4642: Containerized rrcSetup: [
+2026-10-19T21:13:09.934172 [CU-CP   ] [D] ue=61: "UE Removal Routine" started...
+2026-10-19T21:13:09.934219 [CU-CP   ] [I] ue=61: "UE Removal Routine" finished successfully
+2026-10-19T21:13:09.934221 [CU-CP   ] [D] ue=61: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:09.976719 [RRC     ] [W] ue=62 c-rnti=0x463e: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:09.976734 [CU-CP   ] [D] ue=62: "UE Context Release Routine" started...
+2026-10-19T21:13:10.159047 [RRC     ] [D] ue=67 c-rnti=0x4643: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:13:10.159048 [RRC     ] [D] ue=67 c-rnti=0x4643: Containerized rrcSetupRequest: [
+2026-10-19T21:13:10.159052 [RRC     ] [I] ue=67 c-rnti=0x4643: "RRC Setup Procedure" started...
+2026-10-19T21:13:10.159151 [RRC     ] [D] ue=67 c-rnti=0x4643: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:13:10.159153 [RRC     ] [D] ue=67 c-rnti=0x4643: Containerized rrcSetup: [
+2026-10-19T21:13:10.407712 [RRC     ] [W] ue=63 c-rnti=0x463f: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:10.407735 [CU-CP   ] [D] ue=63: "UE Context Release Routine" started...
+2026-10-19T21:13:10.420799 [CU-CP   ] [D] ue=62: "UE Removal Routine" started...
+2026-10-19T21:13:10.420849 [CU-CP   ] [I] ue=62: "UE Removal Routine" finished successfully
+2026-10-19T21:13:10.420851 [CU-CP   ] [D] ue=62: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:10.625154 [RRC     ] [D] ue=68 c-rnti=0x4644: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:13:10.625156 [RRC     ] [D] ue=68 c-rnti=0x4644: Containerized rrcSetupRequest: [
+2026-10-19T21:13:10.625159 [RRC     ] [I] ue=68 c-rnti=0x4644: "RRC Setup Procedure" started...
+2026-10-19T21:13:10.625255 [RRC     ] [D] ue=68 c-rnti=0x4644: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:13:10.625257 [RRC     ] [D] ue=68 c-rnti=0x4644: Containerized rrcSetup: [
+2026-10-19T21:13:10.840710 [RRC     ] [W] ue=64 c-rnti=0x4640: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:10.840731 [CU-CP   ] [D] ue=64: "UE Context Release Routine" started...
+2026-10-19T21:13:10.850900 [CU-CP   ] [D] ue=63: "UE Removal Routine" started...
+2026-10-19T21:13:10.850948 [CU-CP   ] [I] ue=63: "UE Removal Routine" finished successfully
+2026-10-19T21:13:10.850950 [CU-CP   ] [D] ue=63: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:11.057119 [RRC     ] [D] ue=69 c-rnti=0x4645: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:13:11.057120 [RRC     ] [D] ue=69 c-rnti=0x4645: Containerized rrcSetupRequest: [
+2026-10-19T21:13:11.057124 [RRC     ] [I] ue=69 c-rnti=0x4645: "RRC Setup Procedure" started...
+2026-10-19T21:13:11.057206 [RRC     ] [D] ue=69 c-rnti=0x4645: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:13:11.057207 [RRC     ] [D] ue=69 c-rnti=0x4645: Containerized rrcSetup: [
+2026-10-19T21:13:11.244443 [CU-CP   ] [D] ue=64: "UE Removal Routine" started...
+2026-10-19T21:13:11.244493 [CU-CP   ] [I] ue=64: "UE Removal Routine" finished successfully
+2026-10-19T21:13:11.244494 [CU-CP   ] [D] ue=64: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:11.288740 [RRC     ] [W] ue=65 c-rnti=0x4641: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:11.288756 [CU-CP   ] [D] ue=65: "UE Context Release Routine" started...
+2026-10-19T21:13:11.410897 [RRC     ] [D] ue=70 c-rnti=0x4646: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:13:11.410899 [RRC     ] [D] ue=70 c-rnti=0x4646: Containerized rrcSetupRequest: [
+2026-10-19T21:13:11.410904 [RRC     ] [I] ue=70 c-rnti=0x4646: "RRC Setup Procedure" started...
+2026-10-19T21:13:11.410993 [RRC     ] [D] ue=70 c-rnti=0x4646: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:13:11.410995 [RRC     ] [D] ue=70 c-rnti=0x4646: Containerized rrcSetup: [
+2026-10-19T21:13:11.694400 [CU-CP   ] [D] ue=65: "UE Removal Routine" started...
+2026-10-19T21:13:11.694452 [CU-CP   ] [I] ue=65: "UE Removal Routine" finished successfully
+2026-10-19T21:13:11.694454 [CU-CP   ] [D] ue=65: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:11.704749 [RRC     ] [W] ue=66 c-rnti=0x4642: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:11.704775 [CU-CP   ] [D] ue=66: "UE Context Release Routine" started...
+2026-10-19T21:13:11.806983 [RRC     ] [D] ue=71 c-rnti=0x4647: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:13:11.806984 [RRC     ] [D] ue=71 c-rnti=0x4647: Containerized rrcSetupRequest: [
+2026-10-19T21:13:11.806988 [RRC     ] [I] ue=71 c-rnti=0x4647: "RRC Setup Procedure" started...
+2026-10-19T21:13:11.807085 [RRC     ] [D] ue=71 c-rnti=0x4647: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:13:11.807087 [RRC     ] [D] ue=71 c-rnti=0x4647: Containerized rrcSetup: [
+2026-10-19T21:13:12.158729 [RRC     ] [W] ue=67 c-rnti=0x4643: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:12.158748 [CU-CP   ] [D] ue=67: "UE Context Release Routine" started...
+2026-10-19T21:13:12.196190 [CU-CP   ] [D] ue=66: "UE Removal Routine" started...
+2026-10-19T21:13:12.196239 [CU-CP   ] [I] ue=66: "UE Removal Routine" finished successfully
+2026-10-19T21:13:12.196240 [CU-CP   ] [D] ue=66: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:12.402111 [RRC     ] [D] ue=72 c-rnti=0x4648: Rx SRB0 CCCH UL rrcSetupRequest (6 B)
+2026-10-19T21:13:12.402112 [RRC     ] [D] ue=72 c-rnti=0x4648: Containerized rrcSetupRequest: [
+2026-10-19T21:13:12.402116 [RRC     ] [I] ue=72 c-rnti=0x4648: "RRC Setup Procedure" started...
+2026-10-19T21:13:12.402211 [RRC     ] [D] ue=72 c-rnti=0x4648: Tx SRB0 CCCH DL rrcSetup (302 B)
+2026-10-19T21:13:12.402213 [RRC     ] [D] ue=72 c-rnti=0x4648: Containerized rrcSetup: [
+2026-10-19T21:13:12.575322 [CU-CP   ] [D] ue=67: "UE Removal Routine" started...
+2026-10-19T21:13:12.575370 [CU-CP   ] [I] ue=67: "UE Removal Routine" finished successfully
+2026-10-19T21:13:12.575371 [CU-CP   ] [D] ue=67: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:12.624688 [RRC     ] [W] ue=68 c-rnti=0x4644: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:12.624702 [CU-CP   ] [D] ue=68: "UE Context Release Routine" started...
+2026-10-19T21:13:13.021443 [CU-CP   ] [D] ue=68: "UE Removal Routine" started...
+2026-10-19T21:13:13.021491 [CU-CP   ] [I] ue=68: "UE Removal Routine" finished successfully
+2026-10-19T21:13:13.021493 [CU-CP   ] [D] ue=68: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:13.056745 [RRC     ] [W] ue=69 c-rnti=0x4645: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:13.056761 [CU-CP   ] [D] ue=69: "UE Context Release Routine" started...
+2026-10-19T21:13:13.409732 [RRC     ] [W] ue=70 c-rnti=0x4646: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:13.409755 [CU-CP   ] [D] ue=70: "UE Context Release Routine" started...
+2026-10-19T21:13:13.423589 [CU-CP   ] [D] ue=69: "UE Removal Routine" started...
+2026-10-19T21:13:13.423673 [CU-CP   ] [I] ue=69: "UE Removal Routine" finished successfully
+2026-10-19T21:13:13.423675 [CU-CP   ] [D] ue=69: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:13.794193 [CU-CP   ] [D] ue=70: "UE Removal Routine" started...
+2026-10-19T21:13:13.794254 [CU-CP   ] [I] ue=70: "UE Removal Routine" finished successfully
+2026-10-19T21:13:13.794256 [CU-CP   ] [D] ue=70: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:13.806745 [RRC     ] [W] ue=71 c-rnti=0x4647: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:13.806760 [CU-CP   ] [D] ue=71: "UE Context Release Routine" started...
+2026-10-19T21:13:14.210162 [CU-CP   ] [D] ue=71: "UE Removal Routine" started...
+2026-10-19T21:13:14.210212 [CU-CP   ] [I] ue=71: "UE Removal Routine" finished successfully
+2026-10-19T21:13:14.210213 [CU-CP   ] [D] ue=71: "UE Context Release Routine" finished successfully.
+2026-10-19T21:13:14.401710 [RRC     ] [W] ue=72 c-rnti=0x4648: "RRC Setup Procedure" timed out after 2000ms
+2026-10-19T21:13:14.401736 [CU-CP   ] [D] ue=72: "UE Context Release Routine" started...
+2026-10-19T21:13:14.746789 [CU-CP   ] [D] ue=72: "UE Removal Routine" started...
+2026-10-19T21:13:14.746846 [CU-CP   ] [I] ue=72: "UE Removal Routine" finished successfully
+2026-10-19T21:13:14.746847 [CU-CP   ] [D] ue=72: "UE Context Release Routine" finished successfully.

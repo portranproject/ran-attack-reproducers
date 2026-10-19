@@ -57,8 +57,14 @@ echo "== run_id=$RUN_ID  enable=$ENABLE  interval=${INTERVAL_MS}ms  kill=${MAX_D
 
 # 1. odu must be restarted together with the UE (ZMQ sample stream sync)
 echo "== restarting odu"
-"$BOX_CTL" stop >/dev/null 2>&1 || true
-"$BOX_CTL" start | sed -n '1,6p'
+"$BOX_CTL" stop >/dev/null 2>&1 </dev/null || true
+# NOTE (box-verified 2026-10-20): never pipe ctl.sh here. A pipeline blocks
+# forever because the pipe's write end stays open after ctl.sh returns, so the
+# reader never sees EOF. Redirect to a file and print from the file instead.
+"$BOX_CTL" start >"$OUT/odu_boot.txt" 2>&1 </dev/null \
+  || { echo "   !! odu start failed"; tail -8 "$OUT/odu_boot.txt"; exit 1; }
+sed -n '1,6p' "$OUT/odu_boot.txt"
+grep -q 'E2(KPM)→RIC OK' "$OUT/odu_boot.txt" || echo "   (warning: E2 not confirmed)"
 
 # 2. UE. Hard outer kill switch on top of the in-process --rss.max_duration_s.
 echo "== launching UE (log: $UE_LOG)"

@@ -1,0 +1,899 @@
+CMDLINE: "/root/OAI/cmake_targets/ran_build/build/nr-uesoftmodem" "-O" "/root/oai_nrue.conf" "--band" "78" "-C" "3489420000" "--numerology" "1" "-r" "51" "-E" "--ue-scan-carrier" "--uecap_file" "/root/OAI/targets/PROJECTS/GENERIC-NR-5GC/CONF/uecap_ports1.xml" "--device.name" "oai_zmqdevif" "--zmq.[0].tx_channels" "tcp://127.0.0.1:4557" "--zmq.[0].rx_channels" "tcp://127.0.0.1:4556" "--rss.enable" "1" "--rss.interval_ms" "100" "--rss.max_duration_s" "30" "--rss.completion_pct" "0" "--rss.honor_reject" "1" "--rss.ack_gate" "1" "--rss.run_id" "A-1019T211216Z" "--rss.log_file" "/root/rss-runs/A-1019T211216Z/attempts.jsonl" 
+[UTIL]   running in SA mode (no --phy-test, --do-ra, --nsa option present)
+[0m[UTIL]   threadCreate() for Tpool0_-1: creating thread with affinity ffffffff, priority 97
+[0m[UTIL]   threadCreate() for Tpool1_-1: creating thread with affinity ffffffff, priority 97
+[0m[UTIL]   threadCreate() for Tpool2_-1: creating thread with affinity ffffffff, priority 97
+[0m[UTIL]   threadCreate() for Tpool3_-1: creating thread with affinity ffffffff, priority 97
+[0m[UTIL]   threadCreate() for Tpool4_-1: creating thread with affinity ffffffff, priority 97
+[0m[UTIL]   threadCreate() for Tpool5_-1: creating thread with affinity ffffffff, priority 97
+[0m[UTIL]   threadCreate() for Tpool6_-1: creating thread with affinity ffffffff, priority 97
+[0m[UTIL]   threadCreate() for Tpool7_-1: creating thread with affinity ffffffff, priority 97
+[0m[OPT]    OPT disabled
+[0m[HW]     Version: Branch: HEAD Abrev. Hash: 1c2f4d3c2e Date: Sun Sep 20 13:52:16 2026 +0200
+[0m[NR_RRC] create TASK_RRC_NRUE 
+[0m[UTIL]   threadCreate() for TASK_RRC_NRUE: creating thread with affinity ffffffff, priority 50
+[0m[UTIL]   threadCreate() for TASK_NAS_NRUE: creating thread with affinity ffffffff, priority 50
+[0m[SIM]    UICC simulation: IMSI=<redacted>, IMEISV=<redacted>, Ki=<redacted>, OPc=<redacted>
+[0m[SIM]    overriding potential uicc0.dnn/nssai_sst/nssai_sd from uicc0.pdu_sessions
+[0m[SIM]    will request PDU session ID 1, type 1, DNN internet, NSSAI 1.ffffff
+[0m[NR_MAC] [UE0] Initializing MAC
+[0m[NR_MAC] Initializing dl and ul config_request. num_slots = 20
+[0m[RLC]    Activated srb0 for UE 0
+[0m[UTIL]   threadCreate() for timer thread: creating thread with affinity ffffffff, priority 2
+[0m[UTIL]   threadCreate() for time source realtime: creating thread with affinity ffffffff, priority 2
+[0m[UTIL]   time manager configuration: [time source: reatime] [mode: standalone] [server IP: 127.0.0.1} [server port: 7374] (server IP/port not used)
+[0m[PHY]    Set UE nb_rx_antenna 1, nb_tx_antenna 1, threequarter_fs 1, ofdm_offset_divisor 8
+[0m[PHY]    SA init parameters. DL freq 3489420000 UL offset 0 SSB numerology 1 N_RB_DL 51
+[0m[PHY]    Init: N_RB_DL 51, first_carrier_offset 462, nb_prefix_samples 54,nb_prefix_samples0 66, ofdm_symbol_size 768
+[0m[93m[PHY]    samples_per_subframe 23040/per second 23040000, wCP 21504
+[0m[PHY]    Set UE_fo_compensation 0, UE_scan_carrier 1, UE_no_timing_correction 0 
+, chest-freq 0, chest-time 0
+[0m[UTIL]   threadCreate() for SYNC__actor: creating thread with affinity ffffffff, priority 97
+[0m[UTIL]   threadCreate() for DL__actor: creating thread with affinity ffffffff, priority 97
+[0m[UTIL]   threadCreate() for DL__actor: creating thread with affinity ffffffff, priority 97
+[0m[UTIL]   threadCreate() for DL__actor: creating thread with affinity ffffffff, priority 97
+[0m[UTIL]   threadCreate() for DL__actor: creating thread with affinity ffffffff, priority 97
+[0m[UTIL]   threadCreate() for UL__actor: creating thread with affinity ffffffff, priority 97
+[0m[UTIL]   threadCreate() for UL__actor: creating thread with affinity ffffffff, priority 97
+[0m[PHY]    Initializing UE vars for gNB TXant 1, UE RXant 1
+[0m[PHY]    prs_config configuration NOT found..!! Skipped configuring UE for the PRS reception
+[0m[PHY]    HW: Configuring ru_id 0, sample_rate 23040000.000000, tx/rx num_channels 1/1, duplex_mode TDD
+[0m[PHY]    HW: Configuring channel 0 (rf_chain 0): setting tx_freq 3489420000 Hz, rx_freq 3489420000 Hz, tune_offset 0
+[0m[PHY]    HW: Configuring channel 0 (rf_chain 0): setting tx_gain 0, rx_gain 110
+[0m[UTIL]   threadCreate() for ru_start_thread: creating thread with affinity ffffffff, priority 97
+[0m[HW]     [ZMQ] tx_antennas: 1, rx_antennas: 1
+[0m[HW]     [ZMQ] TX socket for antenna 0 bound to tcp://127.0.0.1:4557
+[0m[HW]     [ZMQ] RX socket for antenna 0 connected to tcp://127.0.0.1:4556
+[0m[HW]     [RAU] has loaded RFSIMULATOR device.
+[0m[PHY]    Intializing UE Threads for instance 0 ...
+[0m[UTIL]   threadCreate() for UEthread_0: creating thread with affinity ffffffff, priority 97
+[0m[UTIL]   threadCreate() for L1_UE_stats_0: creating thread with affinity ffffffff, priority 1
+[0m[93m[PHY]    UE set to scan all GSCN in current bandwidth
+[0m[93m[NR_PHY] Starting sync detection
+[0m[PHY]    [UE thread Synch] Running Initial Synch 
+[0m[NR_PHY] Starting cell search with center freq: 3489420000, bandwidth: 51. Scanning for 8 number of GSCN.
+[0m[NR_PHY] Scanning GSCN: 7835, with SSB offset: 0, SSB Freq: 3483840000.000000
+[0m[NR_PHY] Scanning GSCN: 7836, with SSB offset: 48, SSB Freq: 3485280000.000000
+[0m[NR_PHY] Scanning GSCN: 7837, with SSB offset: 96, SSB Freq: 3486720000.000000
+[0m[NR_PHY] Scanning GSCN: 7838, with SSB offset: 144, SSB Freq: 3488160000.000000
+[0m[NR_PHY] Scanning GSCN: 7839, with SSB offset: 192, SSB Freq: 3489600000.000000
+[0m[NR_PHY] Scanning GSCN: 7840, with SSB offset: 240, SSB Freq: 3491040000.000000
+[0m[NR_PHY] Scanning GSCN: 7841, with SSB offset: 288, SSB Freq: 3492480000.000000
+[0m[NR_PHY] Scanning GSCN: 7842, with SSB offset: 336, SSB Freq: 3493920000.000000
+[0m[32m[PHY]    Initial sync: pbch decoded sucessfully, ssb index 0
+[0m[PHY]    pbch rx ok. rsrp:67 dB/RE, adjust_rxgain:-17 dB
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[93m[PHY]    Initial sync: pbch not decoded, ssb index 0
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[93m[PHY]    Initial sync: pbch not decoded, ssb index 0
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[NR_PHY] Cell Detected with GSCN: 7835, SSB SC offset: 0, SSB Ref: 3483840000.000000, PSS Corr peak: 107 dB, PSS Corr Average: 71
+[0m[PHY]    [UE0] In synch, rx_offset 230702 samples
+[0m[PHY]    [UE 0] Measured Carrier Frequency offset 0 Hz
+[0m[32m[PHY]    Initial sync successful, PCI: 1
+[0m[PHY]    HW: Configuring channel 0 (rf_chain 0): setting tx_freq 3489420000 Hz, rx_freq 3489420000 Hz, tune_offset 0
+[0m[PHY]    Got synch: hw_slot_offset 40, carrier off 0 Hz
+[0m[NR_RRC] [UE 0] RNTI 0x0000 BCCH update: phyCellID 0->1, arfcn_ssb 0->632256
+[0m[32m[PHY]    UE synchronized! decoded_frame_rx=111 skipped_frames=4
+[0m[PHY]    Resynchronizing RX by 230702 samples
+[0m[HW]     received write reorder clear context
+[0m[PHY]    max_pos_acc = 0, shiftForNextFrame = 0
+[0m[32m[NR_RRC] [UE 0] RNTI 0x0000 SIB1 decoded
+[0m[NR_MAC] [UE 0] Initial cell selection: dl_frequency=3480240 kHz (from command-line, band=78, scs=1)
+[0m[NR_MAC] Computing frequency (nrarfcn 632016 => 3480240 KHz, NR band 78
+[0m[NR_MAC] Initial cell selection: uplink_frequency=3480240 kHz (from absoluteFrequencyPointA=632016, band=78, scs=1)
+[0m[NR_MAC] TDD period index = 6, based on the sum of dl_UL_TransmissionPeriodicity from Pattern1 (5.000000 ms) and Pattern2 (0.000000 ms): Total = 5.000000 ms
+[0m[NR_MAC] Set TDD configuration period to: 7 DL slots, 3 UL slots, 10 slots per period (NR_TDD_UL_DL_Pattern is 6 DL slots, 3 UL slots, 8 DL symbols, 0 UL symbols)
+[0m[NR_MAC] Configured 1 TDD patterns (total slots: pattern1 = 10, pattern2 = 0)
+[0m[PHY]    N_TA_offset changed from 0 to 300
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[93m[NR_RRC] [RSS] A-type reproducer ENABLED (isolated testbed only): interval=100 ms completion=0% honor_reject=1 ack_gate=1 max_duration=30 s run_id=A-1019T211216Z log=/root/rss-runs/A-1019T211216Z/attempts.jsonl
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 128, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 128.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 43, first_nonzero_root_idx 0, preambleIndex = 43
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][129.10] Found RAR with the intended RAPID 43
+[0m[32m[NR_MAC] [RAPROC][129.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][130.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4601 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 141, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 141.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 34, first_nonzero_root_idx 0, preambleIndex = 34
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][142.10] Found RAR with the intended RAPID 34
+[0m[32m[NR_MAC] [RAPROC][142.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][143.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4602 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 153, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 153.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 24, first_nonzero_root_idx 0, preambleIndex = 24
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][154.10] Found RAR with the intended RAPID 24
+[0m[32m[NR_MAC] [RAPROC][154.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][155.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4603 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 165, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 165.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 16, first_nonzero_root_idx 0, preambleIndex = 16
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][166.10] Found RAR with the intended RAPID 16
+[0m[32m[NR_MAC] [RAPROC][166.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][167.5][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4604 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 178, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 178.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 61, first_nonzero_root_idx 0, preambleIndex = 61
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][179.10] Found RAR with the intended RAPID 61
+[0m[32m[NR_MAC] [RAPROC][179.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][180.5][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4605 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 191, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 191.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 32, first_nonzero_root_idx 0, preambleIndex = 32
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][192.10] Found RAR with the intended RAPID 32
+[0m[32m[NR_MAC] [RAPROC][192.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][193.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4606 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 203, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 203.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 32, first_nonzero_root_idx 0, preambleIndex = 32
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][204.10] Found RAR with the intended RAPID 32
+[0m[32m[NR_MAC] [RAPROC][204.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][205.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4607 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 215, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 215.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 36, first_nonzero_root_idx 0, preambleIndex = 36
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][216.10] Found RAR with the intended RAPID 36
+[0m[32m[NR_MAC] [RAPROC][216.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][217.5][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4608 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 228, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 228.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 9, first_nonzero_root_idx 0, preambleIndex = 9
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][229.10] Found RAR with the intended RAPID 9
+[0m[32m[NR_MAC] [RAPROC][229.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][230.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4609 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 242, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 242.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 6, first_nonzero_root_idx 0, preambleIndex = 6
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][243.10] Found RAR with the intended RAPID 6
+[0m[32m[NR_MAC] [RAPROC][243.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][244.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x460a [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 254, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 254.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 35, first_nonzero_root_idx 0, preambleIndex = 35
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][255.10] Found RAR with the intended RAPID 35
+[0m[32m[NR_MAC] [RAPROC][255.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][256.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x460b [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[NR_RRC] [UE 0] RNTI 0x460b [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 267, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 267.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 0, first_nonzero_root_idx 0, preambleIndex = 0
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][268.10] Found RAR with the intended RAPID 0
+[0m[32m[NR_MAC] [RAPROC][268.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][269.5][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x460c [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 280, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 280.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 57, first_nonzero_root_idx 0, preambleIndex = 57
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][281.10] Found RAR with the intended RAPID 57
+[0m[32m[NR_MAC] [RAPROC][281.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][282.5][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x460d [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 295, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 295.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 48, first_nonzero_root_idx 0, preambleIndex = 48
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][296.10] Found RAR with the intended RAPID 48
+[0m[32m[NR_MAC] [RAPROC][296.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][297.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x460e [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[NR_RRC] [UE 0] RNTI 0x460e [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 309, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 309.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 47, first_nonzero_root_idx 0, preambleIndex = 47
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][310.10] Found RAR with the intended RAPID 47
+[0m[32m[NR_MAC] [RAPROC][310.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][311.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x460f [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 323, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 323.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 35, first_nonzero_root_idx 0, preambleIndex = 35
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][324.10] Found RAR with the intended RAPID 35
+[0m[32m[NR_MAC] [RAPROC][324.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][325.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4610 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[NR_RRC] [UE 0] RNTI 0x4610 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 336, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 336.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 36, first_nonzero_root_idx 0, preambleIndex = 36
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][337.10] Found RAR with the intended RAPID 36
+[0m[32m[NR_MAC] [RAPROC][337.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][338.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4611 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[NR_RRC] [UE 0] RNTI 0x4611 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 349, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 349.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 29, first_nonzero_root_idx 0, preambleIndex = 29
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][350.10] Found RAR with the intended RAPID 29
+[0m[32m[NR_MAC] [RAPROC][350.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][351.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4612 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 361, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 361.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 37, first_nonzero_root_idx 0, preambleIndex = 37
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][362.10] Found RAR with the intended RAPID 37
+[0m[32m[NR_MAC] [RAPROC][362.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][363.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4613 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[NR_RRC] [UE 0] RNTI 0x4613 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 375, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 375.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 53, first_nonzero_root_idx 0, preambleIndex = 53
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][376.10] Found RAR with the intended RAPID 53
+[0m[32m[NR_MAC] [RAPROC][376.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][377.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4614 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[NR_MAC] UE 0 RNTI 4614 stats sfn: 384.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI: N/A
+    DL harq: 31/5 avg code rate 0.0, avg bit/symbol 0.0, avg per TB: (nb RBs 0.0, nb symbols 0.0)
+    UL harq: 20/0 avg code rate 0.1, avg bit/symbol 2.2, avg per TB: (nb RBs 3.0, nb symbols 14.0)
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 389, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 389.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 43, first_nonzero_root_idx 0, preambleIndex = 43
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][390.10] Found RAR with the intended RAPID 43
+[0m[32m[NR_MAC] [RAPROC][390.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][391.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4615 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 401, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 401.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 37, first_nonzero_root_idx 0, preambleIndex = 37
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][402.10] Found RAR with the intended RAPID 37
+[0m[32m[NR_MAC] [RAPROC][402.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][403.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4616 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 413, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 413.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 45, first_nonzero_root_idx 0, preambleIndex = 45
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][414.10] Found RAR with the intended RAPID 45
+[0m[32m[NR_MAC] [RAPROC][414.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][415.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4617 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 425, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 425.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 54, first_nonzero_root_idx 0, preambleIndex = 54
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][426.10] Found RAR with the intended RAPID 54
+[0m[32m[NR_MAC] [RAPROC][426.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][427.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4618 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 442, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 442.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 22, first_nonzero_root_idx 0, preambleIndex = 22
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][443.10] Found RAR with the intended RAPID 22
+[0m[32m[NR_MAC] [RAPROC][443.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][444.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4619 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 454, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 454.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 12, first_nonzero_root_idx 0, preambleIndex = 12
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][455.10] Found RAR with the intended RAPID 12
+[0m[32m[NR_MAC] [RAPROC][455.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][456.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x461a [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 468, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 468.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 18, first_nonzero_root_idx 0, preambleIndex = 18
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][469.10] Found RAR with the intended RAPID 18
+[0m[32m[NR_MAC] [RAPROC][469.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][470.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x461b [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[NR_RRC] [UE 0] RNTI 0x461b [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 481, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 481.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 46, first_nonzero_root_idx 0, preambleIndex = 46
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][482.10] Found RAR with the intended RAPID 46
+[0m[32m[NR_MAC] [RAPROC][482.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][483.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x461c [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 494, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 494.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 41, first_nonzero_root_idx 0, preambleIndex = 41
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][495.10] Found RAR with the intended RAPID 41
+[0m[32m[NR_MAC] [RAPROC][495.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][496.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x461d [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 506, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 506.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 28, first_nonzero_root_idx 0, preambleIndex = 28
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][507.10] Found RAR with the intended RAPID 28
+[0m[32m[NR_MAC] [RAPROC][507.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][508.5][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x461e [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[NR_MAC] UE 0 RNTI 461e stats sfn: 512.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 61.0 dB RSRP -22 dBm, RI 1 CQI: N/A
+    DL harq: 45/7/1 avg code rate 0.0, avg bit/symbol 0.0, avg per TB: (nb RBs 0.0, nb symbols 0.0)
+    UL harq: 30/0 avg code rate 0.1, avg bit/symbol 2.2, avg per TB: (nb RBs 3.0, nb symbols 14.0)
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 519, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 519.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 61, first_nonzero_root_idx 0, preambleIndex = 61
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][520.10] Found RAR with the intended RAPID 61
+[0m[32m[NR_MAC] [RAPROC][520.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][521.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x461f [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 531, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 531.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 26, first_nonzero_root_idx 0, preambleIndex = 26
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][532.10] Found RAR with the intended RAPID 26
+[0m[32m[NR_MAC] [RAPROC][532.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][533.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4620 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 543, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 543.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 52, first_nonzero_root_idx 0, preambleIndex = 52
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][544.10] Found RAR with the intended RAPID 52
+[0m[32m[NR_MAC] [RAPROC][544.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][545.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4621 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 556, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 556.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 11, first_nonzero_root_idx 0, preambleIndex = 11
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][557.10] Found RAR with the intended RAPID 11
+[0m[32m[NR_MAC] [RAPROC][557.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][558.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4622 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 568, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 568.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 30, first_nonzero_root_idx 0, preambleIndex = 30
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][569.10] Found RAR with the intended RAPID 30
+[0m[32m[NR_MAC] [RAPROC][569.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][570.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4623 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 580, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 580.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 52, first_nonzero_root_idx 0, preambleIndex = 52
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][581.10] Found RAR with the intended RAPID 52
+[0m[32m[NR_MAC] [RAPROC][581.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][582.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4624 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 592, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 592.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 4, first_nonzero_root_idx 0, preambleIndex = 4
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][593.10] Found RAR with the intended RAPID 4
+[0m[32m[NR_MAC] [RAPROC][593.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][594.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4625 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[NR_RRC] [UE 0] RNTI 0x4625 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[NR_RRC] [UE 0] RNTI 0x4625 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 606, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 606.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 55, first_nonzero_root_idx 0, preambleIndex = 55
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][607.10] Found RAR with the intended RAPID 55
+[0m[32m[NR_MAC] [RAPROC][607.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][608.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4626 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 621, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 621.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 51, first_nonzero_root_idx 0, preambleIndex = 51
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][622.10] Found RAR with the intended RAPID 51
+[0m[32m[NR_MAC] [RAPROC][622.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][623.5][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4627 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 634, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 634.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 15, first_nonzero_root_idx 0, preambleIndex = 15
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][635.10] Found RAR with the intended RAPID 15
+[0m[32m[NR_MAC] [RAPROC][635.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][636.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4628 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[NR_MAC] UE 0 RNTI 4628 stats sfn: 640.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 58.5 dB RSRP -22 dBm, RI 1 CQI: N/A
+    DL harq: 59/10/3 avg code rate 0.0, avg bit/symbol 0.0, avg per TB: (nb RBs 0.0, nb symbols 0.0)
+    UL harq: 40/0 avg code rate 0.1, avg bit/symbol 2.2, avg per TB: (nb RBs 3.0, nb symbols 14.0)
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 648, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 648.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 28, first_nonzero_root_idx 0, preambleIndex = 28
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][649.10] Found RAR with the intended RAPID 28
+[0m[32m[NR_MAC] [RAPROC][649.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][650.5][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4629 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 661, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 661.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 19, first_nonzero_root_idx 0, preambleIndex = 19
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][662.10] Found RAR with the intended RAPID 19
+[0m[32m[NR_MAC] [RAPROC][662.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][663.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x462a [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 673, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 673.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 17, first_nonzero_root_idx 0, preambleIndex = 17
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][674.10] Found RAR with the intended RAPID 17
+[0m[32m[NR_MAC] [RAPROC][674.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][675.5][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x462b [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 686, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 686.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 28, first_nonzero_root_idx 0, preambleIndex = 28
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][687.10] Found RAR with the intended RAPID 28
+[0m[32m[NR_MAC] [RAPROC][687.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][688.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x462c [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 698, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 698.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 56, first_nonzero_root_idx 0, preambleIndex = 56
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][699.10] Found RAR with the intended RAPID 56
+[0m[32m[NR_MAC] [RAPROC][699.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][700.5][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x462d [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 711, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 711.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 8, first_nonzero_root_idx 0, preambleIndex = 8
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][712.10] Found RAR with the intended RAPID 8
+[0m[32m[NR_MAC] [RAPROC][712.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][713.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x462e [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 723, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 723.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 47, first_nonzero_root_idx 0, preambleIndex = 47
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][724.10] Found RAR with the intended RAPID 47
+[0m[32m[NR_MAC] [RAPROC][724.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][725.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x462f [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 741, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 741.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 14, first_nonzero_root_idx 0, preambleIndex = 14
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][742.10] Found RAR with the intended RAPID 14
+[0m[32m[NR_MAC] [RAPROC][742.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][743.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4630 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 754, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 754.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 32, first_nonzero_root_idx 0, preambleIndex = 32
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][755.10] Found RAR with the intended RAPID 32
+[0m[32m[NR_MAC] [RAPROC][755.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][756.5][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4631 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 767, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 767.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 29, first_nonzero_root_idx 0, preambleIndex = 29
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][768.10] Found RAR with the intended RAPID 29
+[0m[32m[NR_MAC] [RAPROC][768.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][769.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4632 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[NR_RRC] [UE 0] RNTI 0x4632 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 781, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 781.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 25, first_nonzero_root_idx 0, preambleIndex = 25
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][782.10] Found RAR with the intended RAPID 25
+[0m[32m[NR_MAC] [RAPROC][782.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][783.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4633 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 794, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 794.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 27, first_nonzero_root_idx 0, preambleIndex = 27
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][795.10] Found RAR with the intended RAPID 27
+[0m[32m[NR_MAC] [RAPROC][795.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][796.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4634 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 806, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 806.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 14, first_nonzero_root_idx 0, preambleIndex = 14
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][807.10] Found RAR with the intended RAPID 14
+[0m[32m[NR_MAC] [RAPROC][807.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][808.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4635 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[NR_RRC] [UE 0] RNTI 0x4635 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 819, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 819.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 24, first_nonzero_root_idx 0, preambleIndex = 24
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][820.10] Found RAR with the intended RAPID 24
+[0m[32m[NR_MAC] [RAPROC][820.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][821.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4636 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 831, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 831.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 58, first_nonzero_root_idx 0, preambleIndex = 58
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][832.10] Found RAR with the intended RAPID 58
+[0m[32m[NR_MAC] [RAPROC][832.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][833.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4637 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 843, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 843.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 32, first_nonzero_root_idx 0, preambleIndex = 32
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][844.10] Found RAR with the intended RAPID 32
+[0m[32m[NR_MAC] [RAPROC][844.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][845.5][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4638 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 856, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 856.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 45, first_nonzero_root_idx 0, preambleIndex = 45
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][857.10] Found RAR with the intended RAPID 45
+[0m[32m[NR_MAC] [RAPROC][857.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][858.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4639 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[NR_RRC] [UE 0] RNTI 0x4639 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 870, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 870.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 56, first_nonzero_root_idx 0, preambleIndex = 56
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][871.10] Found RAR with the intended RAPID 56
+[0m[32m[NR_MAC] [RAPROC][871.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][872.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x463a [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 882, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 882.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 4, first_nonzero_root_idx 0, preambleIndex = 4
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][883.10] Found RAR with the intended RAPID 4
+[0m[32m[NR_MAC] [RAPROC][883.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][884.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x463b [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 894, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 894.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 38, first_nonzero_root_idx 0, preambleIndex = 38
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][895.10] Found RAR with the intended RAPID 38
+[0m[32m[NR_MAC] [RAPROC][895.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][896.5][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_MAC] UE 0 RNTI 463c stats sfn: 896.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI: N/A
+    DL harq: 89/16/3 avg code rate 0.0, avg bit/symbol 0.0, avg per TB: (nb RBs 0.0, nb symbols 0.0)
+    UL harq: 60/0 avg code rate 0.1, avg bit/symbol 2.2, avg per TB: (nb RBs 3.0, nb symbols 14.0)
+[0m[NR_RRC] [UE 0] RNTI 0x463c [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 907, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 907.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 52, first_nonzero_root_idx 0, preambleIndex = 52
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][908.10] Found RAR with the intended RAPID 52
+[0m[32m[NR_MAC] [RAPROC][908.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][909.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x463d [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 919, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 919.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 20, first_nonzero_root_idx 0, preambleIndex = 20
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][920.10] Found RAR with the intended RAPID 20
+[0m[32m[NR_MAC] [RAPROC][920.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][921.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x463e [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 938, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 938.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 32, first_nonzero_root_idx 0, preambleIndex = 32
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][939.10] Found RAR with the intended RAPID 32
+[0m[32m[NR_MAC] [RAPROC][939.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][940.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x463f [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[NR_RRC] [UE 0] RNTI 0x463f [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 951, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 951.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 34, first_nonzero_root_idx 0, preambleIndex = 34
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][952.10] Found RAR with the intended RAPID 34
+[0m[32m[NR_MAC] [RAPROC][952.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][953.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4640 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 963, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 963.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 48, first_nonzero_root_idx 0, preambleIndex = 48
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][964.10] Found RAR with the intended RAPID 48
+[0m[32m[NR_MAC] [RAPROC][964.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][965.5][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4641 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 976, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 976.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 32, first_nonzero_root_idx 0, preambleIndex = 32
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][977.10] Found RAR with the intended RAPID 32
+[0m[32m[NR_MAC] [RAPROC][977.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][978.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4642 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 990, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 990.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 42, first_nonzero_root_idx 0, preambleIndex = 42
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][991.10] Found RAR with the intended RAPID 42
+[0m[32m[NR_MAC] [RAPROC][991.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][992.5][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4643 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 1003, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 1003.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 20, first_nonzero_root_idx 0, preambleIndex = 20
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][1004.10] Found RAR with the intended RAPID 20
+[0m[32m[NR_MAC] [RAPROC][1004.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][1005.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4644 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 1016, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 1016.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 62, first_nonzero_root_idx 0, preambleIndex = 62
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][1017.10] Found RAR with the intended RAPID 62
+[0m[32m[NR_MAC] [RAPROC][1017.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][1018.5][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4645 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[NR_MAC] UE 0 RNTI 4645 stats sfn: 0.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI: N/A
+    DL harq: 105/20/5 avg code rate 0.0, avg bit/symbol 0.0, avg per TB: (nb RBs 0.0, nb symbols 0.0)
+    UL harq: 69/0 avg code rate 0.1, avg bit/symbol 2.2, avg per TB: (nb RBs 3.0, nb symbols 14.0)
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 7, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 7.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 63, first_nonzero_root_idx 0, preambleIndex = 63
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][8.10] Found RAR with the intended RAPID 63
+[0m[32m[NR_MAC] [RAPROC][8.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][9.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4646 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 19, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 19.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 41, first_nonzero_root_idx 0, preambleIndex = 41
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][20.10] Found RAR with the intended RAPID 41
+[0m[32m[NR_MAC] [RAPROC][20.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][21.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4647 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[NR_RRC] [UE 0] RNTI 0x4647 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 32, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 32.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 37, first_nonzero_root_idx 0, preambleIndex = 37
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][33.10] Found RAR with the intended RAPID 37
+[0m[32m[NR_MAC] [RAPROC][33.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][34.5][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4648 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[93m[NR_RRC] [RSS] max_duration_s=30 reached: reproducer disabled, normal attach resumes
+[0m[1;31m[NR_MAC] LCID 1 not found in the MAC list
+[0m[93m[RLC]    no RB found (channel ID 1 UE ID 0)
+[0m[1;31m[NR_MAC] LCID 1 not found in the MAC list
+[0m[93m[RLC]    no RB found (channel ID 1 UE ID 0)
+[0m[1;31m[NR_MAC] LCID 1 not found in the MAC list
+[0m[93m[RLC]    no RB found (channel ID 1 UE ID 0)
+[0m[NR_MAC] UE 0 RNTI 4648 stats sfn: 128.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 61.0 dB RSRP -22 dBm, RI 1 CQI: N/A
+    DL harq: 112/21/5 avg code rate 0.0, avg bit/symbol 0.0, avg per TB: (nb RBs 0.0, nb symbols 0.0)
+    UL harq: 72/0 avg code rate 0.1, avg bit/symbol 2.2, avg per TB: (nb RBs 3.0, nb symbols 14.0)
+[0m[NR_MAC] UE 0 RNTI 4648 stats sfn: 256.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 61.0 dB RSRP -22 dBm, RI 1 CQI: N/A
+    DL harq: 112/21/5 avg code rate 0.0, avg bit/symbol 0.0, avg per TB: (nb RBs 0.0, nb symbols 0.0)
+    UL harq: 72/0 avg code rate 0.1, avg bit/symbol 2.2, avg per TB: (nb RBs 3.0, nb symbols 14.0)
+[0m[NR_MAC] UE 0 RNTI 4648 stats sfn: 384.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 61.0 dB RSRP -22 dBm, RI 1 CQI: N/A
+    DL harq: 112/21/5 avg code rate 0.0, avg bit/symbol 0.0, avg per TB: (nb RBs 0.0, nb symbols 0.0)
+    UL harq: 72/0 avg code rate 0.1, avg bit/symbol 2.2, avg per TB: (nb RBs 3.0, nb symbols 14.0)
+[0m[NR_MAC] UE 0 RNTI 4648 stats sfn: 512.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 61.0 dB RSRP -22 dBm, RI 1 CQI: N/A
+    DL harq: 112/21/5 avg code rate 0.0, avg bit/symbol 0.0, avg per TB: (nb RBs 0.0, nb symbols 0.0)
+    UL harq: 72/0 avg code rate 0.1, avg bit/symbol 2.2, avg per TB: (nb RBs 3.0, nb symbols 14.0)
+[0m[NR_MAC] UE 0 RNTI 4648 stats sfn: 640.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 61.0 dB RSRP -22 dBm, RI 1 CQI: N/A
+    DL harq: 112/21/5 avg code rate 0.0, avg bit/symbol 0.0, avg per TB: (nb RBs 0.0, nb symbols 0.0)
+    UL harq: 72/0 avg code rate 0.1, avg bit/symbol 2.2, avg per TB: (nb RBs 3.0, nb symbols 14.0)
+[0m[NR_MAC] UE 0 RNTI 4648 stats sfn: 768.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 61.0 dB RSRP -22 dBm, RI 1 CQI: N/A
+    DL harq: 112/21/5 avg code rate 0.0, avg bit/symbol 0.0, avg per TB: (nb RBs 0.0, nb symbols 0.0)
+    UL harq: 72/0 avg code rate 0.1, avg bit/symbol 2.2, avg per TB: (nb RBs 3.0, nb symbols 14.0)
+[0mPress ^C again to trigger immediate shutdown
+[NAS]    [UE 0] Received NAS_DEREGISTRATION_REQ
+[0m[93m[NAS]    No GUTI, cannot trigger deregistration request.
+[0m[NR_RRC] [UE 0] RNTI 0x4648 RRC moved into IDLE state
+[0m[NAS]    [UE 0] Received NR_NAS_CONN_RELEASE_IND: cause OTHER
+[0m[32m[NR_MAC] Received detach indication
+[0m[93m[NR_PHY] Returned from ITTI signal handler
+[0m[93m[NR_PHY] UE main thread is ending
+[0m[CONFIG] function config_libconfig_init returned 0
+TYPE <CTRL-C> TO TERMINATE
+Entering ITTI signals handler
+TYPE <CTRL-C> TO TERMINATE
+Bye.

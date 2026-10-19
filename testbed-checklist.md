@@ -239,3 +239,88 @@ grep -E '"RRC Setup Procedure" (started|finished|timed out)' /tmp/ocu.log
 grep -E 'rrcSetupRequest|rrcSetup \(|rrcSetupComplete' /tmp/ocu.log
 ```
 A형이 통하면 `timed out after 2000ms` + `on_ue_release_required`가 쌓이고, `rrcSetupComplete`는 나타나지 않아야 한다 🔍(실험 전).
+
+
+---
+
+## 8. M1a 실측 — A형 성립 확인 ✅
+
+실행 2026-10-20 06:12~06:14 KST(로그 UTC 21:12:16~21:13:35), 세트 p5. 산출물은 [tool/runs/A-1019T211216Z/](tool/runs/A-1019T211216Z/)에 있다(`ue.log`의 가입자 값은 마스킹).
+
+| 항목 | 값 |
+|---|---|
+| UE | OAI `2026.w38` + [tool/oai-patch/rss-ue.patch](tool/oai-patch/rss-ue.patch), 박스 브랜치 `rss-ue-a-type` |
+| gNB | OCUDU `e0db566a`(release_26_10) **무수정** |
+| 노브 | `interval_ms=100, completion_pct=0, honor_reject=1, ack_gate=1, max_duration_s=30` |
+
+### 8.1 회귀 시험(공격 off) ✅
+
+패치된 바이너리로 `--rss.enable 0`일 때 정상 접속이 그대로 됐다.
+
+| 로그 | 값 |
+|---|---|
+| `"RRC Setup Procedure" started → finished successfully` | **103.8 ms** (20:50:00.043510 → .147319) |
+| `timed out after` | 0 |
+| UE | `Generating RRCSetupComplete` → `oaitun_ue1` IPv4 10.45.1.2 |
+| `[RSS]` 배너 / JSONL 파일 | 없음 (0건) |
+
+§7의 정상 기준선 ~103 ms와 일치 → **패치가 정상 경로를 바꾸지 않는다**는 것이 실측으로 확인됐다.
+
+### 8.2 A형 실행(30초) — CU 측 ✅
+
+절차 이름까지 묶어 센 값이다(느슨한 `grep 'finished successfully'`는 해제 루틴까지 세어 144가 나온다 — 주의).
+
+| CU 로그 (`/tmp/ocu.log`, 윈도우 21:12:16~21:13:40) | 값 |
+|---|---|
+| `"RRC Setup Procedure" started` | **72** |
+| `"RRC Setup Procedure" timed out after 2000ms` | **72** |
+| `"RRC Setup Procedure" finished successfully` | **0** |
+| `rrcSetupComplete` | **0** |
+| `NGAP … InitialUEMessage` | **0** |
+| `"UE Context Release Routine" finished successfully` | 72 |
+| `"UE Removal Routine" finished successfully` | 72 |
+| 생성된 CU UE 컨텍스트 | `ue=1` ~ `ue=72` (72개) |
+| **동시 미완료 피크** | **6** (started/timed out 누적 차의 최대) |
+
+**판정: M1a 합격.** 미완료 절차가 72건 생성 → 전부 2000 ms 뒤 타임아웃 → 해제까지 완결되고, Msg5와 코어 도달은 0이다. §7에서 `InitialUEMessage`가 `rrcSetupComplete` 뒤에 나간다고 확인한 것과 일치한다(A형은 코어에 닿지 않는다).
+
+`rrcSetupRequest`가 144로 보이는 것은 CU가 건당 `Rx SRB0 CCCH UL rrcSetupRequest`와 `Containerized rrcSetupRequest` 두 줄을 쓰기 때문이다. 실제 수신은 72건이다.
+
+### 8.3 A형 실행 — UE 측 JSONL ✅
+
+| 이벤트 | 값 |
+|---|---|
+| `attempt_start` | 143 |
+| `msg4_rx` (전부 `actual_reach=msg5_skip`) | 85 |
+| `retrigger` | 71 |
+| `rrc_reject` | 0 |
+| `ack_pending_postpone` | 0 |
+| `kill_switch` | 1 (30초에 정상 발동) |
+| 관측 구간 | 30.21 s |
+| 고유 `ue_identity` | **143 / 143** (매 시도 새 randomValue) |
+
+### 8.4 설정값 vs 실측 — 설계 §5 "관측 분리 원칙"의 실제 사례 ✅
+
+| 지표 | 설정 | 실측 |
+|---|---|---|
+| 재시도 간격 | 100 ms | **Msg4→재시도 중앙값 306.5 ms** (최소 198.7 / 최대 367.3) |
+| 시도율 R | — | 4.73 시도/s (UE), CU 수신 기준 2.4 Msg3/s |
+| Msg4 도달률 | — | 2.81/s |
+
+설정 100 ms인데 실측 306 ms인 이유는 미확인 🔍. OAI UE의 RRC 타이머는 새 무선 프레임(10 ms)마다 틱하므로, ZMQ 가상 RF에서 프레임 처리가 실시간보다 느리면 틱 간격이 늘어난다는 가설이 유력하다(M2에서 `interval_ms` 스윕으로 확인). **설계가 예고한 "설정 간격 ≠ 실제 Msg3/s"가 실측으로 확인됐다.**
+
+### 8.5 고갈 공식 검증 ✅
+
+[rss-theory.md](rss-theory.md) §6의 `N ≈ R × T_hold`:
+
+- 실측 Msg4 도달률 2.81/s × 보유 시간 2.0 s = **5.6**
+- 실측 동시 미완료 피크 = **6**
+
+공식이 이 환경에서 맞는다. 동시 6개는 DU 상한 추정치(~96)에 훨씬 못 미치므로 **포화는 일어나지 않았다** — 설계 §9가 M1a에서 예상한 그대로이고, 합격 조건이 아니다. KAUST의 단일 UE 25 요청/s와 비교하면 우리 ZMQ 경로는 약 1/9 속도다.
+
+### 8.6 남은 확인 🔍
+
+1. **UE `msg4_rx` 85 vs CU `Tx rrcSetup` 72** — 13건 차이의 원인 미확인. UE가 같은 Msg4를 중복 디코드했을 가능성과 로그 윈도우 경계 효과를 M2에서 분리한다.
+2. **UE 시도 143 vs CU 수신 72** — 시도 절반가량이 Msg3 이전(RAR 미수신·경합 실패)에서 끝났다. 원인 미측정.
+3. `ack_pending_postpone` 0건 — 재시도가 306 ms로 느려 ACK PUCCH가 항상 먼저 나갔다는 뜻이다. `interval_ms`를 낮추면 이 게이트가 실제로 작동하는지 M2에서 확인한다.
+4. 포화(M1b)는 다중 UE 브로커 또는 설정 프로필 변경이 필요하다.

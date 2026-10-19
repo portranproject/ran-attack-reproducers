@@ -138,10 +138,10 @@ index b359d35..0f7098a 100644
  #endif
  
 diff --git a/openair2/RRC/NR_UE/rrc_timers_and_constants.c b/openair2/RRC/NR_UE/rrc_timers_and_constants.c
-index 0addfe5..ecb345e 100644
+index 0addfe5..e1f2335 100644
 --- a/openair2/RRC/NR_UE/rrc_timers_and_constants.c
 +++ b/openair2/RRC/NR_UE/rrc_timers_and_constants.c
-@@ -4,6 +4,308 @@
+@@ -4,6 +4,350 @@
  
  #include "openair2/RRC/NR_UE/rrc_proto.h"
  #include "executables/softmodem-common.h"
@@ -171,6 +171,8 @@ index 0addfe5..ecb345e 100644
 +  int completion_pct;
 +  int max_duration_s;
 +  int ack_gate;
++  int ra_gate;
++  int gate_timeout_ms;
 +  int target_occupancy;
 +  int hold_ms;
 +  int tick_report;
@@ -189,6 +191,8 @@ index 0addfe5..ecb345e 100644
 +  {"completion_pct",    "percent completed normally. >0 ends the run at the first one\n",  0, .iptr=&rss_cfg.completion_pct,    .defintval=0,                        TYPE_INT,    0}, \
 +  {"max_duration_s",    "kill switch: stop the reproducer after this many seconds\n",    0, .iptr=&rss_cfg.max_duration_s,    .defintval=60,                       TYPE_INT,    0}, \
 +  {"ack_gate",          "1 = never restart RA while the Msg4 HARQ ACK PUCCH is pending\n", 0, .iptr=&rss_cfg.ack_gate,        .defintval=1,                        TYPE_INT,    0}, \
++  {"ra_gate",           "1 = never restart RA while one is still in flight\n",            0, .iptr=&rss_cfg.ra_gate,           .defintval=1,                        TYPE_INT,    0}, \
++  {"gate_timeout_ms",   "force the retry if a gate held it this long (0 = never force)\n", 0, .iptr=&rss_cfg.gate_timeout_ms,   .defintval=500,                      TYPE_INT,    0}, \
 +  {"target_occupancy",  "hold this many incomplete contexts at the gNB (0 = unlimited)\n", 0, .iptr=&rss_cfg.target_occupancy, .defintval=0,                        TYPE_INT,    0}, \
 +  {"hold_ms",           "gNB hold time per incomplete context (t300 + guard)\n",         0, .iptr=&rss_cfg.hold_ms,           .defintval=2000,                     TYPE_INT,    0}, \
 +  {"tick_report",       "log the measured RRC tick rate every N ticks (0 = off)\n",      0, .iptr=&rss_cfg.tick_report,       .defintval=100,                      TYPE_INT,    0}, \
@@ -215,6 +219,8 @@ index 0addfe5..ecb345e 100644
 +static uint64_t rss_skip_ts[RSS_OCC_WINDOW];
 +static unsigned rss_skip_head;
 +static unsigned rss_occ_hold_logs;
++static unsigned rss_gate_logs;
++static uint64_t rss_gate_since_ns;   /* when a gate first held this attempt back */
 +static unsigned rss_ticks;       /* RRC ticks seen while enabled */
 +static uint64_t rss_tick_t0_ns;  /* start of the current tick-rate window */
 +
@@ -430,18 +436,54 @@ index 0addfe5..ecb345e 100644
 +    }
 +  }
 +
-+  /* Keep the Msg4 HARQ ACK. Restarting RA calls reset_ra(), whose memset clears
-+     the PUCCH prepared by prepare_msg4_msgb_feedback(); without the ACK the gNB
-+     drops the contention early and nothing accumulates. */
-+  if (cfg->ack_gate) {
-+    const NR_UE_MAC_INST_t *mac = get_mac_inst(rrc->ue_id);
-+    if (mac && mac->ra.ra_pucch) {
-+      nr_rss_log("ack_pending_postpone", NULL);
++  /* Gates. Both re-arm the poll instead of firing, and both are bypassed after
++     gate_timeout_ms so a stuck MAC state cannot stall a run silently. */
++  const NR_UE_MAC_INST_t *mac = get_mac_inst(rrc->ue_id);
++  const char *gate = NULL;
++  int gate_state = -1;
++
++  /* (1) RA in flight. nr_mac_start_ra(NR_MAC_RA_START_T300) calls reset_ra(),
++     whose memset wipes the live RA_config_t, so retriggering mid-RA destroys
++     our own attempt before Msg3 ever reaches the gNB. Measured 2026-10-20
++     (run SAT2): 269 attempts at the UE but only 93 Msg3 at the CU, and 65% of
++     attempts ended in under 10 ms. */
++  if (cfg->ra_gate && mac) {
++    switch (mac->ra.ra_state) {
++      case nrRA_GENERATE_PREAMBLE:
++      case nrRA_WAIT_RAR:
++      case nrRA_WAIT_MSGB:
++      case nrRA_WAIT_CONTENTION_RESOLUTION:
++        gate = "ra_in_flight";
++        gate_state = (int)mac->ra.ra_state;
++        break;
++      default:
++        break;
++    }
++  }
++
++  /* (2) Keep the Msg4 HARQ ACK: reset_ra() also clears the PUCCH prepared by
++     prepare_msg4_msgb_feedback(), and without the ACK the gNB drops the
++     contention early so nothing accumulates. */
++  if (!gate && cfg->ack_gate && mac && mac->ra.ra_pucch)
++    gate = "ack_pending";
++
++  if (gate) {
++    uint64_t now = rss_now_ns();
++    if (rss_gate_since_ns == 0)
++      rss_gate_since_ns = now;
++    bool forced = cfg->gate_timeout_ms > 0
++                  && now - rss_gate_since_ns > (uint64_t)cfg->gate_timeout_ms * 1000000ULL;
++    if (!forced) {
++      if (rss_gate_logs++ % 25 == 0)
++        nr_rss_log("gate_hold", "\"gate\":\"%s\",\"ra_state\":%d", gate, gate_state);
 +      nr_timer_setup(t, 10, 10);
 +      nr_timer_start(t);
 +      return;
 +    }
++    nr_rss_log("gate_forced", "\"gate\":\"%s\",\"held_ms\":%llu",
++               gate, (unsigned long long)((now - rss_gate_since_ns) / 1000000ULL));
 +  }
++  rss_gate_since_ns = 0;
 +
 +  tac->rss_deadline_ns = 0;
 +  nr_rss_log("retrigger", NULL);
@@ -450,7 +492,7 @@ index 0addfe5..ecb345e 100644
  
  void init_SI_timers(NR_UE_RRC_SI_INFO *SInfo)
  {
-@@ -177,6 +479,9 @@ void nr_rrc_handle_timers(NR_UE_RRC_INST_t *rrc)
+@@ -177,6 +521,9 @@ void nr_rrc_handle_timers(NR_UE_RRC_INST_t *rrc)
      handle_t300_expiry(rrc);
    }
  
@@ -460,7 +502,7 @@ index 0addfe5..ecb345e 100644
    bool t301_expired = nr_timer_tick(&timers->T301);
    // Upon T301 expiry, the UE shall perform the actions upon going to RRC_IDLE
    // with release cause 'RRC connection failure'
-@@ -444,6 +749,8 @@ void nr_rrc_set_sib1_timers_and_constants(NR_UE_Timers_Constants_t *tac, NR_SIB1
+@@ -444,6 +791,8 @@ void nr_rrc_set_sib1_timers_and_constants(NR_UE_Timers_Constants_t *tac, NR_SIB1
          AssertFatal(false, "Invalid T300 %ld\n", sib1->ue_TimersAndConstants->t300);
      }
      nr_timer_setup(&tac->T300, k, 10); // 10ms step

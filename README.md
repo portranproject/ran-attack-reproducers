@@ -2,10 +2,11 @@
 
 팀 O-RAN 침입탐지·대응 테스트베드 중 **외부자 UE 측 — RRC signaling storm 재현 도구** 서브태스크 기록.
 
-처음 읽을 문서는 [AGENTS.md](AGENTS.md)(프로젝트 컨텍스트·내 역할·결정·다음 액션).
+처음 읽을 문서는 [AGENTS.md](AGENTS.md)(프로젝트 컨텍스트·내 역할·결정·다음 액션). 구현을 이어받는 세션은 [HANDOFF.md](HANDOFF.md)부터 읽는다.
 
 | 문서 | 내용 |
 |---|---|
+| [HANDOFF.md](HANDOFF.md) | 테스트베드에서 동작하는 공격 UE 구현을 위한 인수인계: 목표·환경 제약·구현 구조·안전 규칙 |
 | [AGENTS.md](AGENTS.md) | 팀 프로젝트 그림 + 내 서브태스크 + 확정/열린결정/리스크/다음액션 |
 | [tool-survey.md](tool-survey.md) | OCUDU 공식 UE 연결 예제, 5gattacks 패치, UCD 데모, 다중 UE ZMQ 공개물의 실제 범위 |
 | [methodology.md](methodology.md) | RSS 실험 시나리오, A형 절차, F1 관측 경계, 재현기 기록과 단계별 검증 기준 |

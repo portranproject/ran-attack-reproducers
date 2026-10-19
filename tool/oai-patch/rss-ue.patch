@@ -1,5 +1,5 @@
 diff --git a/openair2/RRC/NR_UE/rrc_UE.c b/openair2/RRC/NR_UE/rrc_UE.c
-index 7858a82..c71cc5e 100644
+index 7858a82..77ec789 100644
 --- a/openair2/RRC/NR_UE/rrc_UE.c
 +++ b/openair2/RRC/NR_UE/rrc_UE.c
 @@ -386,6 +386,20 @@ static void nr_rrc_ue_prepare_RRCSetupRequest(NR_UE_RRC_INST_t *rrc)
@@ -23,7 +23,7 @@ index 7858a82..c71cc5e 100644
    uint8_t buf[1024];
    int len = do_RRCSetupRequest(buf, sizeof(buf), rv, rrc->fiveG_S_TMSI);
  
-@@ -2459,12 +2473,45 @@ static int8_t nr_rrc_ue_decode_ccch(NR_UE_RRC_INST_t *rrc, const NRRrcMacCcchDat
+@@ -2459,12 +2473,51 @@ static int8_t nr_rrc_ue_decode_ccch(NR_UE_RRC_INST_t *rrc, const NRRrcMacCcchDat
         case NR_DL_CCCH_MessageType__c1_PR_rrcReject:
           RRCLOG_W("Logical Channel DL-CCCH (SRB0), Received RRCReject \n");
           nr_rrc_process_rrcreject(rrc, dl_ccch_msg->message.choice.c1->choice.rrcReject);
@@ -56,21 +56,27 @@ index 7858a82..c71cc5e 100644
 +              left with an incomplete procedure until its own guard expires. */
 +           NR_UE_Timers_Constants_t *tac = &rrc->timers_and_constants;
 +           nr_timer_stop(&tac->T300);
++           nr_rss_note_msg4();
 +           nr_rss_log("msg4_rx",
 +                      "\"intended_reach\":\"msg5_skip\",\"actual_reach\":\"msg5_skip\",\"tc_rnti\":\"0x%04x\"",
 +                      rrc->rnti);
 +           nr_rss_arm_retry(rrc, 0);
 +         } else {
-+           if (nr_rss_enabled())
++           if (nr_rss_enabled()) {
++             nr_rss_note_msg4();
 +             nr_rss_log("msg4_rx",
 +                        "\"intended_reach\":\"msg5_sent\",\"actual_reach\":\"msg5_sent\",\"tc_rnti\":\"0x%04x\"",
 +                        rrc->rnti);
++           }
 +           nr_rrc_process_rrcsetup(rrc, dl_ccch_msg->message.choice.c1->choice.rrcSetup);
++           /* probe: hand the connection back so the run continues */
++           if (nr_rss_enabled())
++             nr_rss_arm_probe_release(rrc);
 +         }
           rval = 0;
           break;
  
-@@ -3650,6 +3697,7 @@ void nr_rrc_going_to_IDLE(NR_UE_RRC_INST_t *rrc,
+@@ -3650,6 +3703,7 @@ void nr_rrc_going_to_IDLE(NR_UE_RRC_INST_t *rrc,
    }
    // Stop all the timers except T302, T320 and T325
    nr_timer_stop(&tac->T300);
@@ -79,24 +85,28 @@ index 7858a82..c71cc5e 100644
    nr_timer_stop(&tac->T304);
    nr_timer_stop(&tac->T310);
 diff --git a/openair2/RRC/NR_UE/rrc_defs.h b/openair2/RRC/NR_UE/rrc_defs.h
-index edb1c9e..4523848 100644
+index edb1c9e..dae3647 100644
 --- a/openair2/RRC/NR_UE/rrc_defs.h
 +++ b/openair2/RRC/NR_UE/rrc_defs.h
-@@ -142,6 +142,9 @@ typedef struct UE_RRC_SI_INFO_NR_s {
+@@ -142,6 +142,13 @@ typedef struct UE_RRC_SI_INFO_NR_s {
  typedef struct NR_UE_Timers_Constants_s {
    // timers
    NR_timer_t T300;
-+  /* RRC signaling storm reproducer (A-type): delay before the next RA attempt.
-+     Not a 3GPP timer. See nr_rss_* in rrc_timers_and_constants.c */
++  /* RRC signaling storm reproducer (A-type). Not 3GPP. See nr_rss_* in
++     rrc_timers_and_constants.c. The timer only polls once per tick; the real
++     schedule is the wall-clock deadline, because one tick is one radio frame
++     message and those do not arrive every 10 ms over ZMQ. */
 +  NR_timer_t rss_retry_timer;
++  uint64_t rss_deadline_ns;        /* when the next attempt is due, 0 = not armed */
++  uint64_t rss_probe_release_ns;   /* when a completed probe must be released, 0 = none */
    NR_timer_t T301;
    NR_timer_t T302;
    NR_timer_t T304;
 diff --git a/openair2/RRC/NR_UE/rrc_proto.h b/openair2/RRC/NR_UE/rrc_proto.h
-index b359d35..5ce23cd 100644
+index b359d35..72dd90d 100644
 --- a/openair2/RRC/NR_UE/rrc_proto.h
 +++ b/openair2/RRC/NR_UE/rrc_proto.h
-@@ -72,6 +72,29 @@ void nr_rrc_ue_decode_NR_SBCCH_SL_BCH_Message(NR_UE_RRC_INST_t *rrc,
+@@ -72,6 +72,31 @@ void nr_rrc_ue_decode_NR_SBCCH_SL_BCH_Message(NR_UE_RRC_INST_t *rrc,
                                                const uint16_t rx_slss_id);
  
  void nr_rrc_set_mac_queue(instance_t instance, notifiedFIFO_t *mac_input_nf);
@@ -120,6 +130,8 @@ index b359d35..5ce23cd 100644
 +bool nr_rss_honor_reject(void);
 +int nr_rss_reject_backoff_ms(void);
 +unsigned nr_rss_next_seq(void);
++void nr_rss_note_msg4(void);
++void nr_rss_arm_probe_release(NR_UE_RRC_INST_t *rrc);
 +void nr_rss_arm_retry(NR_UE_RRC_INST_t *rrc, int delay_ms);
 +void nr_rss_log(const char *event, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
 +
@@ -127,10 +139,10 @@ index b359d35..5ce23cd 100644
  #endif
  
 diff --git a/openair2/RRC/NR_UE/rrc_timers_and_constants.c b/openair2/RRC/NR_UE/rrc_timers_and_constants.c
-index 0addfe5..616bee3 100644
+index 0addfe5..09b0492 100644
 --- a/openair2/RRC/NR_UE/rrc_timers_and_constants.c
 +++ b/openair2/RRC/NR_UE/rrc_timers_and_constants.c
-@@ -4,6 +4,200 @@
+@@ -4,6 +4,274 @@
  
  #include "openair2/RRC/NR_UE/rrc_proto.h"
  #include "executables/softmodem-common.h"
@@ -160,6 +172,8 @@ index 0addfe5..616bee3 100644
 +  int completion_pct;
 +  int max_duration_s;
 +  int ack_gate;
++  int probe_hold_ms;
++  int tick_report;
 +  char *run_id;
 +  char *log_file;
 +} rss_cfg_t;
@@ -175,6 +189,8 @@ index 0addfe5..616bee3 100644
 +  {"completion_pct",    "percent of attempts completed normally (0 = pure A-type)\n",    0, .iptr=&rss_cfg.completion_pct,    .defintval=0,                        TYPE_INT,    0}, \
 +  {"max_duration_s",    "kill switch: stop the reproducer after this many seconds\n",    0, .iptr=&rss_cfg.max_duration_s,    .defintval=60,                       TYPE_INT,    0}, \
 +  {"ack_gate",          "1 = never restart RA while the Msg4 HARQ ACK PUCCH is pending\n", 0, .iptr=&rss_cfg.ack_gate,        .defintval=1,                        TYPE_INT,    0}, \
++  {"probe_hold_ms",     "how long a completed probe stays connected before release\n",   0, .iptr=&rss_cfg.probe_hold_ms,     .defintval=1000,                     TYPE_INT,    0}, \
++  {"tick_report",       "log the measured RRC tick rate every N ticks (0 = off)\n",      0, .iptr=&rss_cfg.tick_report,       .defintval=100,                      TYPE_INT,    0}, \
 +  {"run_id",            "run identifier written into every JSONL record\n",              0, .strptr=&rss_cfg.run_id,          .defstrval="rss-run",                TYPE_STRING, 0}, \
 +  {"log_file",          "per-attempt JSONL ground truth for the detection team\n",       0, .strptr=&rss_cfg.log_file,        .defstrval="/tmp/rss_attempts.jsonl", TYPE_STRING, 0}, \
 +}
@@ -186,6 +202,9 @@ index 0addfe5..616bee3 100644
 +static unsigned rss_seq;
 +static unsigned rss_completed;
 +static FILE *rss_log_fd;
++static bool rss_got_msg4;        /* did the current attempt reach Msg4? */
++static unsigned rss_ticks;       /* RRC ticks seen while enabled */
++static uint64_t rss_tick_t0_ns;  /* start of the current tick-rate window */
 +
 +static uint64_t rss_now_ns(void)
 +{
@@ -200,9 +219,10 @@ index 0addfe5..616bee3 100644
 +    paramdef_t params[] = RSS_PARAMS_DESC;
 +    config_get(config_get_if(), params, sizeofArray(params), RSS_CFG_PREFIX);
 +    rss_cfg_done = true;
-+    /* RRC timers are ticked once per radio frame, so 10 ms is the resolution */
-+    if (rss_cfg.interval_ms < 10)
-+      rss_cfg.interval_ms = 10;
++    /* interval_ms 0 is allowed and means "on the next tick", i.e. max rate.
++       The floor is then the RA cycle itself (PRACH occasion + RAR + Msg3 + Msg4). */
++    if (rss_cfg.interval_ms < 0)
++      rss_cfg.interval_ms = 0;
 +    if (rss_cfg.reject_backoff_ms < 10)
 +      rss_cfg.reject_backoff_ms = 10;
 +    rss_cfg.completion_pct = rss_cfg.completion_pct < 0 ? 0 : (rss_cfg.completion_pct > 100 ? 100 : rss_cfg.completion_pct);
@@ -270,7 +290,24 @@ index 0addfe5..616bee3 100644
 +{
 +  if (rss_t0_ns == 0)
 +    rss_t0_ns = rss_now_ns();
++  /* Close out the previous attempt. An attempt that never saw Msg4 means the
++     gNB did not answer or the contention was lost. Under saturation this
++     fraction is the denial signal we can read without a second UE. */
++  if (rss_seq > 0 && !rss_got_msg4)
++    nr_rss_log("attempt_end", "\"actual_reach\":\"no_msg4\"");
++  rss_got_msg4 = false;
 +  return ++rss_seq;
++}
++
++void nr_rss_note_msg4(void)
++{
++  rss_got_msg4 = true;
++}
++
++void nr_rss_arm_probe_release(NR_UE_RRC_INST_t *rrc)
++{
++  rrc->timers_and_constants.rss_probe_release_ns =
++      rss_now_ns() + (uint64_t)rss_get_cfg()->probe_hold_ms * 1000000ULL;
 +}
 +
 +/* Deterministic stride instead of a coin flip: the realised completion ratio is
@@ -290,29 +327,76 @@ index 0addfe5..616bee3 100644
 +  return false;
 +}
 +
++/* Box measurement 2026-10-20: a 100 ms target armed with nr_timer_setup() fired
++   after 306 ms (median of 71 attempts). nr_timer_tick() adds a fixed 10 ms per
++   call, but one call is one radio-frame message, and over the ZMQ path those do
++   not arrive every 10 ms. Counting ticks therefore multiplies the whole knob by
++   the tick error. A wall-clock deadline bounds the error at one tick instead of
++   accumulating it, so the timer below is only a once-per-tick poll. */
 +void nr_rss_arm_retry(NR_UE_RRC_INST_t *rrc, int delay_ms)
 +{
 +  const rss_cfg_t *cfg = rss_get_cfg();
-+  NR_timer_t *t = &rrc->timers_and_constants.rss_retry_timer;
-+  nr_timer_setup(t, delay_ms > 0 ? (uint32_t)delay_ms : (uint32_t)cfg->interval_ms, 10);
-+  nr_timer_start(t);
++  NR_UE_Timers_Constants_t *tac = &rrc->timers_and_constants;
++  int d = delay_ms > 0 ? delay_ms : cfg->interval_ms;
++  tac->rss_deadline_ns = rss_now_ns() + (uint64_t)d * 1000000ULL;
++  nr_timer_setup(&tac->rss_retry_timer, 10, 10);
++  nr_timer_start(&tac->rss_retry_timer);
 +}
 +
-+static void rss_handle_retry_timer(NR_UE_RRC_INST_t *rrc)
++static void rss_poll(NR_UE_RRC_INST_t *rrc)
 +{
-+  NR_timer_t *t = &rrc->timers_and_constants.rss_retry_timer;
-+  if (!nr_timer_tick(t))
-+    return;
-+  if (!nr_rss_enabled())
-+    return;
++  NR_UE_Timers_Constants_t *tac = &rrc->timers_and_constants;
++  NR_timer_t *t = &tac->rss_retry_timer;
 +  const rss_cfg_t *cfg = rss_get_cfg();
++
++  /* Tick-rate instrumentation. One call here is one radio frame, nominally
++     10 ms. Logging the measured value turns the "configured vs realised"
++     mismatch from a guess into a number. */
++  if (cfg->enable) {
++    uint64_t now = rss_now_ns();
++    rss_ticks++;
++    if (rss_tick_t0_ns == 0) {
++      rss_tick_t0_ns = now;
++    } else if (cfg->tick_report > 0 && rss_ticks % (unsigned)cfg->tick_report == 0) {
++      double ms = (double)(now - rss_tick_t0_ns) / 1e6 / (double)cfg->tick_report;
++      nr_rss_log("tick_rate", "\"ms_per_tick\":%.2f,\"nominal_ms\":10", ms);
++      rss_tick_t0_ns = now;
++    }
++  }
++
++  bool polled = nr_timer_tick(t);
++
++  /* A probe that completed normally would otherwise stay RRC_CONNECTED and end
++     the run, because a new RRCSetupRequest is only sent from RRC_IDLE. Release
++     it after probe_hold_ms so the measurement can continue. */
++  if (tac->rss_probe_release_ns != 0 && rss_now_ns() >= tac->rss_probe_release_ns) {
++    tac->rss_probe_release_ns = 0;
++    if (nr_rss_enabled() && rrc->nrRrcState == RRC_STATE_CONNECTED_NR) {
++      nr_rss_log("probe_release", NULL);
++      nr_rrc_going_to_IDLE(rrc, OTHER, NULL);
++      nr_rss_arm_retry(rrc, 0);
++      return;
++    }
++  }
++
++  if (!polled || !nr_rss_enabled())
++    return;
++
 +  if (cfg->max_duration_s > 0 && rss_t0_ns != 0
 +      && rss_now_ns() - rss_t0_ns > (uint64_t)cfg->max_duration_s * 1000000000ULL) {
 +    rss_killed = true;
 +    LOG_W(NR_RRC, "[RSS] max_duration_s=%d reached: reproducer disabled, normal attach resumes\n", cfg->max_duration_s);
-+    nr_rss_log("kill_switch", NULL);
++    nr_rss_log("kill_switch", "\"attempts\":%u,\"ticks\":%u", rss_seq, rss_ticks);
 +    return;
 +  }
++
++  /* Not due yet. Keep polling; granularity is one tick, not one interval. */
++  if (tac->rss_deadline_ns != 0 && rss_now_ns() < tac->rss_deadline_ns) {
++    nr_timer_setup(t, 10, 10);
++    nr_timer_start(t);
++    return;
++  }
++
 +  /* Keep the Msg4 HARQ ACK. Restarting RA calls reset_ra(), whose memset clears
 +     the PUCCH prepared by prepare_msg4_msgb_feedback(); without the ACK the gNB
 +     drops the contention early and nothing accumulates. */
@@ -325,23 +409,25 @@ index 0addfe5..616bee3 100644
 +      return;
 +    }
 +  }
++
++  tac->rss_deadline_ns = 0;
 +  nr_rss_log("retrigger", NULL);
 +  handle_t300_expiry(rrc);
 +}
  
  void init_SI_timers(NR_UE_RRC_SI_INFO *SInfo)
  {
-@@ -177,6 +371,9 @@ void nr_rrc_handle_timers(NR_UE_RRC_INST_t *rrc)
+@@ -177,6 +445,9 @@ void nr_rrc_handle_timers(NR_UE_RRC_INST_t *rrc)
      handle_t300_expiry(rrc);
    }
  
 +  /* A-type reproducer: inert unless --rss.enable 1 */
-+  rss_handle_retry_timer(rrc);
++  rss_poll(rrc);
 +
    bool t301_expired = nr_timer_tick(&timers->T301);
    // Upon T301 expiry, the UE shall perform the actions upon going to RRC_IDLE
    // with release cause 'RRC connection failure'
-@@ -444,6 +641,8 @@ void nr_rrc_set_sib1_timers_and_constants(NR_UE_Timers_Constants_t *tac, NR_SIB1
+@@ -444,6 +715,8 @@ void nr_rrc_set_sib1_timers_and_constants(NR_UE_Timers_Constants_t *tac, NR_SIB1
          AssertFatal(false, "Invalid T300 %ld\n", sib1->ue_TimersAndConstants->t300);
      }
      nr_timer_setup(&tac->T300, k, 10); // 10ms step

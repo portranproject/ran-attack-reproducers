@@ -1,29 +1,56 @@
 diff --git a/openair2/RRC/NR_UE/rrc_UE.c b/openair2/RRC/NR_UE/rrc_UE.c
-index 7858a82..a37b1c9 100644
+index 7858a82..c7a0f97 100644
 --- a/openair2/RRC/NR_UE/rrc_UE.c
 +++ b/openair2/RRC/NR_UE/rrc_UE.c
-@@ -386,6 +386,20 @@ static void nr_rrc_ue_prepare_RRCSetupRequest(NR_UE_RRC_INST_t *rrc)
+@@ -371,7 +371,13 @@ static void nr_decode_SI(NR_UE_RRC_SI_INFO *SI_info, NR_SystemInformation_t *si,
+   }
+ }
+ 
+-static void nr_rrc_ue_prepare_RRCSetupRequest(NR_UE_RRC_INST_t *rrc)
++/* rss_src tells the reproducer which generation this is. The payload is built
++   twice per RA: once when the retry is triggered and once by
++   nr_rrc_prepare_msg3_payload() "in advance" of Msg3. Only the latter is the
++   one MAC actually transmits, so only that one is counted as an attempt and
++   carries the authoritative ue_identity. Measured 2026-10-20: without this
++   split the UE logged exactly 2 attempts per real RA (403:202, 401:203). */
++static void nr_rrc_ue_prepare_RRCSetupRequest(NR_UE_RRC_INST_t *rrc, const char *rss_src)
+ {
+   RRCLOG_D("Generation of RRCSetupRequest\n");
+   uint8_t rv[6];
+@@ -386,6 +392,23 @@ static void nr_rrc_ue_prepare_RRCSetupRequest(NR_UE_RRC_INST_t *rrc)
  #endif
    }
  
 +  if (nr_rss_enabled()) {
-+    /* A-type ground truth: one record per attempt, with the identity actually
-+       put on air (randomValue is rv[0..4] with the last bit unused). */
-+    nr_rss_next_seq();
-+    nr_rss_log("attempt_start",
-+               "\"ue_identity\":\"0x%02x%02x%02x%02x%02x\",\"identity_type\":\"%s\"",
++    /* A-type ground truth: one record per on-air attempt, with the identity
++       actually transmitted (randomValue is rv[0..4] with the last bit unused). */
++    const bool on_air = rss_src != NULL && rss_src[0] == 'm'; /* "msg3" */
++    if (on_air)
++      nr_rss_next_seq();
++    nr_rss_log(on_air ? "attempt_start" : "setup_req_prebuilt",
++               "\"ue_identity\":\"0x%02x%02x%02x%02x%02x\",\"identity_type\":\"%s\",\"src\":\"%s\"",
 +               rv[0],
 +               rv[1],
 +               rv[2],
 +               rv[3],
 +               rv[4] & 0xfe,
-+               rrc->fiveG_S_TMSI == UINT64_MAX ? "randomValue" : "ng-5G-S-TMSI-Part1");
++               rrc->fiveG_S_TMSI == UINT64_MAX ? "randomValue" : "ng-5G-S-TMSI-Part1",
++               rss_src ? rss_src : "?");
 +  }
 +
    uint8_t buf[1024];
    int len = do_RRCSetupRequest(buf, sizeof(buf), rv, rrc->fiveG_S_TMSI);
  
-@@ -2459,12 +2473,50 @@ static int8_t nr_rrc_ue_decode_ccch(NR_UE_RRC_INST_t *rrc, const NRRrcMacCcchDat
+@@ -2122,7 +2145,7 @@ static void nr_rrc_prepare_msg3_payload(NR_UE_RRC_INST_t *rrc)
+   switch (rrc->ra_trigger) {
+     case RRC_CONNECTION_SETUP:
+       // preparing RRC setup request payload in advance
+-      nr_rrc_ue_prepare_RRCSetupRequest(rrc);
++      nr_rrc_ue_prepare_RRCSetupRequest(rrc, "msg3");
+       break;
+     case RRC_CONNECTION_REESTABLISHMENT:
+       // preparing MSG3 for re-establishment in advance
+@@ -2459,12 +2482,50 @@ static int8_t nr_rrc_ue_decode_ccch(NR_UE_RRC_INST_t *rrc, const NRRrcMacCcchDat
         case NR_DL_CCCH_MessageType__c1_PR_rrcReject:
           RRCLOG_W("Logical Channel DL-CCCH (SRB0), Received RRCReject \n");
           nr_rrc_process_rrcreject(rrc, dl_ccch_msg->message.choice.c1->choice.rrcReject);
@@ -75,7 +102,16 @@ index 7858a82..a37b1c9 100644
           rval = 0;
           break;
  
-@@ -3650,6 +3702,7 @@ void nr_rrc_going_to_IDLE(NR_UE_RRC_INST_t *rrc,
+@@ -3448,7 +3509,7 @@ void *rrc_nrue(void *notUsed)
+       if (rrc->nrRrcState == RRC_STATE_IDLE_NR) {
+         RA_trigger_t prev_trigger = rrc->ra_trigger;
+         rrc->ra_trigger = RRC_CONNECTION_SETUP;
+-        nr_rrc_ue_prepare_RRCSetupRequest(rrc);
++        nr_rrc_ue_prepare_RRCSetupRequest(rrc, "nas");
+         nr_rrc_trigger_mac_ra(rrc, NR_MAC_RA_START_SETUP);
+         RRCLOG_I("Triggering MAC RA for RRCSetupComplete pending NAS (prev_trigger=%d)\n", prev_trigger);
+       }
+@@ -3650,6 +3711,7 @@ void nr_rrc_going_to_IDLE(NR_UE_RRC_INST_t *rrc,
    }
    // Stop all the timers except T302, T320 and T325
    nr_timer_stop(&tac->T300);
@@ -83,6 +119,15 @@ index 7858a82..a37b1c9 100644
    nr_timer_stop(&tac->T301);
    nr_timer_stop(&tac->T304);
    nr_timer_stop(&tac->T310);
+@@ -3778,7 +3840,7 @@ void handle_302_expired_stopped(NR_UE_RRC_INST_t *rrc)
+ void handle_t300_expiry(NR_UE_RRC_INST_t *rrc)
+ {
+   rrc->ra_trigger = RRC_CONNECTION_SETUP;
+-  nr_rrc_ue_prepare_RRCSetupRequest(rrc);
++  nr_rrc_ue_prepare_RRCSetupRequest(rrc, "t300");
+ 
+   nr_rrc_trigger_mac_ra(rrc, NR_MAC_RA_START_T300);
+ 
 diff --git a/openair2/RRC/NR_UE/rrc_defs.h b/openair2/RRC/NR_UE/rrc_defs.h
 index edb1c9e..bdbe119 100644
 --- a/openair2/RRC/NR_UE/rrc_defs.h

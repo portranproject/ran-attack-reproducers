@@ -28,6 +28,11 @@ UE_BIN=${UE_BIN:-$OAI/cmake_targets/ran_build/build/nr-uesoftmodem}
 UE_CFG=${UE_CFG:-/root/oai_nrue.conf}
 UECAP=${UECAP:-$OAI/targets/PROJECTS/GENERIC-NR-5GC/CONF/uecap_ports1.xml}
 LOGDIR=${LOGDIR:-/root/rss-runs}
+# Real-time tuning (see checklist §11.3: the RRC tick ran 26-36 ms instead of
+# 10 ms, so the UE was not keeping up with the air interface).
+UE_EXTRA=${UE_EXTRA:-}          # extra nr-uesoftmodem args, e.g. "--num-dl-actors 6"
+UE_TASKSET=${UE_TASKSET:-}      # core list for the UE, e.g. "3-7"
+ODU_TASKSET=${ODU_TASKSET:-}    # core list for odu, e.g. "0-2"
 
 usage() { echo "usage: $0 [-e 0|1] [-i interval_ms] [-d max_duration_s] [-c completion_pct] [-r honor_reject] [-g ack_gate] [-o target_occupancy] [-H hold_ms] [-n run_id]"; exit 1; }
 while getopts "e:i:d:c:r:g:o:H:G:n:h" o; do case "$o" in
@@ -72,16 +77,26 @@ sed -n '1,6p' "$OUT/odu_boot.txt"
 grep -q 'E2(KPM)→RIC OK' "$OUT/odu_boot.txt" || echo "   (warning: E2 not confirmed)"
 
 # 2. UE. Hard outer kill switch on top of the in-process --rss.max_duration_s.
+if [[ -n "$ODU_TASKSET" ]]; then
+  for p in $(pgrep -x odu); do taskset -apc "$ODU_TASKSET" "$p" >/dev/null 2>&1 || true; done
+  echo "== pinned odu -> cores $ODU_TASKSET"
+fi
+
+PIN=()
+[[ -n "$UE_TASKSET" ]] && PIN=(taskset -c "$UE_TASKSET") && echo "== pinning UE -> cores $UE_TASKSET"
+EXTRA=()
+[[ -n "$UE_EXTRA" ]] && read -r -a EXTRA <<< "$UE_EXTRA" && echo "== extra UE args: $UE_EXTRA"
+
 echo "== launching UE (log: $UE_LOG)"
 timeout --signal=INT --kill-after=10 "$((MAX_DURATION_S + 20))" \
-  "$UE_BIN" -O "$UE_CFG" --band 78 -C 3489420000 --numerology 1 -r 51 -E --ue-scan-carrier \
+  "${PIN[@]}" "$UE_BIN" -O "$UE_CFG" --band 78 -C 3489420000 --numerology 1 -r 51 -E --ue-scan-carrier \
   --uecap_file "$UECAP" --device.name oai_zmqdevif \
   '--zmq.[0].tx_channels' tcp://127.0.0.1:4557 '--zmq.[0].rx_channels' tcp://127.0.0.1:4556 \
   --rss.enable "$ENABLE" --rss.interval_ms "$INTERVAL_MS" --rss.max_duration_s "$MAX_DURATION_S" \
   --rss.completion_pct "$COMPLETION_PCT" --rss.honor_reject "$HONOR_REJECT" \
   --rss.ack_gate "$ACK_GATE" --rss.ra_gate "$RA_GATE" \
   --rss.target_occupancy "$TARGET_OCC" --rss.hold_ms "$HOLD_MS" \
-  --rss.run_id "$RUN_ID" --rss.log_file "$JSONL" \
+  --rss.run_id "$RUN_ID" --rss.log_file "$JSONL" "${EXTRA[@]}" \
   >"$UE_LOG" 2>&1 </dev/null || echo "   (UE exited: rc=$? — expected when the kill switch fires)"
 
 pkill -9 -x nr-uesoftmodem 2>/dev/null || true

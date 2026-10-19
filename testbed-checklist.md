@@ -614,3 +614,73 @@ KAUST와의 6.6배 차이는 공격 로직이 아니라 **대부분 이 시간 �
 1. `nrue_ru_read()` — 지정된 UE 하나가 슬롯 샘플을 읽고 나머지 UE에 **같은 버퍼를 복제**한다.
 2. `nrue_ru_write()` — N개 UE의 상향 샘플을 **int16 포화 합산** 후 1회만 장치에 쓴다.
 3. `nrue_cells[].used_by_ue` 1:1 배정 완화 + 슬롯 단위 배리어.
+
+
+---
+
+## 13. 다중 UE 전환 — 구현 완료, 스케일링 한계 확인 🔶
+
+실행 2026-10-20 08:27~08:38 KST. **gNB 설정 기본값**(`timed out after 2000ms`, 상한 96).
+
+### 13.1 구현: 인프로세스 RU 공유 ✅
+
+OAI는 `nr-uesoftmodem.c`에서 명시적으로 거부한다:
+
+> `"Cell %d is already used by UE %d ... as cells map 1:1 to RUs and RU sharing is not implemented"`
+
+패치는 이 1:1 규칙만 푼다(모두 UE 측, gNB 무수정):
+
+| 파일 | 변경 |
+|---|---|
+| `executables/nr-ue-ru.c` | 슬롯마다 UE 하나가 샘플을 읽고 나머지에 **복제**(`rss_shared_read`), 모든 UE의 상향을 int16 포화 **합산** 후 1회만 장치에 기록(`rss_shared_write`) |
+| `executables/nr-uesoftmodem.c` | 공유 모드에서 셀 1:1 배정·`cell_id++` 건너뜀, `nrue_ru_sharing_init()` 호출 |
+| `executables/nr-ue-ru.h` | `nrue_ru_sharing_enabled/init` 선언 |
+
+`--num-ues N`(러너는 `-u N`)으로 켜지며 `[RSS] RU sharing enabled: N UE instances on one radio`를 찍는다.
+외부 ZMQ 브로커를 쓰지 않은 이유는 §12.6과 같다 — 이미 느린 경로에 184 MB/s/방향을 더 복사하지 않기 위해서다.
+
+### 13.2 구현 중 잡은 버그 2개 ✅
+
+1. **배치 키 없음** — 4대 이상에서 서로 다른 슬롯/형상의 쓰기가 한 배치에 섞여
+   `tmp == writeBlockSize`(nr-ue.c RU_write)와 `cc == tx_stream.channels_.size()`(zmq_write)가 터졌다.
+   → 배치를 `(timestamp, nsamps, nant)`로 키잉하고, 호출자에게는 **항상 `nsamps`를 반환**하도록 고쳤다
+   (장치 쓰기는 집계되므로 호출자 계약은 "네 샘플은 수락됐다"이다).
+2. **`deploy.sh`의 리셋 범위** — `openair2/RRC/NR_UE`만 되돌려서, `executables/`를 건드리는 새 패치가
+   조용히 적용되지 않았다(`patch does not apply`). `git checkout -- .`로 고쳤다.
+   이 사이 3개 런이 **옛 바이너리로 돌아 무효**였다 — 배포 후 `files changed` 줄을 항상 확인할 것.
+
+### 13.3 스케일링 실측 — 뚜렷한 포화 🔶
+
+| 공격 UE 수 | UE 시도(45 s) | **CU 동시 미완료 피크** | 상한 | RRCReject |
+|---|---|---|---|---|
+| 1 | 377 (60 s) | **19** | 96 | 0 |
+| 2 | 497 | **31** | 96 | 0 |
+| 4 | 878 | **39** | 96 | 0 |
+| 6 | — | **실패(기동 못 함)** | 96 | — |
+
+UE를 2배(2→4)로 늘려도 점유는 **+26%**에 그친다. 선형이 아니다.
+
+### 13.4 6대가 깨지는 이유 ✅ (로직 버그 아님)
+
+```
+[HW] Error, channel timeout        (반복 다수)
+Assertion ((uint)cc == s->tx_stream.channels_.size()) failed!
+  zmq_radio.cpp:171  Request to write on more antennas (1) than configured (0)
+```
+
+채널이 **타임아웃으로 무너져 채널 수가 0**이 된 뒤의 2차 증상이다. 해당 런은 CBRA를 **0회**밖에 못 했다
+(= 접속 시도조차 못 함). 즉 공유 샘플 경로가 6개 UE를 감당하지 못한다.
+
+§12.3에서 잰 대로 이 테스트베드의 공중 구간은 이미 **실시간의 약 1/6**로 돈다. 공유 라디오는 UE 수와
+무관하게 고정된 슬롯 예산을 가지므로, UE를 늘리면 **같은 예산을 나눠 쓸 뿐**이고 어느 지점에서 무너진다.
+
+### 13.5 결론
+
+- **다중 UE 전환은 완료**됐고 **1~4대 범위에서 검증**됐다. 4대에서 동시 점유 39 = 상한의 41%.
+- 그러나 **기본 설정(96) 포화는 이 테스트베드에서 다중 UE로도 도달하지 못한다.** 한계는 공격 도구가
+  아니라 **ZMQ 가상 RF의 속도**다. 필요 48 Msg4/s 대비 4대 합계가 약 19.5/s다.
+- 포화·거절 시연이 필요하면 §9의 **gNB 설정 전용 프로필**을 쓴다(RRCReject 126건 재현 완료).
+- 실제 포화를 기본 설정에서 보려면 테스트베드 쪽이 바뀌어야 한다 🔍:
+  (a) UE를 DU와 **다른 박스**로 분리해 ZMQ를 네트워크로 돌리거나,
+  (b) 샘플레이트를 낮춘 셀(예: 10 MHz)로 슬롯 예산을 키우거나,
+  (c) 실제 SDR OTA로 가는 것.

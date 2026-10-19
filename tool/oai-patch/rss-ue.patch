@@ -1,3 +1,317 @@
+diff --git a/executables/nr-ue-ru.c b/executables/nr-ue-ru.c
+index 95346ae..7f7f92c 100644
+--- a/executables/nr-ue-ru.c
++++ b/executables/nr-ue-ru.c
+@@ -91,6 +91,218 @@ static nrUE_RU_params_t *nrue_rus;
+ openair0_config_t openair0_cfg_g[MAX_CARDS] = {};
+ static openair0_device_t openair0_dev[MAX_CARDS] = {};
+ 
++/* ---------------------------------------------------------------------------
++ * RU sharing between UE instances (RRC signaling storm reproducer, UE only).
++ *
++ * Upstream refuses this in nr-uesoftmodem.c: "cells map 1:1 to RUs and RU
++ * sharing is not implemented". The testbed DU exposes exactly one ZMQ port
++ * pair, so putting several attacker UEs on the same cell needs that rule
++ * relaxed.
++ *
++ * An external ZMQ broker was rejected: it would copy 23.04 MS/s * 8 B per
++ * direction a second time on a path that already runs about 6x slower than
++ * real time (see testbed-checklist.md 12.3). Sharing inside the process keeps
++ * the number of ZMQ round trips per slot unchanged: one UE fetches each slot
++ * and the others receive a copy, and the uplink of all UEs is summed into a
++ * single device write. The gNB is never modified.
++ * -------------------------------------------------------------------------*/
++#define RSS_SHARE_MAX_ANT 4
++#define RSS_SHARE_WAIT_MS 100
++
++typedef struct {
++  bool active;
++  int n_ue;
++  pthread_mutex_t mtx;
++  pthread_cond_t cv;
++  /* downlink: one fetch per round, every UE copies it */
++  uint64_t rd_round;
++  int rd_taken;
++  bool rd_fetching;
++  openair0_timestamp_t rd_ts;
++  int rd_nsamps;
++  c16_t *rd_buf[RSS_SHARE_MAX_ANT];
++  int rd_cap;
++  /* uplink: accumulate every UE, then one device write */
++  uint64_t wr_round;
++  int wr_joined;
++  openair0_timestamp_t wr_ts;
++  int wr_nsamps;
++  int wr_nant;
++  int wr_flags;
++  int32_t *wr_acc[RSS_SHARE_MAX_ANT];
++  c16_t *wr_out[RSS_SHARE_MAX_ANT];
++  int wr_cap;
++} rss_ru_share_t;
++
++static rss_ru_share_t rss_share = {.mtx = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER};
++static uint64_t rss_rd_seen[MAX_NUM_NR_UE_INST];
++
++bool nrue_ru_sharing_enabled(void)
++{
++  return NB_UE_INST > 1;
++}
++
++void nrue_ru_sharing_init(void)
++{
++  if (!nrue_ru_sharing_enabled())
++    return;
++  rss_share.active = true;
++  rss_share.n_ue = NB_UE_INST;
++  rss_share.rd_taken = rss_share.n_ue; /* let the first fetch happen */
++  LOG_W(HW, "[RSS] RU sharing enabled: %d UE instances on one radio\n", rss_share.n_ue);
++}
++
++/* Bounded wait: a UE that stops producing must degrade the run, not hang it. */
++static void rss_share_wait(void)
++{
++  struct timespec ts;
++  clock_gettime(CLOCK_REALTIME, &ts);
++  ts.tv_nsec += RSS_SHARE_WAIT_MS * 1000000L;
++  if (ts.tv_nsec >= 1000000000L) {
++    ts.tv_sec += 1;
++    ts.tv_nsec -= 1000000000L;
++  }
++  pthread_cond_timedwait(&rss_share.cv, &rss_share.mtx, &ts);
++}
++
++static int rss_shared_read(PHY_VARS_NR_UE *UE, openair0_timestamp_t *ptimestamp, void **buff, int nsamps, int nant)
++{
++  rss_ru_share_t *s = &rss_share;
++  const int id = UE->Mod_id;
++  AssertFatal(nant <= RSS_SHARE_MAX_ANT, "RU sharing supports at most %d antennas\n", RSS_SHARE_MAX_ANT);
++  AssertFatal(id >= 0 && id < MAX_NUM_NR_UE_INST, "bad UE instance %d\n", id);
++
++  pthread_mutex_lock(&s->mtx);
++  if (s->rd_cap < nsamps) {
++    for (int a = 0; a < RSS_SHARE_MAX_ANT; a++) {
++      free(s->rd_buf[a]);
++      s->rd_buf[a] = calloc_or_fail(nsamps, sizeof(c16_t));
++    }
++    s->rd_cap = nsamps;
++  }
++
++  while (rss_rd_seen[id] == s->rd_round) {
++    if (!s->rd_fetching && s->rd_taken >= s->n_ue) {
++      s->rd_fetching = true;
++      pthread_mutex_unlock(&s->mtx);
++      openair0_device_t *dev = &openair0_dev[UE->rf_map.card];
++      openair0_timestamp_t tmp = 0;
++      void *tgt[RSS_SHARE_MAX_ANT];
++      for (int a = 0; a < nant; a++)
++        tgt[a] = s->rd_buf[a];
++      int got = dev->trx_read_func(dev, &tmp, tgt, nsamps, nant);
++      pthread_mutex_lock(&s->mtx);
++      if (!dev->firstTS_initialized) {
++        dev->firstTS = tmp;
++        dev->firstTS_initialized = true;
++      }
++      s->rd_ts = tmp - dev->firstTS;
++      s->rd_nsamps = got;
++      s->rd_round++;
++      s->rd_taken = 0;
++      s->rd_fetching = false;
++      pthread_cond_broadcast(&s->cv);
++    } else {
++      rss_share_wait();
++    }
++  }
++
++  for (int a = 0; a < nant; a++)
++    memcpy(buff[a], s->rd_buf[a], (size_t)s->rd_nsamps * sizeof(c16_t));
++  *ptimestamp = s->rd_ts;
++  const int ret = s->rd_nsamps;
++  rss_rd_seen[id] = s->rd_round;
++  s->rd_taken++;
++  pthread_cond_broadcast(&s->cv);
++  pthread_mutex_unlock(&s->mtx);
++  return ret;
++}
++
++/* Push the open batch to the radio. Caller holds the mutex. */
++static void rss_flush_locked(PHY_VARS_NR_UE *UE)
++{
++  rss_ru_share_t *s = &rss_share;
++  if (s->wr_joined == 0)
++    return;
++  for (int a = 0; a < s->wr_nant; a++) {
++    const int32_t *acc = s->wr_acc[a];
++    c16_t *out = s->wr_out[a];
++    for (int i = 0; i < s->wr_nsamps; i++) {
++      int32_t re = acc[2 * i];
++      int32_t im = acc[2 * i + 1];
++      out[i].r = re > INT16_MAX ? INT16_MAX : (re < INT16_MIN ? INT16_MIN : (int16_t)re);
++      out[i].i = im > INT16_MAX ? INT16_MAX : (im < INT16_MIN ? INT16_MIN : (int16_t)im);
++    }
++  }
++  openair0_device_t *dev = &openair0_dev[UE->rf_map.card];
++  void *tgt[RSS_SHARE_MAX_ANT];
++  for (int a = 0; a < s->wr_nant; a++)
++    tgt[a] = s->wr_out[a];
++  dev->trx_write_func(dev, s->wr_ts + dev->firstTS, tgt, s->wr_nsamps, s->wr_nant, s->wr_flags);
++  s->wr_joined = 0;
++  s->wr_round++;
++  pthread_cond_broadcast(&s->cv);
++}
++
++/* Sum the uplink of every sharing UE into one device write.
++ *
++ * A batch is keyed by (timestamp, nsamps, nant). Without that key the batches
++ * mixed across slots as soon as more than two UEs ran, and the box produced
++ * two assertions on 2026-10-20: "tmp == writeBlockSize" (nr-ue.c RU_write,
++ * because the device return value was handed back instead of what the caller
++ * asked to write) and "cc == tx_stream.channels_.size()" (zmq_write, because
++ * the flush used the antenna count of a different caller). This function
++ * therefore always returns nsamps: the device write is aggregated, so the
++ * per-caller contract is "your samples were accepted".
++ */
++static int rss_shared_write(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **buff, int nsamps, int nant, int flags)
++{
++  rss_ru_share_t *s = &rss_share;
++  AssertFatal(nant <= RSS_SHARE_MAX_ANT, "RU sharing supports at most %d antennas\n", RSS_SHARE_MAX_ANT);
++
++  pthread_mutex_lock(&s->mtx);
++  if (s->wr_cap < nsamps) {
++    rss_flush_locked(UE); /* old buffers are about to go away */
++    for (int a = 0; a < RSS_SHARE_MAX_ANT; a++) {
++      free(s->wr_acc[a]);
++      free(s->wr_out[a]);
++      s->wr_acc[a] = calloc_or_fail(2 * nsamps, sizeof(int32_t));
++      s->wr_out[a] = calloc_or_fail(nsamps, sizeof(c16_t));
++    }
++    s->wr_cap = nsamps;
++  }
++
++  /* a write that does not belong to the open batch closes it first */
++  if (s->wr_joined > 0 && (s->wr_ts != timestamp || s->wr_nsamps != nsamps || s->wr_nant != nant))
++    rss_flush_locked(UE);
++
++  if (s->wr_joined == 0) {
++    for (int a = 0; a < nant; a++)
++      memset(s->wr_acc[a], 0, 2 * (size_t)nsamps * sizeof(int32_t));
++    s->wr_ts = timestamp;
++    s->wr_nsamps = nsamps;
++    s->wr_nant = nant;
++    s->wr_flags = flags;
++  }
++
++  for (int a = 0; a < nant; a++) {
++    const c16_t *src = (const c16_t *)buff[a];
++    int32_t *acc = s->wr_acc[a];
++    for (int i = 0; i < nsamps; i++) {
++      acc[2 * i] += src[i].r;
++      acc[2 * i + 1] += src[i].i;
++    }
++  }
++  s->wr_joined++;
++
++  if (s->wr_joined >= s->n_ue)
++    rss_flush_locked(UE);
++
++  pthread_mutex_unlock(&s->mtx);
++  return nsamps;
++}
++
++
+ int nrue_get_cell_count(void)
+ {
+   return nrue_cell_count;
+@@ -368,6 +580,15 @@ void nrue_ru_end(void)
+ 
+ void nrue_ru_set_freq(PHY_VARS_NR_UE *UE, uint64_t ul_carrier, uint64_t dl_carrier, int freq_offset)
+ {
++  if (rss_share.active) {
++    /* All shared UEs stay on the same radio; do not migrate or re-own cells. */
++    openair0_config_t *scfg = &openair0_cfg_g[UE->rf_map.card];
++    openair0_device_t *sdev = &openair0_dev[UE->rf_map.card];
++    nr_rf_card_config_freq(scfg, ul_carrier, dl_carrier, freq_offset);
++    if (UE->Mod_id == 0)
++      sdev->trx_set_freq_func(sdev, scfg);
++    return;
++  }
+   int current_cell_id = nrue_rus[UE->rf_map.card].used_by_cell;
+   NR_DL_FRAME_PARMS *fp0 = &nrue_cell_fp[current_cell_id];
+   uint64_t dl_carrier_distance =
+@@ -430,6 +651,8 @@ int nrue_ru_adjust_rx_gain(PHY_VARS_NR_UE *UE, int gain_change)
+ 
+ int nrue_ru_read(PHY_VARS_NR_UE *UE, openair0_timestamp_t *ptimestamp, void **buff, int nsamps, int num_antennas)
+ {
++  if (rss_share.active)
++    return rss_shared_read(UE, ptimestamp, buff, nsamps, num_antennas);
+   openair0_device_t *dev = &openair0_dev[UE->rf_map.card];
+   openair0_timestamp_t tmp_timestamp;
+   int ret = dev->trx_read_func(dev, &tmp_timestamp, buff, nsamps, num_antennas);
+@@ -470,6 +693,8 @@ int nrue_ru_read(PHY_VARS_NR_UE *UE, openair0_timestamp_t *ptimestamp, void **bu
+ 
+ int nrue_ru_write(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **buff, int nsamps, int num_antennas, int flags)
+ {
++  if (rss_share.active)
++    return rss_shared_write(UE, timestamp, buff, nsamps, num_antennas, flags);
+   openair0_device_t *dev = &openair0_dev[UE->rf_map.card];
+   int ret = dev->trx_write_func(dev, timestamp + dev->firstTS, buff, nsamps, num_antennas, flags);
+ 
+@@ -500,6 +725,10 @@ int nrue_ru_write(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **buf
+ 
+ int nrue_ru_write_reorder(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **txp, int nsamps, int nbAnt, int flags)
+ {
++  /* The reorder context lives in the device and assumes a single writer.
++     With shared RU the summing path already serialises the device write. */
++  if (rss_share.active)
++    return rss_shared_write(UE, timestamp, txp, nsamps, nbAnt, flags);
+   openair0_device_t *device = &openair0_dev[UE->rf_map.card];
+   return openair0_write_reorder_common(nrue_ru_write, UE, device, timestamp, txp, nsamps, nbAnt, flags);
+ }
+diff --git a/executables/nr-ue-ru.h b/executables/nr-ue-ru.h
+index 7d0836c..ab1b10f 100644
+--- a/executables/nr-ue-ru.h
++++ b/executables/nr-ue-ru.h
+@@ -31,4 +31,11 @@ int nrue_ru_write(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **buf
+ int nrue_ru_write_reorder(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **txp, int nsamps, int nbAnt, int flags);
+ void nrue_ru_write_reorder_clear_context(PHY_VARS_NR_UE *UE);
+ 
++
++/* RU sharing between UE instances (RRC storm reproducer, UE side only).
++   Upstream maps one UE to one cell and one cell to one RU. Enabled when
++   --num-ues > 1 so several attacker UEs can use the single DU ZMQ port pair. */
++bool nrue_ru_sharing_enabled(void);
++void nrue_ru_sharing_init(void);
++
+ #endif
+diff --git a/executables/nr-uesoftmodem.c b/executables/nr-uesoftmodem.c
+index 4a9749e..e1f86e1 100644
+--- a/executables/nr-uesoftmodem.c
++++ b/executables/nr-uesoftmodem.c
+@@ -398,7 +398,10 @@ int main(int argc, char **argv)
+                   nrue_get_cell_count());
+       nrUE_cell_params_t cell = *nrue_get_cell(cell_id);
+ 
+-      AssertFatal(cell.used_by_ue == -1,
++      /* RU sharing (RRC storm reproducer): several attacker UEs must use the
++         one cell the testbed DU exposes, so the 1:1 rule is relaxed and the
++         samples are shared in nr-ue-ru.c. */
++      AssertFatal(cell.used_by_ue == -1 || nrue_ru_sharing_enabled(),
+                   "Cell %d is already used by UE %d and cannot also be used by UE %d as cells map 1:1 to RUs and RU sharing is not implemented\n",
+                   cell_id,
+                   cell.used_by_ue,
+@@ -454,10 +457,12 @@ int main(int argc, char **argv)
+         sl_ue_phy_init(UE_CC);
+       }
+ 
+-      cell_id++; // initially connect each UE and carrier to its own cell
++      if (!nrue_ru_sharing_enabled())
++        cell_id++; // initially connect each UE and carrier to its own cell
+     }
+   }
+ 
++  nrue_ru_sharing_init();
+   nrue_init_openair0();
+ 
+   lock_memory_to_ram();
 diff --git a/openair2/RRC/NR_UE/rrc_UE.c b/openair2/RRC/NR_UE/rrc_UE.c
 index 7858a82..c7a0f97 100644
 --- a/openair2/RRC/NR_UE/rrc_UE.c

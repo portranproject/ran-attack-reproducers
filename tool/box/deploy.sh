@@ -29,7 +29,10 @@ fi
 # 2. apply (refuse to go on if it does not apply cleanly).
 #    Re-deployable: drop any previous version of our edits first, so the same
 #    script can roll a new patch revision onto a box that already has one.
-git -C "$OAI" checkout -- openair2/RRC/NR_UE
+#    Reset the whole tree, not just the RRC directory: the patch also touches
+#    executables/ for RU sharing, and a narrow reset silently left the old
+#    version in place (observed 2026-10-20, "patch does not apply").
+git -C "$OAI" checkout -- .
 git -C "$OAI" apply --check --verbose "$PATCH"
 git -C "$OAI" apply "$PATCH"
 git -C "$OAI" --no-pager diff --stat

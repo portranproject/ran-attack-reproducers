@@ -142,3 +142,17 @@ sudo bash gnb_profile.sh --role du restore
 - 정상 상태에서도 ZMQ에서 Msg5가 약 8% 유실된다(24회 중 2회) ✅ → 판정 시 기준선으로 뺀다.
 - `completion_pct > 0`은 NAS 등록·release 경로를 타므로 A형의 '코어 미도달' 전제가 깨진다. 별도 라벨로 본다.
 - 공격 실행은 사용자 승인 후, p5 세트 전용. `max_duration_s`와 `timeout` 둘 다 켠다.
+
+## 다중 공격 UE (`-u N`)
+
+`--num-ues N`으로 **한 프로세스 안에서 N개의 공격 UE**를 띄운다. OAI는 원래 "UE 1개 = RU 1개"라
+거부하지만(`cells map 1:1 to RUs and RU sharing is not implemented`), 패치가 슬롯마다 하향을 복제하고
+상향을 합산해 그 제약을 푼다. DU의 ZMQ 포트쌍은 하나뿐이므로 이 방식이 외부 브로커보다 가볍다.
+
+```bash
+sudo bash run_attack.sh -e 1 -i 0 -u 4 -d 45 -n MULTI4
+# 기동 로그: [RSS] RU sharing enabled: 4 UE instances on one radio
+```
+
+**검증된 범위는 1~4대다.** 실측 동시 점유는 1대 19 / 2대 31 / 4대 39(상한 96)로 포화하며,
+6대는 ZMQ 채널 타임아웃으로 기동하지 못한다 — 자세한 수치와 원인은 checklist §13.

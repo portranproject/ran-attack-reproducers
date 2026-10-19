@@ -324,3 +324,88 @@ A형이 통하면 `timed out after 2000ms` + `on_ue_release_required`가 쌓이�
 2. **UE 시도 143 vs CU 수신 72** — 시도 절반가량이 Msg3 이전(RAR 미수신·경합 실패)에서 끝났다. 원인 미측정.
 3. `ack_pending_postpone` 0건 — 재시도가 306 ms로 느려 ACK PUCCH가 항상 먼저 나갔다는 뜻이다. `interval_ms`를 낮추면 이 게이트가 실제로 작동하는지 M2에서 확인한다.
 4. 포화(M1b)는 다중 UE 브로커 또는 설정 프로필 변경이 필요하다.
+
+
+---
+
+## 9. M2·M1b 실측 — 속도 제어 교정과 실제 거절(denial) ✅
+
+실행 2026-10-20 06:53~07:10 KST(로그 UTC 21:53~22:10), 세트 p5. 산출물 [tool/runs/](tool/runs/).
+UE는 `rss-ue.patch` v4(벽시계 데드라인 + 폐루프 점유 제어). **OCUDU 소스는 끝까지 무수정이다.**
+
+### 9.1 306 ms 수수께끼의 원인 — RRC 틱이 10 ms가 아니다 ✅
+
+패치에 틱 계측(`tick_rate` 이벤트)을 넣어 측정했다.
+
+| 설정 interval | 시도율 | Msg4 도달률 | **실측 ms/tick** |
+|---|---|---|---|
+| 0 ms | 7.20/s | 3.66/s | 33.1 |
+| 20 ms | 6.74/s | 3.79/s | 24.8 |
+| 50 ms | 5.60/s | 3.83/s | 34.0 |
+| 100 ms | 4.05/s | 2.60/s | 21.9 |
+
+`nr_rrc_handle_timers()`는 새 무선 프레임 메시지마다 호출되고 `nr_timer_tick()`은 호출마다 고정 10 ms를 더한다. 그런데 ZMQ 경로에서 프레임 메시지는 **22~34 ms 간격**으로 온다. 따라서 **틱을 세는 방식은 노브 전체에 2~3배 오차를 곱한다** — §8.4의 100 ms → 306 ms가 정확히 이것이다 ✅.
+
+**수정**: 목표를 틱 수가 아니라 `rss_deadline_ns`(벽시계)로 잡고 타이머는 틱마다 폴링만 하게 했다. 오차가 누적되지 않고 **한 틱 이내로 묶인다**.
+
+### 9.2 남은 천장: Msg4 도달률 ≈ 3.8/s 🔍
+
+간격을 0으로 내려도 Msg4 도달률은 3.8/s에서 더 오르지 않는다(위 표). 즉 교정 후 병목은 재현기 타이머가 아니라 **RA 주기 + 27 ms 틱 해상도**다. 시도의 절반 이상이 Msg4 전에 끝난다(`no_msg4`). 원인 분리는 미완 🔍.
+
+### 9.3 셀 용량 실측 — 기본 96, 거절용 64 예약 ✅
+
+DU 기동 CONFIG 로그(원문 [tool/runs/du_capacity.txt](tool/runs/du_capacity.txt)):
+
+> upper-bound ... is **96** ... lowest of: SR (96), CSI (96), SRS (n/a), UE contexts per cell (1984). Up to **160** UE contexts can be created, **the extra ones being used to RRC Reject UEs**.
+
+팀 문서의 "~96" 추정이 맞았다 ✅. 기본 설정에서 포화에 필요한 요청률은 `96 / 2 s = 48 Msg4/s`이고, 측정 천장 3.8/s의 **약 13배**다 → **단일 UE로는 기본 설정 포화 불가**가 수치로 확정됐다.
+
+### 9.4 포화 프로필 (gNB **설정만**, 소스 무수정) ✅
+
+[tool/box/gnb_profile.sh](tool/box/gnb_profile.sh)가 백업(`.orig`)을 두고 멱등하게 적용/복원한다. 움직인 항목은 운영자가 설정으로 통제하는 두 항목뿐이다.
+
+| 항목 | 기본 | 프로필 | 효과 |
+|---|---|---|---|
+| `cell_cfg.pucch.nof_cell_sr_res` | 8 | **1** | N_cap 96 → **12** (SR 12, CSI 96 중 최솟값) ✅ |
+| `cell_cfg.sib.t300` (DU) | 1000 | **2000** | T_hold ↑ (3GPP 최댓값) |
+| `cu_cp.rrc.rrc_procedure_guard_time_ms` (CU) | 1000 | **5000** | T_hold = **7000 ms** ✅ (실측 `timed out after 7000ms`) |
+
+### 9.5 실제 거절 발생 — run `SAT2-1019T220308Z` ✅
+
+60초, interval 20 ms, `completion_pct 0`. CU 로그 윈도우 22:03:08~22:04:52.
+
+| 지표 | 값 |
+|---|---|
+| `"RRC Setup Procedure" started` / `timed out after 7000ms` | 93 / **93** |
+| **동시 미완료 피크** | **12** = N_cap |
+| **`Sending rrcReject`** | **126** |
+| 거절 사유 (CU 원문) | **`Cause: DU is not able to serve the UE`** |
+| `rrcSetupComplete` / NGAP `InitialUEMessage` | 0 / 0 |
+| UE 측 | 거절 15.6%, `no_msg4` 65.4%, 첫 거절 t+1.6 s → t+57.7 s 지속 |
+
+**판정: 실제 서비스 거절 성립.** 셀 용량이 가득 차서 gNB가 새 RRC 연결을 거부한다. 이 거절은 공격 UE를 식별해서 내리는 것이 아니므로 **같은 Msg3를 보내는 정상 UE도 동일하게 거절된다**. 단 이는 **위 프로필에서의 결과**이고 기본 설정 결과가 아니다 — per-run `gnb_config_profile`로 반드시 구분해 보고한다.
+
+### 9.6 포화도 정밀 제어 — 폐루프 점유 제어 ✅
+
+간격 노브로는 포화도를 못 맞춘다(9.2). 대신 **UE가 자기 점유를 직접 센다**: 미완료로 남긴 시도의 타임스탬프를 `hold_ms` 창에서 세어 목표 이상이면 다음 RA를 멈춘다(`--rss.target_occupancy`, `--rss.hold_ms`).
+
+| 목표 점유 | **CU 실측 동시 점유** | 타임아웃 | RRCReject | UE 자체추정 최대 |
+|---|---|---|---|---|
+| 3 | **3** | 15 | 0 | 5 |
+| 6 | **6** | 27 | 0 | 8 |
+| 12 (=N_cap) | **12** | 48 | 3 | 12 |
+
+**gNB 실측값이 목표와 정확히 일치한다** ✅. UE 자체추정이 조금 높게 나오는 것은 UE가 Msg4 수신 시각부터 세는데 gNB의 보유 시간은 그보다 앞선 절차 시작부터 흐르기 때문이다(코드 판독, 보정 안 함). 판정에는 CU 값을 쓴다.
+
+### 9.7 되돌린 변경: probe 자동해제 경로 ❌
+
+`completion_pct > 0`으로 완료한 시도를 1초 뒤 `nr_rrc_going_to_IDLE()`로 해제해 루프를 잇는 기능을 넣었다가, 첫 실행에서 **UE가 SIGSEGV로 죽었다**(run `SAT-1019T220108Z`: `msg5_sent` → `probe_release` → 다음 시도가 `ng-5G-S-TMSI-Part1` → 코어 덤프). 해당 경로를 패치에서 제거했다.
+
+**대체**: 거절 측정에 probe가 필요 없다. 용량이 차면 gNB가 평범한 `RRCSetupRequest`에 RRCReject를 보내고(9.5), 그것이 곧 정상 UE가 받을 응답이다. `completion_pct > 0`은 현재 **첫 완료에서 런이 멈춘다**(RRC_CONNECTED에서 새 요청이 안 나감)고 README에 명시했다.
+
+### 9.8 남은 확인 🔍
+
+1. 기본 설정(N_cap 96) 포화에는 48 Msg4/s가 필요 → 다중 공격 UE가 필수다. OAI w38은 **UE 1개 = RU(ZMQ 포트쌍) 1개**로 묶여 있어(`"skip cells that are already used by an UE"`) 한 프로세스 다중 UE로는 안 되고 **ZMQ 브로커**가 필요하다(M1b-i).
+2. UE측 천장 3.8/s의 분해(RA 주기 vs 27 ms 틱 해상도). MAC 레벨에서 재시작을 걸면 틱 제약이 사라질 가능성 🔍.
+3. `ack_pending_postpone` 0건 유지 — 틱이 27 ms라 ACK PUCCH가 항상 먼저 나간다. 틱 제약이 풀리면 이 게이트가 실제로 필요해진다.
+4. 정상 UE를 동시에 붙여 피해를 **직접** 재는 것은 ZMQ 1:1 제약 때문에 여전히 브로커 대기다.

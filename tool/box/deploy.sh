@@ -26,7 +26,10 @@ else
   git -C "$OAI" checkout -b "$BRANCH"
 fi
 
-# 2. apply (refuse to go on if it does not apply cleanly)
+# 2. apply (refuse to go on if it does not apply cleanly).
+#    Re-deployable: drop any previous version of our edits first, so the same
+#    script can roll a new patch revision onto a box that already has one.
+git -C "$OAI" checkout -- openair2/RRC/NR_UE
 git -C "$OAI" apply --check --verbose "$PATCH"
 git -C "$OAI" apply "$PATCH"
 git -C "$OAI" --no-pager diff --stat

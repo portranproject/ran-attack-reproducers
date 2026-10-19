@@ -41,8 +41,11 @@ RA 재시작의 `reset_ra()` memset이 예약된 ACK PUCCH를 지우기 때문�
 | 인자 | 기본 | 뜻 |
 |---|---|---|
 | `--rss.enable` | 0 | 1이면 A형 |
-| `--rss.interval_ms` | 100 | Msg5 생략 후 다음 `RRCSetupRequest`까지. RRC tick이 10 ms라 10 ms 해상도 |
-| `--rss.completion_pct` | 0 | 정상 완료시킬 시도 비율(%). 결정적 stride라 재현 가능. 0보다 크면 코어 가입자 등록 필요 |
+| `--rss.interval_ms` | 100 | Msg5 생략 후 다음 `RRCSetupRequest`까지. **벽시계 기준**(틱 누적 아님). 0 = 다음 틱 즉시 |
+| **`--rss.target_occupancy`** | 0 | **포화도 조절.** gNB에 유지할 미완료 컨텍스트 수. 0 = 무제한. 실측 결과 CU 동시 점유가 이 값과 일치 |
+| **`--rss.hold_ms`** | 2000 | gNB의 컨텍스트 보유 시간(= `t300` + guard). 위 폐루프가 쓰는 창 길이 |
+| `--rss.tick_report` | 100 | N틱마다 실측 ms/tick을 JSONL에 기록(설정 vs 실측 분리용) |
+| `--rss.completion_pct` | 0 | 정상 완료시킬 시도 비율(%). **>0이면 첫 완료에서 런이 멈춘다**(RRC_CONNECTED에서 새 요청이 안 나감). 자동해제는 UE를 죽여서 제거함 — checklist §9.7 |
 | `--rss.honor_reject` | 1 | `RRCReject` 존중(waitTime 있으면 T302 잔여, 없으면 `reject_backoff_ms`) |
 | `--rss.reject_backoff_ms` | 1000 | OCUDU 기본은 waitTime 미포함이라 이 값이 실제 재시도 간격 |
 | `--rss.ack_gate` | 1 | 위 안전장치 |
@@ -103,10 +106,39 @@ cp -p /root/OAI/cmake_targets/ran_build/build/nr-uesoftmodem.orig \
 ```
 `destroy`하면 박스 변경은 모두 사라진다. 원본은 항상 이 리포에 둔다.
 
+## 포화(실제 거절) 재현
+
+기본 설정의 셀 상한은 **96**이고 단일 UE의 Msg4 천장은 **3.8/s**다. 96을 채우려면 48/s가 필요하므로
+**단일 UE로는 기본 설정에서 포화가 불가능하다**(checklist §9.3). 그래서 포화는 `R × T_hold ≥ N_cap`의
+나머지 두 항을 **gNB 설정만으로** 움직인다 — OCUDU 소스는 건드리지 않는다.
+
+```bash
+# CU 박스: guard 1000 -> 5000 ms,  DU 박스: nof_cell_sr_res 8 -> 1, t300 -> 2000
+sudo bash gnb_profile.sh --role cu apply     # CU에서
+sudo bash gnb_profile.sh --role du apply     # DU에서
+./ctl.sh up                                   # 설정 반영
+
+# 상한 12 / 보유 7000 ms 상태에서 포화
+sudo bash run_attack.sh -e 1 -i 20 -d 60 -n SAT-$(date -u +%m%dT%H%M)
+
+# 포화도를 지정해 돌리기 (CU 실측 동시 점유 = 이 값)
+sudo bash run_attack.sh -e 1 -i 0 -o 6 -H 7000 -d 30 -n OCC-t6
+
+# 끝나면 반드시 설정 복원
+sudo bash gnb_profile.sh --role cu restore
+sudo bash gnb_profile.sh --role du restore
+```
+
+판정은 CU 로그의 `Sending rrcReject. Cause: DU is not able to serve the UE` 수와
+동시 미완료 피크(= `started` − `timed out` 누적 최대)로 한다. 실측 결과는 checklist §9.5~§9.6.
+
+**프로필 실행은 기본 설정 실행과 반드시 분리해 보고한다**(per-run `gnb_config_profile`).
+
 ## 미확인 / 주의
 
-- **빌드 미검증** 🔍 — 로컬에 OAI 빌드 의존성이 없어 컴파일을 돌리지 않았다. 패치는 w38 깨끗한 트리에 `git apply --check` 통과만 확인했다.
-- `interval_ms`를 10 ms로 낮추면 ACK 유실 가능성이 올라간다. `ack_pending_postpone` 카운트로 확인한다(M2).
+- **박스에서 빌드·실행 검증 완료** ✅ (2026-10-20, OAI `2026.w38`, 브랜치 `rss-ue-a-type`). 공격 off 회귀는 정상 접속 103.8 ms로 통과.
+- **RRC 틱은 10 ms가 아니다** — ZMQ 경로 실측 22~34 ms. 그래서 타이머를 벽시계로 바꿨다(checklist §9.1).
+- `ack_pending_postpone`은 아직 0건이다. 틱이 27 ms라 ACK PUCCH가 늘 먼저 나가기 때문이며, 틱 제약이 풀리면 이 게이트가 실제로 필요해진다.
 - 정상 상태에서도 ZMQ에서 Msg5가 약 8% 유실된다(24회 중 2회) ✅ → 판정 시 기준선으로 뺀다.
 - `completion_pct > 0`은 NAS 등록·release 경로를 타므로 A형의 '코어 미도달' 전제가 깨진다. 별도 라벨로 본다.
 - 공격 실행은 사용자 승인 후, p5 세트 전용. `max_duration_s`와 `timeout` 둘 다 켠다.

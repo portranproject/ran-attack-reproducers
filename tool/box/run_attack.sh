@@ -18,6 +18,8 @@ MAX_DURATION_S=30
 COMPLETION_PCT=0
 HONOR_REJECT=1
 ACK_GATE=1
+TARGET_OCC=0
+HOLD_MS=2000
 RUN_ID=""
 BOX_CTL=${BOX_CTL:-/root/workspace/ctl.sh}
 OAI=${OAI:-/root/OAI}
@@ -26,10 +28,11 @@ UE_CFG=${UE_CFG:-/root/oai_nrue.conf}
 UECAP=${UECAP:-$OAI/targets/PROJECTS/GENERIC-NR-5GC/CONF/uecap_ports1.xml}
 LOGDIR=${LOGDIR:-/root/rss-runs}
 
-usage() { echo "usage: $0 [-e 0|1] [-i interval_ms] [-d max_duration_s] [-c completion_pct] [-r honor_reject] [-g ack_gate] [-n run_id]"; exit 1; }
-while getopts "e:i:d:c:r:g:n:h" o; do case "$o" in
+usage() { echo "usage: $0 [-e 0|1] [-i interval_ms] [-d max_duration_s] [-c completion_pct] [-r honor_reject] [-g ack_gate] [-o target_occupancy] [-H hold_ms] [-n run_id]"; exit 1; }
+while getopts "e:i:d:c:r:g:o:H:n:h" o; do case "$o" in
   e) ENABLE=$OPTARG;; i) INTERVAL_MS=$OPTARG;; d) MAX_DURATION_S=$OPTARG;;
   c) COMPLETION_PCT=$OPTARG;; r) HONOR_REJECT=$OPTARG;; g) ACK_GATE=$OPTARG;;
+  o) TARGET_OCC=$OPTARG;; H) HOLD_MS=$OPTARG;;
   n) RUN_ID=$OPTARG;; *) usage;; esac; done
 
 [[ $ENABLE == 0 || $ENABLE == 1 ]] || usage
@@ -49,11 +52,12 @@ cat > "$OUT/run.json" <<EOF
  "cell":{"band":"n78","scs_khz":30,"bw_mhz":20,"prb":51},
  "gnb_cfg":{"t300_ms":1000,"guard_ms":1000,"hold_ms":2000,"rrc_reject_wait_time_s":"unset"},
  "knobs":{"enable":$ENABLE,"interval_ms":$INTERVAL_MS,"completion_pct":$COMPLETION_PCT,
-          "honor_reject":$HONOR_REJECT,"ack_gate":$ACK_GATE,"max_duration_s":$MAX_DURATION_S},
+          "honor_reject":$HONOR_REJECT,"ack_gate":$ACK_GATE,"max_duration_s":$MAX_DURATION_S,
+          "target_occupancy":$TARGET_OCC,"hold_ms":$HOLD_MS},
  "t_start_utc":"$(date -u +%FT%TZ)"}
 EOF
 
-echo "== run_id=$RUN_ID  enable=$ENABLE  interval=${INTERVAL_MS}ms  kill=${MAX_DURATION_S}s"
+echo "== run_id=$RUN_ID  enable=$ENABLE  interval=${INTERVAL_MS}ms  target_occ=$TARGET_OCC  hold=${HOLD_MS}ms  kill=${MAX_DURATION_S}s"
 
 # 1. odu must be restarted together with the UE (ZMQ sample stream sync)
 echo "== restarting odu"
@@ -74,7 +78,8 @@ timeout --signal=INT --kill-after=10 "$((MAX_DURATION_S + 20))" \
   '--zmq.[0].tx_channels' tcp://127.0.0.1:4557 '--zmq.[0].rx_channels' tcp://127.0.0.1:4556 \
   --rss.enable "$ENABLE" --rss.interval_ms "$INTERVAL_MS" --rss.max_duration_s "$MAX_DURATION_S" \
   --rss.completion_pct "$COMPLETION_PCT" --rss.honor_reject "$HONOR_REJECT" \
-  --rss.ack_gate "$ACK_GATE" --rss.run_id "$RUN_ID" --rss.log_file "$JSONL" \
+  --rss.ack_gate "$ACK_GATE" --rss.target_occupancy "$TARGET_OCC" --rss.hold_ms "$HOLD_MS" \
+  --rss.run_id "$RUN_ID" --rss.log_file "$JSONL" \
   >"$UE_LOG" 2>&1 </dev/null || echo "   (UE exited: rc=$? — expected when the kill switch fires)"
 
 pkill -9 -x nr-uesoftmodem 2>/dev/null || true

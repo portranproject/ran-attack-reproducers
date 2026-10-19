@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
-# Start odu + UE with the A-type reproducer. Run ON THE DU BOX.
-# Default is a REGRESSION run (attack off). Pass -e 1 to enable the attack.
-# Team rule: attack runs only on the team's own p5 set, after user approval.
+# Start odu + the A-type reproducer UE. Run ON THE DU BOX (as root).
+#
+# Why this script exists instead of "ctl.sh ue":
+#  - the box's ctl.sh hardcodes the UE argument list (no hook for extra args);
+#  - its ue_up() waits for "oaitun_ue1 successfully configured", which never
+#    happens in A-type (no RRCSetupComplete -> no PDU session) and would make it
+#    restart odu+UE twice and report failure.
+# It still restarts odu immediately before the UE, which is the ZMQ requirement.
+#
+# Default is a REGRESSION run (attack off). Team rule: attack only on our own
+# p5 set, after user approval, always with a kill switch.
 set -euo pipefail
 
 ENABLE=0
@@ -10,8 +18,12 @@ MAX_DURATION_S=30
 COMPLETION_PCT=0
 HONOR_REJECT=1
 ACK_GATE=1
-RUN_ID="rss-$(date -u +%Y%m%dT%H%M%SZ)"
-CTL=${CTL:-/root/workspace/ctl.sh}
+RUN_ID=""
+BOX_CTL=${BOX_CTL:-/root/workspace/ctl.sh}
+OAI=${OAI:-/root/OAI}
+UE_BIN=${UE_BIN:-$OAI/cmake_targets/ran_build/build/nr-uesoftmodem}
+UE_CFG=${UE_CFG:-/root/oai_nrue.conf}
+UECAP=${UECAP:-$OAI/targets/PROJECTS/GENERIC-NR-5GC/CONF/uecap_ports1.xml}
 LOGDIR=${LOGDIR:-/root/rss-runs}
 
 usage() { echo "usage: $0 [-e 0|1] [-i interval_ms] [-d max_duration_s] [-c completion_pct] [-r honor_reject] [-g ack_gate] [-n run_id]"; exit 1; }
@@ -20,26 +32,55 @@ while getopts "e:i:d:c:r:g:n:h" o; do case "$o" in
   c) COMPLETION_PCT=$OPTARG;; r) HONOR_REJECT=$OPTARG;; g) ACK_GATE=$OPTARG;;
   n) RUN_ID=$OPTARG;; *) usage;; esac; done
 
-mkdir -p "$LOGDIR/$RUN_ID"
-JSONL="$LOGDIR/$RUN_ID/attempts.jsonl"
+[[ $ENABLE == 0 || $ENABLE == 1 ]] || usage
+(( MAX_DURATION_S >= 1 && MAX_DURATION_S <= 600 )) || { echo "max_duration_s must be 1..600"; exit 1; }
+[[ -n "$RUN_ID" ]] || RUN_ID="$([[ $ENABLE == 1 ]] && echo A || echo base)-$(date -u +%Y%m%dT%H%M%SZ)"
 
-RSS_ARGS="--rss.enable $ENABLE --rss.interval_ms $INTERVAL_MS --rss.max_duration_s $MAX_DURATION_S \
- --rss.completion_pct $COMPLETION_PCT --rss.honor_reject $HONOR_REJECT --rss.ack_gate $ACK_GATE \
- --rss.run_id $RUN_ID --rss.log_file $JSONL"
+OUT="$LOGDIR/$RUN_ID"
+mkdir -p "$OUT"
+JSONL="$OUT/attempts.jsonl"
+UE_LOG="$OUT/ue.log"
 
-cat > "$LOGDIR/$RUN_ID/run.json" <<EOF
-{"run_id":"$RUN_ID","scenario":"$([[ $ENABLE == 1 ]] && echo A || echo baseline)","rf_path":"zmq",
+# per-run record (design.md §8). gnb_cfg values are the box-verified ones.
+cat > "$OUT/run.json" <<EOF
+{"type":"run","run_id":"$RUN_ID","scenario":"$([[ $ENABLE == 1 ]] && echo A || echo baseline)",
+ "rf_path":"zmq","ue_base":"oai-nr $(git -C "$OAI" rev-parse --short HEAD 2>/dev/null)",
+ "ue_branch":"$(git -C "$OAI" branch --show-current 2>/dev/null)",
+ "cell":{"band":"n78","scs_khz":30,"bw_mhz":20,"prb":51},
+ "gnb_cfg":{"t300_ms":1000,"guard_ms":1000,"hold_ms":2000,"rrc_reject_wait_time_s":"unset"},
  "knobs":{"enable":$ENABLE,"interval_ms":$INTERVAL_MS,"completion_pct":$COMPLETION_PCT,
- "honor_reject":$HONOR_REJECT,"ack_gate":$ACK_GATE,"max_duration_s":$MAX_DURATION_S},
- "ue_commit":"$(git -C ${OAI:-/root/OAI} rev-parse --short HEAD)","t_start_utc":"$(date -u +%FT%TZ)"}
+          "honor_reject":$HONOR_REJECT,"ack_gate":$ACK_GATE,"max_duration_s":$MAX_DURATION_S},
+ "t_start_utc":"$(date -u +%FT%TZ)"}
 EOF
 
-echo "== run_id=$RUN_ID enable=$ENABLE interval=${INTERVAL_MS}ms kill=${MAX_DURATION_S}s"
-echo "== odu+UE must restart together (UE-only restart desyncs the ZMQ stream)"
-echo "== extra UE args: $RSS_ARGS"
-echo
-echo "Pass these to the UE launched by $CTL (see tool/README.md: UE_EXTRA_ARGS)."
-echo "Hard kill switch beyond the in-process one:"
-echo "  timeout $((MAX_DURATION_S + 15)) <ue command> $RSS_ARGS"
-echo
-echo "JSONL ground truth: $JSONL"
+echo "== run_id=$RUN_ID  enable=$ENABLE  interval=${INTERVAL_MS}ms  kill=${MAX_DURATION_S}s"
+
+# 1. odu must be restarted together with the UE (ZMQ sample stream sync)
+echo "== restarting odu"
+"$BOX_CTL" stop >/dev/null 2>&1 || true
+"$BOX_CTL" start | sed -n '1,6p'
+
+# 2. UE. Hard outer kill switch on top of the in-process --rss.max_duration_s.
+echo "== launching UE (log: $UE_LOG)"
+timeout --signal=INT --kill-after=10 "$((MAX_DURATION_S + 20))" \
+  "$UE_BIN" -O "$UE_CFG" --band 78 -C 3489420000 --numerology 1 -r 51 -E --ue-scan-carrier \
+  --uecap_file "$UECAP" --device.name oai_zmqdevif \
+  '--zmq.[0].tx_channels' tcp://127.0.0.1:4557 '--zmq.[0].rx_channels' tcp://127.0.0.1:4556 \
+  --rss.enable "$ENABLE" --rss.interval_ms "$INTERVAL_MS" --rss.max_duration_s "$MAX_DURATION_S" \
+  --rss.completion_pct "$COMPLETION_PCT" --rss.honor_reject "$HONOR_REJECT" \
+  --rss.ack_gate "$ACK_GATE" --rss.run_id "$RUN_ID" --rss.log_file "$JSONL" \
+  >"$UE_LOG" 2>&1 </dev/null || echo "   (UE exited: rc=$? — expected when the kill switch fires)"
+
+pkill -9 -x nr-uesoftmodem 2>/dev/null || true
+echo "\"t_stop_utc\":\"$(date -u +%FT%TZ)\"" >> "$OUT/run.json.tail"
+
+# 3. quick self-check
+echo "== self-check"
+if [[ $ENABLE == 1 ]]; then
+  grep -m1 '\[RSS\]' "$UE_LOG" || echo "   !! no [RSS] banner: the knobs were NOT parsed, run is invalid"
+fi
+printf '   attempts   %s\n' "$(grep -c '"event":"attempt_start"' "$JSONL" 2>/dev/null || echo 0)"
+printf '   msg5_skip  %s\n' "$(grep -c 'msg5_skip' "$JSONL" 2>/dev/null || echo 0)"
+printf '   ack_wait   %s\n' "$(grep -c 'ack_pending_postpone' "$JSONL" 2>/dev/null || echo 0)"
+echo "== artifacts in $OUT"
+echo "   next: on the CU box  SINCE=<HH:MM:SS> JSONL=$JSONL bash collect.sh"

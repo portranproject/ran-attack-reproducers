@@ -409,3 +409,63 @@ DU 기동 CONFIG 로그(원문 [tool/runs/du_capacity.txt](tool/runs/du_capacity
 2. UE측 천장 3.8/s의 분해(RA 주기 vs 27 ms 틱 해상도). MAC 레벨에서 재시작을 걸면 틱 제약이 사라질 가능성 🔍.
 3. `ack_pending_postpone` 0건 유지 — 틱이 27 ms라 ACK PUCCH가 항상 먼저 나간다. 틱 제약이 풀리면 이 게이트가 실제로 필요해진다.
 4. 정상 UE를 동시에 붙여 피해를 **직접** 재는 것은 ZMQ 1:1 제약 때문에 여전히 브로커 대기다.
+
+
+---
+
+## 10. KAUST 논문의 실제 조건 — 우리 결과와의 비교 ✅
+
+출처: [sources/2608.16441](sources/) 원문 §VI-A. 2026-10-20 `pdftotext`로 원문 대조.
+
+### 10.1 논문이 밝힌 조건 (직접 인용)
+
+> "In our experiments, the maximum number of supported UEs was configured in OAI. ... In our testbed, the highest value that could be used reliably was **90 UEs**. **The waiting time for incomplete connections was configured to 5 seconds.**"
+
+> "We first evaluated the attack using the **default OAI limit of 16 UEs**. After starting the malicious OAI UE, the number of half-open RRC connections increased quickly until the gNB reached its maximum capacity after approximately **0.65 seconds**. At that point, the gNB logs showed that no more UE contexts could be allocated, and **new connection attempts were rejected using RRCReject messages**."
+
+> "We repeated the same experiment with the gNB configured to support **90 UEs** ... reached its maximum configured capacity after approximately **3.61 seconds**."
+
+> "the attacker generates incomplete connection attempts at an average rate of approximately **25 requests per second** ... with a waiting time of 5 seconds, the attacker would occupy around **125 contexts**"
+
+> "During the attack, however, **the phone failed to connect** even after multiple attempts ... This confirms that the attack creates a denial of service (DoS) on commercial phones."
+
+**핵심: 논문도 보유 시간(5 s)과 UE 용량(16 / 90)을 설정해서 실험했다.** 5초는 OAI 기본값이 아니라 **설정값**이다. 즉 "단일 UE로 아무 설정도 바꾸지 않고 마비시켰다"는 주장은 논문에 없다.
+
+### 10.2 작업점(working point) 비교 — 왜 우리는 기본 설정에서 안 됐는가
+
+고갈 조건은 `R × T_hold ≥ N_cap`이다(§9.3). 필요 요청률 `R_req = N_cap / T_hold`로 환산하면:
+
+| 환경 | N_cap | T_hold | **필요 R** | 달성 R | 결과 |
+|---|---|---|---|---|---|
+| KAUST, OAI 기본 용량 | **16** | 5 s (설정) | **3.2/s** | 25/s | 0.65 s에 포화 ✅ |
+| KAUST, 용량 90 설정 | 90 | 5 s (설정) | 18/s | 25/s | 3.61 s에 포화 ✅ |
+| **우리 OCUDU 기본** | **96** | **2 s** | **48/s** | 3.8/s | 포화 안 됨 ❌ (§8·§9.2) |
+| **우리 포화 프로필** | 12 | 7 s | **1.7/s** | 3.8/s | 포화 ✅ (§9.5) |
+
+**결론 세 가지.**
+1. 우리 기본 설정이 KAUST 기본 조건보다 **15배 어렵다** (48/s vs 3.2/s). 용량이 6배 크고(96 vs 16) 보유 시간이 2.5배 짧다(2 s vs 5 s).
+2. 우리 포화 프로필(필요 1.7/s)은 KAUST의 기본 OAI 조건(필요 3.2/s)보다 오히려 **덜 공격적인 작업점**이다. 즉 프로필 실행은 "임의로 약화시킨 표적"이 아니라 **공개 논문이 성공을 보고한 조건과 같은 범위**다. 단 이 비교는 필요 요청률 기준이며, 프로필이 기본 설정이 아니라는 사실은 그대로 보고한다.
+3. 우리의 미달은 **공격 기법의 문제가 아니라 요청률(3.8/s)의 문제**다. KAUST의 25/s와 6.6배 차이다.
+
+### 10.3 "UE 컨텍스트 해제 타이머"는 표준이 아니다 ✅
+
+> "The prior work assumes that after sending Msg4, the gNB keeps the UE context for a waiting time while expecting Msg5. However, **the 3GPP specifications do not define a dedicated timer for this exact waiting period.** Therefore, in this paper, we treat this timer as an **implementation-dependent** behavior because, in practice, a gNB still needs some cleanup logic for incomplete connections."
+
+따라서 "상용 기지국의 표준 값"은 존재하지 않는다. 확인 가능한 것만 정리하면:
+
+| 값 | 성격 | 근거 |
+|---|---|---|
+| UE측 `T300` 100~2000 ms | **표준.** SIB1으로 방송, 허용값 8개 | 38.331 §6.3.2 / OCUDU CLI `--t300` enum ✅ |
+| gNB측 해제 대기 | **표준 없음.** 구현 의존 | KAUST §II 인용 위 ✅ |
+| OCUDU 26.10 = `t300` + `rrc_procedure_guard_time_ms` = 1000 + 1000 = **2000 ms** | 오픈소스 기본값(설치본 실측) | §5 ✅ |
+| KAUST 실험 = **5000 ms** | 설정값(기본값 아님) | §10.1 ✅ |
+| 상용 벤더 값 | **미공개 / 미확인** 🔍 | — |
+
+**방어 논리로 쓸 수 있는 하한**: 단말은 `T300` 만료 전까지 Msg5를 보낼 권리가 있으므로, 표준을 지키는 gNB는 **자신이 방송한 `T300`만큼은 컨텍스트를 유지해야 한다**. 즉 운영자가 커버리지 때문에 `T300`을 2000 ms로 방송하면 공격자의 보유 시간도 최소 2000 ms가 된다. 상용 환경의 실제 위험은 보유 시간보다 **용량(수백~수천 UE/셀)** 쪽이 지배적이므로, 상용 셀에서 이 공격은 단일 UE가 아니라 **다수 단말(봇넷) 규모**의 공격으로 봐야 한다 🔍(추론).
+
+### 10.4 이 비교가 다음 작업에 주는 것
+
+우리 요청률 3.8/s의 내역(§9 실측): 성공 주기 = RA 88.4 ms + 재시작 35.5 ms, 그런데 **시도의 52~65%가 Msg4 전에 죽는다**. 낭비를 제거하면 `1000/88.4 ≈ 11.3/s`가 단일 MAC의 구조적 천장이다(한 MAC = 동시 RA 1개, 38.321 §5.1.1).
+
+- 11.3/s를 달성하면 동시 점유는 2 s × 11.3 ≈ **22.6** → **KAUST 기본 조건(용량 16)은 설정 변경 없이 포화 가능**.
+- 우리 기본 설정(96) 포화에 필요한 공격 UE 수는 `96 / 22.6 ≈ 4.2` → **5대**(현재 3.8/s 기준으로는 13대). 즉 **요청률 개선이 브로커 규모를 1/3로 줄인다** → M1b 전에 M2b(요청률 천장 분해)를 먼저 하는 것이 맞다.

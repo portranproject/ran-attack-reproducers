@@ -27,7 +27,7 @@ def secs(ts):
     return int(h) * 3600 + int(m) * 60 + float(s)
 
 live, peak, peak_at = {}, 0, ""
-holds, ends, starts = [], Counter(), []
+holds, ends, starts, end_times = [], Counter(), [], []
 first = last = None
 with open(LOG, errors="replace") as fh:
     for line in fh:
@@ -48,6 +48,7 @@ with open(LOG, errors="replace") as fh:
                 peak, peak_at = len(live), hhmmss(ts)
         else:
             ends[e.group(3)] += 1
+            end_times.append(secs(ts))
             t0 = live.pop(ue, None)
             if t0 is not None:
                 holds.append(secs(ts) - t0)
@@ -72,6 +73,34 @@ if gaps:
     print(f"gap between attempts  p50 {q(.5)} ms  p90 {q(.9)} ms  p99 {q(.99)} ms  max {gaps[-1]} ms")
     big = [g for g in gaps if g >= 200]
     print(f"gaps >= 200 ms        {len(big)}  총 {sum(big) / 1000:.1f} s  (구간 길이의 {sum(big) / 10 / span:.0f}%)")
+# Sustained saturation, not just the peak: walk the start/end events in time
+# order and measure how long occupancy actually stayed at or above each level.
+# A peak of 96 for one instant is not denial; a plateau is.
+CAP = int(sys.argv[4]) if len(sys.argv) > 4 else 96
+events = sorted([(t, +1) for t in starts] + [(t, -1) for t in end_times])
+cur = 0
+prev = events[0][0] if events else 0
+time_at = {}
+run_at, best_run = {}, {}
+for t, d in events:
+    dt = t - prev
+    for lvl in (CAP // 2, CAP - 16, CAP - 6, CAP):
+        if cur >= lvl:
+            time_at[lvl] = time_at.get(lvl, 0.0) + dt
+            run_at[lvl] = run_at.get(lvl, 0.0) + dt
+        else:
+            best_run[lvl] = max(best_run.get(lvl, 0.0), run_at.get(lvl, 0.0))
+            run_at[lvl] = 0.0
+    cur += d
+    prev = t
+for lvl in (CAP // 2, CAP - 16, CAP - 6, CAP):
+    best_run[lvl] = max(best_run.get(lvl, 0.0), run_at.get(lvl, 0.0))
+print("sustained occupancy")
+for lvl in (CAP // 2, CAP - 16, CAP - 6, CAP):
+    ta = time_at.get(lvl, 0.0)
+    print(f"  >= {lvl:3}   {ta:6.1f} s of {span:.0f} s ({ta / span * 100 if span else 0:4.0f}%)"
+          f"   longest plateau {best_run.get(lvl, 0.0):5.2f} s")
+
 per_sec = Counter(int(t - starts[0]) for t in starts)
 if per_sec:
     hot = sorted(per_sec.values(), reverse=True)

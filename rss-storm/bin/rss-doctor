@@ -14,8 +14,12 @@ set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONF="${RSS_CONF:-$HERE/conf/rss.conf}"
-CONF_FOUND=0
-[[ -f "$CONF" ]] && { . "$CONF"; CONF_FOUND=1; }
+CONF_FOUND=0; CONF_BROKEN=0
+if [[ -f "$CONF" ]]; then
+  # shellcheck source=/dev/null
+  if . "$CONF"; then CONF_FOUND=1
+  else CONF_BROKEN=1; fi
+fi
 
 OAI=${OAI:-/root/OAI}
 BUILD="$OAI/cmake_targets/ran_build/build"
@@ -45,7 +49,8 @@ done
 command -v ninja >/dev/null 2>&1 || warn "ninja not found — the build falls back to make (slower)"
 
 echo "== config"
-if (( CONF_FOUND )); then ok "conf: $CONF"
+if (( CONF_BROKEN )); then bad "conf $CONF has a line that fails. Check quoting, e.g. GNB_RESTART_CMD='/path/script start'"
+elif (( CONF_FOUND )); then ok "conf: $CONF"
 else bad "no conf file. Run: cp conf/rss.conf.example conf/rss.conf && \$EDITOR conf/rss.conf"; fi
 [[ $ENABLE == 0 ]] && ok "ENABLE=0 (attack off by default — keep it this way)" \
                    || warn "ENABLE=$ENABLE in the conf file. An accidental run would attack. Prefer ENABLE=0 and -e 1 on the command line"
@@ -121,4 +126,4 @@ if (( blockers )); then
   exit 1
 fi
 echo "결과: 블로커 없음, 경고 $warnings건."
-echo "다음: bin/rss-run -e 0 -d 30   # 공격 끈 상태로 정상 접속 회귀부터"
+echo "다음: bin/rss-run -e 0 -u 1 -d 30   # 공격 끈 상태로 정상 접속 회귀부터"

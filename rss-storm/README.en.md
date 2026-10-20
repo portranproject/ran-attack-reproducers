@@ -326,8 +326,10 @@ bin/rss-run -e 1 -u 2 -o 48 -H 1900 -d 0  # hold occupancy at 48
 - To **hold** saturation you need the mode B profile and `-r 0` (see "Holding
   saturation").
 - For a repeatable detector load, pin the level with `-o`.
-- `-d` is the kill switch. With `-d N` two of them are armed: the in-process
-  timer and an outer `timeout` at `N+20` s.
+- `-d` is the kill switch. On `-e 1` two of them are armed: the in-process timer
+  and an outer `timeout` at `N+20` s. On an `-e 0` regression run the attack code
+  is off, so the in-process timer never fires and the outer `timeout` is what
+  stops it (measured: `-d 30` ended at 50 s).
 
 ### 7 — stop
 
@@ -337,6 +339,9 @@ pkill -INT -x nr-uesoftmodem
 
 With `-d 0` both kill switches are disarmed on purpose, so **you** are the kill
 switch.
+
+The exit code is reported as-is: `124` is the outer `timeout`, `130` is SIGINT,
+and **`139` is SIGSEGV, which makes the run invalid** — `rss-run` labels it.
 
 ### 8 — artifacts and self-check
 

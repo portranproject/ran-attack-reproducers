@@ -8,7 +8,13 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONF="${RSS_CONF:-$HERE/conf/rss.conf}"
-[[ -f "$CONF" ]] && . "$CONF"
+if [[ -f "$CONF" ]]; then
+  # A broken line in the conf file (bad quoting, a stray command) would
+  # otherwise abort the script with no message at all, because `set -e` sees
+  # the failed source. Say what happened instead.
+  # shellcheck source=/dev/null
+  . "$CONF" || { echo "cannot load $CONF — a line in it failed. Check quoting, e.g. GNB_RESTART_CMD='/path/script start'" >&2; exit 1; }
+fi
 
 OAI=${OAI:-/root/OAI}
 PATCH=${PATCH:-$HERE/patch/rss-ue.patch}

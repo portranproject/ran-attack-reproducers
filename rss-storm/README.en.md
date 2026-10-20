@@ -65,12 +65,13 @@ This is the environment the tool **assumes**. Every number in
 ### Topology
 
 ```
-   CU host                                DU host
+   CU host (c6i.xlarge)                   DU host (c6i.2xlarge)
  +-----------------------+   F1 / IP    +--------------------------+
  |  OCUDU CU             |<------------>|  OCUDU DU                |
- |  CU log /tmp/ocu.log  |              |  attacker UE (this pkg)  |
- |  bin/rss-report       |              |   ZMQ virtual radio      |
- |  analysis/*.py        |              |   tcp://127.0.0.1:4556-7 |
+ |  Open5GS core         |  (VPC, priv) |  attacker UE (this pkg)  |
+ |  FlexRIC              |              |   ZMQ virtual radio      |
+ |  CU log /tmp/ocu.log  |              |   tcp://127.0.0.1:4556-7 |
+ |  bin/rss-report       |              |                          |
  +-----------------------+              +--------------------------+
         verdict                                 attack run
 ```
@@ -88,10 +89,11 @@ This is the environment the tool **assumes**. Every number in
 
 | Component | Version / commit | Note |
 |---|---|---|
-| gNB | OCUDU 26.10 (srsRAN-derived) | **never modified.** Mode B changes configuration only |
+| gNB | OCUDU `release_26_10` (`e0db566a`, srsRAN-derived) | **never modified.** Mode B changes configuration only |
 | attacker UE | OAI `1c2f4d3c2e68181cdef9f426d161163147ad4b77` (tag `2026.w38`) | baseline commit of `patch/rss-ue.patch` |
 | radio driver | OAI `oai_zmqdevif` | the patch also changes `radio/zmq/` |
-| core | not required | A-type never reaches NGAP |
+| core | Open5GS (Docker) — **must be connected** | A-type attempts never reach NGAP, but with no AMF and no CU-UP connected, OCUDU rejects **every** `RRCSetupRequest` |
+| RIC | FlexRIC | part of the testbed, unrelated to this tool |
 | analysis | `python3`, standard library only | nothing to install |
 | OS | Linux | the scripts use `bash`, `taskset`, `nproc`, `pgrep`, `timeout` |
 
@@ -100,7 +102,7 @@ This is the environment the tool **assumes**. Every number in
 | Item | Value | conf key |
 |---|---|---|
 | band | n78 (TDD) | `BAND=78` |
-| DL centre frequency | 3489.42 MHz | `DL_FREQ=3489420000` |
+| DL centre frequency | 3489.42 MHz (`dl_arfcn` 632628) | `DL_FREQ=3489420000` |
 | SCS | 30 kHz (numerology 1) | `NUMEROLOGY=1` |
 | bandwidth | 51 PRB (20 MHz channel) | `PRB=51` |
 | ZMQ TX / RX | `tcp://127.0.0.1:4557` / `:4556` | `ZMQ_TX`, `ZMQ_RX` |
@@ -133,10 +135,20 @@ measure both in the log.
 
 ### Hosts
 
-| Role | CPU / memory | OS / kernel |
-|---|---|---|
-| CU host (OCUDU CU + verdict) | | |
-| DU + attacker UE host | | |
+Measurements were taken on two AWS EC2 instances. These values were read off the
+boxes themselves.
+
+| Role | Instance | vCPU | CPU | Memory | OS / kernel |
+|---|---|---:|---|---:|---|
+| CU (OCUDU CU + core + RIC + verdict) | `c6i.xlarge` | 4 | Intel Xeon Platinum 8375C @ 2.90 GHz (1 socket) | 7.6 GiB | Ubuntu 24.04.5 LTS / `7.0.0-1014-aws` |
+| DU + attacker UE | `c6i.2xlarge` | 8 | Intel Xeon Platinum 8375C @ 2.90 GHz (1 socket) | 15.3 GiB | Ubuntu 24.04.5 LTS / `7.0.0-1014-aws` |
+
+**The attempt-rate ceiling is not host performance.** On the 8 vCPU DU box, odu
+used about 1.7 cores and the attacker UE about 0.3, leaving **6 cores idle** —
+and the rate still stopped at 36–38/s. The cause is serialisation in the shared
+radio and the single DU MAC, argued in
+[docs/MECHANISM.ko.md](docs/MECHANISM.ko.md) §6.3–§6.4. The radio was ZMQ, not a
+real SDR, so no shielded enclosure or antenna was involved.
 
 ### Prerequisites
 
@@ -148,6 +160,9 @@ measure both in the log.
   likewise for reading the CU log.
 - A radio path between gNB and UE: ZMQ virtual radio (what this was developed
   and verified on) or a real SDR in a shielded enclosure (unverified).
+- **A core (AMF) and a CU-UP must be connected to the CU.** A-type attempts never
+  reach the core, but without those connections OCUDU's CU-CP rejects every
+  `RRCSetupRequest` and the experiment cannot start at all.
 
 ---
 

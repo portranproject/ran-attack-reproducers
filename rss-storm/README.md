@@ -59,12 +59,13 @@ Msg5가 도착하지 않으므로 gNB는 코어로 `InitialUEMessage`를 보내�
 ### 토폴로지
 
 ```
-   CU 호스트                              DU 호스트
+   CU 호스트 (c6i.xlarge)                 DU 호스트 (c6i.2xlarge)
  +----------------------+   F1 / IP    +--------------------------+
  |  OCUDU CU            |<------------>|  OCUDU DU                |
- |  CU 로그 /tmp/ocu.log|              |  공격 UE (이 패키지)      |
- |  bin/rss-report      |              |   ZMQ 가상 무선          |
- |  analysis/*.py       |              |   tcp://127.0.0.1:4556-7 |
+ |  Open5GS 코어        |   (VPC 사설) |  공격 UE (이 패키지)      |
+ |  FlexRIC             |              |   ZMQ 가상 무선          |
+ |  CU 로그 /tmp/ocu.log|              |   tcp://127.0.0.1:4556-7 |
+ |  bin/rss-report      |              |                          |
  +----------------------+              +--------------------------+
         판정                                    공격 실행
 ```
@@ -81,10 +82,11 @@ Msg5가 도착하지 않으므로 gNB는 코어로 `InitialUEMessage`를 보내�
 
 | 구성요소 | 버전 / 커밋 | 비고 |
 |---|---|---|
-| gNB | OCUDU 26.10 (srsRAN 파생) | **수정하지 않음.** 모드 B에서 설정만 변경 |
+| gNB | OCUDU `release_26_10` (`e0db566a`, srsRAN 파생) | **수정하지 않음.** 모드 B에서 설정만 변경 |
 | 공격 UE | OAI `1c2f4d3c2e68181cdef9f426d161163147ad4b77` (태그 `2026.w38`) | `patch/rss-ue.patch`의 기준 커밋 |
 | 무선 드라이버 | OAI `oai_zmqdevif` | 패치가 `radio/zmq/`를 함께 수정한다 |
-| 코어 | 불필요 | A형은 NGAP에 닿지 않는다 |
+| 코어 | Open5GS (Docker) — **연결 필수** | A형 시도는 NGAP에 닿지 않지만, AMF나 CU-UP가 하나도 연결돼 있지 않으면 OCUDU가 **모든** `RRCSetupRequest`를 거절한다 |
+| RIC | FlexRIC | 이 도구와 무관한 테스트베드 구성 요소 |
 | 분석 | `python3` 표준 라이브러리만 | 외부 패키지 설치 없음 |
 | OS | Linux | 스크립트가 `bash`, `taskset`, `nproc`, `pgrep`, `timeout`을 쓴다 |
 
@@ -93,7 +95,7 @@ Msg5가 도착하지 않으므로 gNB는 코어로 `InitialUEMessage`를 보내�
 | 항목 | 값 | conf 키 |
 |---|---|---|
 | 밴드 | n78 (TDD) | `BAND=78` |
-| 하향 중심 주파수 | 3489.42 MHz | `DL_FREQ=3489420000` |
+| 하향 중심 주파수 | 3489.42 MHz (`dl_arfcn` 632628) | `DL_FREQ=3489420000` |
 | SCS | 30 kHz (numerology 1) | `NUMEROLOGY=1` |
 | 대역폭 | 51 PRB (20 MHz 채널) | `PRB=51` |
 | ZMQ TX / RX | `tcp://127.0.0.1:4557` / `:4556` | `ZMQ_TX`, `ZMQ_RX` |
@@ -125,14 +127,18 @@ Msg5가 도착하지 않으므로 gNB는 코어로 `InitialUEMessage`를 보내�
 
 ### 호스트
 
-| 역할 | CPU / 메모리 | OS / 커널 |
-|---|---|---|
-| CU 호스트 (OCUDU CU + 판정) | | |
-| DU + 공격 UE 호스트 | | |
+측정은 AWS EC2 인스턴스 두 대에서 수행했다. 아래 값은 박스에서 직접 읽었다.
 
-<!-- TODO(human): 위 표를 채울 것. 저장소와 측정 기록 어디에도 남아 있지 않아
-     코드에서 확인할 수 없는 값이다. 재현하려는 사람에게는 "공유 ZMQ 무선이
-     36-38 시도/초에서 멈추는 것이 호스트 성능 때문인지"를 판단할 근거가 된다. -->
+| 역할 | 인스턴스 | vCPU | CPU | 메모리 | OS / 커널 |
+|---|---|---:|---|---:|---|
+| CU (OCUDU CU + 코어 + RIC + 판정) | `c6i.xlarge` | 4 | Intel Xeon Platinum 8375C @ 2.90 GHz (1 소켓) | 7.6 GiB | Ubuntu 24.04.5 LTS / `7.0.0-1014-aws` |
+| DU + 공격 UE | `c6i.2xlarge` | 8 | Intel Xeon Platinum 8375C @ 2.90 GHz (1 소켓) | 15.3 GiB | Ubuntu 24.04.5 LTS / `7.0.0-1014-aws` |
+
+**시도율 천장은 호스트 성능 때문이 아니다.** DU 박스 8 vCPU에서 측정했을 때 odu가
+약 1.7 코어, 공격 UE가 약 0.3 코어를 썼고 **6 코어가 유휴**였다. 그 상태에서도
+시도율은 36–38/s에서 멈췄다. 원인은 계산 능력이 아니라 공유 무선과 DU MAC의
+직렬화이며, 근거는 [docs/MECHANISM.ko.md](docs/MECHANISM.ko.md) §6.3–§6.4에 있다.
+RF는 실 SDR이 아닌 ZMQ 가상 무선이므로 차폐 박스나 안테나는 쓰지 않았다.
 
 ### 전제 조건
 
@@ -144,6 +150,9 @@ Msg5가 도착하지 않으므로 gNB는 코어로 `InitialUEMessage`를 보내�
   마찬가지다.
 - gNB와 UE 사이의 무선 경로: ZMQ 가상 무선(개발·검증에 쓴 경로) 또는 차폐 박스
   안의 실 SDR(미검증).
+- **CU에 코어(AMF)와 CU-UP가 연결돼 있어야 한다.** A형 시도가 코어에 닿지는
+  않지만, 연결이 없으면 OCUDU CU-CP가 모든 `RRCSetupRequest`를 거절해 실험 자체가
+  성립하지 않는다.
 
 ---
 

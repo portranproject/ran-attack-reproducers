@@ -18,3 +18,5 @@
 | [sources/](sources/) | 1차 자료: 논문 PDF 2건 + 5gattacks 공격 패치 |
 
 상태(2026-10-16): 조사·설계 단계. 구현 전. 팀 실습 환경(AWS EC2 분리 CU/DU + ZMQ, n78 TDD)에서 OAI UE의 정상 접속은 팀이 확인했다. **베이스 UE = OAI UE**([testbed-checklist.md](testbed-checklist.md) §3). **다음 = OAI UE 버전 확인 후 A형 요청 간격부터 이식.** 차폐 OTA 경로는 미검증이다. A형은 탐지 검증을 먼저 수행하고, 폐루프는 실제 대응 수단과 정상 UE 영향 확인 후 평가한다.
+
+- [testbed-limitations.md](testbed-limitations.md) — 테스트베드 환경의 한계(팀 공유용): 시간 왜곡·ZMQ 1:1·용량/타이머 비교·운영 함정

@@ -1,8 +1,8 @@
 diff --git a/executables/nr-ue-ru.c b/executables/nr-ue-ru.c
-index 95346ae..28b2c64 100644
+index 95346ae..925f7ed 100644
 --- a/executables/nr-ue-ru.c
 +++ b/executables/nr-ue-ru.c
-@@ -91,6 +91,253 @@ static nrUE_RU_params_t *nrue_rus;
+@@ -91,6 +91,335 @@ static nrUE_RU_params_t *nrue_rus;
  openair0_config_t openair0_cfg_g[MAX_CARDS] = {};
  static openair0_device_t openair0_dev[MAX_CARDS] = {};
  
@@ -53,6 +53,24 @@ index 95346ae..28b2c64 100644
 +  int32_t *wr_acc[RSS_SHARE_MAX_ANT];
 +  c16_t *wr_out[RSS_SHARE_MAX_ANT];
 +  int wr_cap;
++  /* The device keeps one sample_count_ for the shared stream and discards any
++     write whose timestamp it has already passed. Per-UE read cursors let the
++     UEs drift, so a lagging UE submits a timestamp from the past and its
++     samples are dropped. These keep the emitted stream monotonic. */
++  openair0_timestamp_t wr_dev_ts;
++  bool wr_dev_ts_set;
++  uint64_t wr_flushes;
++  uint64_t wr_clamped;
++  openair0_timestamp_t wr_spread_max;
++  /* Observation only, always counted: does the shared stream ever submit a
++     batch timestamp older than the previous one? That is what
++     zmq_tx_channel::align() drops, so comparing wr_back against the
++     "Error, channel timeout" count tells us whether out-of-order batches are
++     the cause or whether the drops come from somewhere else. */
++  openair0_timestamp_t wr_prev_ts;
++  bool wr_prev_ts_set;
++  uint64_t wr_back;
++  openair0_timestamp_t wr_back_max;
 +} rss_ru_share_t;
 +
 +static rss_ru_share_t rss_share = {.mtx = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER};
@@ -173,6 +191,27 @@ index 95346ae..28b2c64 100644
 +  return nsamps;
 +}
 +
++/* Clamp a late shared-uplink batch forward instead of letting the device drop
++ * it. DEFAULT OFF: box-measured 2026-10-20, 4 UE, 60 s.
++ *
++ *   off: 2387 attempts, 21178 "Error, channel timeout", 140000 flushes
++ *   on :   32 attempts,     0 "Error, channel timeout", 180000 flushes,
++ *          179997 clamped (100%), worst lag 1403212303 samples
++ *
++ * The clamp advances its own counter by nsamps per flush, which assumes one
++ * flush per slot. There are more (140k-180k flushes in 60 s against ~120k
++ * slots), so the counter ran away from the real stream and every write landed
++ * in the far future. Kept as a documented negative result, not a fix. */
++static bool rss_share_wr_monotonic(void)
++{
++  static int cached = -1;
++  if (cached < 0) {
++    const char *env = getenv("RSS_SHARE_WR_MONOTONIC");
++    cached = env ? (atoi(env) != 0) : 0;
++  }
++  return cached != 0;
++}
++
 +/* Push the open uplink batch to the radio. Caller holds the mutex. */
 +static void rss_flush_locked(PHY_VARS_NR_UE *UE)
 +{
@@ -193,7 +232,50 @@ index 95346ae..28b2c64 100644
 +  void *tgt[RSS_SHARE_MAX_ANT];
 +  for (int a = 0; a < s->wr_nant; a++)
 +    tgt[a] = s->wr_out[a];
-+  dev->trx_write_func(dev, s->wr_ts + dev->firstTS, tgt, s->wr_nsamps, s->wr_nant, s->wr_flags);
++
++  /* Keep the emitted timestamps monotonic.
++   *
++   * zmq_tx_channel::align() returns "timestamp passed" from its very first
++   * branch (sample_count_ > timestamp), before its timeout argument is ever
++   * used, and zmq_tx_stream::transmit() then logs "Error, channel timeout" and
++   * returns without sending. So the upstream TRANSMIT_TS_ALIGN_TIMEOUT is not
++   * the knob for this: a backwards timestamp is dropped no matter how long the
++   * timeout is. Box-measured drops before this change, 60 s runs:
++   * 0 / 5,136 / 14,718 / 39,765 at 1 / 2 / 3 / 4 UE.
++   *
++   * Clamping a late batch forward puts those samples in the current slot
++   * instead of discarding them. RSS_SHARE_WR_MONOTONIC=0 restores the old
++   * behaviour for comparison in the same binary. */
++  if (s->wr_prev_ts_set && s->wr_ts < s->wr_prev_ts) {
++    s->wr_back++;
++    if (s->wr_prev_ts - s->wr_ts > s->wr_back_max)
++      s->wr_back_max = s->wr_prev_ts - s->wr_ts;
++  }
++  s->wr_prev_ts = s->wr_ts;
++  s->wr_prev_ts_set = true;
++
++  openair0_timestamp_t ts = s->wr_ts;
++  if (rss_share_wr_monotonic()) {
++    if (s->wr_dev_ts_set && ts < s->wr_dev_ts) {
++      if (s->wr_dev_ts - ts > s->wr_spread_max)
++        s->wr_spread_max = s->wr_dev_ts - ts;
++      ts = s->wr_dev_ts;
++      s->wr_clamped++;
++    }
++    s->wr_dev_ts_set = true;
++    s->wr_dev_ts = ts + s->wr_nsamps;
++  }
++  dev->trx_write_func(dev, ts + dev->firstTS, tgt, s->wr_nsamps, s->wr_nant, s->wr_flags);
++  if ((++s->wr_flushes % 20000) == 0)
++    LOG_I(HW,
++          "[RSS] shared TX: %lu flushes, %lu out of order (%.2f%%, worst %ld samples back), "
++          "%lu clamped, %d UE\n",
++          (unsigned long)s->wr_flushes,
++          (unsigned long)s->wr_back,
++          100.0 * (double)s->wr_back / (double)s->wr_flushes,
++          (long)s->wr_back_max,
++          (unsigned long)s->wr_clamped,
++          s->n_ue);
 +  s->wr_joined = 0;
 +  s->wr_round++;
 +  pthread_cond_broadcast(&s->cv);
@@ -256,7 +338,7 @@ index 95346ae..28b2c64 100644
  int nrue_get_cell_count(void)
  {
    return nrue_cell_count;
-@@ -368,6 +615,15 @@ void nrue_ru_end(void)
+@@ -368,6 +697,15 @@ void nrue_ru_end(void)
  
  void nrue_ru_set_freq(PHY_VARS_NR_UE *UE, uint64_t ul_carrier, uint64_t dl_carrier, int freq_offset)
  {
@@ -272,7 +354,7 @@ index 95346ae..28b2c64 100644
    int current_cell_id = nrue_rus[UE->rf_map.card].used_by_cell;
    NR_DL_FRAME_PARMS *fp0 = &nrue_cell_fp[current_cell_id];
    uint64_t dl_carrier_distance =
-@@ -430,6 +686,8 @@ int nrue_ru_adjust_rx_gain(PHY_VARS_NR_UE *UE, int gain_change)
+@@ -430,6 +768,8 @@ int nrue_ru_adjust_rx_gain(PHY_VARS_NR_UE *UE, int gain_change)
  
  int nrue_ru_read(PHY_VARS_NR_UE *UE, openair0_timestamp_t *ptimestamp, void **buff, int nsamps, int num_antennas)
  {
@@ -281,7 +363,7 @@ index 95346ae..28b2c64 100644
    openair0_device_t *dev = &openair0_dev[UE->rf_map.card];
    openair0_timestamp_t tmp_timestamp;
    int ret = dev->trx_read_func(dev, &tmp_timestamp, buff, nsamps, num_antennas);
-@@ -470,6 +728,8 @@ int nrue_ru_read(PHY_VARS_NR_UE *UE, openair0_timestamp_t *ptimestamp, void **bu
+@@ -470,6 +810,8 @@ int nrue_ru_read(PHY_VARS_NR_UE *UE, openair0_timestamp_t *ptimestamp, void **bu
  
  int nrue_ru_write(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **buff, int nsamps, int num_antennas, int flags)
  {
@@ -290,7 +372,7 @@ index 95346ae..28b2c64 100644
    openair0_device_t *dev = &openair0_dev[UE->rf_map.card];
    int ret = dev->trx_write_func(dev, timestamp + dev->firstTS, buff, nsamps, num_antennas, flags);
  
-@@ -500,6 +760,10 @@ int nrue_ru_write(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **buf
+@@ -500,6 +842,10 @@ int nrue_ru_write(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **buf
  
  int nrue_ru_write_reorder(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **txp, int nsamps, int nbAnt, int flags)
  {

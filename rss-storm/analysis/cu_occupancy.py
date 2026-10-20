@@ -28,6 +28,11 @@ def secs(ts):
 
 live, peak, peak_at = {}, 0, ""
 holds, ends, starts, end_times = [], Counter(), [], []
+# One source of truth for occupancy: sample len(live) after every change.
+# Two separate counters disagreed, because an end whose start was before the
+# window still pushed a -1 into the timeline. The result was a reported peak of
+# 12 next to "0.0 s above 9", which is impossible.
+series = []
 first = last = None
 with open(LOG, errors="replace") as fh:
     for line in fh:
@@ -46,12 +51,15 @@ with open(LOG, errors="replace") as fh:
             last = secs(ts)
             if len(live) > peak:
                 peak, peak_at = len(live), hhmmss(ts)
+            series.append((secs(ts), len(live)))
         else:
             ends[e.group(3)] += 1
             end_times.append(secs(ts))
+            last = secs(ts)
             t0 = live.pop(ue, None)
             if t0 is not None:
                 holds.append(secs(ts) - t0)
+                series.append((secs(ts), len(live)))
 
 span = (last - first) if (first and last and last > first) else 0
 holds.sort()
@@ -80,25 +88,24 @@ CAP = int(sys.argv[4]) if len(sys.argv) > 4 else 96
 # Levels scale with capacity: a fixed "CAP-16" is meaningless when the cell is
 # configured for 12. Duplicates and non-positive levels are dropped.
 LEVELS = sorted({max(1, CAP // 4), max(1, CAP // 2), max(1, (CAP * 3) // 4), CAP})
-events = sorted([(t, +1) for t in starts] + [(t, -1) for t in end_times])
-# The window is the whole event timeline, not just the first-to-last start:
+# Starts must be applied before ends at the same timestamp. Plain tuple sort
+# puts (t, -1) first, and under load an end and the next start share the same
+# millisecond often enough that the running count collapsed to zero and every
+# plateau was reported as 0.0 s while the peak said 12.
+# The window is the whole observed timeline, not just the first-to-last start:
 # ends outlive the last start, so using the start span reports >100%.
-wall_span = (events[-1][0] - events[0][0]) if len(events) > 1 else 0
-cur = 0
-prev = events[0][0] if events else 0
+wall_span = (series[-1][0] - series[0][0]) if len(series) > 1 else 0
 time_at = {}
 run_at, best_run = {}, {}
-for t, d in events:
-    dt = t - prev
+for (t_prev, occ), (t_next, _) in zip(series, series[1:]):
+    dt = t_next - t_prev
     for lvl in LEVELS:
-        if cur >= lvl:
+        if occ >= lvl:
             time_at[lvl] = time_at.get(lvl, 0.0) + dt
             run_at[lvl] = run_at.get(lvl, 0.0) + dt
         else:
             best_run[lvl] = max(best_run.get(lvl, 0.0), run_at.get(lvl, 0.0))
             run_at[lvl] = 0.0
-    cur += d
-    prev = t
 for lvl in LEVELS:
     best_run[lvl] = max(best_run.get(lvl, 0.0), run_at.get(lvl, 0.0))
 print(f"sustained occupancy (capacity {CAP}, window {wall_span:.0f} s)")

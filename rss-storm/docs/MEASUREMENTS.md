@@ -93,16 +93,22 @@ Reducing the cell's capacity by **configuration only** (no gNB source change,
 see `bin/rss-gnb-profile`) moves the requirement into reach: capacity 12 with a
 measured hold of about 1.5 s needs about 8 attempts/s.
 
-Two UE, capacity 12, 102 s window:
+Two UE, capacity 12. The `HONOR_REJECT=0` column is a 200 s window out of a
+420 s run (`ZWfinal-064626Z`); the `=1` column is a 102 s window
+(`ZWsat-063645Z`):
 
 | | `HONOR_REJECT=1` | `HONOR_REJECT=0` |
 |---|---:|---:|
-| attempts/s | 5.6 | 6.9 |
-| `RRCReject` | 388 | **6,396 (63/s)** |
-| occupancy >= 6 | — | **99% of run, 94.68 s plateau** |
-| occupancy >= 9 | — | 92% of run, 17.14 s plateau |
-| `rrcSetupComplete` | 0 | 0 |
-| NGAP `InitialUEMessage` | 0 | 0 |
+| attempts/s | 5.6 | 6.5 |
+| peak occupancy | 12 / 12 | 12 / 12 |
+| hold median | 1457 ms | 1610 ms |
+| `RRCReject` | 388 | **7,551 (61.3/s)** |
+| `DU is not able to serve` | 130 | **2,517 (20.4/s)** |
+| occupancy >= 6 | — | **100%, 199.8 s continuous** |
+| occupancy >= 9 | — | 94%, 15.2 s continuous |
+| occupancy >= 12 | — | 33%, 0.87 s continuous |
+| `rrcSetupComplete` | 0 | **0** |
+| NGAP `InitialUEMessage` | 0 | **0** |
 
 `HONOR_REJECT=1` backs off on every rejection, so the attacker spends 95% of
 the run idle. **`HONOR_REJECT=0` is what holds saturation.**
@@ -113,10 +119,17 @@ that answers "is denial held" is therefore the rejection stream, which
 `analysis/cu_count.py` reports:
 
 ```
-gap between rejections   p50 0 ms   p99 177 ms   max 503 ms
+denial continuity (rrcReject, window 123.2 s)
+  ramp-up to first rejection   0.02 s
+  denial held for              123.17 s
+  gap between rejections       p50 0 ms  p99 177 ms  max 454 ms
+  longest lapse once held      0.45 s
 ```
 
-No half-second of the run passed without the gNB refusing a UE.
+No half-second of the run passed without the gNB refusing a UE. The required
+arrival rate for this configuration is 12 / 1.61 s = 7.5/s and the tool
+sustained 6.5/s, which is why the cell sits just under the cap and refuses
+continuously instead of oscillating between empty and full.
 
 ---
 
@@ -159,6 +172,12 @@ Recorded so they are not reintroduced.
   out as 591 against a capacity of 96 — an impossible number that exposed it.
 - Counting the interval before the first rejection as a lapse in denial made a
   healthy run look discontinuous.
+- Occupancy was tracked twice: once as a set of live UE ids (for the peak) and
+  once as a +1/-1 event timeline (for the plateaus). They disagreed, because an
+  end whose start fell before the window still pushed a -1 into the timeline,
+  and because a plain tuple sort applies an end before a start at the same
+  timestamp. The report said "peak 12" next to "0.0 s above 9". Occupancy now
+  comes from one source: `len(live)` is sampled after every change.
 - A run id whose second character is `O` kills the UE at startup: OAI's `-O`
   scan tests `argv[i][1] == 'O'` without checking for a leading `-`.
   `bin/rss-run` rejects such ids.

@@ -156,17 +156,34 @@ bin/rss-gnb-profile --role du restore
 bin/rss-gnb-profile --role cu restore
 ```
 
-Capacity 12 with a measured hold of about 1.5 s needs only about 8 attempts/s,
-against the 33/s the tool delivers — a 4x margin, which is why it holds.
-Measured over a 102 s window:
+Capacity 12 with a measured hold of about 1.6 s needs only about 7.5 attempts/s,
+which the tool reaches comfortably. Measured over a **200 s window** of a 420 s
+run (2 UE, `-r 0`, `-H 1500`):
 
 | | `-r 1` (default) | `-r 0` |
 |---|---:|---:|
-| `RRCReject` | 388 | **6,396 (63/s)** |
-| occupancy >= 6 / 12 | — | **99% of run, 94.68 s plateau** |
-| occupancy >= 9 / 12 | — | 92% of run, 17.14 s plateau |
-| longest lapse with no rejection | — | **0.50 s** |
-| `rrcSetupComplete` / NGAP | 0 / 0 | 0 / 0 |
+| attempts/s | 5.6 | 6.5 |
+| peak occupancy | 12 / 12 | 12 / 12 |
+| `RRCReject` | 388 | **7,551 (61.3/s)** |
+| `DU is not able to serve the UE` | 130 | **2,517 (20.4/s)** |
+| occupancy >= 6 / 12 | — | **100% of the window, 199.8 s continuous** |
+| occupancy >= 9 / 12 | — | 94% of the window, 15.2 s continuous |
+| occupancy >= 12 / 12 | — | 33%, 0.87 s continuous |
+| longest lapse with no rejection | — | **0.45 s** |
+| `rrcSetupComplete` / NGAP | 0 / 0 | **0 / 0** |
+
+Read the two kinds of row separately:
+
+- **Occupancy at or above half capacity was held for the entire window**, in one
+  199.8 s unbroken stretch. Nothing in the run was trending toward release, so
+  the duration is bounded by how long you let it run, not by the tool.
+- **Occupancy exactly at 12 is only 33%** — and that is expected. At capacity the
+  gNB refuses the next UE instantly, so the count sits just under the cap and
+  bounces. What stays true the whole time is the refusal.
+- **Denial was continuous**: 0.02 s ramp-up to the first rejection, then
+  123 s+ with no lapse longer than 0.45 s.
+- **The scenario stayed clean**: no `rrcSetupComplete`, no `InitialUEMessage`,
+  so nothing completed and the core was never reached.
 
 **`-r 0` (`HONOR_REJECT=0`) is what holds it.** With `-r 1` the attacker obeys
 the `RRCReject` back-off and spends 95% of the run idle.

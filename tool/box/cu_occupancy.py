@@ -27,7 +27,7 @@ def secs(ts):
     return int(h) * 3600 + int(m) * 60 + float(s)
 
 live, peak, peak_at = {}, 0, ""
-holds, ends = [], Counter()
+holds, ends, starts = [], Counter(), []
 first = last = None
 with open(LOG, errors="replace") as fh:
     for line in fh:
@@ -41,6 +41,7 @@ with open(LOG, errors="replace") as fh:
         ue = (m or e).group(2)
         if m:
             live[ue] = secs(ts)
+            starts.append(secs(ts))
             first = first or secs(ts)
             last = secs(ts)
             if len(live) > peak:
@@ -60,3 +61,18 @@ print(f"still live     {len(live)}")
 print(f"end reasons    {dict(ends)}")
 if holds:
     print(f"hold time wall median {holds[len(holds)//2]*1000:.0f} ms  p90 {holds[int(len(holds)*0.9)]*1000:.0f} ms")
+
+# Where the dead time is: the average rate can be far below the burst rate that
+# the occupancy peak implies, so print the gap distribution and a per-second
+# rate profile instead of guessing.
+gaps = sorted(round((b - a) * 1000) for a, b in zip(starts, starts[1:]))
+if gaps:
+    def q(p):
+        return gaps[min(int(len(gaps) * p), len(gaps) - 1)]
+    print(f"gap between attempts  p50 {q(.5)} ms  p90 {q(.9)} ms  p99 {q(.99)} ms  max {gaps[-1]} ms")
+    big = [g for g in gaps if g >= 200]
+    print(f"gaps >= 200 ms        {len(big)}  총 {sum(big) / 1000:.1f} s  (구간 길이의 {sum(big) / 10 / span:.0f}%)")
+per_sec = Counter(int(t - starts[0]) for t in starts)
+if per_sec:
+    hot = sorted(per_sec.values(), reverse=True)
+    print(f"per-second rate       max {hot[0]}/s  p90 {hot[int(len(hot) * .1)]}/s  median {hot[len(hot) // 2]}/s")

@@ -21,6 +21,7 @@ ACK_GATE=1
 TARGET_OCC=0
 HOLD_MS=2000
 RA_GATE=1
+MSG4_WAIT=1       # 0 = abandon the attempt at Msg3 (variant, not A-type)
 NUM_UES=1          # in-process attacker UE instances sharing the one DU radio
 RUN_ID=""
 BOX_CTL=${BOX_CTL:-/root/workspace/ctl.sh}
@@ -36,10 +37,11 @@ UE_TASKSET=${UE_TASKSET:-}      # core list for the UE, e.g. "3-7"
 ODU_TASKSET=${ODU_TASKSET:-}    # core list for odu, e.g. "0-2"
 
 usage() { echo "usage: $0 [-e 0|1] [-i interval_ms] [-d max_duration_s] [-c completion_pct] [-r honor_reject] [-g ack_gate] [-o target_occupancy] [-H hold_ms] [-n run_id]"; exit 1; }
-while getopts "e:i:d:c:r:g:o:H:G:u:n:h" o; do case "$o" in
+while getopts "e:i:d:c:r:g:o:H:G:M:u:n:h" o; do case "$o" in
   e) ENABLE=$OPTARG;; i) INTERVAL_MS=$OPTARG;; d) MAX_DURATION_S=$OPTARG;;
   c) COMPLETION_PCT=$OPTARG;; r) HONOR_REJECT=$OPTARG;; g) ACK_GATE=$OPTARG;;
   o) TARGET_OCC=$OPTARG;; H) HOLD_MS=$OPTARG;; G) RA_GATE=$OPTARG;; u) NUM_UES=$OPTARG;;
+  M) MSG4_WAIT=$OPTARG;;
   n) RUN_ID=$OPTARG;; *) usage;; esac; done
 
 [[ $ENABLE == 0 || $ENABLE == 1 ]] || usage
@@ -76,7 +78,7 @@ cat > "$OUT/run.json" <<EOF
  "knobs":{"enable":$ENABLE,"interval_ms":$INTERVAL_MS,"completion_pct":$COMPLETION_PCT,
           "honor_reject":$HONOR_REJECT,"ack_gate":$ACK_GATE,"max_duration_s":$MAX_DURATION_S,
           "target_occupancy":$TARGET_OCC,"hold_ms":$HOLD_MS,"ra_gate":$RA_GATE,"num_ues":$NUM_UES,
-          "zmq_tx_wait_us":${RSS_ZMQ_TX_WAIT_US:-100}},
+          "zmq_tx_wait_us":${RSS_ZMQ_TX_WAIT_US:--2},"msg4_wait":$MSG4_WAIT},
  "t_start_utc":"$(date -u +%FT%TZ)"}
 EOF
 
@@ -114,6 +116,7 @@ timeout --signal=INT --kill-after=10 "$((MAX_DURATION_S + 20))" \
   --num-ues "$NUM_UES" \
   --rss.ack_gate "$ACK_GATE" --rss.ra_gate "$RA_GATE" \
   --rss.target_occupancy "$TARGET_OCC" --rss.hold_ms "$HOLD_MS" \
+  --rss.msg4_wait "$MSG4_WAIT" \
   --rss.run_id "$RUN_ID" --rss.log_file "$JSONL" "${EXTRA[@]}" \
   >"$UE_LOG" 2>&1 </dev/null || echo "   (UE exited: rc=$? — expected when the kill switch fires)"
 

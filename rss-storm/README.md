@@ -1,5 +1,7 @@
 # rss-storm — RRC signaling storm reproducer (A-type incomplete access)
 
+> 한국어: **[README.ko.md](README.ko.md)**
+
 A controlled reproducer for an **RRC signaling storm** against a 5G NR base
 station **you own**. It drives repeated initial-access attempts that are
 deliberately never completed, so the gNB accumulates incomplete UE contexts

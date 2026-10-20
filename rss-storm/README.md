@@ -188,6 +188,14 @@ Read the two kinds of row separately:
 **`-r 0` (`HONOR_REJECT=0`) is what holds it.** With `-r 1` the attacker obeys
 the `RRCReject` back-off and spends 95% of the run idle.
 
+> **Verified end-to-end on the testbed through this package.** A `-d 0` run of
+> `bin/rss-run -e 1 -u 2 -r 0 -H 1500` was left going for **36.5 min
+> continuous**: occupancy held **>= 6 / 12 for 98% of the run (one 426 s
+> unbroken plateau)** and the gNB refused service for the **entire 2191 s**
+> (longest lapse 2.53 s), with **0 `rrcSetupComplete` and 0 `InitialUEMessage`**.
+> The run length was bounded only by when it was stopped. Full numbers in
+> [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md) §8.
+
 At capacity the gNB refuses the next UE immediately, so occupancy oscillates
 just below the cap while service is denied the whole time. "Is denial held" is
 therefore answered by the rejection stream, which `bin/rss-report` prints as

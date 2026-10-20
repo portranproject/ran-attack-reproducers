@@ -181,3 +181,60 @@ Recorded so they are not reintroduced.
 - A run id whose second character is `O` kills the UE at startup: OAI's `-O`
   scan tests `argv[i][1] == 'O'` without checking for a leading `-`.
   `bin/rss-run` rejects such ids.
+
+---
+
+## 8. Live end-to-end verification (packaged tool)
+
+Run `ZWperm`, 2026-10-20. The **packaged** `rss-storm` deployed to the DU host
+and driven entirely through `bin/rss-run` — not the development scripts — then
+read back through the packaged `analysis/` on the CU host. Mode B profile
+applied (`nof_cell_sr_res 1`, `t300 2000`, capacity 12). Command:
+
+```
+bin/rss-run -e 1 -u 2 -r 0 -H 1500 -d 0 -n ZWperm
+```
+
+No time limit. The run was left going for **2191 s (36.5 min) continuous** and
+measured from the CU's own log over that whole window.
+
+`analysis/cu_occupancy.py` (capacity 12, window 2191 s):
+
+| level | share of window | longest continuous plateau |
+|---|---:|---:|
+| occupancy >= 3 | **100%** | **428.4 s** |
+| occupancy >= 6 | 98% | **426.1 s** |
+| occupancy >= 9 | 89% | 50.1 s |
+| occupancy >= 12 (full cap) | 36% | 1.8 s |
+
+peak occupancy 12/12; end reasons `cancelled` 12,339, `timed out` 1; hold
+median 1846 ms.
+
+`analysis/cu_count.py` (same window):
+
+| | count | rate |
+|---|---:|---:|
+| `rrcReject` | 85,797 | 38.7/s |
+| `DU is not able to serve` | 28,599 | 12.9/s |
+| `rrcSetupComplete` | **0** | — |
+| NGAP `InitialUEMessage` | **0** | — |
+
+denial continuity: ramp-up 25.2 s, then **denial held for the full 2191 s**,
+gap between rejections p50 0 ms / p99 256 ms, **longest lapse 2.53 s** (once).
+
+UE side (`attempts.jsonl`): 40,253 attempts, 13,420 `msg4_rx`, 27,597
+`rrc_reject`, sample loss 1.40 M.
+
+Read it the same way as §4:
+
+- **Half capacity or above was held for the entire run**, in one 426 s unbroken
+  stretch, and nothing trended toward release — the duration is set by how long
+  you let `-d 0` run, not by the tool. This is the longest continuous
+  demonstration on record and it was produced by the published package.
+- **Occupancy exactly at 12 is a 1.8 s sawtooth**, as expected: at the cap the
+  gNB refuses instantly, so the count sits just under it and bounces. The metric
+  that holds is the rejection stream — denied continuously for 36.5 min with a
+  single 2.53 s lapse.
+- **Clean A-type**: 0 `rrcSetupComplete`, 0 `InitialUEMessage`.
+- The one knob the development scripts never passed, `--rss.gate_timeout_ms`
+  (default 500), rode the whole 36.5 min run without issue.

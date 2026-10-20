@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+# rss-doctor — check every prerequisite before you run an experiment.
+#
+# Read-only: it never builds, never starts the gNB and never attacks. Run it on
+# the UE host; the gNB-log check only passes on the host that owns the CU log.
+#
+#   bin/rss-doctor
+#
+# Exit 0 = ready to run. Exit 1 = at least one blocker, listed with the fix.
+# No pipefail here on purpose: `strings big | grep -q x` makes grep exit at the
+# first match, strings dies with SIGPIPE, and pipefail would report that as a
+# failed check. These checks count matches instead, and read all input.
+set -u
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONF="${RSS_CONF:-$HERE/conf/rss.conf}"
+CONF_FOUND=0; CONF_BROKEN=0
+if [[ -f "$CONF" ]]; then
+  # shellcheck source=/dev/null
+  if . "$CONF"; then CONF_FOUND=1
+  else CONF_BROKEN=1; fi
+fi
+
+OAI=${OAI:-/root/OAI}
+BUILD="$OAI/cmake_targets/ran_build/build"
+UE_BIN=${UE_BIN:-$BUILD/nr-uesoftmodem}
+DEVLIB="$BUILD/liboai_zmqdevif.so"
+UE_CFG=${UE_CFG:-/root/oai_nrue.conf}
+UECAP=${UECAP:-$OAI/targets/PROJECTS/GENERIC-NR-5GC/CONF/uecap_ports1.xml}
+LOGDIR=${LOGDIR:-/root/rss-runs}
+DEVICE=${DEVICE:-oai_zmqdevif}
+ZMQ_TX=${ZMQ_TX:-tcp://127.0.0.1:4557}
+ZMQ_RX=${ZMQ_RX:-tcp://127.0.0.1:4556}
+GNB_RESTART_CMD=${GNB_RESTART_CMD:-}
+GNB_LOG=${GNB_LOG:-/tmp/ocu.log}
+ENABLE=${ENABLE:-0}
+EXPECT_COMMIT=${EXPECT_COMMIT:-1c2f4d3c2e68181cdef9f426d161163147ad4b77}
+
+blockers=0; warnings=0
+ok()   { printf '  \033[32m[ok]\033[0m   %s\n' "$*"; }
+warn() { printf '  \033[33m[warn]\033[0m %s\n' "$*"; warnings=$((warnings+1)); }
+bad()  { printf '  \033[31m[FAIL]\033[0m %s\n' "$*"; blockers=$((blockers+1)); }
+
+echo "== host"
+[[ $(uname -s) == Linux ]] && ok "Linux $(uname -r)" || bad "not Linux: $(uname -s). The scripts need Linux (taskset, timeout, pgrep)"
+for t in git cmake python3 timeout pgrep pkill strings; do
+  command -v "$t" >/dev/null 2>&1 && ok "$t: $(command -v "$t")" || bad "missing command: $t"
+done
+command -v ninja >/dev/null 2>&1 || warn "ninja not found — the build falls back to make (slower)"
+
+echo "== config"
+if (( CONF_BROKEN )); then bad "conf $CONF has a line that fails. Check quoting, e.g. GNB_RESTART_CMD='/path/script start'"
+elif (( CONF_FOUND )); then ok "conf: $CONF"
+else bad "no conf file. Run: cp conf/rss.conf.example conf/rss.conf && \$EDITOR conf/rss.conf"; fi
+[[ $ENABLE == 0 ]] && ok "ENABLE=0 (attack off by default — keep it this way)" \
+                   || warn "ENABLE=$ENABLE in the conf file. An accidental run would attack. Prefer ENABLE=0 and -e 1 on the command line"
+
+echo "== OAI tree"
+if [[ -d $OAI/.git ]]; then
+  ok "tree: $OAI"
+  HEAD=$(git -C "$OAI" rev-parse HEAD 2>/dev/null)
+  BRANCH=$(git -C "$OAI" branch --show-current 2>/dev/null)
+  if [[ $HEAD == "$EXPECT_COMMIT" ]]; then ok "HEAD is the patch baseline (2026.w38)"
+  elif git -C "$OAI" merge-base --is-ancestor "$EXPECT_COMMIT" HEAD 2>/dev/null; then
+    ok "on a branch built from the baseline${BRANCH:+ ($BRANCH)}"
+  else warn "HEAD $HEAD is not the baseline $EXPECT_COMMIT — the patch may not apply"; fi
+else
+  bad "no OAI tree at $OAI. Run: bin/rss-bootstrap"
+fi
+[[ -d $BUILD ]] && ok "build dir: $BUILD" || bad "no build dir. Run: bin/rss-bootstrap"
+
+echo "== attacker UE binary"
+if [[ -x $UE_BIN ]]; then
+  ok "binary: $UE_BIN"
+  miss=()
+  for n in target_occupancy msg4_wait RSS_SHARE_LOCKSTEP; do
+    c=$(strings "$UE_BIN" 2>/dev/null | grep -c "$n" || true)
+    (( c > 0 )) || miss+=("$n")
+  done
+  if ((${#miss[@]})); then bad "binary is missing knobs (${miss[*]}) — it is a stock UE. Run: bin/rss-build"
+  else ok "knobs present (target_occupancy, msg4_wait, RSS_SHARE_LOCKSTEP)"; fi
+else
+  bad "no UE binary at $UE_BIN. Run: bin/rss-bootstrap then bin/rss-build"
+fi
+if [[ -f $DEVLIB ]]; then
+  c=$(strings "$DEVLIB" 2>/dev/null | grep -c RSS_ZMQ_TX_WAIT_US || true)
+  if (( c > 0 )); then ok "ZMQ radio carries RSS_ZMQ_TX_WAIT_US"
+  else bad "$DEVLIB is the stock radio (no RSS_ZMQ_TX_WAIT_US). Attempt rate will be ~3x lower. Run: bin/rss-build"; fi
+else
+  [[ $DEVICE == oai_zmqdevif ]] && bad "no $DEVLIB. Run: bin/rss-bootstrap" || warn "no ZMQ radio library (DEVICE=$DEVICE, so maybe fine)"
+fi
+
+echo "== UE inputs"
+[[ -f $UE_CFG ]] && ok "UE config: $UE_CFG" || bad "missing UE config $UE_CFG (set UE_CFG in conf/rss.conf)"
+[[ -f $UECAP ]] && ok "UE capabilities: $UECAP" || warn "missing $UECAP (set UECAP in conf/rss.conf)"
+if mkdir -p "$LOGDIR" 2>/dev/null && [[ -w $LOGDIR ]]; then ok "artifact dir writable: $LOGDIR"
+else bad "cannot write $LOGDIR (are you root? set LOGDIR in conf/rss.conf)"; fi
+
+echo "== radio path"
+if [[ $DEVICE == oai_zmqdevif ]]; then
+  for ep in "$ZMQ_TX" "$ZMQ_RX"; do
+    hp=${ep#tcp://}; p=${hp##*:}
+    lc=$(ss -ltn 2>/dev/null | grep -c ":$p " || true)
+    if (( lc > 0 )); then ok "DU is listening on $ep"
+    else warn "nothing listening on $ep — the DU is down. That is normal if GNB_RESTART_CMD brings it up per run"; fi
+  done
+  if [[ -z $GNB_RESTART_CMD ]]; then
+    warn "GNB_RESTART_CMD is empty. On ZMQ the DU and the UE must start together, or the sample streams never align. Set it in conf/rss.conf"
+  elif [[ $GNB_RESTART_CMD == *"|"* ]]; then
+    bad "GNB_RESTART_CMD contains a pipe. A pipeline can block forever here (the write end stays open). Use a single command or a script"
+  else
+    ok "gNB restart hook: $GNB_RESTART_CMD"
+  fi
+else
+  ok "DEVICE=$DEVICE (not ZMQ) — no restart hook needed"
+fi
+
+echo "== verdict side (CU host only)"
+if [[ -r $GNB_LOG ]]; then ok "gNB log readable here: $GNB_LOG ($(wc -l <"$GNB_LOG" 2>/dev/null) lines)"
+else warn "cannot read $GNB_LOG here. Run bin/rss-report on the host that owns the CU log (or pass --log)"; fi
+python3 -c 'import json,sys; sys.exit(0)' 2>/dev/null && ok "python3 can run the analysis scripts" || bad "python3 cannot run"
+
+echo
+if (( blockers )); then
+  echo "결과: 블로커 $blockers건, 경고 $warnings건 — 위의 [FAIL] 항목을 먼저 해결한다."
+  exit 1
+fi
+echo "결과: 블로커 없음, 경고 $warnings건."
+echo "다음: bin/rss-run -e 0 -u 1 -d 30   # 공격 끈 상태로 정상 접속 회귀부터"

@@ -1,0 +1,1317 @@
+diff --git a/executables/nr-ue-ru.c b/executables/nr-ue-ru.c
+index 95346ae..f59f61f 100644
+--- a/executables/nr-ue-ru.c
++++ b/executables/nr-ue-ru.c
+@@ -91,6 +91,431 @@ static nrUE_RU_params_t *nrue_rus;
+ openair0_config_t openair0_cfg_g[MAX_CARDS] = {};
+ static openair0_device_t openair0_dev[MAX_CARDS] = {};
+ 
++/* ---------------------------------------------------------------------------
++ * RU sharing between UE instances (RRC signaling storm reproducer, UE only).
++ *
++ * Upstream refuses this in nr-uesoftmodem.c: "cells map 1:1 to RUs and RU
++ * sharing is not implemented". The testbed DU exposes exactly one ZMQ port
++ * pair, so putting several attacker UEs on the same cell needs that rule
++ * relaxed.
++ *
++ * An external ZMQ broker was rejected: it would copy 23.04 MS/s * 8 B per
++ * direction a second time on a path that already runs about 6x slower than
++ * real time (see docs/MEASUREMENTS.md). Sharing inside the process keeps
++ * the number of ZMQ round trips per slot unchanged: one UE fetches each slot
++ * and the others receive a copy, and the uplink of all UEs is summed into a
++ * single device write. The gNB is never modified.
++ * -------------------------------------------------------------------------*/
++#define RSS_SHARE_MAX_ANT 4
++#define RSS_SHARE_WAIT_MS 100
++
++typedef struct {
++  bool active;
++  int n_ue;
++  pthread_mutex_t mtx;
++  pthread_cond_t cv;
++  /* downlink: one reader fills a ring, every UE has its own cursor.
++     A round-based copy was wrong: UEs do not always ask for the same chunk
++     size (syncInFrame() asks for its own unit), and handing back another UE's
++     sample count tripped "unitTransfer == res" in nr-ue.c:714 on the box
++     2026-10-20. Per-UE cursors give each UE exactly what it asked for, in
++     stream order. */
++  bool rd_fetching;
++  uint64_t rd_prod;                       /* absolute samples produced */
++  uint64_t rd_cons[MAX_NUM_NR_UE_INST];   /* absolute samples consumed per UE */
++  bool rd_joined[MAX_NUM_NR_UE_INST];     /* UE has taken part at least once */
++  openair0_timestamp_t rd_ts0;            /* device ts of absolute sample 0 */
++  bool rd_ts0_set;
++  c16_t *rd_ring[RSS_SHARE_MAX_ANT];
++  uint64_t rd_ring_sz;                    /* power of two */
++  /* uplink: accumulate every UE, then one device write */
++  uint64_t wr_round;
++  int wr_joined;
++  openair0_timestamp_t wr_ts;
++  int wr_nsamps;
++  int wr_nant;
++  int wr_flags;
++  int32_t *wr_acc[RSS_SHARE_MAX_ANT];
++  c16_t *wr_out[RSS_SHARE_MAX_ANT];
++  int wr_cap;
++  /* The device keeps one sample_count_ for the shared stream and discards any
++     write whose timestamp it has already passed. Per-UE read cursors let the
++     UEs drift, so a lagging UE submits a timestamp from the past and its
++     samples are dropped. These keep the emitted stream monotonic. */
++  openair0_timestamp_t wr_dev_ts;
++  bool wr_dev_ts_set;
++  uint64_t wr_flushes;
++  uint64_t wr_clamped;
++  openair0_timestamp_t wr_spread_max;
++  /* Observation only, always counted: does the shared stream ever submit a
++     batch timestamp older than the previous one? That is what
++     zmq_tx_channel::align() drops, so comparing wr_back against the
++     "Error, channel timeout" count tells us whether out-of-order batches are
++     the cause or whether the drops come from somewhere else. */
++  openair0_timestamp_t wr_prev_ts;
++  bool wr_prev_ts_set;
++  uint64_t wr_back;
++  openair0_timestamp_t wr_back_max;
++  uint64_t rd_lockstep_waits;
++  uint64_t rd_lockstep_bail;
++} rss_ru_share_t;
++
++static rss_ru_share_t rss_share = {.mtx = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER};
++
++bool nrue_ru_sharing_enabled(void)
++{
++  return NB_UE_INST > 1;
++}
++
++void nrue_ru_sharing_init(void)
++{
++  if (!nrue_ru_sharing_enabled())
++    return;
++  rss_share.active = true;
++  rss_share.n_ue = NB_UE_INST;
++  /* cursors start lazily: each UE joins the stream at the current head */
++  LOG_W(HW, "[RSS] RU sharing enabled: %d UE instances on one radio\n", rss_share.n_ue);
++}
++
++/* Bounded wait: a UE that stops producing must degrade the run, not hang it. */
++static void rss_share_wait(void)
++{
++  struct timespec ts;
++  clock_gettime(CLOCK_REALTIME, &ts);
++  ts.tv_nsec += RSS_SHARE_WAIT_MS * 1000000L;
++  if (ts.tv_nsec >= 1000000000L) {
++    ts.tv_sec += 1;
++    ts.tv_nsec -= 1000000000L;
++  }
++  pthread_cond_timedwait(&rss_share.cv, &rss_share.mtx, &ts);
++}
++
++/* Short bounded wait for the lockstep gate below. Caller holds the mutex. */
++static void rss_share_wait_us(long us)
++{
++  struct timespec ts;
++  clock_gettime(CLOCK_REALTIME, &ts);
++  ts.tv_nsec += us * 1000L;
++  while (ts.tv_nsec >= 1000000000L) {
++    ts.tv_sec += 1;
++    ts.tv_nsec -= 1000000000L;
++  }
++  pthread_cond_timedwait(&rss_share.cv, &rss_share.mtx, &ts);
++}
++
++/* 1 = hold the per-UE downlink cursors together (default).
++ *
++ * Why: the device keeps one sample_count_ for the shared uplink stream and
++ * discards any write whose timestamp it has already passed. Free-running
++ * cursors leave the UEs at different stream positions, so each UE stamps its
++ * uplink with its own timestamp, the batch key (timestamp, nsamps, nant) stops
++ * matching, and the device sees timestamps going backwards. Box-measured
++ * 2026-10-20, 4 UE, 60 s: 8.06% of batches out of order (worst 34560 samples
++ * back) and 23322 "Error, channel timeout", i.e. about 17% of writes discarded.
++ *
++ * With the gate a UE only proceeds while no other UE is behind it, so all of
++ * them ask for the same window, the batch merges into one ordered write per
++ * slot, and nothing is dropped. RSS_SHARE_LOCKSTEP=0 restores free-running
++ * cursors for comparison in the same binary. */
++static bool rss_share_lockstep(void)
++{
++  static int cached = -1;
++  if (cached < 0) {
++    const char *env = getenv("RSS_SHARE_LOCKSTEP");
++    cached = env ? (atoi(env) != 0) : 1;
++  }
++  return cached != 0;
++}
++
++/* Upper bound on one lockstep wait, so a stalled instance cannot freeze the
++ * others. 50 x 200 us = 10 ms, one radio frame. */
++#define RSS_LOCKSTEP_SLICE_US 200
++#define RSS_LOCKSTEP_GUARD 50
++
++#define RSS_RING_SAMPLES (1u << 21) /* ~2M samples/antenna, 8 MB as c16_t */
++
++/* Lowest cursor among UEs that have started consuming. Caller holds the mutex. */
++static uint64_t rss_min_cons(const rss_ru_share_t *s)
++{
++  uint64_t m = s->rd_prod;
++  bool any = false;
++  for (int i = 0; i < MAX_NUM_NR_UE_INST; i++) {
++    if (!s->rd_joined[i])
++      continue;
++    any = true;
++    if (s->rd_cons[i] < m)
++      m = s->rd_cons[i];
++  }
++  return any ? m : s->rd_prod;
++}
++
++/* Lowest cursor among the OTHER joined UEs, or UINT64_MAX if there are none.
++ * Caller holds the mutex. */
++static uint64_t rss_min_cons_other(const rss_ru_share_t *s, int self)
++{
++  uint64_t m = UINT64_MAX;
++  for (int i = 0; i < MAX_NUM_NR_UE_INST; i++) {
++    if (i == self || !s->rd_joined[i])
++      continue;
++    if (s->rd_cons[i] < m)
++      m = s->rd_cons[i];
++  }
++  return m;
++}
++
++static int rss_joined_count(const rss_ru_share_t *s)
++{
++  int n = 0;
++  for (int i = 0; i < MAX_NUM_NR_UE_INST; i++)
++    if (s->rd_joined[i])
++      n++;
++  return n;
++}
++
++static int rss_shared_read(PHY_VARS_NR_UE *UE, openair0_timestamp_t *ptimestamp, void **buff, int nsamps, int nant)
++{
++  rss_ru_share_t *s = &rss_share;
++  const int id = UE->Mod_id;
++  AssertFatal(nant <= RSS_SHARE_MAX_ANT, "RU sharing supports at most %d antennas\n", RSS_SHARE_MAX_ANT);
++  AssertFatal(id >= 0 && id < MAX_NUM_NR_UE_INST, "bad UE instance %d\n", id);
++  AssertFatal((uint64_t)nsamps < RSS_RING_SAMPLES / 2, "read of %d samples exceeds the shared ring\n", nsamps);
++
++  pthread_mutex_lock(&s->mtx);
++  if (s->rd_ring_sz == 0) {
++    for (int a = 0; a < RSS_SHARE_MAX_ANT; a++)
++      s->rd_ring[a] = calloc_or_fail(RSS_RING_SAMPLES, sizeof(c16_t));
++    s->rd_ring_sz = RSS_RING_SAMPLES;
++  }
++  if (!s->rd_joined[id]) {
++    /* join at the current head so a late UE does not replay history */
++    s->rd_cons[id] = s->rd_prod;
++    s->rd_joined[id] = true;
++    /* Once every instance has joined, snap them all to the same position.
++       Each UE joins at whatever head existed when it finished cell search, so
++       without this they keep a constant offset for the rest of the run and
++       every slot produces one uplink batch per UE instead of one merged
++       batch. */
++    if (rss_share_lockstep() && rss_joined_count(s) == s->n_ue) {
++      for (int i = 0; i < MAX_NUM_NR_UE_INST; i++)
++        if (s->rd_joined[i])
++          s->rd_cons[i] = s->rd_prod;
++      LOG_I(HW, "[RSS] shared RX: %d UE joined, cursors aligned at %lu\n", s->n_ue, (unsigned long)s->rd_prod);
++    }
++  }
++
++  /* Lockstep gate: proceed only while no other UE is behind us. */
++  if (rss_share_lockstep() && s->n_ue > 1) {
++    int guard = 0;
++    for (;;) {
++      uint64_t other = rss_min_cons_other(s, id);
++      if (other == UINT64_MAX || s->rd_cons[id] <= other)
++        break;
++      if (guard++ >= RSS_LOCKSTEP_GUARD) {
++        s->rd_lockstep_bail++;
++        break;
++      }
++      s->rd_lockstep_waits++;
++      rss_share_wait_us(RSS_LOCKSTEP_SLICE_US);
++    }
++  }
++
++  while (s->rd_prod - s->rd_cons[id] < (uint64_t)nsamps) {
++    /* room is bounded by the slowest consumer, so nobody loses samples */
++    uint64_t room = s->rd_ring_sz - (s->rd_prod - rss_min_cons(s));
++    if (!s->rd_fetching && room >= (uint64_t)nsamps) {
++      s->rd_fetching = true;
++      uint64_t head = s->rd_prod;
++      int want = nsamps;
++      /* never wrap inside one device read */
++      uint64_t off = head & (s->rd_ring_sz - 1);
++      if (off + (uint64_t)want > s->rd_ring_sz)
++        want = (int)(s->rd_ring_sz - off);
++      void *tgt[RSS_SHARE_MAX_ANT];
++      for (int a = 0; a < nant; a++)
++        tgt[a] = s->rd_ring[a] + off;
++      pthread_mutex_unlock(&s->mtx);
++      openair0_device_t *dev = &openair0_dev[UE->rf_map.card];
++      openair0_timestamp_t tmp = 0;
++      int got = dev->trx_read_func(dev, &tmp, tgt, want, nant);
++      pthread_mutex_lock(&s->mtx);
++      if (!dev->firstTS_initialized) {
++        dev->firstTS = tmp;
++        dev->firstTS_initialized = true;
++      }
++      if (!s->rd_ts0_set) {
++        s->rd_ts0 = tmp - dev->firstTS; /* ts of absolute sample 0 */
++        s->rd_ts0_set = true;
++      }
++      if (got > 0)
++        s->rd_prod += (uint64_t)got;
++      s->rd_fetching = false;
++      pthread_cond_broadcast(&s->cv);
++    } else {
++      rss_share_wait();
++    }
++  }
++
++  uint64_t off = s->rd_cons[id] & (s->rd_ring_sz - 1);
++  int first = (int)((off + (uint64_t)nsamps > s->rd_ring_sz) ? (s->rd_ring_sz - off) : (uint64_t)nsamps);
++  for (int a = 0; a < nant; a++) {
++    c16_t *dst = (c16_t *)buff[a];
++    memcpy(dst, s->rd_ring[a] + off, (size_t)first * sizeof(c16_t));
++    if (first < nsamps)
++      memcpy(dst + first, s->rd_ring[a], (size_t)(nsamps - first) * sizeof(c16_t));
++  }
++  *ptimestamp = s->rd_ts0 + (openair0_timestamp_t)s->rd_cons[id];
++  s->rd_cons[id] += (uint64_t)nsamps;
++  pthread_cond_broadcast(&s->cv);
++  pthread_mutex_unlock(&s->mtx);
++  return nsamps;
++}
++
++/* Clamp a late shared-uplink batch forward instead of letting the device drop
++ * it. DEFAULT OFF: box-measured 2026-10-20, 4 UE, 60 s.
++ *
++ *   off: 2387 attempts, 21178 "Error, channel timeout", 140000 flushes
++ *   on :   32 attempts,     0 "Error, channel timeout", 180000 flushes,
++ *          179997 clamped (100%), worst lag 1403212303 samples
++ *
++ * The clamp advances its own counter by nsamps per flush, which assumes one
++ * flush per slot. There are more (140k-180k flushes in 60 s against ~120k
++ * slots), so the counter ran away from the real stream and every write landed
++ * in the far future. Kept as a documented negative result, not a fix. */
++static bool rss_share_wr_monotonic(void)
++{
++  static int cached = -1;
++  if (cached < 0) {
++    const char *env = getenv("RSS_SHARE_WR_MONOTONIC");
++    cached = env ? (atoi(env) != 0) : 0;
++  }
++  return cached != 0;
++}
++
++/* Push the open uplink batch to the radio. Caller holds the mutex. */
++static void rss_flush_locked(PHY_VARS_NR_UE *UE)
++{
++  rss_ru_share_t *s = &rss_share;
++  if (s->wr_joined == 0)
++    return;
++  for (int a = 0; a < s->wr_nant; a++) {
++    const int32_t *acc = s->wr_acc[a];
++    c16_t *out = s->wr_out[a];
++    for (int i = 0; i < s->wr_nsamps; i++) {
++      int32_t re = acc[2 * i];
++      int32_t im = acc[2 * i + 1];
++      out[i].r = re > INT16_MAX ? INT16_MAX : (re < INT16_MIN ? INT16_MIN : (int16_t)re);
++      out[i].i = im > INT16_MAX ? INT16_MAX : (im < INT16_MIN ? INT16_MIN : (int16_t)im);
++    }
++  }
++  openair0_device_t *dev = &openair0_dev[UE->rf_map.card];
++  void *tgt[RSS_SHARE_MAX_ANT];
++  for (int a = 0; a < s->wr_nant; a++)
++    tgt[a] = s->wr_out[a];
++
++  /* Keep the emitted timestamps monotonic.
++   *
++   * zmq_tx_channel::align() returns "timestamp passed" from its very first
++   * branch (sample_count_ > timestamp), before its timeout argument is ever
++   * used, and zmq_tx_stream::transmit() then logs "Error, channel timeout" and
++   * returns without sending. So the upstream TRANSMIT_TS_ALIGN_TIMEOUT is not
++   * the knob for this: a backwards timestamp is dropped no matter how long the
++   * timeout is. Box-measured drops before this change, 60 s runs:
++   * 0 / 5,136 / 14,718 / 39,765 at 1 / 2 / 3 / 4 UE.
++   *
++   * Clamping a late batch forward puts those samples in the current slot
++   * instead of discarding them. RSS_SHARE_WR_MONOTONIC=0 restores the old
++   * behaviour for comparison in the same binary. */
++  if (s->wr_prev_ts_set && s->wr_ts < s->wr_prev_ts) {
++    s->wr_back++;
++    if (s->wr_prev_ts - s->wr_ts > s->wr_back_max)
++      s->wr_back_max = s->wr_prev_ts - s->wr_ts;
++  }
++  s->wr_prev_ts = s->wr_ts;
++  s->wr_prev_ts_set = true;
++
++  openair0_timestamp_t ts = s->wr_ts;
++  if (rss_share_wr_monotonic()) {
++    if (s->wr_dev_ts_set && ts < s->wr_dev_ts) {
++      if (s->wr_dev_ts - ts > s->wr_spread_max)
++        s->wr_spread_max = s->wr_dev_ts - ts;
++      ts = s->wr_dev_ts;
++      s->wr_clamped++;
++    }
++    s->wr_dev_ts_set = true;
++    s->wr_dev_ts = ts + s->wr_nsamps;
++  }
++  dev->trx_write_func(dev, ts + dev->firstTS, tgt, s->wr_nsamps, s->wr_nant, s->wr_flags);
++  if ((++s->wr_flushes % 20000) == 0)
++    LOG_I(HW,
++          "[RSS] shared TX: %lu flushes, %lu out of order (%.2f%%, worst %ld samples back), "
++          "%lu clamped, lockstep %lu waits / %lu bail, %d UE\n",
++          (unsigned long)s->wr_flushes,
++          (unsigned long)s->wr_back,
++          100.0 * (double)s->wr_back / (double)s->wr_flushes,
++          (long)s->wr_back_max,
++          (unsigned long)s->wr_clamped,
++          (unsigned long)s->rd_lockstep_waits,
++          (unsigned long)s->rd_lockstep_bail,
++          s->n_ue);
++  s->wr_joined = 0;
++  s->wr_round++;
++  pthread_cond_broadcast(&s->cv);
++}
++
++/* Sum the uplink of every sharing UE into one device write.
++ *
++ * A batch is keyed by (timestamp, nsamps, nant); without that key the batches
++ * mixed across slots as soon as more than two UEs ran. The function always
++ * returns nsamps because the device write is aggregated, so the per-caller
++ * contract is "your samples were accepted". */
++static int rss_shared_write(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **buff, int nsamps, int nant, int flags)
++{
++  rss_ru_share_t *s = &rss_share;
++  AssertFatal(nant <= RSS_SHARE_MAX_ANT, "RU sharing supports at most %d antennas\n", RSS_SHARE_MAX_ANT);
++
++  pthread_mutex_lock(&s->mtx);
++  if (s->wr_cap < nsamps) {
++    rss_flush_locked(UE); /* old buffers are about to go away */
++    for (int a = 0; a < RSS_SHARE_MAX_ANT; a++) {
++      free(s->wr_acc[a]);
++      free(s->wr_out[a]);
++      s->wr_acc[a] = calloc_or_fail(2 * nsamps, sizeof(int32_t));
++      s->wr_out[a] = calloc_or_fail(nsamps, sizeof(c16_t));
++    }
++    s->wr_cap = nsamps;
++  }
++
++  /* a write that does not belong to the open batch closes it first */
++  if (s->wr_joined > 0 && (s->wr_ts != timestamp || s->wr_nsamps != nsamps || s->wr_nant != nant))
++    rss_flush_locked(UE);
++
++  if (s->wr_joined == 0) {
++    for (int a = 0; a < nant; a++)
++      memset(s->wr_acc[a], 0, 2 * (size_t)nsamps * sizeof(int32_t));
++    s->wr_ts = timestamp;
++    s->wr_nsamps = nsamps;
++    s->wr_nant = nant;
++    s->wr_flags = flags;
++  }
++
++  for (int a = 0; a < nant; a++) {
++    const c16_t *src = (const c16_t *)buff[a];
++    int32_t *acc = s->wr_acc[a];
++    for (int i = 0; i < nsamps; i++) {
++      acc[2 * i] += src[i].r;
++      acc[2 * i + 1] += src[i].i;
++    }
++  }
++  s->wr_joined++;
++
++  if (s->wr_joined >= s->n_ue)
++    rss_flush_locked(UE);
++
++  pthread_mutex_unlock(&s->mtx);
++  return nsamps;
++}
++
++
+ int nrue_get_cell_count(void)
+ {
+   return nrue_cell_count;
+@@ -368,6 +793,15 @@ void nrue_ru_end(void)
+ 
+ void nrue_ru_set_freq(PHY_VARS_NR_UE *UE, uint64_t ul_carrier, uint64_t dl_carrier, int freq_offset)
+ {
++  if (rss_share.active) {
++    /* All shared UEs stay on the same radio; do not migrate or re-own cells. */
++    openair0_config_t *scfg = &openair0_cfg_g[UE->rf_map.card];
++    openair0_device_t *sdev = &openair0_dev[UE->rf_map.card];
++    nr_rf_card_config_freq(scfg, ul_carrier, dl_carrier, freq_offset);
++    if (UE->Mod_id == 0)
++      sdev->trx_set_freq_func(sdev, scfg);
++    return;
++  }
+   int current_cell_id = nrue_rus[UE->rf_map.card].used_by_cell;
+   NR_DL_FRAME_PARMS *fp0 = &nrue_cell_fp[current_cell_id];
+   uint64_t dl_carrier_distance =
+@@ -430,6 +864,8 @@ int nrue_ru_adjust_rx_gain(PHY_VARS_NR_UE *UE, int gain_change)
+ 
+ int nrue_ru_read(PHY_VARS_NR_UE *UE, openair0_timestamp_t *ptimestamp, void **buff, int nsamps, int num_antennas)
+ {
++  if (rss_share.active)
++    return rss_shared_read(UE, ptimestamp, buff, nsamps, num_antennas);
+   openair0_device_t *dev = &openair0_dev[UE->rf_map.card];
+   openair0_timestamp_t tmp_timestamp;
+   int ret = dev->trx_read_func(dev, &tmp_timestamp, buff, nsamps, num_antennas);
+@@ -470,6 +906,8 @@ int nrue_ru_read(PHY_VARS_NR_UE *UE, openair0_timestamp_t *ptimestamp, void **bu
+ 
+ int nrue_ru_write(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **buff, int nsamps, int num_antennas, int flags)
+ {
++  if (rss_share.active)
++    return rss_shared_write(UE, timestamp, buff, nsamps, num_antennas, flags);
+   openair0_device_t *dev = &openair0_dev[UE->rf_map.card];
+   int ret = dev->trx_write_func(dev, timestamp + dev->firstTS, buff, nsamps, num_antennas, flags);
+ 
+@@ -500,6 +938,10 @@ int nrue_ru_write(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **buf
+ 
+ int nrue_ru_write_reorder(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **txp, int nsamps, int nbAnt, int flags)
+ {
++  /* The reorder context lives in the device and assumes a single writer.
++     With shared RU the summing path already serialises the device write. */
++  if (rss_share.active)
++    return rss_shared_write(UE, timestamp, txp, nsamps, nbAnt, flags);
+   openair0_device_t *device = &openair0_dev[UE->rf_map.card];
+   return openair0_write_reorder_common(nrue_ru_write, UE, device, timestamp, txp, nsamps, nbAnt, flags);
+ }
+diff --git a/executables/nr-ue-ru.h b/executables/nr-ue-ru.h
+index 7d0836c..ab1b10f 100644
+--- a/executables/nr-ue-ru.h
++++ b/executables/nr-ue-ru.h
+@@ -31,4 +31,11 @@ int nrue_ru_write(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **buf
+ int nrue_ru_write_reorder(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **txp, int nsamps, int nbAnt, int flags);
+ void nrue_ru_write_reorder_clear_context(PHY_VARS_NR_UE *UE);
+ 
++
++/* RU sharing between UE instances (RRC storm reproducer, UE side only).
++   Upstream maps one UE to one cell and one cell to one RU. Enabled when
++   --num-ues > 1 so several attacker UEs can use the single DU ZMQ port pair. */
++bool nrue_ru_sharing_enabled(void);
++void nrue_ru_sharing_init(void);
++
+ #endif
+diff --git a/executables/nr-uesoftmodem.c b/executables/nr-uesoftmodem.c
+index 4a9749e..e1f86e1 100644
+--- a/executables/nr-uesoftmodem.c
++++ b/executables/nr-uesoftmodem.c
+@@ -398,7 +398,10 @@ int main(int argc, char **argv)
+                   nrue_get_cell_count());
+       nrUE_cell_params_t cell = *nrue_get_cell(cell_id);
+ 
+-      AssertFatal(cell.used_by_ue == -1,
++      /* RU sharing (RRC storm reproducer): several attacker UEs must use the
++         one cell the testbed DU exposes, so the 1:1 rule is relaxed and the
++         samples are shared in nr-ue-ru.c. */
++      AssertFatal(cell.used_by_ue == -1 || nrue_ru_sharing_enabled(),
+                   "Cell %d is already used by UE %d and cannot also be used by UE %d as cells map 1:1 to RUs and RU sharing is not implemented\n",
+                   cell_id,
+                   cell.used_by_ue,
+@@ -454,10 +457,12 @@ int main(int argc, char **argv)
+         sl_ue_phy_init(UE_CC);
+       }
+ 
+-      cell_id++; // initially connect each UE and carrier to its own cell
++      if (!nrue_ru_sharing_enabled())
++        cell_id++; // initially connect each UE and carrier to its own cell
+     }
+   }
+ 
++  nrue_ru_sharing_init();
+   nrue_init_openair0();
+ 
+   lock_memory_to_ram();
+diff --git a/openair2/RRC/NR_UE/rrc_UE.c b/openair2/RRC/NR_UE/rrc_UE.c
+index 7858a82..22ce02f 100644
+--- a/openair2/RRC/NR_UE/rrc_UE.c
++++ b/openair2/RRC/NR_UE/rrc_UE.c
+@@ -371,7 +371,13 @@ static void nr_decode_SI(NR_UE_RRC_SI_INFO *SI_info, NR_SystemInformation_t *si,
+   }
+ }
+ 
+-static void nr_rrc_ue_prepare_RRCSetupRequest(NR_UE_RRC_INST_t *rrc)
++/* rss_src tells the reproducer which generation this is. The payload is built
++   twice per RA: once when the retry is triggered and once by
++   nr_rrc_prepare_msg3_payload() "in advance" of Msg3. Only the latter is the
++   one MAC actually transmits, so only that one is counted as an attempt and
++   carries the authoritative ue_identity. Measured 2026-10-20: without this
++   split the UE logged exactly 2 attempts per real RA (403:202, 401:203). */
++static void nr_rrc_ue_prepare_RRCSetupRequest(NR_UE_RRC_INST_t *rrc, const char *rss_src)
+ {
+   RRCLOG_D("Generation of RRCSetupRequest\n");
+   uint8_t rv[6];
+@@ -386,6 +392,28 @@ static void nr_rrc_ue_prepare_RRCSetupRequest(NR_UE_RRC_INST_t *rrc)
+ #endif
+   }
+ 
++  if (nr_rss_enabled()) {
++    /* A-type ground truth: one record per on-air attempt, with the identity
++       actually transmitted (randomValue is rv[0..4] with the last bit unused). */
++    const bool on_air = rss_src != NULL && rss_src[0] == 'm'; /* "msg3" */
++    if (on_air)
++      nr_rss_next_seq((int)rrc->ue_id);
++    nr_rss_log((int)rrc->ue_id,
++               on_air ? "attempt_start" : "setup_req_prebuilt",
++               "\"ue_identity\":\"0x%02x%02x%02x%02x%02x\",\"identity_type\":\"%s\",\"src\":\"%s\"",
++               rv[0],
++               rv[1],
++               rv[2],
++               rv[3],
++               rv[4] & 0xfe,
++               rrc->fiveG_S_TMSI == UINT64_MAX ? "randomValue" : "ng-5G-S-TMSI-Part1",
++               rss_src ? rss_src : "?");
++    /* Variant: do not pay for the Msg3->Msg4 wait. See nr_rss_wait_for_msg4().
++       Needs ra_gate=0, otherwise the in-flight RA holds the restart anyway. */
++    if (on_air && !nr_rss_wait_for_msg4())
++      nr_rss_arm_retry(rrc, 0);
++  }
++
+   uint8_t buf[1024];
+   int len = do_RRCSetupRequest(buf, sizeof(buf), rv, rrc->fiveG_S_TMSI);
+ 
+@@ -2122,7 +2150,7 @@ static void nr_rrc_prepare_msg3_payload(NR_UE_RRC_INST_t *rrc)
+   switch (rrc->ra_trigger) {
+     case RRC_CONNECTION_SETUP:
+       // preparing RRC setup request payload in advance
+-      nr_rrc_ue_prepare_RRCSetupRequest(rrc);
++      nr_rrc_ue_prepare_RRCSetupRequest(rrc, "msg3");
+       break;
+     case RRC_CONNECTION_REESTABLISHMENT:
+       // preparing MSG3 for re-establishment in advance
+@@ -2459,12 +2487,52 @@ static int8_t nr_rrc_ue_decode_ccch(NR_UE_RRC_INST_t *rrc, const NRRrcMacCcchDat
+        case NR_DL_CCCH_MessageType__c1_PR_rrcReject:
+          RRCLOG_W("Logical Channel DL-CCCH (SRB0), Received RRCReject \n");
+          nr_rrc_process_rrcreject(rrc, dl_ccch_msg->message.choice.c1->choice.rrcReject);
++         if (nr_rss_enabled()) {
++           /* Stock code stops here when the gNB sends no waitTime, which is the
++              OCUDU default, so the reproducer schedules the retry itself. */
++           NR_UE_Timers_Constants_t *tac = &rrc->timers_and_constants;
++           bool t302 = nr_timer_is_active(&tac->T302);
++           nr_rss_log((int)rrc->ue_id, "rrc_reject",
++                      "\"actual_reach\":\"rrc_reject\",\"t302_running\":%s,\"honor_reject\":%s",
++                      t302 ? "true" : "false",
++                      nr_rss_honor_reject() ? "true" : "false");
++           if (!nr_rss_honor_reject())
++             nr_rss_arm_retry(rrc, 10);
++           else if (t302)
++             nr_rss_arm_retry(rrc, nr_timer_remaining_time(&tac->T302) + 10);
++           else
++             nr_rss_arm_retry(rrc, nr_rss_reject_backoff_ms());
++         }
+          rval = 0;
+          break;
+ 
+        case NR_DL_CCCH_MessageType__c1_PR_rrcSetup:
+          RRCLOG_I("[RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup\n");
+-         nr_rrc_process_rrcsetup(rrc, dl_ccch_msg->message.choice.c1->choice.rrcSetup);
++         if (nr_rss_enabled() && !nr_rss_complete_this_attempt()) {
++           /* A-type: Msg4 is accepted and MAC still sends the HARQ ACK, but
++              nr_rrc_process_rrcsetup() is skipped, so no cell group is applied,
++              no RRCSetupComplete is generated and RRC stays in IDLE. The gNB is
++              left with an incomplete procedure until its own guard expires. */
++           NR_UE_Timers_Constants_t *tac = &rrc->timers_and_constants;
++           nr_timer_stop(&tac->T300);
++           nr_rss_note_msg4((int)rrc->ue_id);
++           nr_rss_note_skip();
++           nr_rss_log((int)rrc->ue_id,
++                      "msg4_rx",
++                      "\"intended_reach\":\"msg5_skip\",\"actual_reach\":\"msg5_skip\",\"tc_rnti\":\"0x%04x\",\"occupancy\":%u",
++                      rrc->rnti,
++                      nr_rss_occupancy());
++           nr_rss_arm_retry(rrc, 0);
++         } else {
++           if (nr_rss_enabled()) {
++             nr_rss_note_msg4((int)rrc->ue_id);
++             nr_rss_log((int)rrc->ue_id,
++                        "msg4_rx",
++                        "\"intended_reach\":\"msg5_sent\",\"actual_reach\":\"msg5_sent\",\"tc_rnti\":\"0x%04x\"",
++                        rrc->rnti);
++           }
++           nr_rrc_process_rrcsetup(rrc, dl_ccch_msg->message.choice.c1->choice.rrcSetup);
++         }
+          rval = 0;
+          break;
+ 
+@@ -3448,7 +3516,7 @@ void *rrc_nrue(void *notUsed)
+       if (rrc->nrRrcState == RRC_STATE_IDLE_NR) {
+         RA_trigger_t prev_trigger = rrc->ra_trigger;
+         rrc->ra_trigger = RRC_CONNECTION_SETUP;
+-        nr_rrc_ue_prepare_RRCSetupRequest(rrc);
++        nr_rrc_ue_prepare_RRCSetupRequest(rrc, "nas");
+         nr_rrc_trigger_mac_ra(rrc, NR_MAC_RA_START_SETUP);
+         RRCLOG_I("Triggering MAC RA for RRCSetupComplete pending NAS (prev_trigger=%d)\n", prev_trigger);
+       }
+@@ -3650,6 +3718,7 @@ void nr_rrc_going_to_IDLE(NR_UE_RRC_INST_t *rrc,
+   }
+   // Stop all the timers except T302, T320 and T325
+   nr_timer_stop(&tac->T300);
++  nr_timer_stop(&tac->rss_retry_timer);
+   nr_timer_stop(&tac->T301);
+   nr_timer_stop(&tac->T304);
+   nr_timer_stop(&tac->T310);
+@@ -3778,7 +3847,7 @@ void handle_302_expired_stopped(NR_UE_RRC_INST_t *rrc)
+ void handle_t300_expiry(NR_UE_RRC_INST_t *rrc)
+ {
+   rrc->ra_trigger = RRC_CONNECTION_SETUP;
+-  nr_rrc_ue_prepare_RRCSetupRequest(rrc);
++  nr_rrc_ue_prepare_RRCSetupRequest(rrc, "t300");
+ 
+   nr_rrc_trigger_mac_ra(rrc, NR_MAC_RA_START_T300);
+ 
+diff --git a/openair2/RRC/NR_UE/rrc_defs.h b/openair2/RRC/NR_UE/rrc_defs.h
+index edb1c9e..bdbe119 100644
+--- a/openair2/RRC/NR_UE/rrc_defs.h
++++ b/openair2/RRC/NR_UE/rrc_defs.h
+@@ -142,6 +142,12 @@ typedef struct UE_RRC_SI_INFO_NR_s {
+ typedef struct NR_UE_Timers_Constants_s {
+   // timers
+   NR_timer_t T300;
++  /* RRC signaling storm reproducer (A-type). Not 3GPP. See nr_rss_* in
++     rrc_timers_and_constants.c. The timer only polls once per tick; the real
++     schedule is the wall-clock deadline, because one tick is one radio frame
++     message and those do not arrive every 10 ms over ZMQ. */
++  NR_timer_t rss_retry_timer;
++  uint64_t rss_deadline_ns;        /* when the next attempt is due, 0 = not armed */
+   NR_timer_t T301;
+   NR_timer_t T302;
+   NR_timer_t T304;
+diff --git a/openair2/RRC/NR_UE/rrc_proto.h b/openair2/RRC/NR_UE/rrc_proto.h
+index b359d35..302df39 100644
+--- a/openair2/RRC/NR_UE/rrc_proto.h
++++ b/openair2/RRC/NR_UE/rrc_proto.h
+@@ -72,6 +72,37 @@ void nr_rrc_ue_decode_NR_SBCCH_SL_BCH_Message(NR_UE_RRC_INST_t *rrc,
+                                               const uint16_t rx_slss_id);
+ 
+ void nr_rrc_set_mac_queue(instance_t instance, notifiedFIFO_t *mac_input_nf);
++
++/* ---------------------------------------------------------------------------
++ * RRC signaling storm reproducer, A-type (UE side only).
++ *
++ * Reproduces "initial access not completed": the UE receives Msg4 (RRCSetup),
++ * lets MAC send the HARQ ACK, never generates RRCSetupComplete, and asks for a
++ * new RRCSetupRequest after a configurable interval. Used to validate the
++ * team's detection/mitigation loop on an isolated testbed. The gNB is never
++ * modified.
++ *
++ * Knobs come from the "rss" config prefix, e.g.
++ *   --rss.enable 1 --rss.interval_ms 100 --rss.max_duration_s 30 \
++ *   --rss.run_id A-2026w38-001 --rss.log_file /tmp/rss_attempts.jsonl
++ * Implementation and the knob table live in rrc_timers_and_constants.c.
++ * -------------------------------------------------------------------------*/
++bool nr_rss_enabled(void);
++bool nr_rss_complete_this_attempt(void);
++bool nr_rss_honor_reject(void);
++int nr_rss_reject_backoff_ms(void);
++/* Per-UE counters: with --num-ues > 1 every instance runs its own attempt
++   stream, so seq must be per UE and each record must say which UE it came
++   from. A single global counter interleaved the streams and made per-attempt
++   joins impossible (observed 2026-10-20 on the 2-UE run). */
++unsigned nr_rss_next_seq(int ue);
++bool nr_rss_wait_for_msg4(void);
++void nr_rss_note_msg4(int ue);
++void nr_rss_note_skip(void);
++unsigned nr_rss_occupancy(void);
++void nr_rss_arm_retry(NR_UE_RRC_INST_t *rrc, int delay_ms);
++void nr_rss_log(int ue, const char *event, const char *fmt, ...) __attribute__((format(printf, 3, 4)));
++
+ /** @}*/
+ #endif
+ 
+diff --git a/openair2/RRC/NR_UE/rrc_timers_and_constants.c b/openair2/RRC/NR_UE/rrc_timers_and_constants.c
+index 0addfe5..b950114 100644
+--- a/openair2/RRC/NR_UE/rrc_timers_and_constants.c
++++ b/openair2/RRC/NR_UE/rrc_timers_and_constants.c
+@@ -4,6 +4,398 @@
+ 
+ #include "openair2/RRC/NR_UE/rrc_proto.h"
+ #include "executables/softmodem-common.h"
++#include "common/config/config_userapi.h"
++#include "LAYER2/NR_MAC_UE/mac_proto.h"
++#include "nr-uesoftmodem.h" /* MAX_NUM_NR_UE_INST, NB_UE_INST */
++#include <stdarg.h>
++#include <stdio.h>
++#include <time.h>
++
++/* ---------------------------------------------------------------------------
++ * RRC signaling storm reproducer, A-type (UE side only). See rrc_proto.h.
++ *
++ * Scope rules kept deliberately narrow:
++ *  - nothing here changes gNB behaviour or any 3GPP timer value;
++ *  - with --rss.enable 0 (default) every function below is inert, so the same
++ *    binary is also the regression-test binary for normal attach;
++ *  - max_duration_s is an in-process kill switch: when it fires the UE goes
++ *    back to completing RRC setup normally.
++ * -------------------------------------------------------------------------*/
++#define RSS_CFG_PREFIX "rss"
++
++typedef struct {
++  int enable;
++  int interval_ms;
++  int reject_backoff_ms;
++  int honor_reject;
++  int completion_pct;
++  int max_duration_s;
++  int ack_gate;
++  int ra_gate;
++  int gate_timeout_ms;
++  int target_occupancy;
++  int msg4_wait;
++  int hold_ms;
++  int tick_report;
++  char *run_id;
++  char *log_file;
++} rss_cfg_t;
++
++static rss_cfg_t rss_cfg;
++
++/* clang-format off */
++#define RSS_PARAMS_DESC { \
++  {"enable",            "1 = A-type: receive Msg4, skip RRCSetupComplete, retry\n",      0, .iptr=&rss_cfg.enable,            .defintval=0,                        TYPE_INT,    0}, \
++  {"interval_ms",       "delay between a skipped Msg5 and the next RRCSetupRequest\n",   0, .iptr=&rss_cfg.interval_ms,       .defintval=100,                      TYPE_INT,    0}, \
++  {"reject_backoff_ms", "delay after RRCReject when the gNB sent no waitTime\n",         0, .iptr=&rss_cfg.reject_backoff_ms, .defintval=1000,                     TYPE_INT,    0}, \
++  {"honor_reject",      "1 = obey RRCReject waitTime/backoff, 0 = retry at once\n",      0, .iptr=&rss_cfg.honor_reject,      .defintval=1,                        TYPE_INT,    0}, \
++  {"completion_pct",    "percent completed normally. >0 ends the run at the first one\n",  0, .iptr=&rss_cfg.completion_pct,    .defintval=0,                        TYPE_INT,    0}, \
++  {"max_duration_s",    "kill switch: stop the reproducer after this many seconds\n",    0, .iptr=&rss_cfg.max_duration_s,    .defintval=60,                       TYPE_INT,    0}, \
++  {"ack_gate",          "1 = never restart RA while the Msg4 HARQ ACK PUCCH is pending\n", 0, .iptr=&rss_cfg.ack_gate,        .defintval=1,                        TYPE_INT,    0}, \
++  {"ra_gate",           "1 = never restart RA while one is still in flight\n",            0, .iptr=&rss_cfg.ra_gate,           .defintval=1,                        TYPE_INT,    0}, \
++  {"gate_timeout_ms",   "force the retry if a gate held it this long (0 = never force)\n", 0, .iptr=&rss_cfg.gate_timeout_ms,   .defintval=500,                      TYPE_INT,    0}, \
++  {"target_occupancy",  "hold this many incomplete contexts at the gNB (0 = unlimited)\n", 0, .iptr=&rss_cfg.target_occupancy, .defintval=0,                        TYPE_INT,    0}, \
++  {"msg4_wait",         "1 = A-type (wait for Msg4, then skip Msg5). 0 = abandon at Msg3\n", 0, .iptr=&rss_cfg.msg4_wait,        .defintval=1,                        TYPE_INT,    0}, \
++  {"hold_ms",           "gNB hold time per incomplete context (t300 + guard)\n",         0, .iptr=&rss_cfg.hold_ms,           .defintval=2000,                     TYPE_INT,    0}, \
++  {"tick_report",       "log the measured RRC tick rate every N ticks (0 = off)\n",      0, .iptr=&rss_cfg.tick_report,       .defintval=100,                      TYPE_INT,    0}, \
++  {"run_id",            "run identifier written into every JSONL record\n",              0, .strptr=&rss_cfg.run_id,          .defstrval="rss-run",                TYPE_STRING, 0}, \
++  {"log_file",          "per-attempt JSONL ground truth for the detection team\n",       0, .strptr=&rss_cfg.log_file,        .defstrval="/tmp/rss_attempts.jsonl", TYPE_STRING, 0}, \
++}
++/* clang-format on */
++
++static bool rss_cfg_done;
++static bool rss_killed;
++static uint64_t rss_t0_ns;
++#define RSS_MAX_UE MAX_NUM_NR_UE_INST
++static unsigned rss_seq[RSS_MAX_UE];
++static unsigned rss_completed;
++static FILE *rss_log_fd;
++static bool rss_got_msg4[RSS_MAX_UE]; /* did the current attempt reach Msg4? */
++/* Closed-loop occupancy control.
++   The occupancy the gNB sees is N = (incomplete attempts started in the last
++   T_hold). The UE can count that itself: every attempt we leave incomplete
++   holds one context for exactly hold_ms. So target_occupancy becomes a real
++   knob without any feedback from the gNB: below target we keep attacking,
++   at target we idle. Measured 2026-10-20: interval_ms alone cannot do this,
++   because the realised Msg4 rate saturates near 3.8/s regardless of interval. */
++#define RSS_OCC_WINDOW 512
++static uint64_t rss_skip_ts[RSS_OCC_WINDOW];
++static unsigned rss_skip_head;
++static unsigned rss_occ_hold_logs;
++static unsigned rss_gate_logs;
++static uint64_t rss_gate_since_ns;   /* when a gate first held this attempt back */
++static unsigned rss_ticks;       /* RRC ticks seen while enabled */
++static uint64_t rss_tick_t0_ns;  /* start of the current tick-rate window */
++/* Air time. One RRC tick is one radio frame (10 ms of air). The ZMQ device has
++   no pacing code and OAI selects TIME_SOURCE_REALTIME for it (virtual
++   IQ-driven time is only used for --rfsim), so the radio is *expected* to run
++   in real time. On this testbed it does not: the frame counter advances about
++   3-6x slower than the wall clock, while the gNB release timer stays on the
++   wall clock. Every record therefore carries both clocks, so a reader can tell
++   "attempts per second of air time" from "attempts per second of wall time".
++   Without that split the labels understate a real attacker by the same factor
++   and would mislead detection thresholds. */
++static uint64_t rss_air_frame;   /* monotonic radio frame = hfn*1024 + frame */
++static uint64_t rss_air_frame_t0;
++
++static uint64_t rss_now_ns(void)
++{
++  struct timespec ts;
++  clock_gettime(CLOCK_REALTIME, &ts);
++  return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
++}
++
++static const rss_cfg_t *rss_get_cfg(void)
++{
++  if (!rss_cfg_done) {
++    paramdef_t params[] = RSS_PARAMS_DESC;
++    config_get(config_get_if(), params, sizeofArray(params), RSS_CFG_PREFIX);
++    rss_cfg_done = true;
++    /* interval_ms 0 is allowed and means "on the next tick", i.e. max rate.
++       The floor is then the RA cycle itself (PRACH occasion + RAR + Msg3 + Msg4). */
++    if (rss_cfg.interval_ms < 0)
++      rss_cfg.interval_ms = 0;
++    if (rss_cfg.reject_backoff_ms < 10)
++      rss_cfg.reject_backoff_ms = 10;
++    rss_cfg.completion_pct = rss_cfg.completion_pct < 0 ? 0 : (rss_cfg.completion_pct > 100 ? 100 : rss_cfg.completion_pct);
++    if (rss_cfg.enable) {
++      LOG_W(NR_RRC,
++            "[RSS] A-type reproducer ENABLED (isolated testbed only): interval=%d ms completion=%d%% "
++            "honor_reject=%d ack_gate=%d max_duration=%d s run_id=%s log=%s\n",
++            rss_cfg.interval_ms,
++            rss_cfg.completion_pct,
++            rss_cfg.honor_reject,
++            rss_cfg.ack_gate,
++            rss_cfg.max_duration_s,
++            rss_cfg.run_id,
++            rss_cfg.log_file);
++    }
++  }
++  return &rss_cfg;
++}
++
++bool nr_rss_enabled(void)
++{
++  return rss_get_cfg()->enable != 0 && !rss_killed;
++}
++
++bool nr_rss_honor_reject(void)
++{
++  return rss_get_cfg()->honor_reject != 0;
++}
++
++int nr_rss_reject_backoff_ms(void)
++{
++  return rss_get_cfg()->reject_backoff_ms;
++}
++
++void nr_rss_log(int ue, const char *event, const char *fmt, ...)
++{
++  const rss_cfg_t *cfg = rss_get_cfg();
++  if (!cfg->enable || !cfg->log_file || !cfg->log_file[0])
++    return;
++  if (!rss_log_fd) {
++    rss_log_fd = fopen(cfg->log_file, "a");
++    if (!rss_log_fd) {
++      LOG_E(NR_RRC, "[RSS] cannot open %s for writing\n", cfg->log_file);
++      return;
++    }
++  }
++  fprintf(rss_log_fd,
++          "{\"type\":\"event\",\"run_id\":\"%s\",\"ue\":%d,\"seq\":%u,\"t_ns\":%llu,\"air_ms\":%llu,\"event\":\"%s\"",
++          cfg->run_id ? cfg->run_id : "",
++          ue < 0 || ue >= RSS_MAX_UE ? 0 : ue,
++          rss_seq[ue < 0 || ue >= RSS_MAX_UE ? 0 : ue],
++          (unsigned long long)rss_now_ns(),
++          (unsigned long long)(rss_air_frame * 10),
++          event);
++  if (fmt && fmt[0]) {
++    va_list ap;
++    va_start(ap, fmt);
++    fputc(',', rss_log_fd);
++    vfprintf(rss_log_fd, fmt, ap);
++    va_end(ap);
++  }
++  fprintf(rss_log_fd, "}\n");
++  fflush(rss_log_fd);
++}
++
++unsigned nr_rss_next_seq(int ue)
++{
++  if (ue < 0 || ue >= RSS_MAX_UE)
++    ue = 0;
++  if (rss_t0_ns == 0)
++    rss_t0_ns = rss_now_ns();
++  /* Close out the previous attempt. An attempt that never saw Msg4 means the
++     gNB did not answer or the contention was lost. Under saturation this
++     fraction is the denial signal we can read without a second UE. */
++  if (rss_seq[ue] > 0 && !rss_got_msg4[ue])
++    nr_rss_log(ue, "attempt_end", "\"actual_reach\":\"no_msg4\"");
++  rss_got_msg4[ue] = false;
++  return ++rss_seq[ue];
++}
++
++/* Should the attempt wait for Msg4 before restarting?
++ *
++ * Measured 2026-10-20 (60 s runs, single UE, default gNB config): the attempt
++ * cycle is pinned at 40 ms of air time and 30 ms of it, 78% of the wall cost,
++ * is the wait between Msg3 and Msg4. The gNB has already created the UE context
++ * and started "RRC Setup Procedure" when it decoded Msg3, so that wait buys the
++ * attacker nothing. msg4_wait=0 abandons the attempt once Msg3 is on the air.
++ *
++ * This is a VARIANT of A-type, not A-type: Msg4 is never accepted or ACKed, so
++ * the gNB also retransmits rrcSetup over DL HARQ. Runs must be labelled with
++ * the knob value, which run.json records.
++ */
++bool nr_rss_wait_for_msg4(void)
++{
++  return rss_get_cfg()->msg4_wait != 0;
++}
++
++void nr_rss_note_msg4(int ue)
++{
++  if (ue < 0 || ue >= RSS_MAX_UE)
++    ue = 0;
++  rss_got_msg4[ue] = true;
++}
++
++void nr_rss_note_skip(void)
++{
++  rss_skip_ts[rss_skip_head] = rss_now_ns();
++  rss_skip_head = (rss_skip_head + 1) % RSS_OCC_WINDOW;
++}
++
++unsigned nr_rss_occupancy(void)
++{
++  const uint64_t hold_ns = (uint64_t)rss_get_cfg()->hold_ms * 1000000ULL;
++  const uint64_t now = rss_now_ns();
++  unsigned n = 0;
++  for (unsigned i = 0; i < RSS_OCC_WINDOW; i++)
++    if (rss_skip_ts[i] != 0 && now - rss_skip_ts[i] < hold_ns)
++      n++;
++  return n;
++}
++
++/* A completed attempt leaves RRC in CONNECTED, and a new RRCSetupRequest is
++   only sent from RRC_IDLE, so the loop stops there. Releasing the connection
++   from this timer was tried on the box 2026-10-20 and crashed the UE right
++   after the release (probe_release -> resync -> SIGSEGV, run SAT-1019T220108Z),
++   so that path is removed. completion_pct > 0 therefore ends the run at its
++   first completed attempt and is only useful for one-shot checks.
++   Denial does not need it: once the cell is full the gNB answers an ordinary
++   RRCSetupRequest with RRCReject, which is logged as actual_reach=rrc_reject
++   and is exactly what a legitimate UE would receive. */
++
++/* Deterministic stride instead of a coin flip: the realised completion ratio is
++   exact and the same run is replayable for the detection team. */
++bool nr_rss_complete_this_attempt(void)
++{
++  const rss_cfg_t *cfg = rss_get_cfg();
++  if (cfg->completion_pct <= 0)
++    return false;
++  if (cfg->completion_pct >= 100)
++    return true;
++  unsigned due = (rss_seq[0] * (unsigned)cfg->completion_pct) / 100;
++  if (due > rss_completed) {
++    rss_completed = due;
++    return true;
++  }
++  return false;
++}
++
++/* Box measurement 2026-10-20: a 100 ms target armed with nr_timer_setup() fired
++   after 306 ms (median of 71 attempts). nr_timer_tick() adds a fixed 10 ms per
++   call, but one call is one radio-frame message, and over the ZMQ path those do
++   not arrive every 10 ms. Counting ticks therefore multiplies the whole knob by
++   the tick error. A wall-clock deadline bounds the error at one tick instead of
++   accumulating it, so the timer below is only a once-per-tick poll. */
++void nr_rss_arm_retry(NR_UE_RRC_INST_t *rrc, int delay_ms)
++{
++  const rss_cfg_t *cfg = rss_get_cfg();
++  NR_UE_Timers_Constants_t *tac = &rrc->timers_and_constants;
++  int d = delay_ms > 0 ? delay_ms : cfg->interval_ms;
++  tac->rss_deadline_ns = rss_now_ns() + (uint64_t)d * 1000000ULL;
++  nr_timer_setup(&tac->rss_retry_timer, 10, 10);
++  nr_timer_start(&tac->rss_retry_timer);
++}
++
++static void rss_poll(NR_UE_RRC_INST_t *rrc)
++{
++  NR_UE_Timers_Constants_t *tac = &rrc->timers_and_constants;
++  NR_timer_t *t = &tac->rss_retry_timer;
++  const rss_cfg_t *cfg = rss_get_cfg();
++
++  /* Tick-rate instrumentation. One call here is one radio frame, nominally
++     10 ms. Logging the measured value turns the "configured vs realised"
++     mismatch from a guess into a number. */
++  rss_air_frame = (uint64_t)rrc->current_hfn * 1024 + (uint64_t)rrc->current_frame;
++  if (cfg->enable) {
++    uint64_t now = rss_now_ns();
++    rss_ticks++;
++    if (rss_tick_t0_ns == 0) {
++      rss_tick_t0_ns = now;
++      rss_air_frame_t0 = rss_air_frame;
++    } else if (cfg->tick_report > 0 && rss_ticks % (unsigned)cfg->tick_report == 0) {
++      double wall_ms = (double)(now - rss_tick_t0_ns) / 1e6;
++      double air_ms = (double)((rss_air_frame - rss_air_frame_t0) * 10);
++      nr_rss_log((int)rrc->ue_id, "tick_rate",
++                 "\"ms_per_tick\":%.2f,\"nominal_ms\":10,\"air_ms_elapsed\":%.0f,"
++                 "\"wall_ms_elapsed\":%.0f,\"air_per_wall\":%.3f",
++                 wall_ms / (double)cfg->tick_report,
++                 air_ms,
++                 wall_ms,
++                 wall_ms > 0 ? air_ms / wall_ms : 0.0);
++      rss_tick_t0_ns = now;
++      rss_air_frame_t0 = rss_air_frame;
++    }
++  }
++
++  bool polled = nr_timer_tick(t);
++
++  if (!polled || !nr_rss_enabled())
++    return;
++
++  if (cfg->max_duration_s > 0 && rss_t0_ns != 0
++      && rss_now_ns() - rss_t0_ns > (uint64_t)cfg->max_duration_s * 1000000000ULL) {
++    rss_killed = true;
++    LOG_W(NR_RRC, "[RSS] max_duration_s=%d reached: reproducer disabled, normal attach resumes\n", cfg->max_duration_s);
++    nr_rss_log((int)rrc->ue_id, "kill_switch", "\"attempts\":%u,\"ticks\":%u", rss_seq[0], rss_ticks);
++    return;
++  }
++
++  /* Not due yet. Keep polling; granularity is one tick, not one interval. */
++  if (tac->rss_deadline_ns != 0 && rss_now_ns() < tac->rss_deadline_ns) {
++    nr_timer_setup(t, 10, 10);
++    nr_timer_start(t);
++    return;
++  }
++
++  /* Occupancy ceiling: idle while the gNB already holds the requested number of
++     incomplete contexts. This is what makes the saturation level settable. */
++  if (cfg->target_occupancy > 0) {
++    unsigned occ = nr_rss_occupancy();
++    if (occ >= (unsigned)cfg->target_occupancy) {
++      if (rss_occ_hold_logs++ % 25 == 0)
++        nr_rss_log((int)rrc->ue_id, "occupancy_hold", "\"occupancy\":%u,\"target\":%d", occ, cfg->target_occupancy);
++      nr_timer_setup(t, 10, 10);
++      nr_timer_start(t);
++      return;
++    }
++  }
++
++  /* Gates. Both re-arm the poll instead of firing, and both are bypassed after
++     gate_timeout_ms so a stuck MAC state cannot stall a run silently. */
++  const NR_UE_MAC_INST_t *mac = get_mac_inst(rrc->ue_id);
++  const char *gate = NULL;
++  int gate_state = -1;
++
++  /* (1) RA in flight. nr_mac_start_ra(NR_MAC_RA_START_T300) calls reset_ra(),
++     whose memset wipes the live RA_config_t, so retriggering mid-RA destroys
++     our own attempt before Msg3 ever reaches the gNB. Measured 2026-10-20
++     (run SAT2): 269 attempts at the UE but only 93 Msg3 at the CU, and 65% of
++     attempts ended in under 10 ms. */
++  if (cfg->ra_gate && mac) {
++    switch (mac->ra.ra_state) {
++      case nrRA_GENERATE_PREAMBLE:
++      case nrRA_WAIT_RAR:
++      case nrRA_WAIT_MSGB:
++      case nrRA_WAIT_CONTENTION_RESOLUTION:
++        gate = "ra_in_flight";
++        gate_state = (int)mac->ra.ra_state;
++        break;
++      default:
++        break;
++    }
++  }
++
++  /* (2) Keep the Msg4 HARQ ACK: reset_ra() also clears the PUCCH prepared by
++     prepare_msg4_msgb_feedback(), and without the ACK the gNB drops the
++     contention early so nothing accumulates. */
++  if (!gate && cfg->ack_gate && mac && mac->ra.ra_pucch)
++    gate = "ack_pending";
++
++  if (gate) {
++    uint64_t now = rss_now_ns();
++    if (rss_gate_since_ns == 0)
++      rss_gate_since_ns = now;
++    bool forced = cfg->gate_timeout_ms > 0
++                  && now - rss_gate_since_ns > (uint64_t)cfg->gate_timeout_ms * 1000000ULL;
++    if (!forced) {
++      if (rss_gate_logs++ % 25 == 0)
++        nr_rss_log((int)rrc->ue_id, "gate_hold", "\"gate\":\"%s\",\"ra_state\":%d", gate, gate_state);
++      nr_timer_setup(t, 10, 10);
++      nr_timer_start(t);
++      return;
++    }
++    nr_rss_log((int)rrc->ue_id, "gate_forced", "\"gate\":\"%s\",\"held_ms\":%llu",
++               gate, (unsigned long long)((now - rss_gate_since_ns) / 1000000ULL));
++  }
++  rss_gate_since_ns = 0;
++
++  tac->rss_deadline_ns = 0;
++  nr_rss_log((int)rrc->ue_id, "retrigger", NULL);
++  handle_t300_expiry(rrc);
++}
+ 
+ void init_SI_timers(NR_UE_RRC_SI_INFO *SInfo)
+ {
+@@ -177,6 +569,9 @@ void nr_rrc_handle_timers(NR_UE_RRC_INST_t *rrc)
+     handle_t300_expiry(rrc);
+   }
+ 
++  /* A-type reproducer: inert unless --rss.enable 1 */
++  rss_poll(rrc);
++
+   bool t301_expired = nr_timer_tick(&timers->T301);
+   // Upon T301 expiry, the UE shall perform the actions upon going to RRC_IDLE
+   // with release cause 'RRC connection failure'
+@@ -444,6 +839,8 @@ void nr_rrc_set_sib1_timers_and_constants(NR_UE_Timers_Constants_t *tac, NR_SIB1
+         AssertFatal(false, "Invalid T300 %ld\n", sib1->ue_TimersAndConstants->t300);
+     }
+     nr_timer_setup(&tac->T300, k, 10); // 10ms step
++    /* A-type reproducer timer, armed only when an attempt is actually skipped */
++    nr_timer_setup(&tac->rss_retry_timer, 10, 10);
+     switch (sib1->ue_TimersAndConstants->t319) {
+       case NR_UE_TimersAndConstants__t319_ms100 :
+         k = 100;
+diff --git a/radio/zmq/zmq_imported.cpp b/radio/zmq/zmq_imported.cpp
+index 51dd842..ccc0638 100644
+--- a/radio/zmq/zmq_imported.cpp
++++ b/radio/zmq/zmq_imported.cpp
+@@ -39,6 +39,7 @@ void zmq_tx_channel::transmit(c16_t *samples, size_t nsamps, uint64_t timestamp)
+ 
+     std::lock_guard<std::mutex> q_lock(queue_mutex_);
+     queue_.push(std::move(msg));
++    queue_cvar_.notify_one();
+   }
+ 
+   sample_count_ += nsamps;
+@@ -58,6 +59,12 @@ bool zmq_tx_channel::pop_message(zmq_msg_t *msg)
+   return true;
+ }
+ 
++bool zmq_tx_channel::await_message(std::chrono::microseconds timeout)
++{
++  std::unique_lock<std::mutex> lock(queue_mutex_);
++  return queue_cvar_.wait_for(lock, timeout, [this] { return !queue_.empty(); });
++}
++
+ void zmq_tx_channel::start(uint64_t init_time)
+ {
+   sample_count_ = init_time;
+diff --git a/radio/zmq/zmq_imported.h b/radio/zmq/zmq_imported.h
+index a33ba59..6cf1cc7 100644
+--- a/radio/zmq/zmq_imported.h
++++ b/radio/zmq/zmq_imported.h
+@@ -24,6 +24,9 @@ class zmq_tx_channel {
+   std::atomic<bool> is_tx_enabled_ = false;
+   std::mutex transmit_alignment_mutex_;
+   std::condition_variable transmit_alignment_cvar_;
++  /* RSS: signalled when transmit() enqueues, so a consumer that has a REQ
++   * pending can be woken by the data instead of polling for it. */
++  std::condition_variable queue_cvar_;
+ 
+   zmq_tx_channel(void *s, uint64_t buffer_size) : socket_(s)
+   {
+@@ -40,6 +43,8 @@ class zmq_tx_channel {
+ 
+   void transmit(c16_t *samples, size_t nsamps, uint64_t timestamp);
+   bool pop_message(zmq_msg_t *msg);
++  /* RSS: block until the queue is non-empty or the timeout expires. */
++  bool await_message(std::chrono::microseconds timeout);
+ 
+   void start(uint64_t init_time);
+ 
+diff --git a/radio/zmq/zmq_radio.cpp b/radio/zmq/zmq_radio.cpp
+index e25f7c7..8d07fd5 100644
+--- a/radio/zmq/zmq_radio.cpp
++++ b/radio/zmq/zmq_radio.cpp
+@@ -38,6 +38,7 @@
+ #include <atomic>
+ #include <condition_variable>
+ #include <ring_buffer.h>
++#include <sched.h>
+ #include <zmq.h>
+ #include "zmq_imported.h"
+ #include "zmq_simd.h"
+@@ -66,12 +67,55 @@ struct zmq_state_t {
+   double sample_rate;
+ };
+ 
++/* RSS reproducer: TX poll wakeup -------------------------------------------- *
++ * tx_poll_thread() can only be woken by a socket event. Once a REQ has arrived
++ * but the local TX queue is still empty, the peer is blocked waiting for our
++ * REP and sends nothing more, so zmq_poll() can only return on its own 10 ms
++ * timeout. UE and DU run on one host over tcp://127.0.0.1, where the transport
++ * round trip is tens of microseconds; that timeout, not transport latency, is
++ * what stretches a sub-millisecond lateness of the local TX queue into a whole
++ * 10 ms radio frame (measured air/wall 0.25-0.49 against a 10 ms frame).
++ *
++ * RSS_ZMQ_TX_WAIT_US selects how the wait is served, so one binary can run all
++ * three variants:
++ *    0  original blocking zmq_poll(10 ms)
++ *   >0  usleep(n) re-check, like zmq_rx_channel::receive() does on the RX side
++ *   -1  sched_yield() spin, no sleep at all
++ *   -2  wait on the queue condition variable (woken by transmit())
++ * Default -2. Measured 2026-10-20 over 60 s runs:
++ *   usleep(100) costs ~288 us per starved REQ and usleep(20) ~240 us, i.e. the
++ *   cost is the scheduler wakeup latency, not the requested sleep, and ~29 s of
++ *   an 80 s run went into it. The spin removed the wait (117 ms total) but made
++ *   throughput worse (air/wall 2.15 -> 1.26) because it starves the producer
++ *   thread it is waiting on. The condition variable is the event-driven answer:
++ *   no polling, no CPU burn, woken exactly when samples are queued.
++ */
++static int rss_zmq_tx_wait_us(void)
++{
++  static int cached = INT32_MIN;
++  if (cached == INT32_MIN) {
++    const char *env = getenv("RSS_ZMQ_TX_WAIT_US");
++    cached = env ? atoi(env) : -2;
++  }
++  return cached;
++}
++
++/* REQs that arrived before the TX queue had samples, REQs served, and the
++ * wall-clock time actually spent waiting for the local TX queue. */
++static std::atomic<unsigned long> rss_zmq_tx_starved(0);
++static std::atomic<unsigned long> rss_zmq_tx_served(0);
++static std::atomic<unsigned long> rss_zmq_tx_starved_us(0);
++static std::atomic<unsigned long> rss_zmq_tx_reported(0);
++
+ static void tx_poll_thread(zmq_tx_channel *chan, size_t i, std::atomic<bool> *poll_thread_running)
+ {
+   zmq_pollitem_t item = {chan->socket_, 0, ZMQ_POLLIN, 0};
+   bool reply_requested = false;
++  bool starve_counted = false;
++  const int wait_us = rss_zmq_tx_wait_us();
+ 
+   while (*poll_thread_running) {
++    bool tx_queue_starved = false;
+     if (reply_requested) {
+       zmq_msg_t msg;
+       if (chan->pop_message(&msg)) {
+@@ -81,7 +125,47 @@ static void tx_poll_thread(zmq_tx_channel *chan, size_t i, std::atomic<bool> *po
+         }
+         zmq_msg_close(&msg);
+         reply_requested = false;
++        starve_counted = false;
++        rss_zmq_tx_served++;
++      } else {
++        /* REQ pending, nothing to send yet: no socket event can end this wait. */
++        tx_queue_starved = true;
++        if (!starve_counted) {
++          starve_counted = true;
++          rss_zmq_tx_starved++;
++        }
++      }
++    }
++
++    if (tx_queue_starved) {
++      /* The peer is blocked on our REP and sends nothing more, so zmq_poll()
++       * can only return on its own 10 ms timeout. Measure what this wait costs
++       * under either policy so the two can be compared directly. */
++      const auto t0 = std::chrono::steady_clock::now();
++      if (wait_us > 0)
++        usleep(wait_us);
++      else if (wait_us == -2)
++        chan->await_message(std::chrono::milliseconds(2));
++      else if (wait_us < 0)
++        sched_yield();
++      else
++        zmq_poll(&item, 1, 10);
++      rss_zmq_tx_starved_us +=
++          std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count();
++
++      const unsigned long n = rss_zmq_tx_starved.load();
++      if (n - rss_zmq_tx_reported.load() >= 250) {
++        rss_zmq_tx_reported.store(n);
++        LOG_I(HW,
++              "[ZMQ] TX antenna %d: %lu REQs starved / %lu served, %lu ms waiting for the local TX queue "
++              "(RSS_ZMQ_TX_WAIT_US=%d)\n",
++              (int)i,
++              n,
++              rss_zmq_tx_served.load(),
++              rss_zmq_tx_starved_us.load() / 1000,
++              wait_us);
+       }
++      continue;
+     }
+ 
+     int rc = zmq_poll(&item, 1, 10); // 10ms timeout
+@@ -106,6 +190,7 @@ static void tx_poll_thread(zmq_tx_channel *chan, size_t i, std::atomic<bool> *po
+         LOG_E(HW, "[ZMQ] Error, unexpected REQ before REP on TX antenna %d\n", (int)i);
+       }
+       reply_requested = true;
++      starve_counted = false;
+     }
+   }
+ }

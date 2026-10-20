@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# rss-build — apply the UE-side patch to an OAI tree and build the attacker UE.
+#
+# Run this on the host that will run the attacker UE. It never touches the gNB.
+# Refuses local changes; review and preserve them before applying another patch.
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONF="${RSS_CONF:-$HERE/conf/rss.conf}"
+if [[ -f "$CONF" ]]; then
+  # A broken line in the conf file (bad quoting, a stray command) would
+  # otherwise abort the script with no message at all, because `set -e` sees
+  # the failed source. Say what happened instead.
+  # shellcheck source=/dev/null
+  . "$CONF" || { echo "cannot load $CONF — a line in it failed. Check quoting, e.g. GNB_RESTART_CMD='/path/script start'" >&2; exit 1; }
+fi
+
+OAI=${OAI:-/root/OAI}
+PATCH=${PATCH:-$HERE/patch/rss-ue.patch}
+PUCCH_FIX="$HERE/patch/oai-pucch-null-fix.patch"
+BRANCH=${BRANCH:-rss-ue-a-type}
+BUILD="$OAI/cmake_targets/ran_build/build"
+BIN="$BUILD/nr-uesoftmodem"
+# radio/zmq/zmq_radio.cpp builds into a separate shared library that the UE
+# loads at runtime (--device.name oai_zmqdevif), so it needs its own target.
+# Building only nr-uesoftmodem silently leaves the old device in place.
+DEVLIB="$BUILD/liboai_zmqdevif.so"
+EXPECT_COMMIT=${EXPECT_COMMIT:-1c2f4d3c2e68181cdef9f426d161163147ad4b77}
+
+[[ -d $OAI/.git ]] || { echo "not an OAI git tree: $OAI" >&2; exit 1; }
+[[ -f $PATCH ]] || { echo "patch not found: $PATCH" >&2; exit 1; }
+[[ -f $PUCCH_FIX ]] || { echo "OAI PUCCH crash fix not found: $PUCCH_FIX" >&2; exit 1; }
+[[ -d $BUILD ]] || { echo "no build dir $BUILD — build stock OAI once first" >&2; exit 1; }
+
+TREE_STATE=$(git -C "$OAI" status --porcelain --untracked-files=all --ignore-submodules=none) \
+  || { echo "cannot check local changes in $OAI — nothing changed" >&2; exit 1; }
+if [[ -n $TREE_STATE ]]; then
+  echo "local changes or untracked files in $OAI — review and preserve them first; nothing changed" >&2
+  exit 1
+fi
+
+echo "== tree state"
+HEAD=$(git -C "$OAI" rev-parse HEAD)
+echo "   HEAD        $HEAD"
+echo "   describe    $(git -C "$OAI" describe --tags --always 2>/dev/null || echo -)"
+if [[ $HEAD != "$EXPECT_COMMIT" ]]; then
+  echo "   !! this patch was made against $EXPECT_COMMIT (OAI 2026.w38)."
+  echo "      It may not apply to $HEAD; review source compatibility."
+fi
+
+if git -C "$OAI" rev-parse --verify --quiet "$BRANCH" >/dev/null; then
+  git -C "$OAI" checkout "$BRANCH"
+else
+  git -C "$OAI" checkout -b "$BRANCH"
+fi
+
+if git -C "$OAI" apply --reverse --check "$PUCCH_FIX" >/dev/null 2>&1; then
+  echo "== OAI PUCCH crash fix already applied"
+  NEED_PUCCH_FIX=0
+elif git -C "$OAI" apply --check "$PUCCH_FIX" >/dev/null 2>&1; then
+  NEED_PUCCH_FIX=1
+else
+  echo "OAI PUCCH crash fix does not apply cleanly — nothing patched" >&2
+  exit 1
+fi
+git -C "$OAI" apply --check "$PATCH" || { echo "RSS patch does not apply cleanly — nothing patched" >&2; exit 1; }
+
+# keep a way back
+if [[ -f $BIN && ! -f $BIN.orig ]]; then cp -p "$BIN" "$BIN.orig"; echo "   saved $BIN.orig"; fi
+if [[ -f $DEVLIB && ! -f $DEVLIB.orig ]]; then cp -p "$DEVLIB" "$DEVLIB.orig"; echo "   saved $DEVLIB.orig"; fi
+
+if (( NEED_PUCCH_FIX )); then
+  echo "== applying official OAI PUCCH crash fix (3d4b1923)"
+  git -C "$OAI" apply "$PUCCH_FIX"
+fi
+echo "== applying $PATCH"
+git -C "$OAI" apply "$PATCH"
+git -C "$OAI" --no-pager diff --stat | tail -12
+
+for t in nr-uesoftmodem oai_zmqdevif zmq_radio_static; do
+  echo "== building $t"
+  cmake --build "$BUILD" --target "$t" -- -j"$(nproc)"
+done
+
+echo "== knob check (the knobs must be in the artifact that carries them)"
+fail=0
+check() { # file, needle
+  local n; n=$(strings "$1" 2>/dev/null | grep -c "$2" || true)
+  printf '   %-26s %-26s %s\n' "$(basename "$1")" "$2" "$n"
+  [[ $n -gt 0 ]] || fail=1
+}
+check "$BIN" target_occupancy
+check "$BIN" msg4_wait
+check "$BIN" RSS_SHARE_LOCKSTEP
+check "$DEVLIB" RSS_ZMQ_TX_WAIT_US
+if (( fail )); then
+  echo "   !! a knob is missing from the built artifact. Do not trust runs from this build." >&2
+  exit 1
+fi
+echo "== done. The attack is OFF unless you pass -e 1."

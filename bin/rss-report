@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# rss-report — observations from a CU log window plus optional UE JSONL.
+#
+# Run the gNB-log part on the host that owns the CU log. The time window is
+# required: without it you read whole-log totals as if they were one run.
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONF="${RSS_CONF:-$HERE/conf/rss.conf}"
+if [[ -f "$CONF" ]]; then
+  # A broken line in the conf file (bad quoting, a stray command) would
+  # otherwise abort the script with no message at all, because `set -e` sees
+  # the failed source. Say what happened instead.
+  # shellcheck source=/dev/null
+  . "$CONF" || { echo "cannot load $CONF — a line in it failed. Check quoting, e.g. GNB_RESTART_CMD='/path/script start'" >&2; exit 1; }
+fi
+
+GNB_LOG=${GNB_LOG:-/tmp/ocu.log}
+CAPACITY=${CAPACITY:-96}
+SINCE=""; UNTIL=""; JSONL=""
+
+usage() { cat <<EOF
+usage: $0 --since TIME --until TIME [--log FILE] [--jsonl FILE] [--capacity N]
+  --since/--until  [start, end), in the log's time basis (required)
+                   ISO date/time, or HH:MM:SS when the dates are unambiguous
+  --log            gNB CU log           (GNB_LOG, now $GNB_LOG)
+  --jsonl          UE attempts.jsonl    (optional; whole file, not time-filtered)
+  --capacity       cell capacity        (CAPACITY, now $CAPACITY)
+EOF
+exit "${1:-1}"; }
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --since|--until|--log|--jsonl|--capacity)
+      [[ $# -ge 2 && -n $2 && $2 != --* ]] || { echo "missing value for $1" >&2; usage; };;
+  esac
+  case "$1" in
+  --since) SINCE=$2; shift 2;; --until) UNTIL=$2; shift 2;;
+  --log) GNB_LOG=$2; shift 2;; --jsonl) JSONL=$2; shift 2;;
+  --capacity) CAPACITY=$2; shift 2;; -h|--help) usage 0;; *) usage;;
+esac; done
+[[ -n $SINCE && -n $UNTIL ]] || usage
+[[ -r $GNB_LOG ]] || { echo "cannot read $GNB_LOG (try sudo)" >&2; exit 1; }
+[[ -z $JSONL || -f $JSONL && -r $JSONL ]] || { echo "cannot read $JSONL" >&2; exit 1; }
+
+echo "== occupancy ($GNB_LOG, $SINCE..$UNTIL)"
+python3 "$HERE/analysis/cu_occupancy.py" "$GNB_LOG" "$SINCE" "$UNTIL" "$CAPACITY"
+
+echo
+echo "== gNB counters"
+python3 "$HERE/analysis/cu_count.py" "$GNB_LOG" "$SINCE" "$UNTIL"
+
+if [[ -n $JSONL ]]; then
+  echo
+  echo "== UE side ($JSONL; whole file, not filtered by --since/--until)"
+  python3 "$HERE/analysis/attempt_phases.py" "$JSONL"
+fi
+
+echo
+cat <<'EOF'
+== how to read this
+  Occupancy is reconstructed from the procedure records available in this log.
+      Missing history or events can leave actual occupancy unknown.
+  Counts are matching log occurrences, not deduplicated protocol messages.
+      Rejection frequency alone does not establish service denial or recovery.
+  Zero completion or InitialUEMessage matches means none were observed in this
+      window; it is not proof that none occurred.
+  Service impact requires separate observations of a normal UE.
+EOF

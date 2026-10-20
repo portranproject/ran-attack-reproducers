@@ -1,0 +1,7 @@
+# local config (copy from conf/rss.conf.example)
+conf/rss.conf
+# run artifacts
+runs/
+*.log
+*.jsonl
+__pycache__/

@@ -684,3 +684,65 @@ Assertion ((uint)cc == s->tx_stream.channels_.size()) failed!
   (a) UE를 DU와 **다른 박스**로 분리해 ZMQ를 네트워크로 돌리거나,
   (b) 샘플레이트를 낮춘 셀(예: 10 MHz)로 슬롯 예산을 키우거나,
   (c) 실제 SDR OTA로 가는 것.
+
+
+---
+
+## 14. 정정 — 공중/벽시계 비율은 1/6이 아니라 **약 1/2.1**이다 ✅
+
+§12.3에서 "공중 시간이 벽시계의 약 1/6"이라고 썼다. **그 추정은 틀렸다.** 패치에 두 시계를
+직접 찍는 계측(`air_ms`, `air_per_wall`)을 넣어 재측정한 결과(run `CLK3`, 2026-10-20 08:5x):
+
+```json
+{"event":"tick_rate","air_ms_elapsed":1000,"wall_ms_elapsed":2256,"air_per_wall":0.443}
+{"event":"tick_rate","air_ms_elapsed":1000,"wall_ms_elapsed":2026,"air_per_wall":0.494}
+{"event":"tick_rate","air_ms_elapsed":1000,"wall_ms_elapsed":2030,"air_per_wall":0.493}
+```
+
+**공중/벽시계 = 0.44 ~ 0.49 → 실시간의 약 1/2.1.** §12.3의 1/6은 로그에서 고른 RA 주기 샘플
+3~4 프레임이 대표값이 아니었던 탓이다(버스트 구간). 직접 계측이 추정을 이긴 사례로 남긴다.
+
+### 14.1 ZMQ가 일부러 늦추는 것인가 → 아니다 ✅
+
+| 확인 | 결과 |
+|---|---|
+| ZMQ 장치에 페이싱/슬립/레이트 리미터 | **없음.** `radio/zmq/zmq_radio.cpp`에 `sleep`·`nanosleep`·rate 코드 0건. `sample_rate`는 스트림 버퍼 크기(`sample_rate/100`)와 채널 설정에만 쓰임 |
+| OAI가 ZMQ에 쓰는 시간원 | **`TIME_SOURCE_REALTIME`.** `nr-uesoftmodem.c`: `IS_SOFTMODEM_RFSIM ? TIME_SOURCE_IQ_SAMPLES : TIME_SOURCE_REALTIME` — 가상(IQ 샘플 구동) 시간은 `--rfsim` 전용이다 |
+
+즉 OAI는 **ZMQ를 실시간 라디오로 전제**하고 L2 타이머를 벽시계로 돌린다. 공중 시간이 늘어진 것은
+의도된 RF 재현이 아니라 **성능 부족**이다. 의도적 가상 시간이라면 `rfsim`처럼 L2 타이머도 함께
+늦춰져 두 시계가 어긋나지 않는다.
+
+### 14.2 그래서 격차는 어떻게 쪼개지는가 🔍
+
+KAUST 25 요청/s vs 우리 4.6 Msg4/s = 약 5.4배. 새 측정으로 분해하면:
+
+| 요인 | 배수 | 근거 |
+|---|---|---|
+| 테스트베드가 실시간보다 느림 | **약 2.1×** | `air_per_wall` 0.44~0.49 ✅ |
+| 우리 시도당 공중 비용이 큼 | **약 2.5×** | 벽시계 주기 약 220 ms × 0.47 ≈ **공중 100 ms/시도** vs KAUST 40 ms/요청 |
+
+**→ §12.3에서 시간 왜곡 탓으로 과도하게 돌린 부분을 정정한다.** 절반 이상은 우리 시도당 비용이다.
+즉 재시작 경로(PRACH 기회 대기 + 1틱 재시작 지연)에 아직 약 2.5배 여지가 남아 있다 🔍.
+이것이 다음 레버이고, 테스트베드 교체 없이도 공략 가능한 쪽이다.
+
+### 14.3 도구에 반영한 것 ✅
+
+모든 JSONL 레코드가 이제 **두 시계를 함께** 싣는다.
+
+```json
+{"type":"event","run_id":"CLK3","seq":1,"t_ns":1792454486676823083,"air_ms":1280,
+ "event":"attempt_start","ue_identity":"0x9d3ff9cfa0","identity_type":"randomValue","src":"msg3"}
+```
+
+탐지팀에게 중요한 이유: 탐지 임계값은 CU 로그(벽시계)의 "초당 요청 수"로 잡을 텐데, 이 테스트베드의
+라벨은 실제 공격보다 **약 2.1배 약하게** 보인다. 두 시계를 같이 주면 임계값을 공중 시간 기준으로
+환산해 잡을 수 있다. `tick_rate` 이벤트의 `air_per_wall`이 그 환산 계수다.
+
+### 14.4 운영 메모 (반복해서 밟은 함정) ✅
+
+- 박스를 `stop` → `start` 하면 **`/tmp`가 비워진다.** 스크립트를 `/tmp`에 두면 다음 세션에 사라지고,
+  `deploy.sh`가 없는 채로 배포가 **조용히 실패**한다(이번에 1회 발생). 도구는 `/home/ubuntu/rss-tools/`에
+  둔다(EBS 보존, ubuntu 소유). `/root/...`로는 scp가 안 된다(`/root` 700, ubuntu 진입 불가).
+- 배포 후에는 항상 `files changed` 줄과 `Linking CXX executable`을 확인한다. 노브가 바이너리에
+  들어갔는지는 `strings <bin> | grep -c <knob>`로 확인한다.

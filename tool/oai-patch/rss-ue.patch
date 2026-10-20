@@ -497,10 +497,10 @@ index b359d35..0f7098a 100644
  #endif
  
 diff --git a/openair2/RRC/NR_UE/rrc_timers_and_constants.c b/openair2/RRC/NR_UE/rrc_timers_and_constants.c
-index 0addfe5..e1f2335 100644
+index 0addfe5..66a8bab 100644
 --- a/openair2/RRC/NR_UE/rrc_timers_and_constants.c
 +++ b/openair2/RRC/NR_UE/rrc_timers_and_constants.c
-@@ -4,6 +4,350 @@
+@@ -4,6 +4,372 @@
  
  #include "openair2/RRC/NR_UE/rrc_proto.h"
  #include "executables/softmodem-common.h"
@@ -582,6 +582,17 @@ index 0addfe5..e1f2335 100644
 +static uint64_t rss_gate_since_ns;   /* when a gate first held this attempt back */
 +static unsigned rss_ticks;       /* RRC ticks seen while enabled */
 +static uint64_t rss_tick_t0_ns;  /* start of the current tick-rate window */
++/* Air time. One RRC tick is one radio frame (10 ms of air). The ZMQ device has
++   no pacing code and OAI selects TIME_SOURCE_REALTIME for it (virtual
++   IQ-driven time is only used for --rfsim), so the radio is *expected* to run
++   in real time. On this testbed it does not: the frame counter advances about
++   3-6x slower than the wall clock, while the gNB release timer stays on the
++   wall clock. Every record therefore carries both clocks, so a reader can tell
++   "attempts per second of air time" from "attempts per second of wall time".
++   Without that split the labels understate a real attacker by the same factor
++   and would mislead detection thresholds. */
++static uint64_t rss_air_frame;   /* monotonic radio frame = hfn*1024 + frame */
++static uint64_t rss_air_frame_t0;
 +
 +static uint64_t rss_now_ns(void)
 +{
@@ -647,10 +658,11 @@ index 0addfe5..e1f2335 100644
 +    }
 +  }
 +  fprintf(rss_log_fd,
-+          "{\"type\":\"event\",\"run_id\":\"%s\",\"seq\":%u,\"t_ns\":%llu,\"event\":\"%s\"",
++          "{\"type\":\"event\",\"run_id\":\"%s\",\"seq\":%u,\"t_ns\":%llu,\"air_ms\":%llu,\"event\":\"%s\"",
 +          cfg->run_id ? cfg->run_id : "",
 +          rss_seq,
 +          (unsigned long long)rss_now_ns(),
++          (unsigned long long)(rss_air_frame * 10),
 +          event);
 +  if (fmt && fmt[0]) {
 +    va_list ap;
@@ -750,15 +762,25 @@ index 0addfe5..e1f2335 100644
 +  /* Tick-rate instrumentation. One call here is one radio frame, nominally
 +     10 ms. Logging the measured value turns the "configured vs realised"
 +     mismatch from a guess into a number. */
++  rss_air_frame = (uint64_t)rrc->current_hfn * 1024 + (uint64_t)rrc->current_frame;
 +  if (cfg->enable) {
 +    uint64_t now = rss_now_ns();
 +    rss_ticks++;
 +    if (rss_tick_t0_ns == 0) {
 +      rss_tick_t0_ns = now;
++      rss_air_frame_t0 = rss_air_frame;
 +    } else if (cfg->tick_report > 0 && rss_ticks % (unsigned)cfg->tick_report == 0) {
-+      double ms = (double)(now - rss_tick_t0_ns) / 1e6 / (double)cfg->tick_report;
-+      nr_rss_log("tick_rate", "\"ms_per_tick\":%.2f,\"nominal_ms\":10", ms);
++      double wall_ms = (double)(now - rss_tick_t0_ns) / 1e6;
++      double air_ms = (double)((rss_air_frame - rss_air_frame_t0) * 10);
++      nr_rss_log("tick_rate",
++                 "\"ms_per_tick\":%.2f,\"nominal_ms\":10,\"air_ms_elapsed\":%.0f,"
++                 "\"wall_ms_elapsed\":%.0f,\"air_per_wall\":%.3f",
++                 wall_ms / (double)cfg->tick_report,
++                 air_ms,
++                 wall_ms,
++                 wall_ms > 0 ? air_ms / wall_ms : 0.0);
 +      rss_tick_t0_ns = now;
++      rss_air_frame_t0 = rss_air_frame;
 +    }
 +  }
 +
@@ -851,7 +873,7 @@ index 0addfe5..e1f2335 100644
  
  void init_SI_timers(NR_UE_RRC_SI_INFO *SInfo)
  {
-@@ -177,6 +521,9 @@ void nr_rrc_handle_timers(NR_UE_RRC_INST_t *rrc)
+@@ -177,6 +543,9 @@ void nr_rrc_handle_timers(NR_UE_RRC_INST_t *rrc)
      handle_t300_expiry(rrc);
    }
  
@@ -861,7 +883,7 @@ index 0addfe5..e1f2335 100644
    bool t301_expired = nr_timer_tick(&timers->T301);
    // Upon T301 expiry, the UE shall perform the actions upon going to RRC_IDLE
    // with release cause 'RRC connection failure'
-@@ -444,6 +791,8 @@ void nr_rrc_set_sib1_timers_and_constants(NR_UE_Timers_Constants_t *tac, NR_SIB1
+@@ -444,6 +813,8 @@ void nr_rrc_set_sib1_timers_and_constants(NR_UE_Timers_Constants_t *tac, NR_SIB1
          AssertFatal(false, "Invalid T300 %ld\n", sib1->ue_TimersAndConstants->t300);
      }
      nr_timer_setup(&tac->T300, k, 10); // 10ms step

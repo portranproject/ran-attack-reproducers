@@ -46,6 +46,21 @@ while getopts "e:i:d:c:r:g:o:H:G:u:n:h" o; do case "$o" in
 (( MAX_DURATION_S >= 1 && MAX_DURATION_S <= 600 )) || { echo "max_duration_s must be 1..600"; exit 1; }
 [[ -n "$RUN_ID" ]] || RUN_ID="$([[ $ENABLE == 1 ]] && echo A || echo base)-$(date -u +%Y%m%dT%H%M%SZ)"
 
+# Guard against an upstream OAI config bug (2026.w38,
+# common/config/config_load_configmodule.c:232). The -O scan is
+#     if (argv[i][1] == 'O' && i < argc - 1) { cfgparam = argv[i+1]; ... }
+# with no check for a leading '-', so ANY argument whose second character is
+# 'O' is taken as the -O option and the argument after it becomes the config
+# file path. A run id like "CONF-043717Z" (C-O-N-F) therefore kills the UE at
+# startup with "error: file --rss.log_file does not exist", before a single
+# knob is parsed. Box-verified 2026-10-20: CONF-043717Z and CONF2-043950Z both
+# segfaulted; ZWA100-043229Z and ZWB60-044132Z (second char 'W') ran fine.
+if [[ ${RUN_ID:1:1} == O ]]; then
+  echo "!! run_id '$RUN_ID' has 'O' as its second character." >&2
+  echo "   OAI would mistake it for the -O config-file option and die at startup." >&2
+  exit 1
+fi
+
 OUT="$LOGDIR/$RUN_ID"
 mkdir -p "$OUT"
 JSONL="$OUT/attempts.jsonl"
@@ -60,7 +75,8 @@ cat > "$OUT/run.json" <<EOF
  "gnb_cfg":{"t300_ms":1000,"guard_ms":1000,"hold_ms":2000,"rrc_reject_wait_time_s":"unset"},
  "knobs":{"enable":$ENABLE,"interval_ms":$INTERVAL_MS,"completion_pct":$COMPLETION_PCT,
           "honor_reject":$HONOR_REJECT,"ack_gate":$ACK_GATE,"max_duration_s":$MAX_DURATION_S,
-          "target_occupancy":$TARGET_OCC,"hold_ms":$HOLD_MS,"ra_gate":$RA_GATE,"num_ues":$NUM_UES},
+          "target_occupancy":$TARGET_OCC,"hold_ms":$HOLD_MS,"ra_gate":$RA_GATE,"num_ues":$NUM_UES,
+          "zmq_tx_wait_us":${RSS_ZMQ_TX_WAIT_US:-100}},
  "t_start_utc":"$(date -u +%FT%TZ)"}
 EOF
 

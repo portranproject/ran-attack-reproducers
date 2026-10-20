@@ -941,3 +941,108 @@ index 0addfe5..e6e9578 100644
      switch (sib1->ue_TimersAndConstants->t319) {
        case NR_UE_TimersAndConstants__t319_ms100 :
          k = 100;
+diff --git a/radio/zmq/zmq_radio.cpp b/radio/zmq/zmq_radio.cpp
+index e25f7c7..450fa67 100644
+--- a/radio/zmq/zmq_radio.cpp
++++ b/radio/zmq/zmq_radio.cpp
+@@ -66,12 +66,48 @@ struct zmq_state_t {
+   double sample_rate;
+ };
+ 
++/* RSS reproducer: TX poll wakeup -------------------------------------------- *
++ * tx_poll_thread() can only be woken by a socket event. Once a REQ has arrived
++ * but the local TX queue is still empty, the peer is blocked waiting for our
++ * REP and sends nothing more, so zmq_poll() can only return on its own 10 ms
++ * timeout. UE and DU run on one host over tcp://127.0.0.1, where the transport
++ * round trip is tens of microseconds; that timeout, not transport latency, is
++ * what stretches a sub-millisecond lateness of the local TX queue into a whole
++ * 10 ms radio frame (measured air/wall 0.25-0.49 against a 10 ms frame).
++ *
++ * With RSS_ZMQ_TX_WAIT_US (default 100 us) the queue is re-checked at that
++ * cadence instead, which is what zmq_rx_channel::receive() already does on the
++ * RX side. Set RSS_ZMQ_TX_WAIT_US=0 to restore the original blocking behaviour
++ * so both variants can be compared with one binary.
++ */
++static int rss_zmq_tx_wait_us(void)
++{
++  static int cached = -1;
++  if (cached < 0) {
++    const char *env = getenv("RSS_ZMQ_TX_WAIT_US");
++    cached = env ? atoi(env) : 100;
++    if (cached < 0)
++      cached = 0;
++  }
++  return cached;
++}
++
++/* REQs that arrived before the TX queue had samples, REQs served, and the
++ * wall-clock time actually spent waiting for the local TX queue. */
++static std::atomic<unsigned long> rss_zmq_tx_starved(0);
++static std::atomic<unsigned long> rss_zmq_tx_served(0);
++static std::atomic<unsigned long> rss_zmq_tx_starved_us(0);
++static std::atomic<unsigned long> rss_zmq_tx_reported(0);
++
+ static void tx_poll_thread(zmq_tx_channel *chan, size_t i, std::atomic<bool> *poll_thread_running)
+ {
+   zmq_pollitem_t item = {chan->socket_, 0, ZMQ_POLLIN, 0};
+   bool reply_requested = false;
++  bool starve_counted = false;
++  const int wait_us = rss_zmq_tx_wait_us();
+ 
+   while (*poll_thread_running) {
++    bool tx_queue_starved = false;
+     if (reply_requested) {
+       zmq_msg_t msg;
+       if (chan->pop_message(&msg)) {
+@@ -81,7 +117,43 @@ static void tx_poll_thread(zmq_tx_channel *chan, size_t i, std::atomic<bool> *po
+         }
+         zmq_msg_close(&msg);
+         reply_requested = false;
++        starve_counted = false;
++        rss_zmq_tx_served++;
++      } else {
++        /* REQ pending, nothing to send yet: no socket event can end this wait. */
++        tx_queue_starved = true;
++        if (!starve_counted) {
++          starve_counted = true;
++          rss_zmq_tx_starved++;
++        }
++      }
++    }
++
++    if (tx_queue_starved) {
++      /* The peer is blocked on our REP and sends nothing more, so zmq_poll()
++       * can only return on its own 10 ms timeout. Measure what this wait costs
++       * under either policy so the two can be compared directly. */
++      const auto t0 = std::chrono::steady_clock::now();
++      if (wait_us > 0)
++        usleep(wait_us);
++      else
++        zmq_poll(&item, 1, 10);
++      rss_zmq_tx_starved_us +=
++          std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count();
++
++      const unsigned long n = rss_zmq_tx_starved.load();
++      if (n - rss_zmq_tx_reported.load() >= 250) {
++        rss_zmq_tx_reported.store(n);
++        LOG_I(HW,
++              "[ZMQ] TX antenna %d: %lu REQs starved / %lu served, %lu ms waiting for the local TX queue "
++              "(RSS_ZMQ_TX_WAIT_US=%d)\n",
++              (int)i,
++              n,
++              rss_zmq_tx_served.load(),
++              rss_zmq_tx_starved_us.load() / 1000,
++              wait_us);
+       }
++      continue;
+     }
+ 
+     int rc = zmq_poll(&item, 1, 10); // 10ms timeout
+@@ -106,6 +178,7 @@ static void tx_poll_thread(zmq_tx_channel *chan, size_t i, std::atomic<bool> *po
+         LOG_E(HW, "[ZMQ] Error, unexpected REQ before REP on TX antenna %d\n", (int)i);
+       }
+       reply_requested = true;
++      starve_counted = false;
+     }
+   }
+ }

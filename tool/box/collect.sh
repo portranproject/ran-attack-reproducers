@@ -6,7 +6,21 @@ OCU_LOG=${OCU_LOG:-/tmp/ocu.log}
 SINCE=${SINCE:-}   # optional "HH:MM:SS" to limit to one run
 JSONL=${JSONL:-}
 
-cut_log() { if [[ -n "$SINCE" ]]; then awk -v s="$SINCE" '$0 >= s' "$OCU_LOG"; else cat "$OCU_LOG"; fi; }
+# Compare SINCE against the time field only. Comparing the whole line is wrong:
+# every line starts with "2026-10-20T04:..." which is lexicographically greater
+# than any "HH:MM:SS", so the filter passed the entire log and run totals were
+# read as whole-log totals (observed 2026-10-20: "timed out 413" for a run that
+# had 11). UNTIL bounds the other end.
+UNTIL=${UNTIL:-}
+cut_log() {
+  awk -v s="$SINCE" -v u="$UNTIL" '
+    {
+      t = $1; sub(/^[^T]*T/, "", t)        # 2026-10-20T04:32:29.123 -> 04:32:29.123
+      if (s != "" && t < s) next
+      if (u != "" && t > u) next
+      print
+    }' "$OCU_LOG"
+}
 
 echo "== CU side ($OCU_LOG)"
 started=$(cut_log | grep -c '"RRC Setup Procedure" started' || true)

@@ -120,3 +120,134 @@ UE가 늘면 슬롯당 직렬 구간이 길어지고, 이것이 ZMQ 왕복 지�
   필요하면 ZMQ 폴 타임아웃 상향.
 - 이것은 산술과 자원 가용성에 근거한 **예측이며 실증은 아니다**. 4대에서 공중 100/s가 실제로
   나오는지 확인해야 결론이 된다.
+
+## 18. 10 ms 프레임을 못 지킨 근본 원인 — UE ZMQ 송신 폴 타임아웃 (해결)
+
+§14~§17은 "공중 시간이 벽시계의 0.25~0.49배"를 환경 성능 문제로 다뤘다. 원인은 성능이 아니라
+UE ZMQ 장치의 대기 구조였다. 고친 뒤 **기본 gNB 설정·현 환경에서 단일 UE로 동시 점유 94/96**에
+도달했다.
+
+### 18.1 원인
+
+`radio/zmq/zmq_radio.cpp`의 `tx_poll_thread()`는 소켓 이벤트로만 깨어난다.
+
+```c
+if (reply_requested) {
+  if (chan->pop_message(&msg)) { send; reply_requested = false; }
+  // 샘플이 아직 없으면 아래로 떨어진다
+}
+int rc = zmq_poll(&item, 1, 10); // 10ms timeout
+```
+
+DU가 REQ를 보낸 뒤 UE의 TX 큐가 아직 비어 있으면, DU는 REP만 기다리므로 새 소켓 이벤트가 오지
+않는다. `zmq_poll`은 자기 타임아웃 10 ms를 꽉 채우고 리턴하고, 그 다음에야 큐를 다시 본다.
+UE와 DU는 같은 호스트에서 `tcp://127.0.0.1`로 통신하므로(런 로그 `ue.log` CMDLINE) 전송 지연은
+수십 µs다. 즉 10 ms는 전송 지연이 아니라 **타임아웃 상수**이고, 로컬 TX 큐의 1 ms 미만 지각이
+무선 프레임 하나를 통째로 잡아먹는다. 수신 경로(`zmq_rx_channel::receive`)는 같은 상황을
+`usleep(100)`으로 처리한다 — 송신만 10 ms였다.
+
+### 18.2 계측으로 확인
+
+`RSS_ZMQ_TX_WAIT_US` 노브를 추가했다. 0이면 원래 동작, 기본 100은 100 µs 간격 재확인.
+굶은 REQ 수와 그 대기 시간을 함께 적산한다(두 값 모두 노브와 무관하게 계측).
+
+원래 동작(`RSS_ZMQ_TX_WAIT_US=0`, run `ZWA0-043049Z`):
+
+```
+[ZMQ] TX antenna 0: 4250 REQs starved / 36203 served, 42555 ms waiting for the local TX queue
+```
+
+- 굶음 비율 4250/40453 = **10.5%**
+- 굶음당 42555/4250 = **10.01 ms** → `zmq_poll` 타임아웃 10 ms와 일치. 기계적 증거.
+- 42.5 s는 UE 프로세스 수명(약 50 s)의 **85%**다.
+
+### 18.3 A/B (단일 UE, gNB 설정 기본값 2000 ms/96, 환경 무변경)
+
+판정은 CU 로그(`/tmp/ocu.log`)에서 `"RRC Setup Procedure" started`와 그 종료를 ue id로 묶어
+동시 점유를 센 것이다 → `tool/box/cu_occupancy.py`.
+
+| | `=0` (원래) | `=100` (수정) |
+|---|---|---|
+| run | `ZWA0-043049Z` | `ZWA100-043229Z` |
+| air_per_wall | 0.46 ~ 0.54 | **2.39 ~ 2.42** |
+| 굶음당 대기 | 10.01 ms | 0.185 ms |
+| REQ 처리량 | 36,203 | 219,597 |
+| 벽시계 시도율(평균) | 6.7/s | **20.0/s** |
+| **동시 점유 피크** | **20 / 96** | **94 / 96** |
+| 보유 시간(중앙, 벽시계) | 1999 ms | 1644 ms |
+| 종료 사유 | timed out 202 | cancelled 590, timed out 11 |
+
+air_per_wall 2.4는 공중 시간이 실시간보다 **빠르게** 흐른다는 뜻이다. ZMQ에는 페이싱이 없으므로
+(§14에서 확인) 두 프로세스가 교환할 수 있는 만큼 빨라진다. 10 ms 타임아웃이 사실상 브레이크였다.
+
+### 18.4 종료 경로가 CU 타임아웃이 아니었다
+
+수정 후에는 601건 중 **590건이 `"RRC Setup Procedure" cancelled`**로 끝난다. CU의 2000 ms
+타임아웃이 아니라 **DU가 `UeContextReleaseRequest`를 먼저 보낸다.**
+
+```
+04:33:07.900952 ue=790 "RRC Setup Procedure" started
+04:33:09.493009 ue=790 Received "UeContextReleaseRequest"   (+1.592 s)
+04:33:09.493011 ue=790 "RRC Setup Procedure" cancelled
+```
+
+보유 시간이 2000 ms가 아니라 중앙값 1644 ms인 이유다. 점유 모델에 쓸 값은 2000이 아니라 **1644 ms**.
+
+### 18.5 깨져 있던 측정 도구 2개
+
+- `collect.sh`의 `SINCE`는 `$0 >= "04:32:29"` 로 **행 전체**를 비교했다. 행은
+  `2026-10-20T04:...`로 시작하므로 모든 행이 통과한다 → 런 구간 필터가 전혀 작동하지 않았고,
+  "timed out 413"처럼 전체 로그 합계를 런 값으로 읽었다. 시간 필드만 비교해야 한다.
+- `deploy.sh`는 `nr-uesoftmodem` 타깃만 빌드했다. `zmq_radio.cpp`는 런타임 로드되는 별도
+  공유 라이브러리(`liboai_zmqdevif.so`, `--device.name oai_zmqdevif`)로 빌드되므로,
+  `radio/zmq/` 수정은 소스 트리에만 반영되고 **실행에는 닿지 않았다**. 지금은 세 타깃을 빌드하고
+  `.so`에서 노브 문자열을 확인한다.
+
+### 18.6 재현 확인 (60초 런)
+
+run `ZWB60-044132Z`, 같은 설정으로 길이만 2배:
+
+```
+started        1170  (19.5/s wall)
+peak occupancy 94    at 04:41:55
+hold time wall median 1627 ms  p90 1777 ms
+end reasons    {'cancelled': 1151, 'timed out': 19}
+rrcReject 3   rrcSetupComplete 0   NGAP InitialUEMessage 0
+air_per_wall 2.44 ~ 2.46
+```
+
+30초 런과 **피크 94가 동일**하다. 점유 = 시도율 × 보유시간이고, 버스트 구간 시도율이
+94/1.627 ≈ 58/s까지 올라간다. 96을 넘기려면 지속 59/s 이상이 필요하다 — 지금은 상한을
+스치는 수준이고 `rrcReject` 3건이 그 증거다. Msg5 0 / NGAP 0은 A형 조건이 유지됐다는 뜻이다.
+
+### 18.7 함정: run_id 두 번째 글자가 'O'면 UE가 기동하지 못한다
+
+`CONF-043717Z`, `CONF2-043950Z` 두 런이 `error: file --rss.log_file does not exist` 후
+SIGSEGV로 죽었다. 원인은 OAI 업스트림 버그다
+(`common/config/config_load_configmodule.c:232`, `2026.w38`):
+
+```c
+for (i = 0; i < argc; i++) {
+  if (strlen(argv[i]) < 2) continue;
+  if (argv[i][1] == 'O' && i < (argc - 1)) {   /* '-' 를 확인하지 않는다 */
+    cfgparam = argv[i+1];
+    OoptIdx = i;
+  }
+```
+
+두 번째 글자가 `O`인 **모든** 인자가 `-O`로 오인되고 바로 뒤 인자가 설정 파일 경로가 된다.
+`CONF…` → `C` `O` → 뒤따르는 `--rss.log_file`을 파일로 열려다 실패한다. 루프에 `break`가 없어
+마지막 매치가 이기는 점도 작용했다(run_id가 인자 목록 끝 근처).
+
+`ZWA100-`, `ZWB60-`은 두 번째 글자가 `W`라 영향이 없었다. `run_attack.sh`가 이제 거부한다.
+처음에는 "간헐 실패"로 보였는데 `-d 60`과 run_id를 동시에 바꿨기 때문이다. 한 번에 한 변수.
+
+### 18.8 남은 것
+
+- 점유 94/96는 피크이고 30초·60초 런에서 동일하게 94다. `rrcReject`는 각 3건(상한을 스쳤다).
+  지속 포화에는 59/s 이상이 필요하다 → UE 2대 또는 시도당 비용 절감.
+- air_per_wall 2.4는 실시간보다 빠르다. 공격 강도는 올라가지만 **더 이상 실시간 재현도 아니다.**
+  탐지 성능을 실시간 기준으로 보고하려면 페이싱을 넣어 1.0으로 맞춘 런이 따로 필요하다.
+- DU 측 ZMQ에도 같은 10 ms 패턴이 있을 수 있다(동일 코드 계열). gNB 무수정 원칙이라 못 고친다.
+  air/wall 2.4가 나왔으므로 지배적 병목은 아니었다.
+- §16~§17의 "다중 UE로 96에 닿는다" 계획은 더 이상 필요 조건이 아니다. 단일 UE로 닿았다.

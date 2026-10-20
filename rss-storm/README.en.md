@@ -3,9 +3,11 @@
 > 한국어: **[README.md](README.md)** (primary)
 
 A controlled reproducer for an **RRC signaling storm** against a 5G NR base
-station **you own**. It drives repeated initial-access attempts that are
-deliberately never completed, so the gNB accumulates incomplete UE contexts
-until it runs out of capacity and starts rejecting new UEs.
+station **you own**. It drives repeated incomplete initial-access attempts
+and observes incomplete UE contexts and rejection logs. Results below are
+internal summaries from one OCUDU/ZMQ testbed; normal-user service impact was
+not measured. Raw logs are not included, so values and windows are not
+independently verified.
 
 It is built as a **patch to the OpenAirInterface NR UE**. The base station is
 never modified and never patched.
@@ -38,13 +40,12 @@ connection state.
 
 - **The detection signal is clean.** Nothing reaches the core, so the pressure
   sits on exactly one thing: the base station's connection state.
-  `rrcSetupComplete` 0 and `InitialUEMessage` 0 is itself the test that the run
-  never left the scenario.
+  No observed `rrcSetupComplete` or `InitialUEMessage` is consistent with the
+  scenario, but zero log matches alone do not prove it.
 - **No base station change is needed.** It uses only standard Uu procedures
-  (PRACH/RRC), so the target can be any unmodified gNB.
-- **The load level is repeatable.** Target occupancy (`-o`) is a closed loop on
-  the number of incomplete contexts, which is what a detector threshold sweep
-  needs.
+  (PRACH/RRC). Commercial gNBs and real-SDR OTA operation are unverified.
+- **An occupancy target can be set.** `-o` uses local UE records and an assumed
+  hold time. Its estimate is not guaranteed to match actual gNB occupancy.
 
 Why it works at all — at which message the gNB commits resources, why no timer
 on the network side forces a cleanup, and which config values decide the
@@ -122,9 +123,8 @@ measure both in the log.
 | `t300` | 1000 ms | 2000 ms | `cell_cfg.sib.t300` (DU, 3GPP max 2000) |
 | RRC procedure guard | 1000 ms | 5000 ms | `cu_cp.rrc.rrc_procedure_guard_time_ms` (CU) |
 | **measured** context hold | about 1900 ms | about 1460–1850 ms | from the CU log |
-| attempt rate needed to hold saturation | about 48/s | about 7.5/s | capacity ÷ hold |
-| attempt rate this tool delivers | 33–38/s | 5.6–6.5/s | one shared ZMQ radio |
-| result | capacity reached in bursts | **saturation held** | see "Holding saturation" |
+| internally recorded attempt rate | 33–38/s | 5.6–6.5/s | raw inputs absent; event definition/window need verification |
+| internally recorded result | capacity reached in bursts | repeated rejection logs | see "Occupancy and rejection observations" |
 
 - Capacity is `min(SR resources, CSI resources, ...)`, so lowering
   `nof_cell_sr_res` lowers it.
@@ -144,21 +144,53 @@ boxes themselves.
 | CU (OCUDU CU + core + RIC + verdict) | `c6i.xlarge` | 4 | Intel Xeon Platinum 8375C @ 2.90 GHz (1 socket) | 7.6 GiB | Ubuntu 24.04.5 LTS / `7.0.0-1014-aws` |
 | DU + attacker UE | `c6i.2xlarge` | 8 | Intel Xeon Platinum 8375C @ 2.90 GHz (1 socket) | 15.3 GiB | Ubuntu 24.04.5 LTS / `7.0.0-1014-aws` |
 
-**The attempt-rate ceiling is not host performance.** On the 8 vCPU DU box, odu
+**Internal host observations.** On the 8 vCPU DU box, odu
 used about 1.7 cores and the attacker UE about 0.3, leaving **6 cores idle**
 (observed with `top`/`loadavg` in a separate session, not kept as a run
 artifact) —
-and the rate still stopped at 36–38/s. The cause is serialisation in the shared
-radio and the single DU MAC, argued in
+and the recorded rate was 36–38/s. This does not rule out host bottlenecks or
+establish a general performance ceiling. The original interpretation is in
 [docs/MECHANISM.ko.md](docs/MECHANISM.ko.md) §6.3–§6.4. The radio was ZMQ, not a
 real SDR, so no shielded enclosure or antenna was involved.
+
+**p5 normal-attach retest, 2026-10-20.** The core, RIC and OCUDU CU started,
+and the OCUDU DU established F1/E2. The first attempt with a preserved pre-patch
+UE ended in a SIGSEGV after generating `RRCSetupComplete`. The kernel fault
+address and disassembly identified a `NULL` common PUCCH resource dereference
+in the UE scheduler's multiplexing path. We applied the corresponding
+[upstream OAI fix](https://github.com/openairinterface/openairinterface5g/commit/3d4b1923b424be974c1dadcc9c48eddbe8428ba0).
+Before applying it, `bin/rss-bootstrap` shallow-cloned and built a fresh,
+unmodified OAI `2026.w38` without `--deps`; its first normal attach succeeded.
+That single success does not remove the intermittent PUCCH crash risk in stock
+OAI. With the fix, joint DU/UE restarts produced **10/10 normal attaches** and
+**50/50 pings** to the core gateway `10.45.1.1`, with no further UE SIGSEGV.
+The old modified OAI source and RSS-patched build were deleted. We then ran
+`rss-build` on the fixed OAI branch: UE, ZMQ and static targets compiled and
+the knob checks passed. After the build, `rss-doctor` reported zero blockers
+and two expected warnings. `rss-run -e 0 -u 1 -d 30` reached
+`RRCSetupComplete`, PDU acceptance and `oaitun_ue1` configuration, then its
+outer timeout ended it at 50 seconds. Its UE log contained 15 `channel timeout`
+events, so this does not establish stable radio operation. A separate normal
+attach via the control panel using the same patched build pinged the gateway
+**5/5 times**. Afterward, the patched source and build were removed and the
+fixed normal UE was rebuilt without RSS binary markers. The current p5 DU
+`/root/OAI` is the clean `codex/oai-pucch-null-fix` branch (`6d6782b`). Its
+second joint DU/UE start attached and pinged **5/5 times**, with no subsequent
+kernel UE SIGSEGV. Temporary scripts were removed and both EC2 instances were
+stopped. This verifies the **normal UE over ZMQ** path. `-e 1` attack execution,
+SDR over the air, data beyond the gateway and the fix's effect on suppressed
+SR/CSI remain unverified.
 
 ### Prerequisites
 
 - **You do not need an OAI tree in advance.** `bin/rss-bootstrap` clones it from
-  the official repository, lands on the baseline commit and does the first build
-  (a few GB, tens of minutes). An existing tree is reused; a tree at another
-  commit is checked out to the baseline.
+  the official repository at tag `2026.w38` with a shallow clone and does the
+  first build (tens of minutes). An existing tree is reused only if it is clean;
+  preserve local changes and use a separate clean OAI path otherwise. Existing
+  artifacts with RSS markers are refused; reusing unmarked artifacts does not
+  establish stock provenance. A tree with artifacts built at a different commit
+  is also refused. Do not rerun `rss-bootstrap` on the current p5 DU fix branch;
+  `rss-build` recognizes its existing PUCCH fix.
 - `git`, `cmake`, a C/C++ toolchain, `python3`. OAI's system packages are
   installed by `bin/rss-bootstrap --deps`.
 - Root on the UE host if the OAI tree and run artifacts live under `/root`;
@@ -181,11 +213,11 @@ already running.
 
 ```bash
 git clone <this repo> rss-storm && cd rss-storm
-bin/rss-bootstrap --deps                 # 1. fetch OAI and build it once
+bin/rss-bootstrap                        # 1. fetch OAI and build it once
 cp conf/rss.conf.example conf/rss.conf   # 2. configure
 $EDITOR conf/rss.conf
-bin/rss-doctor                           # 3. check every prerequisite
-bin/rss-build                            # 4. apply the patch, build the attacker UE
+bin/rss-build                            # 3. apply PUCCH fix + RSS patch, build UE
+bin/rss-doctor                           # 4. check build and prerequisites
 bin/rss-run -e 0 -u 1 -d 30              # 5. normal-attach regression
 bin/rss-run -e 1 -u 2 -d 120             # 6. attack
 bin/rss-report --since HH:MM:SS --until HH:MM:SS   # 9. verdict (CU host)
@@ -199,14 +231,14 @@ with `sudo`).
 ### 1 — prepare the OAI tree
 
 ```bash
-bin/rss-bootstrap --deps     # first time: also install the system packages
-bin/rss-bootstrap            # afterwards: fetch + checkout baseline + first build
+bin/rss-bootstrap            # default: fetch + checkout baseline + first build
+# Only if missing libraries caused failure: bin/rss-bootstrap --deps
 ```
 
 What it does:
 
-1. Clones OAI from the official repository into `$OAI` (default `/root/OAI`) if
-   no tree is there.
+1. Shallow-clones OAI tag `2026.w38` from the official repository into `$OAI`
+   (default `/root/OAI`) if no tree is there.
 2. **Checks out the baseline commit `1c2f4d3c…` (tag `2026.w38`)**, which is
    what this patch was made against.
 3. With `--deps`, installs OAI's system packages via `build_oai -I`. That
@@ -217,10 +249,17 @@ What it does:
    built.
 5. Verifies that `nr-uesoftmodem` and `liboai_zmqdevif.so` exist.
 
-**This step is slow**: a few GB to clone and tens of minutes to build on a cold
-tree. An existing tree is reused and an existing build is kept (`--force`
-rebuilds). What you have at the end of it is a **normal UE with no attack code
-in it**.
+**This step is slow**: a cold build takes tens of minutes. A clean existing tree
+is reused, but one with build artifacts from a different commit is refused. An
+existing build at the baseline commit without RSS markers is kept. `--force`
+reruns the build, but old artifacts may still be reused. **Only a first build
+from a clean baseline source with no existing build artifacts** establishes
+stock binary provenance.
+The stock UE at the baseline commit can still hit the intermittent PUCCH crash
+described above. The next step, `rss-build`, applies the official fix; it is
+present even when the resulting UE runs with the attack off (`-e 0`).
+On the current p5 DU fix branch, skip this step and proceed to `rss-build` after
+configuration.
 
 ### 2 — configure
 
@@ -253,29 +292,7 @@ At minimum, match these to your environment. The rest can stay at defaults.
 - **Never use a pipeline in that command.** The pipe's write end stays open, so
   EOF never arrives and the run can block forever. `bin/rss-doctor` catches this.
 
-### 3 — run the doctor
-
-```bash
-bin/rss-doctor
-```
-
-Read-only: it changes nothing. It checks host commands, the config file, the OAI
-tree and its commit, the build artifacts, **whether the knobs actually made it
-into the binary**, the UE config, artifact-directory permissions, whether the
-ZMQ ports are listening, the restart hook, and access to the CU log.
-
-```
-== attacker UE binary
-  [ok]   binary: /root/OAI/cmake_targets/ran_build/build/nr-uesoftmodem
-  [FAIL] binary is missing knobs (target_occupancy msg4_wait RSS_SHARE_LOCKSTEP)
-         — it is a stock UE. Run: bin/rss-build
-```
-
-Any `[FAIL]` exits 1, and each line names the command that fixes it. A `[warn]`
-can be normal (the DU is down for now; this host has no CU log). **Only move on
-when there are no blockers.**
-
-### 4 — build
+### 3 — build
 
 ```bash
 bin/rss-build
@@ -283,20 +300,45 @@ bin/rss-build
 
 What it does:
 
-1. Creates (or checks out) the `rss-ue-a-type` branch in the OAI tree,
-   **resets the tree with `git checkout -- .`**, then applies the patch. Any
-   uncommitted work in that OAI tree **is lost** — commit or stash first.
-2. Builds **three targets**: `nr-uesoftmodem`, `oai_zmqdevif` and
+1. **Refuses any OAI tree with uncommitted changes or untracked files.**
+   Changes are never reset automatically; review, preserve and resolve them
+   yourself. In a clean tree, creates or checks out `rss-ue-a-type`.
+2. Applies the [official OAI PUCCH crash fix](https://github.com/openairinterface/openairinterface5g/commit/3d4b1923b424be974c1dadcc9c48eddbe8428ba0)
+   only if absent, then applies the RSS UE patch. The UE binary contains the
+   crash fix even when the attack is off.
+3. Builds **three targets**: `nr-uesoftmodem`, `oai_zmqdevif` and
    `zmq_radio_static`. The radio driver is a separate shared library
    (`liboai_zmqdevif.so`) that the UE loads at runtime, so building only the UE
    binary leaves `radio/zmq/` changes out of the run.
-3. Greps the built artifacts with `strings` for the knobs they must carry
+4. Greps the built artifacts with `strings` for the knobs they must carry
    (`target_occupancy`, `msg4_wait`, `RSS_SHARE_LOCKSTEP`,
    `RSS_ZMQ_TX_WAIT_US`) and **fails if any is missing** — a successful build
    without the knobs produces runs you cannot trust.
 
-Existing binaries are backed up as `.orig`. Re-running is safe (idempotent); use
-it again whenever you want to re-apply the patch.
+Existing binaries are backed up as `.orig`. A previous patch application also
+leaves uncommitted changes; review, preserve and resolve them before re-running.
+
+### 4 — run the doctor
+
+```bash
+bin/rss-doctor
+```
+
+Run this after the build: a stock binary lacks RSS knobs and fails this check.
+The doctor is read-only. It checks host commands, the config file, the OAI tree
+and its commit, the build artifacts, **whether the knobs actually made it into
+the binary**, the UE config, artifact-directory permissions, whether the ZMQ
+ports are listening, the restart hook, and access to the CU log.
+
+```
+== attacker UE binary
+  [ok]   binary: /root/OAI/cmake_targets/ran_build/build/nr-uesoftmodem
+  [ok]   knobs present (target_occupancy, msg4_wait, RSS_SHARE_LOCKSTEP)
+```
+
+Any `[FAIL]` exits 1, and each line names the command that fixes it. A `[warn]`
+can be normal (the DU is down for now; this host has no CU log). **Only move on
+when there are no blockers.**
 
 ### 5 — regression baseline first
 
@@ -307,25 +349,29 @@ bin/rss-run -e 0 -u 1 -d 30
 Prove that a normal attach works on this build with the attack off. **Pass
 `-u 1` explicitly**: the shipped config defaults to `NUM_UES=2`, and two normal
 UEs on one radio with one subscriber identity is not a meaningful baseline — on
-this testbed it crashed the UE (rc=139). If
-`rrcSetupComplete` shows up in the CU log, the attach path is alive; on the UE
-side, `oaitun_ue1` coming up in `ue.log` says the same.
+this testbed it crashed the UE (rc=139). `rrcSetupComplete` shows that the RRC
+stage was reached, not that attachment completed. Confirm that `oaitun_ue1`
+received an address and can reach the core gateway. On p5, `rss-run -e 0` with
+the fixed, RSS-patched build reached PDU acceptance and tunnel configuration;
+a separate normal attach with that same build pinged the gateway 5/5 times.
+Its `rss-run` log had 15 `channel timeout` events, so radio stability is not
+established by this test.
 
 Skip this and a zero-attempt attack run is ambiguous: **you cannot tell a cell
-misconfiguration from an attack-logic problem.** 30 s is enough.
+misconfiguration from an attack-logic problem.** 30 s is one observation window,
+not a guarantee that the first attempt succeeds.
 
 ### 6 — run the attack
 
 ```bash
 bin/rss-run -e 1 -u 2 -d 120              # mode A, default gNB config
-bin/rss-run -e 1 -u 2 -o 48 -H 1900 -d 0  # hold occupancy at 48
+bin/rss-run -e 1 -u 2 -o 48 -H 1900 -d 0  # estimated occupancy target 48
 ```
 
 - `-u 2` is the recommended setting: the smallest count that reaches capacity,
   with the least sample loss (see "Choosing NUM_UES").
-- To **hold** saturation you need the mode B profile and `-r 0` (see "Holding
-  saturation").
-- For a repeatable detector load, pin the level with `-o`.
+- Existing mode B observations are in "Occupancy and rejection observations".
+- `-o` is an estimated occupancy target; verify actual load separately in CU logs.
 - `-d` is the kill switch. On `-e 1` two of them are armed: the in-process timer
   and an outer `timeout` at `N+20` s. On an `-e 0` regression run the attack code
   is off, so the in-process timer never fires and the outer `timeout` is what
@@ -345,12 +391,15 @@ and **`139` is SIGSEGV, which makes the run invalid** — `rss-run` labels it.
 
 ### 8 — artifacts and self-check
 
-Each run lands in `$LOGDIR/<run_id>/`.
+Each run lands in `$LOGDIR/<run_id>/`. **An existing file, directory or symlink
+at that path is rejected**, so results are not overwritten. A run ID starts
+with an ASCII letter or digit and then uses only ASCII letters, digits, `.`,
+`_` or `-`. The existing OAI restriction also forbids `O` as its second character.
 
 | File | Contents |
 |---|---|
 | `run.json` | every knob, the cell, UE commit/branch, start time |
-| `attempts.jsonl` | one record per attempt — **the label feed for a detection team.** Written only on `-e 1` runs |
+| `attempts.jsonl` | one record per event; multiple events can belong to one attempt — **an event feed for a detection team.** Written only on `-e 1` runs |
 | `ue.log` | full UE stdout |
 | `gnb_boot.txt` | output of `GNB_RESTART_CMD` |
 | `run_stop.json` | stop time |
@@ -368,17 +417,25 @@ Read the self-check `rss-run` prints as it exits.
 ### 9 — verdict (on the CU host)
 
 ```bash
-bin/rss-report --since 06:31:00 --until 06:33:10 \
+bin/rss-report --since 2026-10-20T06:31:00 --until 2026-10-20T06:33:10 \
                --jsonl /root/rss-runs/<run_id>/attempts.jsonl
 ```
 
 - **The time window is required.** Without it you read whole-log totals as one
   run's numbers — that mistake actually happened here.
-- Times are in the **gNB log's local time**, not the UTC in `run.json`.
+- Replace the example date and times with the actual analysis window. Windows
+  are **start-inclusive, end-exclusive**. Match the **gNB log's time basis and
+  timezone notation**; do not confuse them with the UTC in `run.json`.
+- `HH:MM:SS` is accepted only when log dates identify one interval. Empty,
+  ambiguous or non-overlapping windows are rejected. Analysis stops if the log
+  lacks the timestamp coverage needed for full-window metrics.
 - `--jsonl` is optional; copy it over from the UE host to add the UE-side view.
+  The UE summary reads the **whole supplied JSONL file**; `--since`/`--until`
+  filter only the CU log. Matching periods are not enforced, so different
+  periods must not be compared directly.
 - In mode B pass `--capacity 12`; the default is 96.
 - See "Reading the verdict" below for the output. The verdict comes from the
-  **gNB's own log**, never from the attacker.
+  **gNB's own log**. It does not directly establish user-service denial.
 
 ### 10 — restore
 
@@ -388,8 +445,9 @@ bin/rss-gnb-profile --role cu restore
 # restart your gNB so it reloads the config
 ```
 
-The UE binary can be restored from the `.orig` copy `bin/rss-build` kept, and
-the OAI tree by checking out your original branch.
+The previous UE binary is in the `.orig` copy kept by `bin/rss-build`. Review
+and preserve source changes before handling them manually; switching branches
+alone does not restore the OAI source tree.
 
 ### Troubleshooting
 
@@ -397,7 +455,8 @@ the OAI tree by checking out your original branch.
 |---|---|
 | `bin/rss-doctor` reports blockers | each `[FAIL]` line names the fix. Start there |
 | no `[RSS]` banner | binary without the patch. Re-run `bin/rss-build` and check that the knob check passes |
-| `patch does not apply cleanly` | the OAI HEAD is not `2026.w38`. Use `bin/rss-bootstrap` to land on the baseline commit |
+| `RSS patch does not apply cleanly` | the OAI source is incompatible with this patch or it was already applied. Check a clean `2026.w38` or verified fix branch; do not force the patch |
+| `OAI PUCCH crash fix does not apply cleanly` | the OAI source is neither recognized as fixed nor compatible with this fix. Check for stock `2026.w38` or the verified fix branch; do not force the patch |
 | `no build dir ... build stock OAI once first` | run `bin/rss-bootstrap` first |
 | the build fails on a missing library | run `bin/rss-bootstrap --deps` once |
 | zero attempts, cell search fails | cell parameters do not match, or the DU is not up. On ZMQ, set `GNB_RESTART_CMD` |
@@ -406,7 +465,7 @@ the OAI tree by checking out your original branch.
 | many `Error, channel timeout` | sample loss. Lower `-u` to 2 or less |
 | `cannot read /tmp/ocu.log` | wrong host or insufficient permission. Pass `--log`, or use sudo |
 | the gNB restart command never returns | you used a pipeline in `GNB_RESTART_CMD`. Make it a single command |
-| occupancy does not rise | measure capacity and hold time first. See "Holding saturation" |
+| occupancy does not rise | measure capacity and hold time first. See "Occupancy and rejection observations" |
 | every attach is rejected | no AMF and no CU-UP are connected to the CU. OCUDU rejects every `RRCSetupRequest` in that state |
 
 ---
@@ -428,7 +487,7 @@ out of the file if you want the environment to win.
 | `-u N` | `NUM_UES` | 1 | attacker UE instances sharing one radio |
 | `-i MS` | `INTERVAL_MS` | 0 | extra delay between attempts; 0 = as fast as the radio allows |
 | `-d SEC` | `MAX_DURATION_S` | 60 | kill switch. **0 = run until stopped** |
-| `-o N` | `TARGET_OCCUPANCY` | 0 | hold this many incomplete contexts; 0 = unlimited pressure |
+| `-o N` | `TARGET_OCCUPANCY` | 0 | UE-side estimated occupancy target; actual gNB occupancy is not guaranteed. 0 = no target limit |
 | `-H MS` | `HOLD_MS` | 2000 | your gNB's hold time, used by the occupancy controller |
 | `-c PCT` | `COMPLETION_PCT` | 0 | **one-shot check.** Above 0 it completes one attempt normally and **ends the run there.** It does not generate sustained mixed traffic |
 | `-r 0\|1` | `HONOR_REJECT` | 1 | obey `RRCReject` waitTime / retry immediately |
@@ -438,11 +497,12 @@ out of the file if you want the environment to win.
 | — | `GATE_TIMEOUT_MS` | 500 | force the retry if a gate has held it this long (0 = never force). No command-line letter |
 | `-n ID` | `RUN_ID` | auto | run identifier |
 
-**`TARGET_OCCUPANCY` is a closed loop**, not a rate limit. It watches how many
-contexts it is currently holding and paces attempts to land on the number you
-ask for. Verified on the box: asking for 3, 6 and 12 produced exactly 3, 6 and
-12 concurrent incomplete procedures in the gNB log. Use it when you need a
-*repeatable* load level for a detector, and `0` when you want maximum pressure.
+**`TARGET_OCCUPANCY` uses a UE-side occupancy estimate.** It depends on local
+events and the fixed hold-time assumption in `HOLD_MS`, without actual gNB
+occupancy feedback. Early release or variable hold times can make it differ
+from the gNB. Internal notes report matching targets of 3, 6 and 12, but the
+raw evidence is not included. Do not use the estimate as detector ground truth;
+keep it separate from occupancy observed in CU logs.
 
 ### Radio efficiency
 
@@ -466,31 +526,32 @@ there. On a real SDR leave it empty.
 
 ---
 
-## Holding saturation
+## Occupancy and rejection observations
 
-Occupancy is approximately **attempt rate times how long the gNB holds one
-context**. That single line decides everything, so measure both before you
-expect a result.
+In a steady state, mean occupancy can be approximated by **context creation
+rate times mean hold time**. Attempt rate, acceptance rate and log occurrence
+rate differ; this approximation alone does not establish saturation or service
+denial. The following internal summaries do not include raw evidence.
 
 ```
-needed attempt rate  =  cell capacity / hold time
+approximate mean occupancy  =  context creation rate × mean hold time
 ```
 
 ### Mode A — default gNB config
 
-Capacity 96, hold about 2 s, so holding capacity needs about 48 attempts/s. One
-shared ZMQ radio delivers 33–38/s. **Result: capacity is reached in bursts**
+Internal notes report capacity 96, hold about 2 s and 33–38 attempts/s.
+**Recorded result: capacity was reached in bursts**
 (peak 96 with `RRCReject`), but the longest continuous plateau at 96 measured
 0.93 s.
 
 What *is* held at default config: occupancy **>= 48 for 99% of a 120 s run with
-a 55.41 s continuous plateau** (2 UE). Use `-o` to hold a chosen level:
+a 55.41 s continuous plateau** (2 UE). `-o` sets an estimated occupancy target:
 
 ```bash
-bin/rss-run -e 1 -u 2 -o 48 -H 1900 -d 0     # hold 48 contexts indefinitely
+bin/rss-run -e 1 -u 2 -o 48 -H 1900 -d 0     # estimated target 48, no time limit
 ```
 
-### Mode B — reduced capacity, held saturation
+### Mode B — observations with reduced capacity
 
 `bin/rss-gnb-profile` lowers the cell's capacity through **configuration only**
 — it never touches gNB source. It keeps a `.orig` backup and is idempotent.
@@ -508,51 +569,38 @@ bin/rss-gnb-profile --role du restore
 bin/rss-gnb-profile --role cu restore
 ```
 
-Capacity 12 with a measured hold of about 1.6 s needs about 7.5 attempts/s and
-the tool delivers 6.5/s. Falling just short is why occupancy sits just under the
-cap and what is held is the rejection stream, not the occupancy. Measured over a **200 s window** of a 420 s
-run (2 UE, `-r 0`, `-H 1500`):
+Internal notes compare two runs at capacity 12. Occupancy uses a reported
+**200 s window** of a 420 s run, while rejection counts use a reported
+**123.2 s window**. Exact boundaries and raw logs are absent. Do not combine
+these periods or interpret log counts as unique UEs or messages.
 
-| | `-r 1` (default, 102 s window) | `-r 0` (200 s window) |
+| | `-r 1` (reported 102 s window) | `-r 0` (occupancy: reported 200 s window) |
 |---|---:|---:|
-| attempts/s | 5.6 | 6.5 |
+| internally recorded attempts/s | 5.6 | 6.5 |
 | peak occupancy | 12 / 12 | 12 / 12 |
-| `RRCReject` | 388 | **7,551 (61.3/s, over a 123.2 s window)** |
-| `DU is not able to serve the UE` | 130 | **2,517 (20.4/s, over a 123.2 s window)** |
-| occupancy >= 6 / 12 | — | **100% of the window, 199.8 s continuous** |
-| occupancy >= 9 / 12 | — | 94% of the window, 15.2 s continuous |
-| occupancy >= 12 / 12 | — | 33%, 0.87 s continuous |
-| longest lapse with no rejection | — | **0.45 s** |
-| `rrcSetupComplete` / NGAP | 0 / 0 | **0 / 0** |
+| log lines containing `RRCReject` | 388 | 7,551 (reported 123.2 s window) |
+| log lines containing `DU is not able to serve the UE` | 130 | 2,517 (reported 123.2 s window) |
+| occupancy >= 6 / 12 | — | rounded to 100%, longest continuous 199.8 s |
+| occupancy >= 9 / 12 | — | 94%, longest continuous 15.2 s |
+| occupancy >= 12 / 12 | — | 33%, longest continuous 0.87 s |
+| longest gap between rejection logs | — | 0.45 s |
+| log lines containing `rrcSetupComplete` / `InitialUEMessage` | 0 / 0 | 0 / 0 |
 
-Read the two kinds of row separately:
+These are internal observations of occupancy changes and recurring rejection
+logs. Without the raw log and analysis version, values, windows and duplicates
+cannot be rechecked. Normal-UE attachment failure was not measured, so these
+are **not evidence of sustained user-service denial or full-capacity occupancy**.
 
-- **Occupancy at or above half capacity was held for the entire window**, in one
-  199.8 s unbroken stretch. Nothing in the run was trending toward release, so
-  the duration is bounded by how long you let it run, not by the tool.
-- **Occupancy exactly at 12 is only 33%** — and that is expected. At capacity the
-  gNB refuses the next UE instantly, so the count sits just under the cap and
-  bounces. What stays true the whole time is the refusal.
-- **Denial was continuous**: 0.02 s ramp-up to the first rejection, then
-  123 s+ with no lapse longer than 0.45 s.
-- **The scenario stayed clean**: no `rrcSetupComplete`, no `InitialUEMessage`,
-  so nothing completed and the core was never reached.
-
-**`-r 0` (`HONOR_REJECT=0`) is what holds it.** With `-r 1` the attacker obeys
-the `RRCReject` back-off and spends 95% of the run idle.
-
-> **Verified end-to-end on the testbed through this package.** A `-d 0` run of
-> `bin/rss-run -e 1 -u 2 -r 0 -H 1500` was left going for **36.5 min
-> continuous**: occupancy held **>= 6 / 12 for 98% of the run (one 426 s
-> unbroken plateau)** and the gNB refused service for the **entire 2191 s**
-> (longest lapse 2.53 s), with **0 `rrcSetupComplete` and 0 `InitialUEMessage`**.
-> The run length was bounded only by when it was stopped. Full numbers in
+> **Internal longer-run record:** a run of about **36.5 min** reported occupancy
+> >= 6 / 12 for **98%, with a longest continuous interval of 426.1 s**. The
+> longest rejection-log gap was **2.53 s**. The relationship between the 2191 s
+> window and 25.2 s ramp-up is unclear, so full-window continuity is unverified.
+> Stability over longer durations is also unverified. See
 > [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md) §8.
 
-At capacity the gNB refuses the next UE immediately, so occupancy oscillates
-just below the cap while service is denied the whole time. "Is denial held" is
-therefore answered by the rejection stream, which `bin/rss-report` prints as
-**denial continuity**, not by occupancy sitting exactly on the cap.
+`bin/rss-report` reports reconstructed occupancy, log-pattern occurrences and
+gaps. Repeated rejection logs are distinct from measuring a normal user's
+inability to obtain service.
 
 ### Running with no time limit
 
@@ -601,10 +649,13 @@ if you want many `RRCReject` events and do not care about throughput numbers.
 `bin/rss-report` prints three blocks.
 
 **Occupancy** — concurrent incomplete `RRC Setup Procedure`s, paired by UE id
-from the gNB log, plus how long occupancy stayed at each level:
+from the gNB log, plus how long observed occupancy stayed at each level.
+Current output labels it `observed occupancy` and warns when initial occupancy
+is unknown or events cannot be matched. The following is a **historical,
+unverified excerpt**, not output rerun by the current parser:
 
 ```
-(excerpt)
+(historical excerpt)
 peak occupancy 96   at 06:31:24
 sustained occupancy
   >=  48   56.4 s of 59 s ( 95%)   longest plateau 50.33 s
@@ -614,8 +665,10 @@ sustained occupancy
 A high *percentage* with a sub-second *longest plateau* is a sawtooth, not held
 saturation. Both numbers are printed because the percentage alone is misleading.
 
-**gNB counters** — `RRCReject`, `DU is not able to serve the UE`,
-`rrcSetupComplete`, `NGAP InitialUEMessage`.
+**gNB log-pattern occurrences** — `RRCReject`, `DU is not able to serve the UE`,
+`rrcSetupComplete`, `NGAP InitialUEMessage`. These are not unique messages or
+UEs and depend on duplicate logging and coverage. Occupancy is also an
+observation reconstructed from logs.
 
 **UE side** — attempts and the cost breakdown of one attempt cycle.
 
@@ -625,7 +678,7 @@ saturation. Both numbers are printed because the percentage alone is misleading.
 |---|---|
 | reached the configured resource limit | peak occupancy at capacity **and** `RRCReject` present |
 | saturation held | a long plateau at capacity, not just a high percentage |
-| scenario stayed A-type | `rrcSetupComplete` 0 **and** `NGAP InitialUEMessage` 0 |
+| observations are consistent with A-type | neither `rrcSetupComplete` nor `NGAP InitialUEMessage` observed with adequate log coverage; zero matches alone are not proof |
 | normal users were denied service | a separate normal UE measured failing to attach |
 | "the gNB was disabled" | the two rows above, together |
 
@@ -646,8 +699,9 @@ sends nothing more, so `zmq_poll` can only return on its own **10 ms** timeout.
 UE and DU talk over `127.0.0.1`, where a round trip is tens of microseconds, so
 that 10 ms is a timeout constant, not transport latency: a sub-millisecond
 lateness cost a whole radio frame. Measured before the fix: 4250 starved
-requests x **10.01 ms** = 42.5 s lost, in a 60 s instrumented run (85% of the
-process lifetime).
+requests with 42,555 ms accumulated wait, or about **10.01 ms** each.
+The recorded run/process durations are inconsistent, so no lifetime percentage
+is stated.
 
 | | upstream (`=0`) | fixed (`=-2`) |
 |---|---:|---:|
@@ -670,7 +724,7 @@ slot produce one uplink batch per instance instead of one merged batch. The gate
 holds them together. Partial effect, measured at 4 UE: out-of-order batches
 9.19% -> 7.70%, sample loss 33,144 -> 27,139, radio time 1.12 -> 1.26.
 
-**5. Measurement tools that do not lie.** `analysis/cu_occupancy.py` pairs
+**5. Offline log analysis.** `analysis/cu_occupancy.py` pairs
 procedure start and end by UE id and reports plateaus, not just peaks.
 `analysis/cu_count.py` compares only inside the run window. Both exist because
 earlier versions silently reported whole-log totals and peak-only numbers.
@@ -706,7 +760,7 @@ earlier versions silently reported whole-log totals and peak-only numbers.
 - **Numbers vary between sessions.** Three 4-UE runs gave 2202-2387 attempts but
   sample loss 21k-40k and radio time 0.87-1.63. Compare only within a session.
 - **A single ZMQ port pair cannot host the attacker and a normal UE at the same
-  time**, so service denial for a normal user cannot be measured on this path.
+  time**, so normal-user service denial was not measured in this setup.
 
 ---
 
@@ -715,22 +769,36 @@ earlier versions silently reported whole-log totals and peak-only numbers.
 ```
 bin/rss-bootstrap    clone OAI, land on the baseline commit, first stock build
 bin/rss-doctor       prerequisite check (read-only, exit 1 on a blocker)
-bin/rss-build        apply the patch and build the attacker UE
+bin/rss-build        apply OAI PUCCH fix + RSS patch, build the UE
 bin/rss-run          run one experiment
 bin/rss-report       verdict from the gNB log plus the UE JSONL
 bin/rss-gnb-profile  apply/restore the mode B saturation profile (config only)
 conf/rss.conf.example  every knob, documented inline
 patch/rss-ue.patch   the UE-side patch (OAI 2026.w38)
+patch/oai-pucch-null-fix.patch  upstream OAI PUCCH crash fix (for 2026.w38)
 analysis/            occupancy, counters, attempt cost breakdown
 docs/MECHANISM.ko.md why the attack works, argued from gNB source (Korean)
-docs/MEASUREMENTS.md the raw measurement record
+docs/MEASUREMENTS.md internal measurement summary and evidence limits
 NOTICE.md            use restrictions, attribution, licensing
 ```
 
 Every run writes `run.json` (all knobs and the cell) and `ue.log`; an attack run
-(`-e 1`) additionally writes `attempts.jsonl`, one record per attempt with both
+(`-e 1`) additionally writes `attempts.jsonl`, one record per event with both
 clocks.
 
-**`attempts.jsonl` is the label feed for a detection team.** Each record carries
-`run_id`, `ue`, `seq`, `t_ns` (wall), `air_ms` (radio), the event, the
-transmitted UE identity and the intended versus actual reach of the attempt.
+**`attempts.jsonl` is an event feed.** Common fields are `type`, `run_id`, `ue`,
+`seq`, `t_ns` (wall), `air_ms` (radio) and `event`. Identity and intended/actual
+reach are event-specific optional fields, not present on every row. Multiple
+events can belong to one attempt, and run-status events also occur; row count
+is not attempt count.
+
+## Private GitHub publication scope
+
+The current reviewed **`rss-storm/` directory** is the source of truth; inspect
+its final file list before publication. The old `rss-publish` branch is stale
+and must be regenerated only after final changes are committed. Do not include
+parent-directory experiment logs, source materials or personal configuration.
+
+Run offline analysis checks from this directory with
+`python3 -m unittest discover -s tests`. These checks do not verify builds,
+hardware operation or historical measurements.

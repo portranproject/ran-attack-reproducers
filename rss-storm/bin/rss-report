@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# rss-report — verdict for one run, from the gNB (CU) log plus the UE JSONL.
+# rss-report — observations from a CU log window plus optional UE JSONL.
 #
 # Run the gNB-log part on the host that owns the CU log. The time window is
 # required: without it you read whole-log totals as if they were one run.
@@ -20,21 +20,28 @@ CAPACITY=${CAPACITY:-96}
 SINCE=""; UNTIL=""; JSONL=""
 
 usage() { cat <<EOF
-usage: $0 --since HH:MM:SS --until HH:MM:SS [--log FILE] [--jsonl FILE] [--capacity N]
-  --since/--until  run window in the gNB log's local time (required)
+usage: $0 --since TIME --until TIME [--log FILE] [--jsonl FILE] [--capacity N]
+  --since/--until  [start, end), in the log's time basis (required)
+                   ISO date/time, or HH:MM:SS when the dates are unambiguous
   --log            gNB CU log           (GNB_LOG, now $GNB_LOG)
-  --jsonl          UE attempts.jsonl    (optional, adds the UE-side view)
+  --jsonl          UE attempts.jsonl    (optional; whole file, not time-filtered)
   --capacity       cell capacity        (CAPACITY, now $CAPACITY)
 EOF
 exit "${1:-1}"; }
 
-while [[ $# -gt 0 ]]; do case "$1" in
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --since|--until|--log|--jsonl|--capacity)
+      [[ $# -ge 2 && -n $2 && $2 != --* ]] || { echo "missing value for $1" >&2; usage; };;
+  esac
+  case "$1" in
   --since) SINCE=$2; shift 2;; --until) UNTIL=$2; shift 2;;
   --log) GNB_LOG=$2; shift 2;; --jsonl) JSONL=$2; shift 2;;
   --capacity) CAPACITY=$2; shift 2;; -h|--help) usage 0;; *) usage;;
 esac; done
 [[ -n $SINCE && -n $UNTIL ]] || usage
 [[ -r $GNB_LOG ]] || { echo "cannot read $GNB_LOG (try sudo)" >&2; exit 1; }
+[[ -z $JSONL || -f $JSONL && -r $JSONL ]] || { echo "cannot read $JSONL" >&2; exit 1; }
 
 echo "== occupancy ($GNB_LOG, $SINCE..$UNTIL)"
 python3 "$HERE/analysis/cu_occupancy.py" "$GNB_LOG" "$SINCE" "$UNTIL" "$CAPACITY"
@@ -43,20 +50,20 @@ echo
 echo "== gNB counters"
 python3 "$HERE/analysis/cu_count.py" "$GNB_LOG" "$SINCE" "$UNTIL"
 
-if [[ -n $JSONL && -f $JSONL ]]; then
+if [[ -n $JSONL ]]; then
   echo
-  echo "== UE side ($JSONL)"
+  echo "== UE side ($JSONL; whole file, not filtered by --since/--until)"
   python3 "$HERE/analysis/attempt_phases.py" "$JSONL"
 fi
 
 echo
 cat <<'EOF'
 == how to read this
-  peak occupancy near capacity + RRCReject present  -> the configured resource
-      limit was reached.
-  "sustained occupancy >= capacity" with a long plateau -> saturation is held.
-      A high percentage with a sub-second longest plateau is a sawtooth, not
-      sustained denial.
-  rrcSetupComplete 0 and NGAP InitialUEMessage 0     -> the scenario stayed
-      A-type: nothing completed and the core was never reached.
+  Occupancy is reconstructed from the procedure records available in this log.
+      Missing history or events can leave actual occupancy unknown.
+  Counts are matching log occurrences, not deduplicated protocol messages.
+      Rejection frequency alone does not establish service denial or recovery.
+  Zero completion or InitialUEMessage matches means none were observed in this
+      window; it is not proof that none occurred.
+  Service impact requires separate observations of a normal UE.
 EOF

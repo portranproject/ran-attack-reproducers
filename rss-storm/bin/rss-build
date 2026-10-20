@@ -2,8 +2,7 @@
 # rss-build — apply the UE-side patch to an OAI tree and build the attacker UE.
 #
 # Run this on the host that will run the attacker UE. It never touches the gNB.
-# Idempotent: re-running rolls a new patch revision onto a tree that already
-# has one.
+# Refuses local changes; review and preserve them before applying another patch.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -18,6 +17,7 @@ fi
 
 OAI=${OAI:-/root/OAI}
 PATCH=${PATCH:-$HERE/patch/rss-ue.patch}
+PUCCH_FIX="$HERE/patch/oai-pucch-null-fix.patch"
 BRANCH=${BRANCH:-rss-ue-a-type}
 BUILD="$OAI/cmake_targets/ran_build/build"
 BIN="$BUILD/nr-uesoftmodem"
@@ -29,7 +29,15 @@ EXPECT_COMMIT=${EXPECT_COMMIT:-1c2f4d3c2e68181cdef9f426d161163147ad4b77}
 
 [[ -d $OAI/.git ]] || { echo "not an OAI git tree: $OAI" >&2; exit 1; }
 [[ -f $PATCH ]] || { echo "patch not found: $PATCH" >&2; exit 1; }
+[[ -f $PUCCH_FIX ]] || { echo "OAI PUCCH crash fix not found: $PUCCH_FIX" >&2; exit 1; }
 [[ -d $BUILD ]] || { echo "no build dir $BUILD — build stock OAI once first" >&2; exit 1; }
+
+TREE_STATE=$(git -C "$OAI" status --porcelain --untracked-files=all --ignore-submodules=none) \
+  || { echo "cannot check local changes in $OAI — nothing changed" >&2; exit 1; }
+if [[ -n $TREE_STATE ]]; then
+  echo "local changes or untracked files in $OAI — review and preserve them first; nothing changed" >&2
+  exit 1
+fi
 
 echo "== tree state"
 HEAD=$(git -C "$OAI" rev-parse HEAD)
@@ -37,12 +45,8 @@ echo "   HEAD        $HEAD"
 echo "   describe    $(git -C "$OAI" describe --tags --always 2>/dev/null || echo -)"
 if [[ $HEAD != "$EXPECT_COMMIT" ]]; then
   echo "   !! this patch was made against $EXPECT_COMMIT (OAI 2026.w38)."
-  echo "      It may not apply to $HEAD. Set EXPECT_COMMIT= to silence this."
+  echo "      It may not apply to $HEAD; review source compatibility."
 fi
-
-# keep a way back
-if [[ -f $BIN && ! -f $BIN.orig ]]; then cp -p "$BIN" "$BIN.orig"; echo "   saved $BIN.orig"; fi
-if [[ -f $DEVLIB && ! -f $DEVLIB.orig ]]; then cp -p "$DEVLIB" "$DEVLIB.orig"; echo "   saved $DEVLIB.orig"; fi
 
 if git -C "$OAI" rev-parse --verify --quiet "$BRANCH" >/dev/null; then
   git -C "$OAI" checkout "$BRANCH"
@@ -50,12 +54,26 @@ else
   git -C "$OAI" checkout -b "$BRANCH"
 fi
 
-# Reset the whole tree, not one directory: the patch touches executables/,
-# openair2/RRC/NR_UE/ and radio/zmq/, and a narrow reset silently leaves an old
-# version in place so the patch stops applying.
-git -C "$OAI" checkout -- .
+if git -C "$OAI" apply --reverse --check "$PUCCH_FIX" >/dev/null 2>&1; then
+  echo "== OAI PUCCH crash fix already applied"
+  NEED_PUCCH_FIX=0
+elif git -C "$OAI" apply --check "$PUCCH_FIX" >/dev/null 2>&1; then
+  NEED_PUCCH_FIX=1
+else
+  echo "OAI PUCCH crash fix does not apply cleanly — nothing patched" >&2
+  exit 1
+fi
+git -C "$OAI" apply --check "$PATCH" || { echo "RSS patch does not apply cleanly — nothing patched" >&2; exit 1; }
+
+# keep a way back
+if [[ -f $BIN && ! -f $BIN.orig ]]; then cp -p "$BIN" "$BIN.orig"; echo "   saved $BIN.orig"; fi
+if [[ -f $DEVLIB && ! -f $DEVLIB.orig ]]; then cp -p "$DEVLIB" "$DEVLIB.orig"; echo "   saved $DEVLIB.orig"; fi
+
+if (( NEED_PUCCH_FIX )); then
+  echo "== applying official OAI PUCCH crash fix (3d4b1923)"
+  git -C "$OAI" apply "$PUCCH_FIX"
+fi
 echo "== applying $PATCH"
-git -C "$OAI" apply --check "$PATCH" || { echo "patch does not apply cleanly" >&2; exit 1; }
 git -C "$OAI" apply "$PATCH"
 git -C "$OAI" --no-pager diff --stat | tail -12
 

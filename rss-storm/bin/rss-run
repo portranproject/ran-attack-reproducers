@@ -102,6 +102,9 @@ if [[ -z $RUN_ID ]]; then
   RUN_ID="$([[ $ENABLE == 1 ]] && echo A || echo base)u$NUM_UES-$(date -u +%Y%m%dT%H%M%SZ)"
 fi
 
+[[ $RUN_ID =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]] \
+  || { echo "run_id must start with a letter or digit and contain only letters, digits, '.', '_' or '-'" >&2; exit 1; }
+
 # Upstream OAI config bug (2026.w38, common/config/config_load_configmodule.c):
 # the -O scan tests only argv[i][1] == 'O' with no check for a leading '-', so
 # ANY argument whose second character is 'O' is taken as the -O option and the
@@ -113,7 +116,9 @@ if [[ ${RUN_ID:1:1} == O ]]; then
 fi
 
 OUT="$LOGDIR/$RUN_ID"
-mkdir -p "$OUT"
+[[ -d $LOGDIR ]] || mkdir -p -- "$LOGDIR"
+mkdir -- "$OUT" \
+  || { echo "cannot create new run directory $OUT — existing results are never overwritten" >&2; exit 1; }
 JSONL="$OUT/attempts.jsonl"
 UE_LOG="$OUT/ue.log"
 

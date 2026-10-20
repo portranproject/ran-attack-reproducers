@@ -1,0 +1,54 @@
+From 3d4b1923b424be974c1dadcc9c48eddbe8428ba0 Mon Sep 17 00:00:00 2001
+From: Guido Casati <guido.casati@openairinterface.org>
+Date: Wed, 2 Sep 2026 15:59:31 +0200
+Subject: [PATCH] fix (mac): skip PUCCH mux when HARQ uses common resource
+
+After PR #438, a HARQ-ACK can still use Table 9.2.1-1
+(pucch-ResourceCommon) while dedicated SR or CSI is already scheduled
+in the same slot. nr_ue_pucch_scheduler() then called
+multiplex_pucch_resource() with a common occasion
+and the dedicated 9.2.5 overlap path crashed with a segfault (#493).
+
+Now, if any occasion in the slot is common HARQ, keep that ACK only,
+drop SR/CSI, and do not enter multiplex_pucch_resource().
+
+Changes:
+- nr_ue_pucch_scheduler: check common HARQ before multiplex_pucch_resource
+
+Refs: #493
+
+Assisted-by: Claude:Sonnet-5
+Signed-off-by: Guido Casati <guido.casati@openairinterface.org>
+---
+ openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c | 17 ++++++++++++++++-
+ 1 file changed, 16 insertions(+), 1 deletion(-)
+
+diff --git a/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c b/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c
+index b70750c1bd..3f44ae1a42 100644
+--- a/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c
++++ b/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c
+@@ -1855,8 +1855,23 @@ static void nr_ue_pucch_scheduler(NR_UE_MAC_INST_t *mac, frame_t frame, int slot
+   if (num_res == 1 && pucch[0].n_sr > 0 && pucch[0].sr_payload == 0)
+     return;
+ 
+-  if (num_res > 1)
++  // Common HARQ (TS 38.213 clause 9.2.1, Table 9.2.1-1): keep only ACK in this slot, drop dedicated resources
++  int common_harq = -1;
++  for (int i = 0; i < num_res; i++) {
++    if (pucch[i].pucch_resource == NULL && pucch[i].n_harq > 0) {
++      common_harq = i;
++      break;
++    }
++  }
++  if (common_harq >= 0) {
++    const PUCCH_sched_t harq = pucch[common_harq];
++    memset(pucch, 0, sizeof(pucch));
++    pucch[0] = harq;
++    num_res = 1;
++  } else if (num_res > 1) {
++    // multiplex dedicated PUCCH-Resource (TS 38.213 clause 9.2.5.1 / 9.2.5.2)
+     multiplex_pucch_resource(mac, pucch, num_res);
++  }
+ 
+   for (int j = 0; j < num_res; j++) {
+     if (pucch[j].n_harq + pucch[j].n_sr + pucch[j].csi_payload.p1_bits != 0) {

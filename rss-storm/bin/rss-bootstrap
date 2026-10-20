@@ -9,8 +9,8 @@
 #   bin/rss-bootstrap --deps     # install OAI's system packages first (sudo, once)
 #   bin/rss-bootstrap            # clone + checkout + first stock build
 #
-# Idempotent: an existing tree is reused, an existing build is kept unless
-# --force is passed.
+# Idempotent: an existing tree is reused; --force reruns OAI's build system,
+# which may still reuse incremental targets.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -42,22 +42,33 @@ say() { printf '%s\n' "$*"; }
 if [[ -d $OAI/.git ]]; then
   say "== OAI tree exists: $OAI"
 else
-  say "== cloning OAI into $OAI  (this is a few GB, it takes a while)"
+  say "== cloning OAI into $OAI  (this may take a while)"
   mkdir -p "$(dirname "$OAI")"
-  git clone "$OAI_URL" "$OAI"
+  if [[ $EXPECT_COMMIT == 1c2f4d3c2e68181cdef9f426d161163147ad4b77 ]]; then
+    git clone --depth 1 --branch 2026.w38 "$OAI_URL" "$OAI"
+  else
+    git clone "$OAI_URL" "$OAI"
+  fi
 fi
 
 HEAD=$(git -C "$OAI" rev-parse HEAD)
+TREE_STATE=$(git -C "$OAI" status --porcelain --untracked-files=all --ignore-submodules=none) \
+  || { say "   !! cannot check local changes in $OAI; nothing changed." >&2; exit 1; }
+if [[ -n $TREE_STATE ]]; then
+  say "   !! OAI has local changes. Preserve them or use a separate clean OAI tree; nothing changed." >&2
+  exit 1
+fi
+if [[ $HEAD != "$EXPECT_COMMIT" ]] &&
+   { [[ -e $BUILD/nr-uesoftmodem ]] || [[ -e $BUILD/liboai_zmqdevif.so ]]; }; then
+  say "   !! OAI has build artifacts from a different source commit. Use a separate clean OAI tree; nothing changed." >&2
+  exit 1
+fi
 if [[ $HEAD != "$EXPECT_COMMIT" ]]; then
   say "== checking out the baseline commit $EXPECT_COMMIT (OAI 2026.w38)"
   say "   current HEAD is $HEAD"
   if ! git -C "$OAI" cat-file -e "$EXPECT_COMMIT^{commit}" 2>/dev/null; then
     say "   fetching it"
     git -C "$OAI" fetch --tags origin
-  fi
-  if [[ -n $(git -C "$OAI" status --porcelain) ]]; then
-    say "   !! the tree has local changes. Commit or stash them, then re-run." >&2
-    exit 1
   fi
   git -C "$OAI" checkout --detach "$EXPECT_COMMIT"
 else
@@ -76,8 +87,21 @@ fi
 # ------------------------------------------------------- 3. first stock build
 # -w ZMQ adds the oai_zmqdevif target, which is the radio this tool patches.
 # --nrUE builds nr-uesoftmodem. The gNB is NOT built: we never run one here.
+rss_modified() {
+  if [[ -f $BUILD/nr-uesoftmodem ]] && grep -aFq RSS_SHARE_LOCKSTEP "$BUILD/nr-uesoftmodem"; then return 0; fi
+  if [[ -f $BUILD/liboai_zmqdevif.so ]] && grep -aFq RSS_ZMQ_TX_WAIT_US "$BUILD/liboai_zmqdevif.so"; then return 0; fi
+  return 1
+}
+if rss_modified; then
+  say "   !! existing UE/ZMQ artifact has RSS modifications. Preserve it and use a separate clean OAI build; nothing changed." >&2
+  exit 1
+fi
+REUSED=0
+PREEXISTING=0
+if [[ -e $BUILD/nr-uesoftmodem || -e $BUILD/liboai_zmqdevif.so ]]; then PREEXISTING=1; fi
 if [[ -x $BUILD/nr-uesoftmodem && -f $BUILD/liboai_zmqdevif.so && $FORCE -eq 0 ]]; then
-  say "== stock build already present in $BUILD (pass --force to rebuild)"
+  say "== existing build reused in $BUILD (stock provenance not verified; pass --force to rerun build)"
+  REUSED=1
 else
   say "== building stock OAI UE + ZMQ radio  (long: tens of minutes on a cold tree)"
   NINJA=()
@@ -91,9 +115,17 @@ for f in "$BUILD/nr-uesoftmodem" "$BUILD/liboai_zmqdevif.so"; do
   if [[ -e $f ]]; then say "   ok  $f"; else say "   MISSING  $f"; fail=1; fi
 done
 (( fail )) && { say "== stock build incomplete. Read the build log above." >&2; exit 1; }
+if rss_modified; then
+  say "== build still contains RSS modifications. Do not treat it as a stock UE." >&2
+  exit 1
+fi
 
 say ""
-say "== done. The stock UE is built and the attack is NOT in it yet."
+if (( PREEXISTING )); then
+  say "== done. Existing UE/ZMQ artifacts may have been reused; stock provenance is not verified."
+else
+  say "== done. Stock UE built from the clean baseline source."
+fi
 say "   next:  cp conf/rss.conf.example conf/rss.conf && \$EDITOR conf/rss.conf"
-say "          bin/rss-doctor      # check every prerequisite"
 say "          bin/rss-build       # apply the patch and build the attacker UE"
+say "          bin/rss-doctor      # check every prerequisite"

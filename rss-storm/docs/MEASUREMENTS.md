@@ -1,12 +1,21 @@
-# Measurements
+# Internal measurement summary
 
 Reference testbed: OCUDU 26.10 (srsRAN-derived) with CU and DU on separate
 hosts, F1 over IP, attacker UE on the DU host over a ZMQ virtual radio
 (`tcp://127.0.0.1`). Cell: n78, 30 kHz SCS, 51 PRB. OAI UE at
 `1c2f4d3c2e68181cdef9f426d161163147ad4b77` (`2026.w38`).
 
-Every number here came from the gNB's own log or from the UE's own
-instrumentation. Nothing is extrapolated.
+These are historical internal notes attributed to gNB logs and UE
+instrumentation. **The raw logs, run manifests, exact window boundaries and
+analysis versions are not included.** Values below have not been independently
+recomputed. Preserve this distinction when citing them; this file is a summary,
+not a raw dataset or a regression fixture for the current parsers.
+
+Counts of matching log lines are **not unique messages or UEs**. Duplicate
+logging and incomplete coverage may affect them. Zero matches do not prove
+that an event never occurred. Normal-user attachment failure was not measured.
+The current offline parsers use explicit start-inclusive, end-exclusive windows
+and cautious observational labels; historical outputs below predate those checks.
 
 ---
 
@@ -25,7 +34,9 @@ TX antenna 0: 4250 REQs starved / 36203 served,
 ```
 
 42555 / 4250 = **10.01 ms per starved request** — the poll timeout exactly.
-42.5 s is 85% of the process lifetime.
+The original notes also claimed 85% of process lifetime, but the denominator
+is not documented and conflicts with the stated 60 s run. No lifetime
+percentage is retained as a result.
 
 | | `RSS_ZMQ_TX_WAIT_US=0` (upstream) | `=-2` (default) |
 |---|---:|---:|
@@ -36,7 +47,8 @@ TX antenna 0: 4250 REQs starved / 36203 served,
 | peak occupancy | 20 / 96 | 90 – 96 / 96 |
 
 UE and DU are on one host over loopback, where a round trip is tens of
-microseconds. 10 ms could only ever have been a timeout constant, not latency.
+microseconds according to the notes. The attribution of this wait to the
+timeout is an interpretation; raw timing evidence is absent.
 
 ---
 
@@ -54,9 +66,9 @@ From `analysis/attempt_phases.py`, which reads both clocks out of
 
 The 30 ms radio time for Msg3 to Msg4 was identical in two sessions whose wall
 times differed by 6x (100–113 ms at radio/wall 0.29, 22.8 ms at 1.41). A
-quantity that is constant in radio time and not in wall time is set by the
-air-interface schedule, not by host speed. **That is why reducing gNB log
-level was never tried: it cannot move this term.**
+quantity was interpreted as schedule-related in those sessions. These records
+do not rule out host bottlenecks or establish a universal rate ceiling. A gNB
+log-level comparison was not performed.
 
 ---
 
@@ -81,55 +93,41 @@ second-long stalls that drain occupancy.
 
 ---
 
-## 4. Held saturation
+## 4. Occupancy and recurring rejection logs
 
-Occupancy is approximately attempt rate times hold time. At default config the
-cell holds 96 contexts for about 2 s, so **holding** capacity needs about 48
-attempts/s. The shared radio caps at 33–38/s, so default config reaches
-capacity in bursts (peak 96, rejects present) but the longest continuous
-plateau at 96 measured 0.93 s.
-
-Reducing the cell's capacity by **configuration only** (no gNB source change,
-see `bin/rss-gnb-profile`) moves the requirement into reach: capacity 12 with a
-measured hold of about 1.6 s needs about 7.5 attempts/s.
+Internal notes report capacity 96, a hold near 2 s, and attempt rates of
+33–38/s under the default configuration. The recorded peak was 96, but the
+longest full-capacity plateau was only 0.93 s. A separate reduced-capacity
+configuration used capacity 12 and a measured hold near 1.6 s. These figures
+do not by themselves establish sustained capacity or user-service denial.
 
 Two UE, capacity 12. The `HONOR_REJECT=0` column is a 200 s window out of a
 420 s run (`ZWfinal-064626Z`); the `=1` column is a 102 s window
-(`ZWsat-063645Z`):
+(`ZWsat-063645Z`). The rejection-count rows instead use a reported 123.2 s
+window for `=0`; the exact boundaries and relationship between windows are
+unverifiable from this package:
 
 | | `HONOR_REJECT=1` | `HONOR_REJECT=0` |
 |---|---:|---:|
-| attempts/s | 5.6 | 6.5 |
+| internally recorded attempts/s (definition/window unverified) | 5.6 | 6.5 |
 | peak occupancy | 12 / 12 | 12 / 12 |
 | hold median | 1457 ms | 1610 ms |
-| `RRCReject` | 388 | **7,551 (61.3/s)** |
-| `DU is not able to serve` | 130 | **2,517 (20.4/s)** |
-| occupancy >= 6 | — | **100%, 199.8 s continuous** |
+| log lines containing `RRCReject` | 388 | **7,551 (reported 123.2 s window)** |
+| log lines containing `DU is not able to serve` | 130 | **2,517 (reported 123.2 s window)** |
+| occupancy >= 6 | — | **rounded to 100%, 199.8 s continuous** |
 | occupancy >= 9 | — | 94%, 15.2 s continuous |
 | occupancy >= 12 | — | 33%, 0.87 s continuous |
-| `rrcSetupComplete` | 0 | **0** |
-| NGAP `InitialUEMessage` | 0 | **0** |
+| log lines containing `rrcSetupComplete` | 0 | **0** |
+| log lines containing NGAP `InitialUEMessage` | 0 | **0** |
 
-`HONOR_REJECT=1` backs off on every rejection, so the attacker spends 95% of
-the run idle. **`HONOR_REJECT=0` is what holds saturation.**
+The notes describe `HONOR_REJECT=1` as idle for 95% of its window. This is an
+unverified summary, not a controlled proof that one setting sustains denial.
 
-Once at capacity the gNB refuses the next UE immediately, so occupancy
-oscillates just below the cap while service is denied continuously. The metric
-that answers "is denial held" is therefore the rejection stream, which
-`analysis/cu_count.py` reports:
-
-```
-denial continuity (rrcReject, window 123.2 s)
-  ramp-up to first rejection   0.02 s
-  denial held for              123.17 s
-  gap between rejections       p50 0 ms  p99 177 ms  max 454 ms
-  longest lapse once held      0.45 s
-```
-
-No half-second of the run passed without the gNB refusing a UE. The required
-arrival rate for this configuration is 12 / 1.61 s = 7.5/s and the tool
-sustained 6.5/s, which is why the cell sits just under the cap and refuses
-continuously instead of oscillating between empty and full.
+The historical counter output recorded a 123.2 s window, a 0.02 s delay to
+the first rejection log, and a 123.17 s span after that first occurrence.
+Reported gaps were p50 0 ms, p99 177 ms and maximum 454 ms (rounded to 0.45 s
+in the table). These describe **log cadence**, not service availability.
+They also cannot be combined with occupancy figures from the 200 s window.
 
 ---
 
@@ -170,8 +168,9 @@ Recorded so they are not reintroduced.
 - Counting only `timed out` as a procedure end missed `cancelled`, which is
   how most procedures actually end when the DU releases first. Occupancy came
   out as 591 against a capacity of 96 — an impossible number that exposed it.
-- Counting the interval before the first rejection as a lapse in denial made a
-  healthy run look discontinuous.
+- Earlier reports treated the interval before the first rejection as a lapse
+  in denial. Both that interpretation and claims of continuous denial were
+  unsupported; the current report describes only observed rejection cadence.
 - Occupancy was tracked twice: once as a set of live UE ids (for the peak) and
   once as a +1/-1 event timeline (for the plateaus). They disagreed, because an
   end whose start fell before the window still pushed a -1 into the timeline,
@@ -184,7 +183,7 @@ Recorded so they are not reintroduced.
 
 ---
 
-## 8. Live end-to-end verification (packaged tool)
+## 8. Historical longer run of the packaged tool
 
 Run `ZWperm`, 2026-10-20. The **packaged** `rss-storm` deployed to the DU host
 and driven entirely through `bin/rss-run` — not the development scripts — then
@@ -195,10 +194,12 @@ applied (`nof_cell_sr_res 1`, `t300 2000`, capacity 12). Command:
 bin/rss-run -e 1 -u 2 -r 0 -H 1500 -d 0 -n ZWperm
 ```
 
-No time limit. The run was left going for **2191 s (36.5 min) continuous** and
-measured from the CU's own log over that whole window.
+The notes report a run of about **2191 s (36.5 min)**. Exact analysis windows
+cannot be reconciled without the original logs: occupancy was labeled 2191 s,
+while rejection counts/rates and the separate 25.2 s ramp-up imply different
+denominators. Do not treat these as one verified common window.
 
-`analysis/cu_occupancy.py` (capacity 12, window 2191 s):
+Historical `analysis/cu_occupancy.py` summary (capacity 12, reported window 2191 s):
 
 | level | share of window | longest continuous plateau |
 |---|---:|---:|
@@ -210,31 +211,35 @@ measured from the CU's own log over that whole window.
 peak occupancy 12/12; end reasons `cancelled` 12,339, `timed out` 1; hold
 median 1846 ms.
 
-`analysis/cu_count.py` (same window):
+Historical `analysis/cu_count.py` summary (exact window unverified):
 
-| | count | rate |
-|---|---:|---:|
-| `rrcReject` | 85,797 | 38.7/s |
-| `DU is not able to serve` | 28,599 | 12.9/s |
-| `rrcSetupComplete` | **0** | — |
-| NGAP `InitialUEMessage` | **0** | — |
+| matching log pattern | occurrences |
+|---|---:|
+| `rrcReject` | 85,797 |
+| `DU is not able to serve` | 28,599 |
+| `rrcSetupComplete` | **0** |
+| NGAP `InitialUEMessage` | **0** |
 
-denial continuity: ramp-up 25.2 s, then **denial held for the full 2191 s**,
-gap between rejections p50 0 ms / p99 256 ms, **longest lapse 2.53 s** (once).
+Previously reported rates used an inconsistent denominator and are omitted.
+Do not reinterpret occurrence counts as unique over-the-air messages.
+
+Historical cadence notes: first rejection after 25.2 s, gaps p50 0 ms / p99
+256 ms, **maximum gap 2.53 s** (reported once). The separate claim of a full
+2191 s after ramp-up conflicts with the stated overall window and is withdrawn.
 
 UE side (`attempts.jsonl`): 40,253 attempts, 13,420 `msg4_rx`, 27,597
 `rrc_reject`, sample loss 1.40 M.
 
-Read it the same way as §4:
+Interpretation limits:
 
-- **Half capacity or above was held for the entire run**, in one 426 s unbroken
-  stretch, and nothing trended toward release — the duration is set by how long
-  you let `-d 0` run, not by the tool. This is the longest continuous
-  demonstration on record and it was produced by the published package.
-- **Occupancy exactly at 12 is a 1.8 s sawtooth**, as expected: at the cap the
-  gNB refuses instantly, so the count sits just under it and bounces. The metric
-  that holds is the rejection stream — denied continuously for 36.5 min with a
-  single 2.53 s lapse.
-- **Clean A-type**: 0 `rrcSetupComplete`, 0 `InitialUEMessage`.
-- The one knob the development scripts never passed, `--rss.gate_timeout_ms`
-  (default 500), rode the whole 36.5 min run without issue.
+- The recorded share at or above half capacity is **98%, not the entire run**;
+  the longest continuous interval is 426.1 s. The displayed 100% at quarter
+  capacity is rounded and does not prove uninterrupted occupancy.
+- Full capacity was recorded for 36%, with a longest interval of 1.8 s.
+  Recurring rejection logs do not establish continuous denial, especially with
+  the recorded 2.53 s gap and unresolved analysis-window boundaries.
+- Zero matching completion/core-message lines is consistent with A-type under
+  adequate logging, but coverage cannot be rechecked here.
+- Normal-user service impact and stability beyond this run were not tested.
+- The notes report no issue with `--rss.gate_timeout_ms` (default 500) during
+  this run; this is not a general reliability guarantee.

@@ -80,7 +80,7 @@ if gaps:
         return gaps[min(int(len(gaps) * p), len(gaps) - 1)]
     print(f"gap between attempts  p50 {q(.5)} ms  p90 {q(.9)} ms  p99 {q(.99)} ms  max {gaps[-1]} ms")
     big = [g for g in gaps if g >= 200]
-    print(f"gaps >= 200 ms        {len(big)}  총 {sum(big) / 1000:.1f} s  (구간 길이의 {sum(big) / 10 / span:.0f}%)")
+    print(f"gaps >= 200 ms        {len(big)}  total {sum(big) / 1000:.1f} s  ({sum(big) / 10 / span:.0f}% of window)")
 # Sustained saturation, not just the peak: walk the start/end events in time
 # order and measure how long occupancy actually stayed at or above each level.
 # A peak of 96 for one instant is not denial; a plateau is.

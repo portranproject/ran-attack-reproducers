@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# rss-bootstrap — prepare the OAI source tree this tool patches.
+#
+# Run this FIRST on the host that will run the attacker UE, when you do not yet
+# have an OAI tree. It clones OAI, checks out the exact baseline commit and
+# builds the stock UE once. It never touches the gNB and never enables the
+# attack.
+#
+#   bin/rss-bootstrap --deps     # install OAI's system packages first (sudo, once)
+#   bin/rss-bootstrap            # clone + checkout + first stock build
+#
+# Idempotent: an existing tree is reused, an existing build is kept unless
+# --force is passed.
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONF="${RSS_CONF:-$HERE/conf/rss.conf}"
+[[ -f "$CONF" ]] && . "$CONF"
+
+OAI=${OAI:-/root/OAI}
+OAI_URL=${OAI_URL:-https://gitlab.eurecom.fr/oai/openairinterface5g.git}
+EXPECT_COMMIT=${EXPECT_COMMIT:-1c2f4d3c2e68181cdef9f426d161163147ad4b77}
+BUILD="$OAI/cmake_targets/ran_build/build"
+DEPS=0; FORCE=0
+
+while [[ $# -gt 0 ]]; do case "$1" in
+  --deps)  DEPS=1; shift;;
+  --force) FORCE=1; shift;;
+  -h|--help) sed -n '2,13p' "$0"; exit 0;;
+  *) echo "unknown option: $1" >&2; exit 1;;
+esac; done
+
+say() { printf '%s\n' "$*"; }
+
+# ---------------------------------------------------------------- 1. the tree
+if [[ -d $OAI/.git ]]; then
+  say "== OAI tree exists: $OAI"
+else
+  say "== cloning OAI into $OAI  (this is a few GB, it takes a while)"
+  mkdir -p "$(dirname "$OAI")"
+  git clone "$OAI_URL" "$OAI"
+fi
+
+HEAD=$(git -C "$OAI" rev-parse HEAD)
+if [[ $HEAD != "$EXPECT_COMMIT" ]]; then
+  say "== checking out the baseline commit $EXPECT_COMMIT (OAI 2026.w38)"
+  say "   current HEAD is $HEAD"
+  if ! git -C "$OAI" cat-file -e "$EXPECT_COMMIT^{commit}" 2>/dev/null; then
+    say "   fetching it"
+    git -C "$OAI" fetch --tags origin
+  fi
+  if [[ -n $(git -C "$OAI" status --porcelain) ]]; then
+    say "   !! the tree has local changes. Commit or stash them, then re-run." >&2
+    exit 1
+  fi
+  git -C "$OAI" checkout --detach "$EXPECT_COMMIT"
+else
+  say "== already at the baseline commit $EXPECT_COMMIT"
+fi
+
+# ------------------------------------------------------- 2. system packages
+if (( DEPS )); then
+  say "== installing OAI's external packages (needs sudo, changes this host)"
+  ( cd "$OAI/cmake_targets" && ./build_oai -I )
+else
+  say "== skipping system packages. If the build fails on a missing library,"
+  say "   re-run once with:  bin/rss-bootstrap --deps"
+fi
+
+# ------------------------------------------------------- 3. first stock build
+# -w ZMQ adds the oai_zmqdevif target, which is the radio this tool patches.
+# --nrUE builds nr-uesoftmodem. The gNB is NOT built: we never run one here.
+if [[ -x $BUILD/nr-uesoftmodem && -f $BUILD/liboai_zmqdevif.so && $FORCE -eq 0 ]]; then
+  say "== stock build already present in $BUILD (pass --force to rebuild)"
+else
+  say "== building stock OAI UE + ZMQ radio  (long: tens of minutes on a cold tree)"
+  NINJA=()
+  command -v ninja >/dev/null 2>&1 && NINJA=(--ninja)
+  ( cd "$OAI/cmake_targets" && ./build_oai --nrUE -w ZMQ "${NINJA[@]}" )
+fi
+
+# ------------------------------------------------------------- 4. verify
+fail=0
+for f in "$BUILD/nr-uesoftmodem" "$BUILD/liboai_zmqdevif.so"; do
+  if [[ -e $f ]]; then say "   ok  $f"; else say "   MISSING  $f"; fail=1; fi
+done
+(( fail )) && { say "== stock build incomplete. Read the build log above." >&2; exit 1; }
+
+say ""
+say "== done. The stock UE is built and the attack is NOT in it yet."
+say "   next:  cp conf/rss.conf.example conf/rss.conf && \$EDITOR conf/rss.conf"
+say "          bin/rss-doctor      # check every prerequisite"
+say "          bin/rss-build       # apply the patch and build the attacker UE"

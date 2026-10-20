@@ -9,11 +9,12 @@
 | (규격) | 3GPP 규격 문서 |
 | (논문) | 공개 논문의 실험 결과. 해당 논문의 환경에서 나온 수치다 |
 | (실측) | **이 테스트베드에서 실행해 측정.** 출처는 [MEASUREMENTS.md](MEASUREMENTS.md) |
+| (문서) | 벤더가 공개한 문서(규격·소스가 아님) |
 | (추론) | 위 근거들로부터의 추론. 직접 확인한 사실이 아니다 |
 
-인용한 OCUDU 소스의 줄 번호는 커밋 `440cdbb` 기준이다. 시험 대상은 OCUDU
-26.10이었으므로 **줄 번호는 설치본과 다를 수 있다.** 기본값과 동작은 실측과
-대조했고, 어긋난 지점은 §3.4와 §9에 적었다.
+인용한 OCUDU 소스의 줄 번호는 커밋 `440cdbb` 기준이다. 시험 대상은
+`release_26_10`(`e0db566a`)이었으므로 **줄 번호는 설치본과 다를 수 있다.**
+기본값과 동작은 실측과 대조했고, 어긋난 지점은 §3.4와 §9에 적었다.
 
 ---
 
@@ -71,8 +72,7 @@ Msg3만 보내고 사라지면 될 것 같지만 안 된다. **경합 해소가 
 식별자가 맞다고 확인했을 때만 생성된다 (규격) [T2, §5.1.5, §5.3.2.2].
 
 이것은 추론이 아니라 측정으로 확인됐다. Msg3 직후 포기하는 변종(`MSG4_WAIT=0`)은
-UE 쪽 로그상 5배 빨라 보였지만, **시도 10,878건에 대해 기지국이 만든 컨텍스트는
-1개였다** (실측) [M, §5]. 그래서 이 도구는 Msg4를 기다리고 HARQ ACK까지 보낸 뒤
+UE는 **시도 10,878건을 기록했지만 기지국이 만든 컨텍스트는 1개였다** (실측) [M, §5]. 그래서 이 도구는 Msg4를 기다리고 HARQ ACK까지 보낸 뒤
 멈춘다. 재현기의 `MSG4_WAIT=1`을 바꾸지 말라고 적어 둔 이유다.
 
 **공격자가 멈추는 지점은 정확히 한 곳이다**: Msg4 HARQ ACK 직후, `RRCSetupComplete`를
@@ -181,7 +181,7 @@ procedure_timeout = context.cell.timers.t300 + context.cfg.rrc_procedure_guard_t
 |---|---|
 | Msg1·Msg2, Msg4 HARQ ACK | 안 보임. DU의 MAC·PHY 안에서 끝난다 |
 | F1-C (Initial UL RRC → DL RRC → 무응답 → 해제) | **보임.** 시도 단위 관측이 가능한 유일한 경계 |
-| E2SM-KPM | **간접적으로만.** `RRC.ConnEstabAtt − ConnEstabSucc` 차이로만 드러난다. 실제 실패 원인 `no_reply`는 KPM에 노출되지 않고, 보고 주기도 최소 1초다 (소스) [S16] |
+| E2SM-KPM | **간접적으로만.** `RRC.ConnEstabAtt − ConnEstabSucc` 차이로만 드러난다. 실제 실패 원인 `no_reply`는 KPM에 노출되지 않고 (문서) [S16], 보고 주기도 최소 1초다 (문서) [S17] |
 | 코어(AMF) | 안 보임 |
 
 용량이 차서 DU가 단말 생성 자체를 거부하는 단계(§5.3)는 F1AP 객체 생성 **전에**
@@ -238,9 +238,10 @@ CU-CP 쪽 단말 상한(`max_nof_ues`, 기본 8192)은 훨씬 뒤에 걸린다 (
    (소스) [S2, L44–L50][S8, L233–L241], 정상 단말은 경합 해소 타이머가 만료된 뒤
    Msg1부터 다시 시도한다 (추론).
 
-실측에서 두 단계가 모두 관측됐다. 모드 B 200초 구간에서 `RRCReject` 7,551건
-(61.3/s)과 `DU is not able to serve the UE` 2,517건(20.4/s)이 동시에 나왔다
-(실측) [M, §4]. **서비스 거부가 이 공격의 실제 결과물이다.**
+실측에서 두 단계가 모두 관측됐다. 모드 B 런의 **123.2초 창**에서 `RRCReject`
+7,551건(61.3/s)과 `DU is not able to serve the UE` 2,517건(20.4/s)이 동시에
+나왔다 (실측) [M, §4]. 같은 런의 점유 수치는 200초 창에서 집계한 것이므로 창
+길이가 다르다. **서비스 거부가 이 공격의 실제 결과물이다.**
 
 정상 사용자 쪽 증상은 논문이 보고한다. KAUST 실험에서 상용 폰은 여러 번
 시도해도 접속하지 못했고 (논문) [P1], Nguyen 실험에서 기지국 가용률은 4.02%,
@@ -296,7 +297,8 @@ CU-CP 쪽 단말 상한(`max_nof_ues`, 기본 8192)은 훨씬 뒤에 걸린다 (
 수십 마이크로초이므로, 10 ms는 지연이 아니라 타임아웃 상수일 수밖에 없다.
 1 ms 미만의 늦음이 무선 프레임 하나를 통째로 잡아먹고 있었다.
 
-반면 효과가 없었던 것들(코어 핀닝, 스핀 대기, 로그 레벨 조정)은 모두
+반면 **측정해서 더 나빴던 것**(코어 핀닝 33.8 → 24.2/s, 스핀 대기)과 **비용 구조
+때문에 아예 시도하지 않은 것**(gNB 로그 레벨 조정)이 있다. 둘 다
 **시도 주기의 비용 구조**로 설명된다. 한 주기는 무선 시간 40 ms를 쓰고 그중
 30 ms가 랜덤 액세스 절차 자체다. 이 30 ms는 벽시계 시간이 6배 차이 나는 두 세션에서
 동일했다 — 호스트 속도가 아니라 **공중 인터페이스 스케줄**이 정하는 양이라는 뜻이다
@@ -346,10 +348,10 @@ field will be sent with RRC Reject" (소스) [S11].
 따라서 기본 설정에서는 **지킬 T302 자체가 존재하지 않는다.** 이 도구의 `-r`
 노브가 이 공백을 다룬다.
 
-| 설정 | 동작 | 모드 B 200초 구간 실측 |
+| 설정 | 동작 | 모드 B 실측 (창 길이는 행마다 다르다) |
 |---|---|---|
-| `-r 1` (기본) | T302가 있으면 지키고, 없으면 재현기 자체의 기본 백오프 1000 ms를 적용 | 시도 5.6/s, 런의 95%를 쉼. `RRCReject` 388건 |
-| `-r 0` | 거절을 무시하고 10 ms 후 재시도 | 시도 6.5/s, `RRCReject` **7,551건(61.3/s)**, 점유 ≥ 6/12를 구간의 100% 유지 |
+| `-r 1` (기본) | T302가 있으면 지키고, 없으면 재현기 자체의 기본 백오프 1000 ms를 적용 | 102초 창: 시도 5.6/s, 런의 95%를 쉼. `RRCReject` 388건 |
+| `-r 0` | 거절을 무시하고 10 ms 후 재시도 | 200초 창: 시도 6.5/s, 점유 ≥ 6/12를 100% 유지. 123.2초 창: `RRCReject` **7,551건(61.3/s)** |
 
 (실측) [M, §4]. **포화를 유지시키는 것은 `-r 0`이다.** 다만 기본값을 `-r 1`로 둔
 것은 의도적이다. 거절을 지키는 공격 단말은 표준을 따르는 단말도 낼 수 있는 부하를
@@ -395,7 +397,8 @@ field will be sent with RRC Reject" (소스) [S11].
    `RRCReject`·`DU is not able to serve the UE` 스트림이다.
 5. **실 SDR OTA.** 모든 측정은 ZMQ 가상 무선에서 나왔다. OTA에서는 Msg4 ACK의
    타이밍 요구가 달라질 수 있다 (논문) [P1].
-6. **소스 줄 번호와 설치본의 일치.** 인용은 `440cdbb` 기준이고 시험 대상은 26.10이다.
+6. **소스 줄 번호와 설치본의 일치.** 인용은 `440cdbb` 기준이고 시험 대상은
+   `release_26_10`(`e0db566a`)이다. 두 커밋의 해당 줄을 직접 대조하지는 않았다.
 
 ---
 
@@ -420,7 +423,8 @@ field will be sent with RRC Reject" (소스) [S11].
 | S13 | [`include/ocudu/ran/prach/rach_config_common.h#L116`](https://gitlab.com/ocudu/ocudu/-/blob/440cdbbee077e97e824db285bf227c15c84bd0bb/include/ocudu/ran/prach/rach_config_common.h#L116) | 경합 해소 타이머 기본 64 ms |
 | S14 | [`lib/scheduler/ue_context/ue_repository.cpp#L434`](https://gitlab.com/ocudu/ocudu/-/blob/440cdbbee077e97e824db285bf227c15c84bd0bb/lib/scheduler/ue_context/ue_repository.cpp#L434) | 경합 해소 만료 시 비활성화만 수행 |
 | S15 | [`lib/cu_cp/cu_cp_controller/cu_cp_controller.cpp#L83`](https://gitlab.com/ocudu/ocudu/-/blob/440cdbbee077e97e824db285bf227c15c84bd0bb/lib/cu_cp/cu_cp_controller/cu_cp_controller.cpp#L83) | AMF·CU-UP 부재 시 전부 거절 |
-| S16 | [Supported E2 Metrics](https://docs.ocudu.org/knowledge_base/e2sm_kpm_metrics/) | KPM 노출 범위 |
+| S16 | [Supported E2 Metrics](https://docs.ocudu.org/knowledge_base/e2sm_kpm_metrics/) | KPM 노출 범위(공개 문서) |
+| S17 | [Integrating a Near-RT RIC](https://docs.ocudu.org/tutorials/near-rt-ric/) | KPM 최소 보고 주기 1초(공개 문서) |
 
 ### 규격·논문·측정
 

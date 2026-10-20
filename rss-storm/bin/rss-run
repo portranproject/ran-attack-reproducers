@@ -5,8 +5,9 @@
 #   completed, which consumes connection state on the target base station.
 #   Run it only inside an RF-shielded or virtual-RF testbed you own.
 #
-# Everything is configurable. Precedence: command line > environment >
-# conf/rss.conf > built-in default. See README.en.md.
+# Everything is configurable. Precedence: command line > conf/rss.conf >
+# environment > built-in default (the conf file is sourced first, so a key set
+# there wins over an exported variable). See README.en.md.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -165,21 +166,32 @@ ARGS=(-O "$UE_CFG" --band "$BAND" -C "$DL_FREQ" --numerology "$NUMEROLOGY" -r "$
       --rss.run_id "$RUN_ID" --rss.log_file "$JSONL" "${EXTRA[@]}")
 
 echo "== launching UE (log: $UE_LOG)"
+rc=0
 if (( MAX_DURATION_S > 0 )); then
   # Two independent kill switches: the in-process one and this outer timeout.
   timeout --signal=INT --kill-after=10 "$((MAX_DURATION_S + 20))" \
-    "${PIN[@]}" "$UE_BIN" "${ARGS[@]}" >"$UE_LOG" 2>&1 </dev/null \
-    || echo "   (UE exited rc=$? — expected when the kill switch fires)"
+    "${PIN[@]}" "$UE_BIN" "${ARGS[@]}" >"$UE_LOG" 2>&1 </dev/null || rc=$?
 else
   echo "   unlimited run: stop with  pkill -INT -x nr-uesoftmodem"
-  "${PIN[@]}" "$UE_BIN" "${ARGS[@]}" >"$UE_LOG" 2>&1 </dev/null \
-    || echo "   (UE exited rc=$?)"
+  "${PIN[@]}" "$UE_BIN" "${ARGS[@]}" >"$UE_LOG" 2>&1 </dev/null || rc=$?
 fi
+# Do not call every non-zero exit "the kill switch": a crash is a crash and the
+# run is then invalid. 124 = outer timeout, 130/2 = SIGINT, 139 = SIGSEGV.
+CRASHED=0
+case $rc in
+  0)      ;;
+  2|130)  echo "   (UE stopped by SIGINT — the in-process kill switch, or you)";;
+  124)    echo "   (outer timeout fired at $((MAX_DURATION_S + 20)) s)";;
+  137)    echo "   (UE killed with SIGKILL)";;
+  139)    echo "   !! UE CRASHED (SIGSEGV, rc=139). This run is INVALID — read $UE_LOG"; CRASHED=1;;
+  *)      echo "   (UE exited rc=$rc)";;
+esac
 pkill -9 -x nr-uesoftmodem 2>/dev/null || true
 
 echo "{\"t_stop_utc\":\"$(date -u +%FT%TZ)\"}" > "$OUT/run_stop.json"
 
 echo "== self-check"
+(( CRASHED )) && echo "   !! the UE crashed, so every number below is from a partial run"
 if [[ $ENABLE == 1 ]]; then
   grep -m1 '\[RSS\]' "$UE_LOG" || echo "   !! no [RSS] banner: knobs were NOT parsed, run is invalid"
 fi

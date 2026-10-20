@@ -91,7 +91,7 @@ plateau at 96 measured 0.93 s.
 
 Reducing the cell's capacity by **configuration only** (no gNB source change,
 see `bin/rss-gnb-profile`) moves the requirement into reach: capacity 12 with a
-measured hold of about 1.5 s needs about 8 attempts/s.
+measured hold of about 1.6 s needs about 7.5 attempts/s.
 
 Two UE, capacity 12. The `HONOR_REJECT=0` column is a 200 s window out of a
 420 s run (`ZWfinal-064626Z`); the `=1` column is a 102 s window

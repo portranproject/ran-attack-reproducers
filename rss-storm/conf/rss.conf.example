@@ -1,6 +1,9 @@
 # rss.conf — copy to conf/rss.conf and edit for your testbed.
 # Every value here is also a command-line option or an environment variable.
-# Precedence: command line > environment > this file > built-in default.
+# Precedence: command line > this file > environment > built-in default.
+# The scripts source this file first, so a key set here overrides an exported
+# environment variable of the same name. Comment a key out to let the
+# environment set it.
 
 # ---------------------------------------------------------------- attack shape
 ENABLE=0                 # 0 = normal UE (regression baseline), 1 = attack.
@@ -22,7 +25,9 @@ HOLD_MS=2000             # how long the gNB keeps one incomplete context.
                          #     your gNB's t300 + guard. Measure it, do not
                          #     assume: on OCUDU 26.10 the DU sometimes releases
                          #     early and the real value was 1627 ms.
-COMPLETION_PCT=0         # percent of attempts completed normally (mixed traffic)
+COMPLETION_PCT=0         # ONE-SHOT CHECK, not sustained mixed traffic: above 0
+                         #     the reproducer completes one attempt normally and
+                         #     then ENDS THE RUN. Keep 0 for A-type.
 HONOR_REJECT=1           # 1 = obey RRCReject waitTime, 0 = retry immediately
 ACK_GATE=1               # 1 = do not restart RA while the Msg4 HARQ ACK is pending
 RA_GATE=1                # 1 = do not restart RA while one is still in flight
@@ -65,14 +70,18 @@ ZMQ_RX=tcp://127.0.0.1:4556
 GNB_RESTART_CMD=
 GNB_STOP_CMD=
 #
-# Whatever brings your DU up and down, as a single shell command. It must
-# return once the DU is actually serving, and it must not be a pipeline:
-# a pipe can block forever here because the write end stays open after the
-# command returns, so the reader never sees EOF. rss-run redirects to a file.
+# Whatever brings your DU up and down, as a single shell command. Three rules:
+#   1. It must start the DU ONLY. A command that also starts a normal UE will
+#      take the ZMQ port pair first and the attacker UE will not attach.
+#   2. It must return once the DU is actually serving.
+#   3. It must not be a pipeline: a pipe can block forever here because the
+#      write end stays open after the command returns, so the reader never sees
+#      EOF. rss-run redirects to a file. bin/rss-doctor checks rules 1 and 3.
 # Examples:
 #   GNB_RESTART_CMD='systemctl restart my-du'
 #   GNB_RESTART_CMD='/opt/ran/du-up.sh'
 #   GNB_RESTART_CMD='docker compose -f /srv/ran/du.yml up -d --force-recreate'
+#   GNB_RESTART_CMD='/root/workspace/ctl.sh start'   # a box-side DU-only script
 
 # --------------------------------------------------------------- CPU placement
 UE_TASKSET=              # e.g. "2-7". Measured: pinning made things WORSE here.
@@ -81,4 +90,6 @@ UE_EXTRA=                # extra nr-uesoftmodem arguments
 
 # ----------------------------------------------------------------- reporting
 GNB_LOG=/tmp/ocu.log     # CU log, read by bin/rss-report
+CFGDIR=/root/OCUDU/configs  # where du.yaml / cu.yaml live, used by
+                         #     bin/rss-gnb-profile on the host that owns them
 CAPACITY=96              # cell capacity, from your DU boot log

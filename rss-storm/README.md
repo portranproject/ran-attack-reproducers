@@ -38,8 +38,8 @@ Msg5가 도착하지 않으므로 gNB는 코어로 `InitialUEMessage`를 보내�
   자체가 "시나리오를 벗어나지 않았다"는 판정 기준이 된다.
 - **기지국을 수정할 필요가 없다.** 표준 Uu 절차(PRACH/RRC)만 사용하므로 상대는
   무수정 상용·오픈소스 gNB 어느 쪽이든 된다.
-- **세기를 연속적으로 조절할 수 있다.** 점유 목표(`-o`)와 완료율(`-c`)로 부하를
-  재현 가능한 수준에 고정할 수 있어 탐지 임계값 탐색에 쓸 수 있다.
+- **세기를 재현 가능하게 고정할 수 있다.** 점유 목표(`-o`)가 미완료 컨텍스트 수를
+  폐루프로 맞춰 주므로 탐지 임계값 탐색에 쓸 수 있다.
 
 이 공격이 **왜** 통하는지 — 기지국이 어느 메시지에서 자원을 잡는지, 왜 망 쪽
 타이머가 그것을 즉시 회수하지 않는지, 어떤 설정값이 결과를 좌우하는지 — 는
@@ -76,7 +76,9 @@ Msg5가 도착하지 않으므로 gNB는 코어로 `InitialUEMessage`를 보내�
 - 판정은 **CU 호스트**에서 한다. 점유와 거절 카운터의 출처가 CU 로그다.
 - CU/DU가 한 호스트에 있어도 동작에는 문제가 없다. 그 경우 두 단계를 같은 곳에서
   실행하면 된다.
-- 코어(AMF)는 A형에서 호출되지 않으므로 있든 없든 결과가 같다.
+- A형 시도는 코어(AMF)에 닿지 않는다. 그러나 **CU에 AMF와 CU-UP가 연결돼 있어야
+  한다** — 연결이 없으면 OCUDU CU-CP가 모든 `RRCSetupRequest`를 거절해 실험이
+  성립하지 않는다(전제 조건 참고).
 
 ### 소프트웨어
 
@@ -134,18 +136,20 @@ Msg5가 도착하지 않으므로 gNB는 코어로 `InitialUEMessage`를 보내�
 | CU (OCUDU CU + 코어 + RIC + 판정) | `c6i.xlarge` | 4 | Intel Xeon Platinum 8375C @ 2.90 GHz (1 소켓) | 7.6 GiB | Ubuntu 24.04.5 LTS / `7.0.0-1014-aws` |
 | DU + 공격 UE | `c6i.2xlarge` | 8 | Intel Xeon Platinum 8375C @ 2.90 GHz (1 소켓) | 15.3 GiB | Ubuntu 24.04.5 LTS / `7.0.0-1014-aws` |
 
-**시도율 천장은 호스트 성능 때문이 아니다.** DU 박스 8 vCPU에서 측정했을 때 odu가
-약 1.7 코어, 공격 UE가 약 0.3 코어를 썼고 **6 코어가 유휴**였다. 그 상태에서도
+**시도율 천장은 호스트 성능 때문이 아니다.** DU 박스 8 vCPU에서 관측했을 때 odu가
+약 1.7 코어, 공격 UE가 약 0.3 코어를 썼고 **6 코어가 유휴**였다(별도 세션의
+`top`·`loadavg` 관측이며 런 산출물로 보관돼 있지는 않다). 그 상태에서도
 시도율은 36–38/s에서 멈췄다. 원인은 계산 능력이 아니라 공유 무선과 DU MAC의
 직렬화이며, 근거는 [docs/MECHANISM.ko.md](docs/MECHANISM.ko.md) §6.3–§6.4에 있다.
 RF는 실 SDR이 아닌 ZMQ 가상 무선이므로 차폐 박스나 안테나는 쓰지 않았다.
 
 ### 전제 조건
 
-- 위 커밋의 **OAI 소스 트리**가 있고 **최소 한 번 정상 빌드**가 끝나 있어야 한다
-  (`$OAI/cmake_targets/ran_build/build`가 존재해야 함). HEAD가 다르면
-  `bin/rss-build`가 경고하고, 패치가 안 맞으면 적용 전에 멈춘다.
-- `cmake`, C/C++ 툴체인, `python3`.
+- **OAI 소스 트리는 미리 준비하지 않아도 된다.** `bin/rss-bootstrap`이 공식
+  저장소에서 받아 기준 커밋으로 맞추고 최초 빌드까지 한다(수 GB, 수십 분).
+  이미 트리가 있으면 그대로 쓰고, 커밋이 다르면 기준 커밋으로 체크아웃한다.
+- `git`, `cmake`, C/C++ 툴체인, `python3`. OAI의 시스템 패키지는
+  `bin/rss-bootstrap --deps`가 설치한다.
 - OAI 트리와 런 산출물이 `/root` 아래라면 UE 호스트의 root 권한. CU 로그 읽기도
   마찬가지다.
 - gNB와 UE 사이의 무선 경로: ZMQ 가상 무선(개발·검증에 쓴 경로) 또는 차폐 박스
@@ -158,20 +162,51 @@ RF는 실 SDR이 아닌 ZMQ 가상 무선이므로 차폐 박스나 안테나는
 
 ## 사용 방법
 
+이 저장소만 받으면 된다. OAI 소스를 미리 준비해 둘 필요는 없다 — 1단계가 받아서
+빌드한다. gNB(OCUDU)는 이미 돌고 있다고 가정한다.
+
 ### 한눈에
 
 ```bash
-cp conf/rss.conf.example conf/rss.conf && $EDITOR conf/rss.conf  # 1. 설정
-bin/rss-build                                                    # 2. 빌드
-bin/rss-run -e 0 -d 30                                           # 3. 정상 접속 회귀
-bin/rss-run -e 1 -u 2 -d 120                                     # 4. 공격
-bin/rss-report --since HH:MM:SS --until HH:MM:SS                 # 5. 판정(CU 호스트)
+git clone <this repo> rss-storm && cd rss-storm
+bin/rss-bootstrap --deps                 # 1. OAI 받아서 최초 빌드 (한 번만)
+cp conf/rss.conf.example conf/rss.conf   # 2. 설정
+$EDITOR conf/rss.conf
+bin/rss-doctor                           # 3. 전제 조건 진단
+bin/rss-build                            # 4. 패치 적용 + 공격 UE 빌드
+bin/rss-run -e 0 -u 1 -d 30              # 5. 정상 접속 회귀
+bin/rss-run -e 1 -u 2 -d 120             # 6. 공격
+bin/rss-report --since HH:MM:SS --until HH:MM:SS   # 9. 판정(CU 호스트)
 ```
 
-### 1단계 — 설치와 설정
+**실행 위치**: 공격 UE를 돌릴 호스트(보통 DU와 같은 호스트)다. 판정 단계만 CU
+호스트에서 한다. 기본 경로가 `/root` 아래이므로 **root로 실행**한다
+(`sudo -i` 후 작업하거나 모든 명령에 `sudo`를 붙인다).
 
-패키지를 **DU 호스트**(= 공격 UE를 돌릴 호스트)에 복사하고, CU 호스트에도 같은
-패키지를 둔다. 판정 단계만 CU 쪽에서 실행하면 된다.
+### 1단계 — OAI 트리 준비
+
+```bash
+bin/rss-bootstrap --deps     # 처음 한 번: 시스템 패키지까지 설치
+bin/rss-bootstrap            # 이후: 받기 + 기준 커밋 체크아웃 + 최초 빌드
+```
+
+하는 일:
+
+1. `$OAI`(기본 `/root/OAI`)에 트리가 없으면 공식 저장소에서 clone한다.
+2. **기준 커밋 `1c2f4d3c…`(태그 `2026.w38`)로 체크아웃**한다. 이 패치는 이 커밋에
+   맞춰 만들어졌다.
+3. `--deps`를 주면 OAI의 `build_oai -I`로 시스템 패키지를 설치한다. 호스트를
+   바꾸는 작업이라 **기본적으로 하지 않는다.** 빌드가 라이브러리 부족으로 실패하면
+   한 번 주고 다시 돌린다.
+4. 스톡 UE를 한 번 빌드한다: `build_oai --nrUE -w ZMQ`. `-w ZMQ`가 이 도구가
+   패치하는 무선 드라이버(`oai_zmqdevif`)를 함께 만든다. gNB는 빌드하지 않는다.
+5. `nr-uesoftmodem`과 `liboai_zmqdevif.so`가 생겼는지 확인한다.
+
+**이 단계는 길다.** 찬 트리에서 clone이 수 GB, 빌드가 수십 분이다. 이미 트리가
+있으면 건너뛰고, 빌드가 있으면 그대로 쓴다(`--force`로 재빌드). 이 단계가 끝난
+시점의 바이너리는 **공격 코드가 없는 정상 UE**다.
+
+### 2단계 — 설정
 
 ```bash
 cp conf/rss.conf.example conf/rss.conf
@@ -197,11 +232,33 @@ $EDITOR conf/rss.conf
   같이 시작하지 않으면 두 스트림이 끝까지 정렬되지 않으므로, DU 재기동 명령을
   `GNB_RESTART_CMD`에 넣어 `rss-run`이 매 런마다 DU를 다시 띄우게 한다. 실 SDR이면
   비워 둔다.
+- **DU만 띄우는 명령을 넣는다.** 정상 UE까지 함께 띄우는 명령을 넣으면 그 UE가 ZMQ
+  포트 쌍을 먼저 차지해 공격 UE가 붙지 못한다.
 - 이 명령에 **파이프라인을 쓰지 않는다.** 파이프의 쓰기 끝이 열린 채 남아 EOF가
-  오지 않아 영원히 멈출 수 있다. 스크립트 한 줄이나 `systemctl restart ...` 형태로
-  준다.
+  오지 않아 영원히 멈출 수 있다. `bin/rss-doctor`가 이 실수를 잡아낸다.
 
-### 2단계 — 빌드
+### 3단계 — 진단
+
+```bash
+bin/rss-doctor
+```
+
+읽기만 하고 아무것도 바꾸지 않는다. 호스트 명령, 설정 파일, OAI 트리와 커밋,
+빌드 산출물, **바이너리에 노브가 실제로 들어갔는지**, UE 설정 파일, 산출물 디렉토리
+권한, ZMQ 포트 수신 여부, 재기동 훅, CU 로그 접근성을 차례로 본다.
+
+```
+== attacker UE binary
+  [ok]   binary: /root/OAI/cmake_targets/ran_build/build/nr-uesoftmodem
+  [FAIL] binary is missing knobs (target_occupancy msg4_wait RSS_SHARE_LOCKSTEP)
+         — it is a stock UE. Run: bin/rss-build
+```
+
+`[FAIL]`이 하나라도 있으면 종료 코드가 1이고, 각 줄이 해결 명령을 함께 알려 준다.
+`[warn]`은 상황에 따라 정상이다(예: DU가 아직 꺼져 있음, 이 호스트에 CU 로그가
+없음). **블로커가 없을 때만 다음 단계로 간다.**
+
+### 4단계 — 빌드
 
 ```bash
 bin/rss-build
@@ -220,24 +277,28 @@ bin/rss-build
    하나라도 없으면 **실패로 종료한다** — 빌드가 성공해도 노브가 없는 바이너리의
    런은 믿을 수 없기 때문이다.
 
-기존 바이너리는 `.orig`로 백업된다. 재실행해도 안전하다(멱등).
+기존 바이너리는 `.orig`로 백업된다. 재실행해도 안전하다(멱등). 패치만 다시
+적용하고 싶을 때도 이 명령을 쓴다.
 
-### 3단계 — 회귀 베이스라인부터
+### 5단계 — 회귀 베이스라인부터
 
 ```bash
-bin/rss-run -e 0 -d 30
+bin/rss-run -e 0 -u 1 -d 30
 ```
 
-공격을 끈 상태로 정상 접속이 되는지 먼저 증명한다. CU 로그에서
-`rrcSetupComplete`가 보이면 접속 경로가 살아 있다는 뜻이다.
+공격을 끈 상태로 정상 접속이 되는지 먼저 증명한다. **`-u 1`을 명시한다** — 설정
+파일 기본값이 `NUM_UES=2`인데, 정상 UE 두 개를 한 무선·한 가입자 식별자로 동시에
+붙이면 베이스라인으로서 의미가 없고 실제로 UE가 죽었다(이 테스트베드에서 rc=139). CU 로그에서
+`rrcSetupComplete`가 보이면 접속 경로가 살아 있다는 뜻이다. UE 쪽에서는
+`ue.log`에 `oaitun_ue1`이 올라오는지로도 확인할 수 있다.
 
 이 단계를 건너뛰면, 공격 런에서 시도 0이 나왔을 때 **셀 설정 문제인지 공격 로직
 문제인지 구분할 수 없다.** 30초면 충분하다.
 
-### 4단계 — 공격 실행
+### 6단계 — 공격 실행
 
 ```bash
-bin/rss-run -e 1 -u 2 -d 120            # 모드 A, 기본 gNB 설정
+bin/rss-run -e 1 -u 2 -d 120              # 모드 A, 기본 gNB 설정
 bin/rss-run -e 1 -u 2 -o 48 -H 1900 -d 0  # 점유를 48로 고정
 ```
 
@@ -248,7 +309,7 @@ bin/rss-run -e 1 -u 2 -o 48 -H 1900 -d 0  # 점유를 48로 고정
 - `-d`는 킬 스위치다. `-d N`이면 프로세스 내부 타이머와 외부 `timeout`(N+20초)
   **두 개**가 걸린다.
 
-### 5단계 — 중지
+### 7단계 — 중지
 
 ```bash
 pkill -INT -x nr-uesoftmodem
@@ -257,14 +318,14 @@ pkill -INT -x nr-uesoftmodem
 `-d 0`으로 시간 제한 없이 돌린 경우 두 킬 스위치가 **의도적으로 해제**되므로
 사람이 킬 스위치다. 위 명령으로 중지한다.
 
-### 6단계 — 산출물과 자체 점검
+### 8단계 — 산출물과 자체 점검
 
 런은 `$LOGDIR/<run_id>/`에 쌓인다.
 
 | 파일 | 내용 |
 |---|---|
 | `run.json` | 모든 노브, 셀 파라미터, UE 커밋·브랜치, 시작 시각 |
-| `attempts.jsonl` | 시도당 레코드 1건. **탐지팀용 라벨 피드** |
+| `attempts.jsonl` | 시도당 레코드 1건. **탐지팀용 라벨 피드.** `-e 1` 런에서만 생성된다 |
 | `ue.log` | UE 표준 출력 전체 |
 | `gnb_boot.txt` | `GNB_RESTART_CMD`의 출력 |
 | `run_stop.json` | 종료 시각 |
@@ -274,10 +335,11 @@ pkill -INT -x nr-uesoftmodem
 - **`[RSS]` 배너가 없으면 그 런은 무효다.** 노브가 파싱되지 않았다는 뜻이고,
   스크립트가 그렇게 경고한다.
 - `attempts` / `msg5_skip`이 0에 가까우면 셀 탐색이나 랜덤 액세스에서 막힌 것이다.
+  (`-e 0` 회귀 런에서는 공격 기록을 남기지 않으므로 0이 정상이다.)
 - `ch.timeout`(`Error, channel timeout`)이 많으면 샘플 손실이 크다는 신호다.
   `-u`를 줄인다.
 
-### 7단계 — 판정 (CU 호스트에서)
+### 9단계 — 판정 (CU 호스트에서)
 
 ```bash
 bin/rss-report --since 06:31:00 --until 06:33:10 \
@@ -293,7 +355,7 @@ bin/rss-report --since 06:31:00 --until 06:33:10 \
 - 출력 해석은 아래 "판정 읽기"에 있다. 판정은 공격자 쪽이 아니라 **gNB 자신의
   로그**에서 나온다.
 
-### 8단계 — 원복
+### 10단계 — 원복
 
 ```bash
 bin/rss-gnb-profile --role du restore     # 모드 B를 적용했다면
@@ -308,22 +370,29 @@ UE 바이너리는 `bin/rss-build`가 남긴 `.orig`로 되돌릴 수 있고, OA
 
 | 증상 | 원인과 조치 |
 |---|---|
+| `bin/rss-doctor`가 블로커를 냄 | 각 `[FAIL]` 줄이 해결 명령을 알려 준다. 그것부터 한다 |
 | `[RSS]` 배너가 없다 | 패치가 빠진 바이너리. `bin/rss-build`를 다시 돌리고 노브 체크가 통과하는지 확인 |
-| `patch does not apply cleanly` | OAI HEAD가 `2026.w38`이 아니다. 기준 커밋으로 체크아웃하거나 패치를 포팅 |
+| `patch does not apply cleanly` | OAI HEAD가 `2026.w38`이 아니다. `bin/rss-bootstrap`으로 기준 커밋을 맞춘다 |
+| `no build dir ... build stock OAI once first` | `bin/rss-bootstrap`을 먼저 돌린다 |
+| 빌드가 라이브러리 부족으로 실패 | `bin/rss-bootstrap --deps`를 한 번 돌린다 |
 | 시도가 0, 셀 탐색 실패 | 셀 파라미터 불일치, 또는 DU가 떠 있지 않음. ZMQ면 `GNB_RESTART_CMD` 설정 |
+| UE가 `Intializing UE Threads`에서 멈춘다 | DU와 UE의 ZMQ 스트림이 어긋났다. `GNB_RESTART_CMD`로 DU를 함께 재기동해야 한다 |
 | `run_id ...: second character must not be 'O'` | OAI의 `-O` 파싱 버그(두 번째 글자가 `O`인 인자를 설정 파일 옵션으로 오인). 런 id를 바꾼다 |
 | `Error, channel timeout`이 많다 | 샘플 손실. `-u`를 2 이하로 내린다 |
 | `cannot read /tmp/ocu.log` | CU 로그가 없는 호스트이거나 권한 부족. `--log`로 경로를 주거나 sudo |
 | gNB 재기동 명령이 끝나지 않는다 | `GNB_RESTART_CMD`에 파이프라인을 썼다. 단일 명령으로 바꾼다 |
 | 점유가 올라가지 않는다 | 용량과 유지 시간을 먼저 실측한다. "포화 유지" 참고 |
-| UE 바이너리를 찾을 수 없다 | `bin/rss-build`를 먼저 실행한다 |
+| 모든 접속이 거절된다 | CU에 AMF나 CU-UP가 연결돼 있지 않다. OCUDU는 그 경우 모든 `RRCSetupRequest`를 거절한다 |
 
 ---
 
 ## 파라미터
 
 세 가지 방식 모두 동작하고, 다음 순서로 덮어쓴다.
-**명령행 > 환경변수 > `conf/rss.conf` > 내장 기본값.**
+**명령행 > `conf/rss.conf` > 환경변수 > 내장 기본값.**
+
+스크립트가 설정 파일을 먼저 읽어 들이므로, **설정 파일에 적힌 키는 같은 이름의
+환경변수를 덮는다.** 환경변수로 넘기고 싶으면 그 키를 설정 파일에서 주석 처리한다.
 
 ### 공격 형태
 
@@ -335,11 +404,12 @@ UE 바이너리는 `bin/rss-build`가 남긴 `.orig`로 되돌릴 수 있고, OA
 | `-d SEC` | `MAX_DURATION_S` | 60 | 킬 스위치. **0 = 중지할 때까지 계속** |
 | `-o N` | `TARGET_OCCUPANCY` | 0 | 미완료 컨텍스트를 이 개수로 유지. 0 = 무제한 압박 |
 | `-H MS` | `HOLD_MS` | 2000 | 내 gNB의 유지 시간. 점유 제어기가 사용한다 |
-| `-c PCT` | `COMPLETION_PCT` | 0 | 정상 완료시킬 시도의 비율(혼합 트래픽) |
+| `-c PCT` | `COMPLETION_PCT` | 0 | **1회성 점검용.** 0보다 크면 시도 하나를 정상 완료시키고 **그 지점에서 런을 끝낸다.** 혼합 트래픽을 지속 생성하는 노브가 아니다 |
 | `-r 0\|1` | `HONOR_REJECT` | 1 | `RRCReject`의 waitTime을 지킴 / 즉시 재시도 |
 | `-g 0\|1` | `ACK_GATE` | 1 | Msg4 ACK가 대기 중이면 랜덤 액세스를 다시 시작하지 않음 |
 | `-G 0\|1` | `RA_GATE` | 1 | 랜덤 액세스가 진행 중이면 다시 시작하지 않음 |
 | `-M 0\|1` | `MSG4_WAIT` | 1 | **1로 유지.** "기각된 최적화" 참고 |
+| — | `GATE_TIMEOUT_MS` | 500 | 게이트가 이만큼 붙잡고 있으면 재시도를 강제한다(0 = 강제 없음). 명령행 옵션은 없다 |
 | `-n ID` | `RUN_ID` | 자동 | 런 식별자 |
 
 **`TARGET_OCCUPANCY`는 폐루프**이고 레이트 제한이 아니다. 현재 몇 개의
@@ -400,7 +470,9 @@ bin/rss-run -e 1 -u 2 -o 48 -H 1900 -d 0     # 48개 컨텍스트를 무기한 �
 ```bash
 # 각 설정 파일을 가진 호스트에서 실행
 bin/rss-gnb-profile --role du apply     # 용량 96 -> 12, t300 -> 2000 ms
+bin/rss-gnb-profile --role du show      # 적용됐는지 확인(앵커 키가 없으면 apply가 실패한다)
 bin/rss-gnb-profile --role cu apply     # 절차 가드 -> 5000 ms
+bin/rss-gnb-profile --role cu show
 # gNB를 재기동해 설정을 다시 읽게 한 뒤:
 bin/rss-run -e 1 -u 2 -r 0 -H 1500 -d 0
 ...
@@ -408,15 +480,16 @@ bin/rss-gnb-profile --role du restore
 bin/rss-gnb-profile --role cu restore
 ```
 
-용량 12에 실측 유지 시간 약 1.6초면 약 7.5회/초만 필요하고, 이 도구는 여유롭게
-도달한다. 420초 런 중 **200초 구간** 측정값 (2 UE, `-r 0`, `-H 1500`):
+용량 12에 실측 유지 시간 약 1.6초면 약 7.5회/초가 필요하고, 이 도구는 6.5회/초까지
+올라간다. 요구치에 조금 못 미치기 때문에 점유는 상한 바로 아래에 앉고, 유지되는
+것은 점유가 아니라 거절 스트림이다. 420초 런 중 **200초 구간** 측정값 (2 UE, `-r 0`, `-H 1500`):
 
-| | `-r 1` (기본) | `-r 0` |
+| | `-r 1` (기본, 102초 창) | `-r 0` (200초 창) |
 |---|---:|---:|
 | 시도/초 | 5.6 | 6.5 |
 | 피크 점유 | 12 / 12 | 12 / 12 |
-| `RRCReject` | 388 | **7,551 (61.3/s)** |
-| `DU is not able to serve the UE` | 130 | **2,517 (20.4/s)** |
+| `RRCReject` | 388 | **7,551 (61.3/s, 123.2초 창)** |
+| `DU is not able to serve the UE` | 130 | **2,517 (20.4/s, 123.2초 창)** |
 | 점유 >= 6 / 12 | — | **구간의 100%, 연속 199.8초** |
 | 점유 >= 9 / 12 | — | 구간의 94%, 연속 15.2초 |
 | 점유 >= 12 / 12 | — | 33%, 연속 0.87초 |
@@ -502,6 +575,7 @@ pkill -INT -x nr-uesoftmodem          # 중지
 `RRC Setup Procedure` 수와, 각 수준에 머문 시간:
 
 ```
+(발췌)
 peak occupancy 96   at 06:31:24
 sustained occupancy
   >=  48   56.4 s of 59 s ( 95%)   longest plateau 50.33 s
@@ -541,7 +615,8 @@ sustained occupancy
 `zmq_poll`은 자기 자신의 **10 ms** 타임아웃으로만 복귀한다. UE와 DU는
 `127.0.0.1`로 통신하고 왕복은 수십 마이크로초이므로, 그 10 ms는 전송 지연이 아니라
 타임아웃 상수다: 1 ms 미만의 늦음이 무선 프레임 하나를 통째로 잡아먹었다. 수정 전
-실측: 굶은 요청 4250건 × **10.01 ms** = 80초 런에서 42.5초 손실.
+실측: 굶은 요청 4,250건 × **10.01 ms** = 42.5초 손실(60초 계측 런, 프로세스
+수명의 85%).
 
 | | 업스트림 (`=0`) | 수정 (`=-2`) |
 |---|---:|---:|
@@ -578,7 +653,7 @@ sustained occupancy
 | `TRANSMIT_TS_ALIGN_TIMEOUT` 상향 | 구조상 무효과: `align()`은 타임아웃을 쓰기 전, 첫 분기에서 "timestamp passed"로 반환한다 |
 | 슬립 대신 `sched_yield` 스핀 (`=-1`) | 굶은 대기 28.5초 -> 0.117초이지만 무선 시간 2.15 -> 1.26이고 시도가 줄었다. 자신이 기다리는 생산자 스레드를 굶긴다 |
 | usleep 대신 조건 변수 (`=-2` vs `>0`) | 비용 동일: 237 us vs 240 us. 남은 대기는 대기 방식이 아니라 생산자의 실제 지연이다. CPU를 태우지 않으므로 기본값으로 유지 |
-| `MSG4_WAIT=0` (Msg3에서 포기) | UE 쪽은 5배 빨라 보였지만(10878 시도) gNB가 만든 컨텍스트는 **1개**였다. Msg4를 기다리지 않으면 랜덤 액세스가 완료되지 않아 Msg3이 gNB에 닿지 않는다 |
+| `MSG4_WAIT=0` (Msg3에서 포기) | UE는 10,878 시도를 기록했지만 gNB가 만든 컨텍스트는 **1개**였다. Msg4를 기다리지 않으면 랜덤 액세스가 완료되지 않아 Msg3이 gNB에 닿지 않는다 |
 | `RSS_SHARE_WR_MONOTONIC=1` | 샘플 손실 21,178 -> 0이지만 시도 2387 -> **32**. 클램프가 flush당 읽기 1회씩 전진하는데 이는 슬롯당 flush 1회를 가정한다. 실제로는 더 많아서 미래로 달아났다 |
 | 코어 핀닝 (`UE_TASKSET`) | 더 나쁨: 33.8 -> 24.2 시도/초, 피크 90 -> 51 |
 | `ACK_GATE=0` | 변화 없음 (34.1 vs 33.8 시도/초) |
@@ -592,7 +667,7 @@ sustained occupancy
   근처가 상한이다.
 - **gNB 기본 설정에서는 포화 유지를 입증하지 못했다.** 용량에는 도달하지만(피크
   96, 거절 발생) 96에서의 최장 연속 평탄 구간은 0.93초였다. 원인은 정량화돼
-  있다: 공유 무선이 상향 write의 약 8~17%를 버리고, 이것이 1초 단위 정지를
+  있다: 공유 무선이 상향 write의 약 17%를 버리고(4 UE 실측), 이것이 1초 단위 정지를
   만든다.
 - **무선 시간은 실시간이 아니다.** TX 수정 이후 단일 인스턴스에서는 실시간보다
   약 2.4배 *빠르게* 흐른다. ZMQ에 페이싱이 없기 때문이다. 초당 수치를 보고할
@@ -607,18 +682,22 @@ sustained occupancy
 ## 파일
 
 ```
+bin/rss-bootstrap    OAI 트리 받기 + 기준 커밋 + 최초 스톡 빌드
+bin/rss-doctor       전제 조건 진단 (읽기만, 블로커면 종료 코드 1)
 bin/rss-build        패치 적용 후 공격 UE 빌드
 bin/rss-run          실험 1회 실행
 bin/rss-report       gNB 로그 + UE JSONL로 판정
+bin/rss-gnb-profile  모드 B 포화 프로필 적용·원복 (설정만, gNB 소스 무수정)
 conf/rss.conf.example  모든 노브, 주석으로 문서화
 patch/rss-ue.patch   UE 측 패치 (OAI 2026.w38)
 analysis/            점유, 카운터, 시도 비용 분해
 docs/MECHANISM.ko.md 공격이 왜 통하는지: 소스·설정·실측 논증
 docs/MEASUREMENTS.md 측정 기록 원본 (영문)
+NOTICE.md            사용 제한·출처·라이선스 고지
 ```
 
-모든 런은 `run.json`(모든 노브와 셀), `attempts.jsonl`(시도당 레코드 1건, 두
-시계 모두 포함), `ue.log`를 남긴다.
+모든 런은 `run.json`(모든 노브와 셀)과 `ue.log`를 남기고, **공격 런(`-e 1`)은
+추가로 `attempts.jsonl`**(시도당 레코드 1건, 두 시계 모두 포함)을 남긴다.
 
 **`attempts.jsonl`이 탐지팀을 위한 라벨 피드다.** 각 레코드에는 `run_id`, `ue`,
 `seq`, `t_ns`(벽시계), `air_ms`(무선), 이벤트, 전송된 UE identity, 그리고 시도의

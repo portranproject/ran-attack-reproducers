@@ -10,9 +10,16 @@
 #              cu_cp.rrc.rrc_procedure_guard_time_ms 1000 -> 5000  (CU)
 # Runs on the box that owns the file. Keeps a .orig backup and is idempotent.
 #
-#   bash gnb_profile.sh --role du  apply|restore|show
-#   bash gnb_profile.sh --role cu  apply|restore|show
+#   bin/rss-gnb-profile --role du  apply|restore|show
+#   bin/rss-gnb-profile --role cu  apply|restore|show
+#
+# Which files it edits: $CFGDIR/du.yaml and $CFGDIR/cu.yaml. CFGDIR comes from
+# conf/rss.conf (or the environment); the default is /root/OCUDU/configs.
 set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONF="${RSS_CONF:-$HERE/conf/rss.conf}"
+[[ -f "$CONF" ]] && . "$CONF"
 
 ROLE=""
 SR_RES=${SR_RES:-1}
@@ -64,30 +71,39 @@ case "$ACTION" in
       python3 - "$F" "$BEGIN" "$END" "$SR_RES" "$T300" <<'PY'
 import sys
 p,b,e,sr,t300=sys.argv[1:6]
-out=[]
+out=[]; hit=0
 for l in open(p):
     out.append(l)
     if l.startswith('cell_cfg:'):
+        hit += 1
         out += [b+"\n",
                 f"  pucch: {{ nof_cell_sr_res: {sr} }}   # N_cap driver\n",
                 f"  sib:   {{ t300: {t300} }}            # T_hold driver (3GPP max 2000)\n",
                 e+"\n"]
+# Without the anchor key the profile would be a silent no-op, which later reads
+# as "capacity did not drop" instead of "nothing was applied".
+if not hit:
+    raise SystemExit(f"no top-level 'cell_cfg:' key in {p} — nothing applied")
 open(p,'w').writelines(out)
 PY
     else
       python3 - "$F" "$BEGIN" "$END" "$GUARD_MS" <<'PY'
 import sys
 p,b,e,g=sys.argv[1:5]
-out=[]
+out=[]; hit=0
 for l in open(p):
     out.append(l)
     if l.startswith('cu_cp:'):
+        hit += 1
         out += [b+"\n",
                 f"  rrc: {{ rrc_procedure_guard_time_ms: {g} }}   # T_hold driver\n",
                 e+"\n"]
+if not hit:
+    raise SystemExit(f"no top-level 'cu_cp:' key in {p} — nothing applied")
 open(p,'w').writelines(out)
 PY
     fi
     echo "== applied to $F"; sed -n '1,30p' "$F"
+    echo "   verify with:  $0 --role $ROLE show   (then restart the gNB)"
     ;;
 esac

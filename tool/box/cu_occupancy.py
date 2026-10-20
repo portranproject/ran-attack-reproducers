@@ -77,14 +77,20 @@ if gaps:
 # order and measure how long occupancy actually stayed at or above each level.
 # A peak of 96 for one instant is not denial; a plateau is.
 CAP = int(sys.argv[4]) if len(sys.argv) > 4 else 96
+# Levels scale with capacity: a fixed "CAP-16" is meaningless when the cell is
+# configured for 12. Duplicates and non-positive levels are dropped.
+LEVELS = sorted({max(1, CAP // 4), max(1, CAP // 2), max(1, (CAP * 3) // 4), CAP})
 events = sorted([(t, +1) for t in starts] + [(t, -1) for t in end_times])
+# The window is the whole event timeline, not just the first-to-last start:
+# ends outlive the last start, so using the start span reports >100%.
+wall_span = (events[-1][0] - events[0][0]) if len(events) > 1 else 0
 cur = 0
 prev = events[0][0] if events else 0
 time_at = {}
 run_at, best_run = {}, {}
 for t, d in events:
     dt = t - prev
-    for lvl in (CAP // 2, CAP - 16, CAP - 6, CAP):
+    for lvl in LEVELS:
         if cur >= lvl:
             time_at[lvl] = time_at.get(lvl, 0.0) + dt
             run_at[lvl] = run_at.get(lvl, 0.0) + dt
@@ -93,13 +99,14 @@ for t, d in events:
             run_at[lvl] = 0.0
     cur += d
     prev = t
-for lvl in (CAP // 2, CAP - 16, CAP - 6, CAP):
+for lvl in LEVELS:
     best_run[lvl] = max(best_run.get(lvl, 0.0), run_at.get(lvl, 0.0))
-print("sustained occupancy")
-for lvl in (CAP // 2, CAP - 16, CAP - 6, CAP):
+print(f"sustained occupancy (capacity {CAP}, window {wall_span:.0f} s)")
+for lvl in LEVELS:
     ta = time_at.get(lvl, 0.0)
-    print(f"  >= {lvl:3}   {ta:6.1f} s of {span:.0f} s ({ta / span * 100 if span else 0:4.0f}%)"
-          f"   longest plateau {best_run.get(lvl, 0.0):5.2f} s")
+    pct = ta / wall_span * 100 if wall_span else 0
+    print(f"  >= {lvl:3}   {ta:6.1f} s of {wall_span:5.1f} s ({pct:4.0f}%)"
+          f"   longest plateau {best_run.get(lvl, 0.0):6.2f} s")
 
 per_sec = Counter(int(t - starts[0]) for t in starts)
 if per_sec:

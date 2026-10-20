@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# rss-report — verdict for one run, from the gNB (CU) log plus the UE JSONL.
+#
+# Run the gNB-log part on the host that owns the CU log. The time window is
+# required: without it you read whole-log totals as if they were one run.
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONF="${RSS_CONF:-$HERE/conf/rss.conf}"
+[[ -f "$CONF" ]] && . "$CONF"
+
+GNB_LOG=${GNB_LOG:-/tmp/ocu.log}
+CAPACITY=${CAPACITY:-96}
+SINCE=""; UNTIL=""; JSONL=""
+
+usage() { cat <<EOF
+usage: $0 --since HH:MM:SS --until HH:MM:SS [--log FILE] [--jsonl FILE] [--capacity N]
+  --since/--until  run window in the gNB log's local time (required)
+  --log            gNB CU log           (GNB_LOG, now $GNB_LOG)
+  --jsonl          UE attempts.jsonl    (optional, adds the UE-side view)
+  --capacity       cell capacity        (CAPACITY, now $CAPACITY)
+EOF
+exit "${1:-1}"; }
+
+while [[ $# -gt 0 ]]; do case "$1" in
+  --since) SINCE=$2; shift 2;; --until) UNTIL=$2; shift 2;;
+  --log) GNB_LOG=$2; shift 2;; --jsonl) JSONL=$2; shift 2;;
+  --capacity) CAPACITY=$2; shift 2;; -h|--help) usage 0;; *) usage;;
+esac; done
+[[ -n $SINCE && -n $UNTIL ]] || usage
+[[ -r $GNB_LOG ]] || { echo "cannot read $GNB_LOG (try sudo)" >&2; exit 1; }
+
+echo "== occupancy ($GNB_LOG, $SINCE..$UNTIL)"
+python3 "$HERE/analysis/cu_occupancy.py" "$GNB_LOG" "$SINCE" "$UNTIL" "$CAPACITY"
+
+echo
+echo "== gNB counters"
+python3 "$HERE/analysis/cu_count.py" "$GNB_LOG" "$SINCE" "$UNTIL"
+
+if [[ -n $JSONL && -f $JSONL ]]; then
+  echo
+  echo "== UE side ($JSONL)"
+  python3 "$HERE/analysis/attempt_phases.py" "$JSONL"
+fi
+
+echo
+cat <<'EOF'
+== how to read this
+  peak occupancy near capacity + RRCReject present  -> the configured resource
+      limit was reached.
+  "sustained occupancy >= capacity" with a long plateau -> saturation is held.
+      A high percentage with a sub-second longest plateau is a sawtooth, not
+      sustained denial.
+  rrcSetupComplete 0 and NGAP InitialUEMessage 0     -> the scenario stayed
+      A-type: nothing completed and the core was never reached.
+EOF

@@ -1,0 +1,77 @@
+# rss.conf — copy to conf/rss.conf and edit for your testbed.
+# Every value here is also a command-line option or an environment variable.
+# Precedence: command line > environment > this file > built-in default.
+
+# ---------------------------------------------------------------- attack shape
+ENABLE=0                 # 0 = normal UE (regression baseline), 1 = attack.
+                         #     Keep 0 as the file default so an accidental run
+                         #     is harmless. Pass -e 1 to attack.
+NUM_UES=2                # attacker UE instances sharing one radio.
+                         #     Measured: 1 reaches 90/96, 2 reaches 96/96.
+                         #     More than 2 does not raise the attempt rate and
+                         #     adds sample loss. See README "choosing NUM_UES".
+INTERVAL_MS=0            # extra delay between a skipped Msg5 and the next try.
+                         #     0 = as fast as the radio allows.
+MAX_DURATION_S=120       # in-process kill switch. 0 = run until stopped.
+TARGET_OCCUPANCY=0       # hold this many incomplete contexts at the gNB.
+                         #     0 = unlimited (maximum pressure).
+                         #     A positive value is a closed loop: verified to
+                         #     land exactly on 3, 6 and 12.
+HOLD_MS=2000             # how long the gNB keeps one incomplete context.
+                         #     Used by the occupancy controller, so set it to
+                         #     your gNB's t300 + guard. Measure it, do not
+                         #     assume: on OCUDU 26.10 the DU sometimes releases
+                         #     early and the real value was 1627 ms.
+COMPLETION_PCT=0         # percent of attempts completed normally (mixed traffic)
+HONOR_REJECT=1           # 1 = obey RRCReject waitTime, 0 = retry immediately
+ACK_GATE=1               # 1 = do not restart RA while the Msg4 HARQ ACK is pending
+RA_GATE=1                # 1 = do not restart RA while one is still in flight
+GATE_TIMEOUT_MS=500      # force the retry if a gate held it this long
+MSG4_WAIT=1              # KEEP 1. 0 abandons the attempt at Msg3, which looks
+                         #     5x faster on the UE side but produced 1 gNB
+                         #     context out of 10878 attempts. See README.
+
+# ------------------------------------------------------------ radio efficiency
+RSS_ZMQ_TX_WAIT_US=-2    # how the ZMQ TX thread waits for local samples.
+                         #   0 = upstream behaviour (blocking 10 ms poll)
+                         #  >0 = usleep(n) re-check
+                         #  -1 = sched_yield spin (measured worse)
+                         #  -2 = condition variable (default)
+                         # Leaving this at 0 costs about 3x the attempt rate.
+RSS_SHARE_LOCKSTEP=1     # hold the per-UE downlink cursors together
+RSS_SHARE_WR_MONOTONIC=0 # KEEP 0. See README "rejected optimisations".
+
+# --------------------------------------------------------------- local paths
+OAI=/root/OAI
+UE_BIN=                  # default: $OAI/cmake_targets/ran_build/build/nr-uesoftmodem
+UE_CFG=/root/oai_nrue.conf
+UECAP=                   # default: $OAI/targets/.../uecap_ports1.xml
+LOGDIR=/root/rss-runs
+
+# ------------------------------------------------------------------- the cell
+# Must match the cell your gNB broadcasts.
+BAND=78
+DL_FREQ=3489420000
+NUMEROLOGY=1             # 1 = 30 kHz SCS
+PRB=51
+DEVICE=oai_zmqdevif
+ZMQ_TX=tcp://127.0.0.1:4557
+ZMQ_RX=tcp://127.0.0.1:4556
+
+# ------------------------------------------------------------ gNB restart hook
+# A ZMQ virtual radio has no clock of its own: the sample exchange IS the clock,
+# so the DU and the UE must start together or the streams never align. Put your
+# DU/gNB restart command here. Leave empty on a real SDR.
+GNB_RESTART_CMD=
+GNB_STOP_CMD=
+# GNB_RESTART_CMD='/root/workspace/ctl.sh start'
+# GNB_STOP_CMD='/root/workspace/ctl.sh stop'
+
+# --------------------------------------------------------------- CPU placement
+UE_TASKSET=              # e.g. "2-7". Measured: pinning made things WORSE here.
+GNB_TASKSET=
+UE_EXTRA=                # extra nr-uesoftmodem arguments
+
+# ----------------------------------------------------------------- reporting
+GNB_LOG=/tmp/ocu.log     # CU log, read by bin/rss-report
+CAPACITY=96              # cell capacity, from your DU boot log

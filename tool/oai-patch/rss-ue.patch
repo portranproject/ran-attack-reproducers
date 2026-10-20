@@ -1,8 +1,8 @@
 diff --git a/executables/nr-ue-ru.c b/executables/nr-ue-ru.c
-index 95346ae..925f7ed 100644
+index 95346ae..f59f61f 100644
 --- a/executables/nr-ue-ru.c
 +++ b/executables/nr-ue-ru.c
-@@ -91,6 +91,335 @@ static nrUE_RU_params_t *nrue_rus;
+@@ -91,6 +91,431 @@ static nrUE_RU_params_t *nrue_rus;
  openair0_config_t openair0_cfg_g[MAX_CARDS] = {};
  static openair0_device_t openair0_dev[MAX_CARDS] = {};
  
@@ -71,6 +71,8 @@ index 95346ae..925f7ed 100644
 +  bool wr_prev_ts_set;
 +  uint64_t wr_back;
 +  openair0_timestamp_t wr_back_max;
++  uint64_t rd_lockstep_waits;
++  uint64_t rd_lockstep_bail;
 +} rss_ru_share_t;
 +
 +static rss_ru_share_t rss_share = {.mtx = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER};
@@ -103,6 +105,48 @@ index 95346ae..925f7ed 100644
 +  pthread_cond_timedwait(&rss_share.cv, &rss_share.mtx, &ts);
 +}
 +
++/* Short bounded wait for the lockstep gate below. Caller holds the mutex. */
++static void rss_share_wait_us(long us)
++{
++  struct timespec ts;
++  clock_gettime(CLOCK_REALTIME, &ts);
++  ts.tv_nsec += us * 1000L;
++  while (ts.tv_nsec >= 1000000000L) {
++    ts.tv_sec += 1;
++    ts.tv_nsec -= 1000000000L;
++  }
++  pthread_cond_timedwait(&rss_share.cv, &rss_share.mtx, &ts);
++}
++
++/* 1 = hold the per-UE downlink cursors together (default).
++ *
++ * Why: the device keeps one sample_count_ for the shared uplink stream and
++ * discards any write whose timestamp it has already passed. Free-running
++ * cursors leave the UEs at different stream positions, so each UE stamps its
++ * uplink with its own timestamp, the batch key (timestamp, nsamps, nant) stops
++ * matching, and the device sees timestamps going backwards. Box-measured
++ * 2026-10-20, 4 UE, 60 s: 8.06% of batches out of order (worst 34560 samples
++ * back) and 23322 "Error, channel timeout", i.e. about 17% of writes discarded.
++ *
++ * With the gate a UE only proceeds while no other UE is behind it, so all of
++ * them ask for the same window, the batch merges into one ordered write per
++ * slot, and nothing is dropped. RSS_SHARE_LOCKSTEP=0 restores free-running
++ * cursors for comparison in the same binary. */
++static bool rss_share_lockstep(void)
++{
++  static int cached = -1;
++  if (cached < 0) {
++    const char *env = getenv("RSS_SHARE_LOCKSTEP");
++    cached = env ? (atoi(env) != 0) : 1;
++  }
++  return cached != 0;
++}
++
++/* Upper bound on one lockstep wait, so a stalled instance cannot freeze the
++ * others. 50 x 200 us = 10 ms, one radio frame. */
++#define RSS_LOCKSTEP_SLICE_US 200
++#define RSS_LOCKSTEP_GUARD 50
++
 +#define RSS_RING_SAMPLES (1u << 21) /* ~2M samples/antenna, 8 MB as c16_t */
 +
 +/* Lowest cursor among UEs that have started consuming. Caller holds the mutex. */
@@ -118,6 +162,29 @@ index 95346ae..925f7ed 100644
 +      m = s->rd_cons[i];
 +  }
 +  return any ? m : s->rd_prod;
++}
++
++/* Lowest cursor among the OTHER joined UEs, or UINT64_MAX if there are none.
++ * Caller holds the mutex. */
++static uint64_t rss_min_cons_other(const rss_ru_share_t *s, int self)
++{
++  uint64_t m = UINT64_MAX;
++  for (int i = 0; i < MAX_NUM_NR_UE_INST; i++) {
++    if (i == self || !s->rd_joined[i])
++      continue;
++    if (s->rd_cons[i] < m)
++      m = s->rd_cons[i];
++  }
++  return m;
++}
++
++static int rss_joined_count(const rss_ru_share_t *s)
++{
++  int n = 0;
++  for (int i = 0; i < MAX_NUM_NR_UE_INST; i++)
++    if (s->rd_joined[i])
++      n++;
++  return n;
 +}
 +
 +static int rss_shared_read(PHY_VARS_NR_UE *UE, openair0_timestamp_t *ptimestamp, void **buff, int nsamps, int nant)
@@ -138,6 +205,33 @@ index 95346ae..925f7ed 100644
 +    /* join at the current head so a late UE does not replay history */
 +    s->rd_cons[id] = s->rd_prod;
 +    s->rd_joined[id] = true;
++    /* Once every instance has joined, snap them all to the same position.
++       Each UE joins at whatever head existed when it finished cell search, so
++       without this they keep a constant offset for the rest of the run and
++       every slot produces one uplink batch per UE instead of one merged
++       batch. */
++    if (rss_share_lockstep() && rss_joined_count(s) == s->n_ue) {
++      for (int i = 0; i < MAX_NUM_NR_UE_INST; i++)
++        if (s->rd_joined[i])
++          s->rd_cons[i] = s->rd_prod;
++      LOG_I(HW, "[RSS] shared RX: %d UE joined, cursors aligned at %lu\n", s->n_ue, (unsigned long)s->rd_prod);
++    }
++  }
++
++  /* Lockstep gate: proceed only while no other UE is behind us. */
++  if (rss_share_lockstep() && s->n_ue > 1) {
++    int guard = 0;
++    for (;;) {
++      uint64_t other = rss_min_cons_other(s, id);
++      if (other == UINT64_MAX || s->rd_cons[id] <= other)
++        break;
++      if (guard++ >= RSS_LOCKSTEP_GUARD) {
++        s->rd_lockstep_bail++;
++        break;
++      }
++      s->rd_lockstep_waits++;
++      rss_share_wait_us(RSS_LOCKSTEP_SLICE_US);
++    }
 +  }
 +
 +  while (s->rd_prod - s->rd_cons[id] < (uint64_t)nsamps) {
@@ -269,12 +363,14 @@ index 95346ae..925f7ed 100644
 +  if ((++s->wr_flushes % 20000) == 0)
 +    LOG_I(HW,
 +          "[RSS] shared TX: %lu flushes, %lu out of order (%.2f%%, worst %ld samples back), "
-+          "%lu clamped, %d UE\n",
++          "%lu clamped, lockstep %lu waits / %lu bail, %d UE\n",
 +          (unsigned long)s->wr_flushes,
 +          (unsigned long)s->wr_back,
 +          100.0 * (double)s->wr_back / (double)s->wr_flushes,
 +          (long)s->wr_back_max,
 +          (unsigned long)s->wr_clamped,
++          (unsigned long)s->rd_lockstep_waits,
++          (unsigned long)s->rd_lockstep_bail,
 +          s->n_ue);
 +  s->wr_joined = 0;
 +  s->wr_round++;
@@ -338,7 +434,7 @@ index 95346ae..925f7ed 100644
  int nrue_get_cell_count(void)
  {
    return nrue_cell_count;
-@@ -368,6 +697,15 @@ void nrue_ru_end(void)
+@@ -368,6 +793,15 @@ void nrue_ru_end(void)
  
  void nrue_ru_set_freq(PHY_VARS_NR_UE *UE, uint64_t ul_carrier, uint64_t dl_carrier, int freq_offset)
  {
@@ -354,7 +450,7 @@ index 95346ae..925f7ed 100644
    int current_cell_id = nrue_rus[UE->rf_map.card].used_by_cell;
    NR_DL_FRAME_PARMS *fp0 = &nrue_cell_fp[current_cell_id];
    uint64_t dl_carrier_distance =
-@@ -430,6 +768,8 @@ int nrue_ru_adjust_rx_gain(PHY_VARS_NR_UE *UE, int gain_change)
+@@ -430,6 +864,8 @@ int nrue_ru_adjust_rx_gain(PHY_VARS_NR_UE *UE, int gain_change)
  
  int nrue_ru_read(PHY_VARS_NR_UE *UE, openair0_timestamp_t *ptimestamp, void **buff, int nsamps, int num_antennas)
  {
@@ -363,7 +459,7 @@ index 95346ae..925f7ed 100644
    openair0_device_t *dev = &openair0_dev[UE->rf_map.card];
    openair0_timestamp_t tmp_timestamp;
    int ret = dev->trx_read_func(dev, &tmp_timestamp, buff, nsamps, num_antennas);
-@@ -470,6 +810,8 @@ int nrue_ru_read(PHY_VARS_NR_UE *UE, openair0_timestamp_t *ptimestamp, void **bu
+@@ -470,6 +906,8 @@ int nrue_ru_read(PHY_VARS_NR_UE *UE, openair0_timestamp_t *ptimestamp, void **bu
  
  int nrue_ru_write(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **buff, int nsamps, int num_antennas, int flags)
  {
@@ -372,7 +468,7 @@ index 95346ae..925f7ed 100644
    openair0_device_t *dev = &openair0_dev[UE->rf_map.card];
    int ret = dev->trx_write_func(dev, timestamp + dev->firstTS, buff, nsamps, num_antennas, flags);
  
-@@ -500,6 +842,10 @@ int nrue_ru_write(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **buf
+@@ -500,6 +938,10 @@ int nrue_ru_write(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **buf
  
  int nrue_ru_write_reorder(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **txp, int nsamps, int nbAnt, int flags)
  {

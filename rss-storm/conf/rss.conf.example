@@ -64,8 +64,15 @@ ZMQ_RX=tcp://127.0.0.1:4556
 # DU/gNB restart command here. Leave empty on a real SDR.
 GNB_RESTART_CMD=
 GNB_STOP_CMD=
-# GNB_RESTART_CMD='/root/workspace/ctl.sh start'
-# GNB_STOP_CMD='/root/workspace/ctl.sh stop'
+#
+# Whatever brings your DU up and down, as a single shell command. It must
+# return once the DU is actually serving, and it must not be a pipeline:
+# a pipe can block forever here because the write end stays open after the
+# command returns, so the reader never sees EOF. rss-run redirects to a file.
+# Examples:
+#   GNB_RESTART_CMD='systemctl restart my-du'
+#   GNB_RESTART_CMD='/opt/ran/du-up.sh'
+#   GNB_RESTART_CMD='docker compose -f /srv/ran/du.yml up -d --force-recreate'
 
 # --------------------------------------------------------------- CPU placement
 UE_TASKSET=              # e.g. "2-7". Measured: pinning made things WORSE here.

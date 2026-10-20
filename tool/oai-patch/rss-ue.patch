@@ -1,8 +1,8 @@
 diff --git a/executables/nr-ue-ru.c b/executables/nr-ue-ru.c
-index 95346ae..7f7f92c 100644
+index 95346ae..28b2c64 100644
 --- a/executables/nr-ue-ru.c
 +++ b/executables/nr-ue-ru.c
-@@ -91,6 +91,218 @@ static nrUE_RU_params_t *nrue_rus;
+@@ -91,6 +91,253 @@ static nrUE_RU_params_t *nrue_rus;
  openair0_config_t openair0_cfg_g[MAX_CARDS] = {};
  static openair0_device_t openair0_dev[MAX_CARDS] = {};
  
@@ -29,14 +29,20 @@ index 95346ae..7f7f92c 100644
 +  int n_ue;
 +  pthread_mutex_t mtx;
 +  pthread_cond_t cv;
-+  /* downlink: one fetch per round, every UE copies it */
-+  uint64_t rd_round;
-+  int rd_taken;
++  /* downlink: one reader fills a ring, every UE has its own cursor.
++     A round-based copy was wrong: UEs do not always ask for the same chunk
++     size (syncInFrame() asks for its own unit), and handing back another UE's
++     sample count tripped "unitTransfer == res" in nr-ue.c:714 on the box
++     2026-10-20. Per-UE cursors give each UE exactly what it asked for, in
++     stream order. */
 +  bool rd_fetching;
-+  openair0_timestamp_t rd_ts;
-+  int rd_nsamps;
-+  c16_t *rd_buf[RSS_SHARE_MAX_ANT];
-+  int rd_cap;
++  uint64_t rd_prod;                       /* absolute samples produced */
++  uint64_t rd_cons[MAX_NUM_NR_UE_INST];   /* absolute samples consumed per UE */
++  bool rd_joined[MAX_NUM_NR_UE_INST];     /* UE has taken part at least once */
++  openair0_timestamp_t rd_ts0;            /* device ts of absolute sample 0 */
++  bool rd_ts0_set;
++  c16_t *rd_ring[RSS_SHARE_MAX_ANT];
++  uint64_t rd_ring_sz;                    /* power of two */
 +  /* uplink: accumulate every UE, then one device write */
 +  uint64_t wr_round;
 +  int wr_joined;
@@ -50,7 +56,6 @@ index 95346ae..7f7f92c 100644
 +} rss_ru_share_t;
 +
 +static rss_ru_share_t rss_share = {.mtx = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER};
-+static uint64_t rss_rd_seen[MAX_NUM_NR_UE_INST];
 +
 +bool nrue_ru_sharing_enabled(void)
 +{
@@ -63,7 +68,7 @@ index 95346ae..7f7f92c 100644
 +    return;
 +  rss_share.active = true;
 +  rss_share.n_ue = NB_UE_INST;
-+  rss_share.rd_taken = rss_share.n_ue; /* let the first fetch happen */
++  /* cursors start lazily: each UE joins the stream at the current head */
 +  LOG_W(HW, "[RSS] RU sharing enabled: %d UE instances on one radio\n", rss_share.n_ue);
 +}
 +
@@ -80,41 +85,72 @@ index 95346ae..7f7f92c 100644
 +  pthread_cond_timedwait(&rss_share.cv, &rss_share.mtx, &ts);
 +}
 +
++#define RSS_RING_SAMPLES (1u << 21) /* ~2M samples/antenna, 8 MB as c16_t */
++
++/* Lowest cursor among UEs that have started consuming. Caller holds the mutex. */
++static uint64_t rss_min_cons(const rss_ru_share_t *s)
++{
++  uint64_t m = s->rd_prod;
++  bool any = false;
++  for (int i = 0; i < MAX_NUM_NR_UE_INST; i++) {
++    if (!s->rd_joined[i])
++      continue;
++    any = true;
++    if (s->rd_cons[i] < m)
++      m = s->rd_cons[i];
++  }
++  return any ? m : s->rd_prod;
++}
++
 +static int rss_shared_read(PHY_VARS_NR_UE *UE, openair0_timestamp_t *ptimestamp, void **buff, int nsamps, int nant)
 +{
 +  rss_ru_share_t *s = &rss_share;
 +  const int id = UE->Mod_id;
 +  AssertFatal(nant <= RSS_SHARE_MAX_ANT, "RU sharing supports at most %d antennas\n", RSS_SHARE_MAX_ANT);
 +  AssertFatal(id >= 0 && id < MAX_NUM_NR_UE_INST, "bad UE instance %d\n", id);
++  AssertFatal((uint64_t)nsamps < RSS_RING_SAMPLES / 2, "read of %d samples exceeds the shared ring\n", nsamps);
 +
 +  pthread_mutex_lock(&s->mtx);
-+  if (s->rd_cap < nsamps) {
-+    for (int a = 0; a < RSS_SHARE_MAX_ANT; a++) {
-+      free(s->rd_buf[a]);
-+      s->rd_buf[a] = calloc_or_fail(nsamps, sizeof(c16_t));
-+    }
-+    s->rd_cap = nsamps;
++  if (s->rd_ring_sz == 0) {
++    for (int a = 0; a < RSS_SHARE_MAX_ANT; a++)
++      s->rd_ring[a] = calloc_or_fail(RSS_RING_SAMPLES, sizeof(c16_t));
++    s->rd_ring_sz = RSS_RING_SAMPLES;
++  }
++  if (!s->rd_joined[id]) {
++    /* join at the current head so a late UE does not replay history */
++    s->rd_cons[id] = s->rd_prod;
++    s->rd_joined[id] = true;
 +  }
 +
-+  while (rss_rd_seen[id] == s->rd_round) {
-+    if (!s->rd_fetching && s->rd_taken >= s->n_ue) {
++  while (s->rd_prod - s->rd_cons[id] < (uint64_t)nsamps) {
++    /* room is bounded by the slowest consumer, so nobody loses samples */
++    uint64_t room = s->rd_ring_sz - (s->rd_prod - rss_min_cons(s));
++    if (!s->rd_fetching && room >= (uint64_t)nsamps) {
 +      s->rd_fetching = true;
++      uint64_t head = s->rd_prod;
++      int want = nsamps;
++      /* never wrap inside one device read */
++      uint64_t off = head & (s->rd_ring_sz - 1);
++      if (off + (uint64_t)want > s->rd_ring_sz)
++        want = (int)(s->rd_ring_sz - off);
++      void *tgt[RSS_SHARE_MAX_ANT];
++      for (int a = 0; a < nant; a++)
++        tgt[a] = s->rd_ring[a] + off;
 +      pthread_mutex_unlock(&s->mtx);
 +      openair0_device_t *dev = &openair0_dev[UE->rf_map.card];
 +      openair0_timestamp_t tmp = 0;
-+      void *tgt[RSS_SHARE_MAX_ANT];
-+      for (int a = 0; a < nant; a++)
-+        tgt[a] = s->rd_buf[a];
-+      int got = dev->trx_read_func(dev, &tmp, tgt, nsamps, nant);
++      int got = dev->trx_read_func(dev, &tmp, tgt, want, nant);
 +      pthread_mutex_lock(&s->mtx);
 +      if (!dev->firstTS_initialized) {
 +        dev->firstTS = tmp;
 +        dev->firstTS_initialized = true;
 +      }
-+      s->rd_ts = tmp - dev->firstTS;
-+      s->rd_nsamps = got;
-+      s->rd_round++;
-+      s->rd_taken = 0;
++      if (!s->rd_ts0_set) {
++        s->rd_ts0 = tmp - dev->firstTS; /* ts of absolute sample 0 */
++        s->rd_ts0_set = true;
++      }
++      if (got > 0)
++        s->rd_prod += (uint64_t)got;
 +      s->rd_fetching = false;
 +      pthread_cond_broadcast(&s->cv);
 +    } else {
@@ -122,18 +158,22 @@ index 95346ae..7f7f92c 100644
 +    }
 +  }
 +
-+  for (int a = 0; a < nant; a++)
-+    memcpy(buff[a], s->rd_buf[a], (size_t)s->rd_nsamps * sizeof(c16_t));
-+  *ptimestamp = s->rd_ts;
-+  const int ret = s->rd_nsamps;
-+  rss_rd_seen[id] = s->rd_round;
-+  s->rd_taken++;
++  uint64_t off = s->rd_cons[id] & (s->rd_ring_sz - 1);
++  int first = (int)((off + (uint64_t)nsamps > s->rd_ring_sz) ? (s->rd_ring_sz - off) : (uint64_t)nsamps);
++  for (int a = 0; a < nant; a++) {
++    c16_t *dst = (c16_t *)buff[a];
++    memcpy(dst, s->rd_ring[a] + off, (size_t)first * sizeof(c16_t));
++    if (first < nsamps)
++      memcpy(dst + first, s->rd_ring[a], (size_t)(nsamps - first) * sizeof(c16_t));
++  }
++  *ptimestamp = s->rd_ts0 + (openair0_timestamp_t)s->rd_cons[id];
++  s->rd_cons[id] += (uint64_t)nsamps;
 +  pthread_cond_broadcast(&s->cv);
 +  pthread_mutex_unlock(&s->mtx);
-+  return ret;
++  return nsamps;
 +}
 +
-+/* Push the open batch to the radio. Caller holds the mutex. */
++/* Push the open uplink batch to the radio. Caller holds the mutex. */
 +static void rss_flush_locked(PHY_VARS_NR_UE *UE)
 +{
 +  rss_ru_share_t *s = &rss_share;
@@ -161,15 +201,10 @@ index 95346ae..7f7f92c 100644
 +
 +/* Sum the uplink of every sharing UE into one device write.
 + *
-+ * A batch is keyed by (timestamp, nsamps, nant). Without that key the batches
-+ * mixed across slots as soon as more than two UEs ran, and the box produced
-+ * two assertions on 2026-10-20: "tmp == writeBlockSize" (nr-ue.c RU_write,
-+ * because the device return value was handed back instead of what the caller
-+ * asked to write) and "cc == tx_stream.channels_.size()" (zmq_write, because
-+ * the flush used the antenna count of a different caller). This function
-+ * therefore always returns nsamps: the device write is aggregated, so the
-+ * per-caller contract is "your samples were accepted".
-+ */
++ * A batch is keyed by (timestamp, nsamps, nant); without that key the batches
++ * mixed across slots as soon as more than two UEs ran. The function always
++ * returns nsamps because the device write is aggregated, so the per-caller
++ * contract is "your samples were accepted". */
 +static int rss_shared_write(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **buff, int nsamps, int nant, int flags)
 +{
 +  rss_ru_share_t *s = &rss_share;
@@ -221,7 +256,7 @@ index 95346ae..7f7f92c 100644
  int nrue_get_cell_count(void)
  {
    return nrue_cell_count;
-@@ -368,6 +580,15 @@ void nrue_ru_end(void)
+@@ -368,6 +615,15 @@ void nrue_ru_end(void)
  
  void nrue_ru_set_freq(PHY_VARS_NR_UE *UE, uint64_t ul_carrier, uint64_t dl_carrier, int freq_offset)
  {
@@ -237,7 +272,7 @@ index 95346ae..7f7f92c 100644
    int current_cell_id = nrue_rus[UE->rf_map.card].used_by_cell;
    NR_DL_FRAME_PARMS *fp0 = &nrue_cell_fp[current_cell_id];
    uint64_t dl_carrier_distance =
-@@ -430,6 +651,8 @@ int nrue_ru_adjust_rx_gain(PHY_VARS_NR_UE *UE, int gain_change)
+@@ -430,6 +686,8 @@ int nrue_ru_adjust_rx_gain(PHY_VARS_NR_UE *UE, int gain_change)
  
  int nrue_ru_read(PHY_VARS_NR_UE *UE, openair0_timestamp_t *ptimestamp, void **buff, int nsamps, int num_antennas)
  {
@@ -246,7 +281,7 @@ index 95346ae..7f7f92c 100644
    openair0_device_t *dev = &openair0_dev[UE->rf_map.card];
    openair0_timestamp_t tmp_timestamp;
    int ret = dev->trx_read_func(dev, &tmp_timestamp, buff, nsamps, num_antennas);
-@@ -470,6 +693,8 @@ int nrue_ru_read(PHY_VARS_NR_UE *UE, openair0_timestamp_t *ptimestamp, void **bu
+@@ -470,6 +728,8 @@ int nrue_ru_read(PHY_VARS_NR_UE *UE, openair0_timestamp_t *ptimestamp, void **bu
  
  int nrue_ru_write(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **buff, int nsamps, int num_antennas, int flags)
  {
@@ -255,7 +290,7 @@ index 95346ae..7f7f92c 100644
    openair0_device_t *dev = &openair0_dev[UE->rf_map.card];
    int ret = dev->trx_write_func(dev, timestamp + dev->firstTS, buff, nsamps, num_antennas, flags);
  
-@@ -500,6 +725,10 @@ int nrue_ru_write(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **buf
+@@ -500,6 +760,10 @@ int nrue_ru_write(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **buf
  
  int nrue_ru_write_reorder(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **txp, int nsamps, int nbAnt, int flags)
  {
@@ -313,7 +348,7 @@ index 4a9749e..e1f86e1 100644
  
    lock_memory_to_ram();
 diff --git a/openair2/RRC/NR_UE/rrc_UE.c b/openair2/RRC/NR_UE/rrc_UE.c
-index 7858a82..c7a0f97 100644
+index 7858a82..fe0e0aa 100644
 --- a/openair2/RRC/NR_UE/rrc_UE.c
 +++ b/openair2/RRC/NR_UE/rrc_UE.c
 @@ -371,7 +371,13 @@ static void nr_decode_SI(NR_UE_RRC_SI_INFO *SI_info, NR_SystemInformation_t *si,
@@ -331,7 +366,7 @@ index 7858a82..c7a0f97 100644
  {
    RRCLOG_D("Generation of RRCSetupRequest\n");
    uint8_t rv[6];
-@@ -386,6 +392,23 @@ static void nr_rrc_ue_prepare_RRCSetupRequest(NR_UE_RRC_INST_t *rrc)
+@@ -386,6 +392,24 @@ static void nr_rrc_ue_prepare_RRCSetupRequest(NR_UE_RRC_INST_t *rrc)
  #endif
    }
  
@@ -340,8 +375,9 @@ index 7858a82..c7a0f97 100644
 +       actually transmitted (randomValue is rv[0..4] with the last bit unused). */
 +    const bool on_air = rss_src != NULL && rss_src[0] == 'm'; /* "msg3" */
 +    if (on_air)
-+      nr_rss_next_seq();
-+    nr_rss_log(on_air ? "attempt_start" : "setup_req_prebuilt",
++      nr_rss_next_seq((int)rrc->ue_id);
++    nr_rss_log((int)rrc->ue_id,
++               on_air ? "attempt_start" : "setup_req_prebuilt",
 +               "\"ue_identity\":\"0x%02x%02x%02x%02x%02x\",\"identity_type\":\"%s\",\"src\":\"%s\"",
 +               rv[0],
 +               rv[1],
@@ -355,7 +391,7 @@ index 7858a82..c7a0f97 100644
    uint8_t buf[1024];
    int len = do_RRCSetupRequest(buf, sizeof(buf), rv, rrc->fiveG_S_TMSI);
  
-@@ -2122,7 +2145,7 @@ static void nr_rrc_prepare_msg3_payload(NR_UE_RRC_INST_t *rrc)
+@@ -2122,7 +2146,7 @@ static void nr_rrc_prepare_msg3_payload(NR_UE_RRC_INST_t *rrc)
    switch (rrc->ra_trigger) {
      case RRC_CONNECTION_SETUP:
        // preparing RRC setup request payload in advance
@@ -364,7 +400,7 @@ index 7858a82..c7a0f97 100644
        break;
      case RRC_CONNECTION_REESTABLISHMENT:
        // preparing MSG3 for re-establishment in advance
-@@ -2459,12 +2482,50 @@ static int8_t nr_rrc_ue_decode_ccch(NR_UE_RRC_INST_t *rrc, const NRRrcMacCcchDat
+@@ -2459,12 +2483,52 @@ static int8_t nr_rrc_ue_decode_ccch(NR_UE_RRC_INST_t *rrc, const NRRrcMacCcchDat
         case NR_DL_CCCH_MessageType__c1_PR_rrcReject:
           RRCLOG_W("Logical Channel DL-CCCH (SRB0), Received RRCReject \n");
           nr_rrc_process_rrcreject(rrc, dl_ccch_msg->message.choice.c1->choice.rrcReject);
@@ -373,7 +409,7 @@ index 7858a82..c7a0f97 100644
 +              OCUDU default, so the reproducer schedules the retry itself. */
 +           NR_UE_Timers_Constants_t *tac = &rrc->timers_and_constants;
 +           bool t302 = nr_timer_is_active(&tac->T302);
-+           nr_rss_log("rrc_reject",
++           nr_rss_log((int)rrc->ue_id, "rrc_reject",
 +                      "\"actual_reach\":\"rrc_reject\",\"t302_running\":%s,\"honor_reject\":%s",
 +                      t302 ? "true" : "false",
 +                      nr_rss_honor_reject() ? "true" : "false");
@@ -397,17 +433,19 @@ index 7858a82..c7a0f97 100644
 +              left with an incomplete procedure until its own guard expires. */
 +           NR_UE_Timers_Constants_t *tac = &rrc->timers_and_constants;
 +           nr_timer_stop(&tac->T300);
-+           nr_rss_note_msg4();
++           nr_rss_note_msg4((int)rrc->ue_id);
 +           nr_rss_note_skip();
-+           nr_rss_log("msg4_rx",
++           nr_rss_log((int)rrc->ue_id,
++                      "msg4_rx",
 +                      "\"intended_reach\":\"msg5_skip\",\"actual_reach\":\"msg5_skip\",\"tc_rnti\":\"0x%04x\",\"occupancy\":%u",
 +                      rrc->rnti,
 +                      nr_rss_occupancy());
 +           nr_rss_arm_retry(rrc, 0);
 +         } else {
 +           if (nr_rss_enabled()) {
-+             nr_rss_note_msg4();
-+             nr_rss_log("msg4_rx",
++             nr_rss_note_msg4((int)rrc->ue_id);
++             nr_rss_log((int)rrc->ue_id,
++                        "msg4_rx",
 +                        "\"intended_reach\":\"msg5_sent\",\"actual_reach\":\"msg5_sent\",\"tc_rnti\":\"0x%04x\"",
 +                        rrc->rnti);
 +           }
@@ -416,7 +454,7 @@ index 7858a82..c7a0f97 100644
           rval = 0;
           break;
  
-@@ -3448,7 +3509,7 @@ void *rrc_nrue(void *notUsed)
+@@ -3448,7 +3512,7 @@ void *rrc_nrue(void *notUsed)
        if (rrc->nrRrcState == RRC_STATE_IDLE_NR) {
          RA_trigger_t prev_trigger = rrc->ra_trigger;
          rrc->ra_trigger = RRC_CONNECTION_SETUP;
@@ -425,7 +463,7 @@ index 7858a82..c7a0f97 100644
          nr_rrc_trigger_mac_ra(rrc, NR_MAC_RA_START_SETUP);
          RRCLOG_I("Triggering MAC RA for RRCSetupComplete pending NAS (prev_trigger=%d)\n", prev_trigger);
        }
-@@ -3650,6 +3711,7 @@ void nr_rrc_going_to_IDLE(NR_UE_RRC_INST_t *rrc,
+@@ -3650,6 +3714,7 @@ void nr_rrc_going_to_IDLE(NR_UE_RRC_INST_t *rrc,
    }
    // Stop all the timers except T302, T320 and T325
    nr_timer_stop(&tac->T300);
@@ -433,7 +471,7 @@ index 7858a82..c7a0f97 100644
    nr_timer_stop(&tac->T301);
    nr_timer_stop(&tac->T304);
    nr_timer_stop(&tac->T310);
-@@ -3778,7 +3840,7 @@ void handle_302_expired_stopped(NR_UE_RRC_INST_t *rrc)
+@@ -3778,7 +3843,7 @@ void handle_302_expired_stopped(NR_UE_RRC_INST_t *rrc)
  void handle_t300_expiry(NR_UE_RRC_INST_t *rrc)
  {
    rrc->ra_trigger = RRC_CONNECTION_SETUP;
@@ -460,10 +498,10 @@ index edb1c9e..bdbe119 100644
    NR_timer_t T302;
    NR_timer_t T304;
 diff --git a/openair2/RRC/NR_UE/rrc_proto.h b/openair2/RRC/NR_UE/rrc_proto.h
-index b359d35..0f7098a 100644
+index b359d35..17b7882 100644
 --- a/openair2/RRC/NR_UE/rrc_proto.h
 +++ b/openair2/RRC/NR_UE/rrc_proto.h
-@@ -72,6 +72,32 @@ void nr_rrc_ue_decode_NR_SBCCH_SL_BCH_Message(NR_UE_RRC_INST_t *rrc,
+@@ -72,6 +72,36 @@ void nr_rrc_ue_decode_NR_SBCCH_SL_BCH_Message(NR_UE_RRC_INST_t *rrc,
                                                const uint16_t rx_slss_id);
  
  void nr_rrc_set_mac_queue(instance_t instance, notifiedFIFO_t *mac_input_nf);
@@ -486,26 +524,31 @@ index b359d35..0f7098a 100644
 +bool nr_rss_complete_this_attempt(void);
 +bool nr_rss_honor_reject(void);
 +int nr_rss_reject_backoff_ms(void);
-+unsigned nr_rss_next_seq(void);
-+void nr_rss_note_msg4(void);
++/* Per-UE counters: with --num-ues > 1 every instance runs its own attempt
++   stream, so seq must be per UE and each record must say which UE it came
++   from. A single global counter interleaved the streams and made per-attempt
++   joins impossible (observed 2026-10-20 on the 2-UE run). */
++unsigned nr_rss_next_seq(int ue);
++void nr_rss_note_msg4(int ue);
 +void nr_rss_note_skip(void);
 +unsigned nr_rss_occupancy(void);
 +void nr_rss_arm_retry(NR_UE_RRC_INST_t *rrc, int delay_ms);
-+void nr_rss_log(const char *event, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
++void nr_rss_log(int ue, const char *event, const char *fmt, ...) __attribute__((format(printf, 3, 4)));
 +
  /** @}*/
  #endif
  
 diff --git a/openair2/RRC/NR_UE/rrc_timers_and_constants.c b/openair2/RRC/NR_UE/rrc_timers_and_constants.c
-index 0addfe5..66a8bab 100644
+index 0addfe5..e6e9578 100644
 --- a/openair2/RRC/NR_UE/rrc_timers_and_constants.c
 +++ b/openair2/RRC/NR_UE/rrc_timers_and_constants.c
-@@ -4,6 +4,372 @@
+@@ -4,6 +4,379 @@
  
  #include "openair2/RRC/NR_UE/rrc_proto.h"
  #include "executables/softmodem-common.h"
 +#include "common/config/config_userapi.h"
 +#include "LAYER2/NR_MAC_UE/mac_proto.h"
++#include "nr-uesoftmodem.h" /* MAX_NUM_NR_UE_INST, NB_UE_INST */
 +#include <stdarg.h>
 +#include <stdio.h>
 +#include <time.h>
@@ -563,10 +606,11 @@ index 0addfe5..66a8bab 100644
 +static bool rss_cfg_done;
 +static bool rss_killed;
 +static uint64_t rss_t0_ns;
-+static unsigned rss_seq;
++#define RSS_MAX_UE MAX_NUM_NR_UE_INST
++static unsigned rss_seq[RSS_MAX_UE];
 +static unsigned rss_completed;
 +static FILE *rss_log_fd;
-+static bool rss_got_msg4;        /* did the current attempt reach Msg4? */
++static bool rss_got_msg4[RSS_MAX_UE]; /* did the current attempt reach Msg4? */
 +/* Closed-loop occupancy control.
 +   The occupancy the gNB sees is N = (incomplete attempts started in the last
 +   T_hold). The UE can count that itself: every attempt we leave incomplete
@@ -645,7 +689,7 @@ index 0addfe5..66a8bab 100644
 +  return rss_get_cfg()->reject_backoff_ms;
 +}
 +
-+void nr_rss_log(const char *event, const char *fmt, ...)
++void nr_rss_log(int ue, const char *event, const char *fmt, ...)
 +{
 +  const rss_cfg_t *cfg = rss_get_cfg();
 +  if (!cfg->enable || !cfg->log_file || !cfg->log_file[0])
@@ -658,9 +702,10 @@ index 0addfe5..66a8bab 100644
 +    }
 +  }
 +  fprintf(rss_log_fd,
-+          "{\"type\":\"event\",\"run_id\":\"%s\",\"seq\":%u,\"t_ns\":%llu,\"air_ms\":%llu,\"event\":\"%s\"",
++          "{\"type\":\"event\",\"run_id\":\"%s\",\"ue\":%d,\"seq\":%u,\"t_ns\":%llu,\"air_ms\":%llu,\"event\":\"%s\"",
 +          cfg->run_id ? cfg->run_id : "",
-+          rss_seq,
++          ue < 0 || ue >= RSS_MAX_UE ? 0 : ue,
++          rss_seq[ue < 0 || ue >= RSS_MAX_UE ? 0 : ue],
 +          (unsigned long long)rss_now_ns(),
 +          (unsigned long long)(rss_air_frame * 10),
 +          event);
@@ -675,22 +720,26 @@ index 0addfe5..66a8bab 100644
 +  fflush(rss_log_fd);
 +}
 +
-+unsigned nr_rss_next_seq(void)
++unsigned nr_rss_next_seq(int ue)
 +{
++  if (ue < 0 || ue >= RSS_MAX_UE)
++    ue = 0;
 +  if (rss_t0_ns == 0)
 +    rss_t0_ns = rss_now_ns();
 +  /* Close out the previous attempt. An attempt that never saw Msg4 means the
 +     gNB did not answer or the contention was lost. Under saturation this
 +     fraction is the denial signal we can read without a second UE. */
-+  if (rss_seq > 0 && !rss_got_msg4)
-+    nr_rss_log("attempt_end", "\"actual_reach\":\"no_msg4\"");
-+  rss_got_msg4 = false;
-+  return ++rss_seq;
++  if (rss_seq[ue] > 0 && !rss_got_msg4[ue])
++    nr_rss_log(ue, "attempt_end", "\"actual_reach\":\"no_msg4\"");
++  rss_got_msg4[ue] = false;
++  return ++rss_seq[ue];
 +}
 +
-+void nr_rss_note_msg4(void)
++void nr_rss_note_msg4(int ue)
 +{
-+  rss_got_msg4 = true;
++  if (ue < 0 || ue >= RSS_MAX_UE)
++    ue = 0;
++  rss_got_msg4[ue] = true;
 +}
 +
 +void nr_rss_note_skip(void)
@@ -729,7 +778,7 @@ index 0addfe5..66a8bab 100644
 +    return false;
 +  if (cfg->completion_pct >= 100)
 +    return true;
-+  unsigned due = (rss_seq * (unsigned)cfg->completion_pct) / 100;
++  unsigned due = (rss_seq[0] * (unsigned)cfg->completion_pct) / 100;
 +  if (due > rss_completed) {
 +    rss_completed = due;
 +    return true;
@@ -772,7 +821,7 @@ index 0addfe5..66a8bab 100644
 +    } else if (cfg->tick_report > 0 && rss_ticks % (unsigned)cfg->tick_report == 0) {
 +      double wall_ms = (double)(now - rss_tick_t0_ns) / 1e6;
 +      double air_ms = (double)((rss_air_frame - rss_air_frame_t0) * 10);
-+      nr_rss_log("tick_rate",
++      nr_rss_log((int)rrc->ue_id, "tick_rate",
 +                 "\"ms_per_tick\":%.2f,\"nominal_ms\":10,\"air_ms_elapsed\":%.0f,"
 +                 "\"wall_ms_elapsed\":%.0f,\"air_per_wall\":%.3f",
 +                 wall_ms / (double)cfg->tick_report,
@@ -793,7 +842,7 @@ index 0addfe5..66a8bab 100644
 +      && rss_now_ns() - rss_t0_ns > (uint64_t)cfg->max_duration_s * 1000000000ULL) {
 +    rss_killed = true;
 +    LOG_W(NR_RRC, "[RSS] max_duration_s=%d reached: reproducer disabled, normal attach resumes\n", cfg->max_duration_s);
-+    nr_rss_log("kill_switch", "\"attempts\":%u,\"ticks\":%u", rss_seq, rss_ticks);
++    nr_rss_log((int)rrc->ue_id, "kill_switch", "\"attempts\":%u,\"ticks\":%u", rss_seq[0], rss_ticks);
 +    return;
 +  }
 +
@@ -810,7 +859,7 @@ index 0addfe5..66a8bab 100644
 +    unsigned occ = nr_rss_occupancy();
 +    if (occ >= (unsigned)cfg->target_occupancy) {
 +      if (rss_occ_hold_logs++ % 25 == 0)
-+        nr_rss_log("occupancy_hold", "\"occupancy\":%u,\"target\":%d", occ, cfg->target_occupancy);
++        nr_rss_log((int)rrc->ue_id, "occupancy_hold", "\"occupancy\":%u,\"target\":%d", occ, cfg->target_occupancy);
 +      nr_timer_setup(t, 10, 10);
 +      nr_timer_start(t);
 +      return;
@@ -856,24 +905,24 @@ index 0addfe5..66a8bab 100644
 +                  && now - rss_gate_since_ns > (uint64_t)cfg->gate_timeout_ms * 1000000ULL;
 +    if (!forced) {
 +      if (rss_gate_logs++ % 25 == 0)
-+        nr_rss_log("gate_hold", "\"gate\":\"%s\",\"ra_state\":%d", gate, gate_state);
++        nr_rss_log((int)rrc->ue_id, "gate_hold", "\"gate\":\"%s\",\"ra_state\":%d", gate, gate_state);
 +      nr_timer_setup(t, 10, 10);
 +      nr_timer_start(t);
 +      return;
 +    }
-+    nr_rss_log("gate_forced", "\"gate\":\"%s\",\"held_ms\":%llu",
++    nr_rss_log((int)rrc->ue_id, "gate_forced", "\"gate\":\"%s\",\"held_ms\":%llu",
 +               gate, (unsigned long long)((now - rss_gate_since_ns) / 1000000ULL));
 +  }
 +  rss_gate_since_ns = 0;
 +
 +  tac->rss_deadline_ns = 0;
-+  nr_rss_log("retrigger", NULL);
++  nr_rss_log((int)rrc->ue_id, "retrigger", NULL);
 +  handle_t300_expiry(rrc);
 +}
  
  void init_SI_timers(NR_UE_RRC_SI_INFO *SInfo)
  {
-@@ -177,6 +543,9 @@ void nr_rrc_handle_timers(NR_UE_RRC_INST_t *rrc)
+@@ -177,6 +550,9 @@ void nr_rrc_handle_timers(NR_UE_RRC_INST_t *rrc)
      handle_t300_expiry(rrc);
    }
  
@@ -883,7 +932,7 @@ index 0addfe5..66a8bab 100644
    bool t301_expired = nr_timer_tick(&timers->T301);
    // Upon T301 expiry, the UE shall perform the actions upon going to RRC_IDLE
    // with release cause 'RRC connection failure'
-@@ -444,6 +813,8 @@ void nr_rrc_set_sib1_timers_and_constants(NR_UE_Timers_Constants_t *tac, NR_SIB1
+@@ -444,6 +820,8 @@ void nr_rrc_set_sib1_timers_and_constants(NR_UE_Timers_Constants_t *tac, NR_SIB1
          AssertFatal(false, "Invalid T300 %ld\n", sib1->ue_TimersAndConstants->t300);
      }
      nr_timer_setup(&tac->T300, k, 10); // 10ms step

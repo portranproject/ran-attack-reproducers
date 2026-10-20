@@ -1,256 +1,496 @@
-# rss-storm — RRC signaling storm reproducer (A-type incomplete access)
+# rss-storm — RRC 시그널링 스톰 재현기 (A형 초기접속 미완료)
 
-> 한국어: **[README.ko.md](README.ko.md)**
+> English: **[README.en.md](README.en.md)**
 
-A controlled reproducer for an **RRC signaling storm** against a 5G NR base
-station **you own**. It drives repeated initial-access attempts that are
-deliberately never completed, so the gNB accumulates incomplete UE contexts
-until it runs out of capacity and starts rejecting new UEs.
+**내가 소유한** 5G NR 기지국을 상대로 **RRC 시그널링 스톰**을 통제된 형태로
+재현하는 도구다. 초기접속 시도를 반복하면서 **의도적으로 끝내지 않기** 때문에,
+gNB는 미완료 UE 컨텍스트를 쌓다가 용량이 떨어지고 새 UE를 거절하기 시작한다.
 
-It is built as a **patch to the OpenAirInterface NR UE**. The base station is
-never modified and never patched.
+구현 형태는 **OpenAirInterface NR UE에 대한 패치**다. 기지국은 수정하지도,
+패치하지도 않는다.
 
-> **Isolated testbeds only.** RF-shielded enclosure or a virtual radio (ZMQ), on
-> equipment you own. The attack is off unless you pass `-e 1`. See
-> [NOTICE.md](NOTICE.md).
+> **격리된 테스트베드 전용.** RF 차폐 박스 또는 가상 무선(ZMQ), 내가 소유한
+> 장비에서만. `-e 1`을 넘기지 않으면 공격은 비활성 상태다.
+> [NOTICE.md](NOTICE.md) 참고.
 
 ---
 
-## What "A-type" means
+## 공격 시나리오
 
-| Step | Normal UE | This tool |
+**A형 = 초기접속 미완료.** 랜덤 액세스부터 Msg4 수신까지는 정상 UE와 똑같이
+수행하고, 마지막 한 장인 `RRCSetupComplete`만 보내지 않는다.
+
+| 단계 | 정상 UE | 이 도구 |
 |---|---|---|
-| PRACH / Msg1-2 | yes | yes |
-| `RRCSetupRequest` (Msg3) | yes | yes |
-| `RRCSetup` (Msg4) received + HARQ ACK | yes | yes |
-| `RRCSetupComplete` (Msg5) | **sent** | **skipped** |
-| Result at the gNB | UE attaches | context held until the gNB's guard timer expires, then released |
+| PRACH / Msg1-2 | 수행 | 수행 |
+| `RRCSetupRequest` (Msg3) | 수행 | 수행 |
+| `RRCSetup` (Msg4) 수신 + HARQ ACK | 수행 | 수행 |
+| `RRCSetupComplete` (Msg5) | **전송** | **생략** |
+| gNB 측 결과 | UE 접속 완료 | gNB의 가드 타이머가 만료될 때까지 컨텍스트 점유, 이후 해제 |
 
-Because Msg5 never arrives, the gNB never sends `InitialUEMessage` to the core.
-The core is never touched; the pressure is entirely on the base station's
-connection state. That is what makes it a clean detection target.
+Msg5가 도착하지 않으므로 gNB는 코어로 `InitialUEMessage`를 보내지 않는다.
+코어는 전혀 건드리지 않고 압박은 전부 기지국의 연결 상태에 걸린다.
+
+**왜 이 시나리오인가**
+
+- **탐지 신호가 깨끗하다.** 코어에 닿지 않으므로 압박 지점이 기지국의 연결
+  상태 하나로 고정된다. `rrcSetupComplete`와 `InitialUEMessage`가 0이라는 사실
+  자체가 "시나리오를 벗어나지 않았다"는 판정 기준이 된다.
+- **기지국을 수정할 필요가 없다.** 표준 Uu 절차(PRACH/RRC)만 사용하므로 상대는
+  무수정 상용·오픈소스 gNB 어느 쪽이든 된다.
+- **세기를 연속적으로 조절할 수 있다.** 점유 목표(`-o`)와 완료율(`-c`)로 부하를
+  재현 가능한 수준에 고정할 수 있어 탐지 임계값 탐색에 쓸 수 있다.
+
+이 공격이 **왜** 통하는지 — 기지국이 어느 메시지에서 자원을 잡는지, 왜 망 쪽
+타이머가 그것을 즉시 회수하지 않는지, 어떤 설정값이 결과를 좌우하는지 — 는
+기지국 소스를 인용해 [docs/MECHANISM.ko.md](docs/MECHANISM.ko.md)에서 논증한다.
+
+> "A형"은 3GPP 용어가 아니라 이 프로젝트의 시나리오 구분 이름이다. RRC 스톰은
+> 여러 절차의 묶음이고, 그중 초기접속 미완료만 여기 구현돼 있다. UE 재시작
+> 반복(B형)처럼 다른 변종은 별도 구현 대상이다.
 
 ---
 
-## Requirements
+## 테스트베드 스펙
 
-- An OAI source tree, already built once, at commit
-  `1c2f4d3c2e68181cdef9f426d161163147ad4b77` (tag `2026.w38`).
-  `bin/rss-build` warns if your HEAD differs.
-- A 5G gNB under test and a radio path between them: ZMQ virtual radio
-  (what this was developed on) or a real SDR in a shielded enclosure.
-- `cmake`, a C/C++ toolchain, `python3` for the analysis scripts.
-- Root on the UE host if your OAI tree lives under `/root`.
+이 도구가 **가정하는** 환경이다. [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md)의
+모든 측정값이 아래 구성에서 나왔다.
+
+### 토폴로지
+
+```
+   CU 호스트                              DU 호스트
+ +----------------------+   F1 / IP    +--------------------------+
+ |  OCUDU CU            |<------------>|  OCUDU DU                |
+ |  CU 로그 /tmp/ocu.log|              |  공격 UE (이 패키지)      |
+ |  bin/rss-report      |              |   ZMQ 가상 무선          |
+ |  analysis/*.py       |              |   tcp://127.0.0.1:4556-7 |
+ +----------------------+              +--------------------------+
+        판정                                    공격 실행
+```
+
+- 공격 UE는 **DU와 같은 호스트**에서 돈다. ZMQ 가상 무선이 loopback이기 때문이다.
+  실 SDR OTA 구성이면 UE를 별도 호스트로 분리하고 `DEVICE`를 바꾼다(이 경로는
+  미검증).
+- 판정은 **CU 호스트**에서 한다. 점유와 거절 카운터의 출처가 CU 로그다.
+- CU/DU가 한 호스트에 있어도 동작에는 문제가 없다. 그 경우 두 단계를 같은 곳에서
+  실행하면 된다.
+- 코어(AMF)는 A형에서 호출되지 않으므로 있든 없든 결과가 같다.
+
+### 소프트웨어
+
+| 구성요소 | 버전 / 커밋 | 비고 |
+|---|---|---|
+| gNB | OCUDU 26.10 (srsRAN 파생) | **수정하지 않음.** 모드 B에서 설정만 변경 |
+| 공격 UE | OAI `1c2f4d3c2e68181cdef9f426d161163147ad4b77` (태그 `2026.w38`) | `patch/rss-ue.patch`의 기준 커밋 |
+| 무선 드라이버 | OAI `oai_zmqdevif` | 패치가 `radio/zmq/`를 함께 수정한다 |
+| 코어 | 불필요 | A형은 NGAP에 닿지 않는다 |
+| 분석 | `python3` 표준 라이브러리만 | 외부 패키지 설치 없음 |
+| OS | Linux | 스크립트가 `bash`, `taskset`, `nproc`, `pgrep`, `timeout`을 쓴다 |
+
+### 셀
+
+| 항목 | 값 | conf 키 |
+|---|---|---|
+| 밴드 | n78 (TDD) | `BAND=78` |
+| 하향 중심 주파수 | 3489.42 MHz | `DL_FREQ=3489420000` |
+| SCS | 30 kHz (numerology 1) | `NUMEROLOGY=1` |
+| 대역폭 | 51 PRB (20 MHz 채널) | `PRB=51` |
+| ZMQ TX / RX | `tcp://127.0.0.1:4557` / `:4556` | `ZMQ_TX`, `ZMQ_RX` |
+
+이 값들은 **gNB가 실제로 방송하는 셀과 일치해야 한다.** 틀리면 UE가 셀 탐색에서
+멈추고 런은 시도 0으로 끝난다.
+
+### gNB 설정과 용량
+
+용량과 유지 시간이 결과를 결정하므로, 두 값을 설정에서 확인하고 로그에서 실측한다.
+
+| | 기본 설정 (모드 A) | 포화 프로필 (모드 B) | 설정 키 |
+|---|---:|---:|---|
+| 동시 UE 용량 | 96 | 12 | `cell_cfg.pucch.nof_cell_sr_res` 8 → 1 (DU) |
+| `t300` | 1000 ms | 2000 ms | `cell_cfg.sib.t300` (DU, 3GPP 최대 2000) |
+| RRC 절차 가드 | 1000 ms | 5000 ms | `cu_cp.rrc.rrc_procedure_guard_time_ms` (CU) |
+| 컨텍스트 유지 **실측** | 약 1900 ms | 약 1460–1850 ms | CU 로그에서 측정 |
+| 포화 유지에 필요한 시도율 | 약 48/s | 약 7.5/s | 용량 ÷ 유지 시간 |
+| 이 도구가 내는 시도율 | 33–38/s | 5.6–6.5/s | 공유 ZMQ 무선 1개 |
+| 결과 | 용량 도달(버스트) | **포화 유지** | "포화 유지" 참고 |
+
+- 용량은 `min(SR 자원, CSI 자원, ...)`로 결정되므로 `nof_cell_sr_res` 하나를
+  내리면 같이 내려간다.
+- **유지 시간은 설정값의 합이 아니다.** 모드 B의 설정상 합은 7000 ms지만 DU가 먼저
+  해제하는 경우가 있어 실측은 1.6초 근처였다. 반드시 로그에서 측정해서 `-H`에
+  넣는다.
+- 프로필 적용은 `bin/rss-gnb-profile`이 하고 **gNB 소스는 건드리지 않는다.**
+  `.orig` 백업을 남기며 멱등적이다.
+
+### 호스트
+
+| 역할 | CPU / 메모리 | OS / 커널 |
+|---|---|---|
+| CU 호스트 (OCUDU CU + 판정) | | |
+| DU + 공격 UE 호스트 | | |
+
+<!-- TODO(human): 위 표를 채울 것. 저장소와 측정 기록 어디에도 남아 있지 않아
+     코드에서 확인할 수 없는 값이다. 재현하려는 사람에게는 "공유 ZMQ 무선이
+     36-38 시도/초에서 멈추는 것이 호스트 성능 때문인지"를 판단할 근거가 된다. -->
+
+### 전제 조건
+
+- 위 커밋의 **OAI 소스 트리**가 있고 **최소 한 번 정상 빌드**가 끝나 있어야 한다
+  (`$OAI/cmake_targets/ran_build/build`가 존재해야 함). HEAD가 다르면
+  `bin/rss-build`가 경고하고, 패치가 안 맞으면 적용 전에 멈춘다.
+- `cmake`, C/C++ 툴체인, `python3`.
+- OAI 트리와 런 산출물이 `/root` 아래라면 UE 호스트의 root 권한. CU 로그 읽기도
+  마찬가지다.
+- gNB와 UE 사이의 무선 경로: ZMQ 가상 무선(개발·검증에 쓴 경로) 또는 차폐 박스
+  안의 실 SDR(미검증).
 
 ---
 
-## Quick start
+## 사용 방법
+
+### 한눈에
+
+```bash
+cp conf/rss.conf.example conf/rss.conf && $EDITOR conf/rss.conf  # 1. 설정
+bin/rss-build                                                    # 2. 빌드
+bin/rss-run -e 0 -d 30                                           # 3. 정상 접속 회귀
+bin/rss-run -e 1 -u 2 -d 120                                     # 4. 공격
+bin/rss-report --since HH:MM:SS --until HH:MM:SS                 # 5. 판정(CU 호스트)
+```
+
+### 1단계 — 설치와 설정
+
+패키지를 **DU 호스트**(= 공격 UE를 돌릴 호스트)에 복사하고, CU 호스트에도 같은
+패키지를 둔다. 판정 단계만 CU 쪽에서 실행하면 된다.
 
 ```bash
 cp conf/rss.conf.example conf/rss.conf
-$EDITOR conf/rss.conf          # paths, cell, gNB restart hook
+$EDITOR conf/rss.conf
+```
 
-bin/rss-build                 # patch + build the attacker UE
+최소한 아래를 내 환경에 맞춘다. 나머지는 기본값으로 둬도 된다.
 
-# 1. regression first: prove a normal attach still works on this build
+| 키 | 왜 필요한가 |
+|---|---|
+| `OAI` | OAI 소스 트리 경로. 빌드와 런이 모두 여기를 본다 |
+| `UE_CFG` | OAI UE 설정 파일 경로 |
+| `BAND` `DL_FREQ` `NUMEROLOGY` `PRB` | gNB가 방송하는 셀과 일치해야 한다 |
+| `ZMQ_TX` `ZMQ_RX` | DU가 열어 둔 ZMQ 포트 쌍 |
+| `GNB_RESTART_CMD` | **ZMQ 경로에서는 사실상 필수.** 아래 설명 참고 |
+| `LOGDIR` | 런 산출물이 쌓이는 곳 |
+| `GNB_LOG` `CAPACITY` | CU 호스트에서 판정할 때 쓰는 값 |
+
+- `ENABLE=0`을 **파일 기본값으로 유지한다.** 실수로 실행해도 정상 UE로 동작한다.
+  공격은 `-e 1`을 명시적으로 넘길 때만 켜진다.
+- 설정 파일을 다른 위치에 두려면 `RSS_CONF=/path/to/rss.conf`로 지정한다.
+- **ZMQ 가상 무선에는 자체 클럭이 없다** — 샘플 교환 자체가 클럭이다. DU와 UE가
+  같이 시작하지 않으면 두 스트림이 끝까지 정렬되지 않으므로, DU 재기동 명령을
+  `GNB_RESTART_CMD`에 넣어 `rss-run`이 매 런마다 DU를 다시 띄우게 한다. 실 SDR이면
+  비워 둔다.
+- 이 명령에 **파이프라인을 쓰지 않는다.** 파이프의 쓰기 끝이 열린 채 남아 EOF가
+  오지 않아 영원히 멈출 수 있다. 스크립트 한 줄이나 `systemctl restart ...` 형태로
+  준다.
+
+### 2단계 — 빌드
+
+```bash
+bin/rss-build
+```
+
+하는 일:
+
+1. OAI 트리에 `rss-ue-a-type` 브랜치를 만들고(있으면 체크아웃) **`git checkout -- .`로
+   트리를 되돌린 뒤** 패치를 적용한다. → OAI 트리에 작업 중인 변경이 있으면
+   **사라진다.** 먼저 커밋하거나 stash할 것.
+2. `nr-uesoftmodem`, `oai_zmqdevif`, `zmq_radio_static` **세 타깃**을 빌드한다.
+   무선 드라이버는 UE가 런타임에 로드하는 별도 공유 라이브러리(`liboai_zmqdevif.so`)라서,
+   UE 바이너리만 빌드하면 `radio/zmq/` 수정이 런에 반영되지 않는다.
+3. 빌드 산출물을 `strings`로 뒤져 노브(`target_occupancy`, `msg4_wait`,
+   `RSS_SHARE_LOCKSTEP`, `RSS_ZMQ_TX_WAIT_US`)가 실제로 들어갔는지 확인한다.
+   하나라도 없으면 **실패로 종료한다** — 빌드가 성공해도 노브가 없는 바이너리의
+   런은 믿을 수 없기 때문이다.
+
+기존 바이너리는 `.orig`로 백업된다. 재실행해도 안전하다(멱등).
+
+### 3단계 — 회귀 베이스라인부터
+
+```bash
 bin/rss-run -e 0 -d 30
+```
 
-# 2. the attack
-bin/rss-run -e 1 -u 2 -d 120
+공격을 끈 상태로 정상 접속이 되는지 먼저 증명한다. CU 로그에서
+`rrcSetupComplete`가 보이면 접속 경로가 살아 있다는 뜻이다.
 
-# 3. verdict, on the host that owns the gNB CU log
+이 단계를 건너뛰면, 공격 런에서 시도 0이 나왔을 때 **셀 설정 문제인지 공격 로직
+문제인지 구분할 수 없다.** 30초면 충분하다.
+
+### 4단계 — 공격 실행
+
+```bash
+bin/rss-run -e 1 -u 2 -d 120            # 모드 A, 기본 gNB 설정
+bin/rss-run -e 1 -u 2 -o 48 -H 1900 -d 0  # 점유를 48로 고정
+```
+
+- `-u 2`가 권장값이다. 용량에 도달하는 가장 작은 UE 수이고 샘플 손실이 가장 적다
+  ("NUM_UES 선택" 참고).
+- 포화를 **유지**하려면 모드 B 프로필과 `-r 0`이 필요하다 ("포화 유지" 참고).
+- 탐지기에 재현 가능한 부하를 주려면 `-o`로 점유 수준을 고정한다.
+- `-d`는 킬 스위치다. `-d N`이면 프로세스 내부 타이머와 외부 `timeout`(N+20초)
+  **두 개**가 걸린다.
+
+### 5단계 — 중지
+
+```bash
+pkill -INT -x nr-uesoftmodem
+```
+
+`-d 0`으로 시간 제한 없이 돌린 경우 두 킬 스위치가 **의도적으로 해제**되므로
+사람이 킬 스위치다. 위 명령으로 중지한다.
+
+### 6단계 — 산출물과 자체 점검
+
+런은 `$LOGDIR/<run_id>/`에 쌓인다.
+
+| 파일 | 내용 |
+|---|---|
+| `run.json` | 모든 노브, 셀 파라미터, UE 커밋·브랜치, 시작 시각 |
+| `attempts.jsonl` | 시도당 레코드 1건. **탐지팀용 라벨 피드** |
+| `ue.log` | UE 표준 출력 전체 |
+| `gnb_boot.txt` | `GNB_RESTART_CMD`의 출력 |
+| `run_stop.json` | 종료 시각 |
+
+`rss-run`이 끝나면서 출력하는 자체 점검을 반드시 읽는다.
+
+- **`[RSS]` 배너가 없으면 그 런은 무효다.** 노브가 파싱되지 않았다는 뜻이고,
+  스크립트가 그렇게 경고한다.
+- `attempts` / `msg5_skip`이 0에 가까우면 셀 탐색이나 랜덤 액세스에서 막힌 것이다.
+- `ch.timeout`(`Error, channel timeout`)이 많으면 샘플 손실이 크다는 신호다.
+  `-u`를 줄인다.
+
+### 7단계 — 판정 (CU 호스트에서)
+
+```bash
 bin/rss-report --since 06:31:00 --until 06:33:10 \
                --jsonl /root/rss-runs/<run_id>/attempts.jsonl
 ```
 
-`rss-run` prints the run id and the artifact directory. Nothing is interpreted
-for you: the verdict comes from the **gNB's own log**, not from the attacker.
+- **시간 창은 필수다.** 창 없이 읽으면 로그 전체 합계를 한 런의 수치로 착각하게
+  된다(실제로 그런 사고가 있었다).
+- 시각은 **gNB 로그의 로컬 시각** 기준이다. `run.json`의 UTC 시각과 혼동하지 않는다.
+- `--jsonl`은 선택이다. UE 호스트에서 CU 호스트로 복사해 오면 UE 쪽 시각도 함께
+  나온다. 생략하면 gNB 로그만으로 판정한다.
+- 모드 B에서는 `--capacity 12`를 함께 넘긴다. 기본값은 96이다.
+- 출력 해석은 아래 "판정 읽기"에 있다. 판정은 공격자 쪽이 아니라 **gNB 자신의
+  로그**에서 나온다.
+
+### 8단계 — 원복
+
+```bash
+bin/rss-gnb-profile --role du restore     # 모드 B를 적용했다면
+bin/rss-gnb-profile --role cu restore
+# gNB 재기동으로 설정을 다시 읽게 한다
+```
+
+UE 바이너리는 `bin/rss-build`가 남긴 `.orig`로 되돌릴 수 있고, OAI 트리는 원래
+브랜치로 체크아웃하면 된다.
+
+### 문제 해결
+
+| 증상 | 원인과 조치 |
+|---|---|
+| `[RSS]` 배너가 없다 | 패치가 빠진 바이너리. `bin/rss-build`를 다시 돌리고 노브 체크가 통과하는지 확인 |
+| `patch does not apply cleanly` | OAI HEAD가 `2026.w38`이 아니다. 기준 커밋으로 체크아웃하거나 패치를 포팅 |
+| 시도가 0, 셀 탐색 실패 | 셀 파라미터 불일치, 또는 DU가 떠 있지 않음. ZMQ면 `GNB_RESTART_CMD` 설정 |
+| `run_id ...: second character must not be 'O'` | OAI의 `-O` 파싱 버그(두 번째 글자가 `O`인 인자를 설정 파일 옵션으로 오인). 런 id를 바꾼다 |
+| `Error, channel timeout`이 많다 | 샘플 손실. `-u`를 2 이하로 내린다 |
+| `cannot read /tmp/ocu.log` | CU 로그가 없는 호스트이거나 권한 부족. `--log`로 경로를 주거나 sudo |
+| gNB 재기동 명령이 끝나지 않는다 | `GNB_RESTART_CMD`에 파이프라인을 썼다. 단일 명령으로 바꾼다 |
+| 점유가 올라가지 않는다 | 용량과 유지 시간을 먼저 실측한다. "포화 유지" 참고 |
+| UE 바이너리를 찾을 수 없다 | `bin/rss-build`를 먼저 실행한다 |
 
 ---
 
-## Parameters
+## 파라미터
 
-All three forms work and override in this order:
-**command line > environment > `conf/rss.conf` > built-in default.**
+세 가지 방식 모두 동작하고, 다음 순서로 덮어쓴다.
+**명령행 > 환경변수 > `conf/rss.conf` > 내장 기본값.**
 
-### Attack shape
+### 공격 형태
 
-| Option | Env / conf | Default | Meaning |
+| 옵션 | 환경변수 / conf | 기본값 | 의미 |
 |---|---|---|---|
-| `-e 0\|1` | `ENABLE` | 0 | attack off (normal UE) / on |
-| `-u N` | `NUM_UES` | 1 | attacker UE instances sharing one radio |
-| `-i MS` | `INTERVAL_MS` | 0 | extra delay between attempts; 0 = as fast as the radio allows |
-| `-d SEC` | `MAX_DURATION_S` | 60 | kill switch. **0 = run until stopped** |
-| `-o N` | `TARGET_OCCUPANCY` | 0 | hold this many incomplete contexts; 0 = unlimited pressure |
-| `-H MS` | `HOLD_MS` | 2000 | your gNB's hold time, used by the occupancy controller |
-| `-c PCT` | `COMPLETION_PCT` | 0 | percent of attempts completed normally (mixed traffic) |
-| `-r 0\|1` | `HONOR_REJECT` | 1 | obey `RRCReject` waitTime / retry immediately |
-| `-g 0\|1` | `ACK_GATE` | 1 | do not restart random access while the Msg4 ACK is pending |
-| `-G 0\|1` | `RA_GATE` | 1 | do not restart random access while one is in flight |
-| `-M 0\|1` | `MSG4_WAIT` | 1 | **keep 1**, see "rejected optimisations" |
-| `-n ID` | `RUN_ID` | auto | run identifier |
+| `-e 0\|1` | `ENABLE` | 0 | 공격 off(정상 UE) / on |
+| `-u N` | `NUM_UES` | 1 | 하나의 무선을 공유하는 공격 UE 인스턴스 수 |
+| `-i MS` | `INTERVAL_MS` | 0 | 시도 사이 추가 지연. 0 = 무선이 허용하는 최대 속도 |
+| `-d SEC` | `MAX_DURATION_S` | 60 | 킬 스위치. **0 = 중지할 때까지 계속** |
+| `-o N` | `TARGET_OCCUPANCY` | 0 | 미완료 컨텍스트를 이 개수로 유지. 0 = 무제한 압박 |
+| `-H MS` | `HOLD_MS` | 2000 | 내 gNB의 유지 시간. 점유 제어기가 사용한다 |
+| `-c PCT` | `COMPLETION_PCT` | 0 | 정상 완료시킬 시도의 비율(혼합 트래픽) |
+| `-r 0\|1` | `HONOR_REJECT` | 1 | `RRCReject`의 waitTime을 지킴 / 즉시 재시도 |
+| `-g 0\|1` | `ACK_GATE` | 1 | Msg4 ACK가 대기 중이면 랜덤 액세스를 다시 시작하지 않음 |
+| `-G 0\|1` | `RA_GATE` | 1 | 랜덤 액세스가 진행 중이면 다시 시작하지 않음 |
+| `-M 0\|1` | `MSG4_WAIT` | 1 | **1로 유지.** "기각된 최적화" 참고 |
+| `-n ID` | `RUN_ID` | 자동 | 런 식별자 |
 
-**`TARGET_OCCUPANCY` is a closed loop**, not a rate limit. It watches how many
-contexts it is currently holding and paces attempts to land on the number you
-ask for. Verified on the box: asking for 3, 6 and 12 produced exactly 3, 6 and
-12 concurrent incomplete procedures in the gNB log. Use it when you need a
-*repeatable* load level for a detector, and `0` when you want maximum pressure.
+**`TARGET_OCCUPANCY`는 폐루프**이고 레이트 제한이 아니다. 현재 몇 개의
+컨텍스트를 점유하고 있는지 관측해서, 요청한 숫자에 착지하도록 시도 간격을
+조절한다. 실측 확인: 3, 6, 12를 요청하면 gNB 로그에서 동시 미완료 절차가
+정확히 3, 6, 12개가 됐다. 탐지기에 **재현 가능한** 부하 수준을 주고 싶을 때
+쓰고, 최대 압박이 필요하면 `0`을 쓴다.
 
-### Radio efficiency
+### 무선 효율
 
-| Env | Default | Meaning |
+| 환경변수 | 기본값 | 의미 |
 |---|---|---|
-| `RSS_ZMQ_TX_WAIT_US` | `-2` | how the ZMQ TX thread waits for local samples: `0` upstream blocking 10 ms poll, `>0` usleep(n), `-1` spin, `-2` condition variable |
-| `RSS_SHARE_LOCKSTEP` | `1` | hold the per-UE downlink cursors together |
-| `RSS_SHARE_WR_MONOTONIC` | `0` | **keep 0**, see "rejected optimisations" |
+| `RSS_ZMQ_TX_WAIT_US` | `-2` | ZMQ TX 스레드가 로컬 샘플을 기다리는 방식: `0` 업스트림의 블로킹 10 ms 폴, `>0` usleep(n), `-1` 스핀, `-2` 조건 변수 |
+| `RSS_SHARE_LOCKSTEP` | `1` | UE별 하향 커서를 함께 묶어 둔다 |
+| `RSS_SHARE_WR_MONOTONIC` | `0` | **0으로 유지.** "기각된 최적화" 참고 |
 
-### Cell, paths, placement
+### 셀, 경로, 배치
 
 `OAI`, `UE_BIN`, `UE_CFG`, `UECAP`, `LOGDIR`, `BAND`, `DL_FREQ`,
 `NUMEROLOGY`, `PRB`, `DEVICE`, `ZMQ_TX`, `ZMQ_RX`, `UE_TASKSET`,
 `GNB_TASKSET`, `UE_EXTRA`, `GNB_RESTART_CMD`, `GNB_STOP_CMD`,
-`GNB_LOG`, `CAPACITY`. All documented inline in `conf/rss.conf.example`.
+`GNB_LOG`, `CAPACITY`. 모두 `conf/rss.conf.example`에 주석으로 문서화돼 있다.
 
-**`GNB_RESTART_CMD` matters on a ZMQ testbed.** A ZMQ virtual radio has no
-clock of its own — the sample exchange *is* the clock — so the DU and the UE
-must start together or their streams never align. Put your DU restart command
-there. On a real SDR leave it empty.
+**ZMQ 테스트베드에서는 `GNB_RESTART_CMD`가 중요하다.** ZMQ 가상 무선은 자체
+클럭이 없다 — 샘플 교환 자체가 클럭이다. 그래서 DU와 UE가 같이 시작하지 않으면
+두 스트림이 끝까지 정렬되지 않는다. 여기에 DU 재기동 명령을 넣는다. 실 SDR이면
+비워 둔다.
 
 ---
 
-## Holding saturation
+## 포화 유지
 
-Occupancy is approximately **attempt rate times how long the gNB holds one
-context**. That single line decides everything, so measure both before you
-expect a result.
+점유는 대략 **시도 레이트 × gNB가 컨텍스트 하나를 붙잡는 시간**이다. 이 한 줄이
+모든 걸 결정하므로, 결과를 기대하기 전에 두 값을 먼저 측정한다.
 
 ```
-needed attempt rate  =  cell capacity / hold time
+필요한 시도 레이트  =  셀 용량 / 유지 시간
 ```
 
-### Mode A — default gNB config
+### 모드 A — gNB 기본 설정
 
-Capacity 96, hold about 2 s, so holding capacity needs about 48 attempts/s. One
-shared ZMQ radio delivers 33–38/s. **Result: capacity is reached in bursts**
-(peak 96 with `RRCReject`), but the longest continuous plateau at 96 measured
-0.93 s.
+용량 96, 유지 약 2초이므로 용량을 채워 두려면 약 48회/초가 필요하다. 공유 ZMQ
+무선 하나가 내는 속도는 33~38회/초다. **결과: 용량에는 버스트로 도달한다**
+(`RRCReject`와 함께 피크 96). 다만 96에서의 최장 연속 평탄 구간은 0.93초였다.
 
-What *is* held at default config: occupancy **>= 48 for 99% of a 120 s run with
-a 55.41 s continuous plateau** (2 UE). Use `-o` to hold a chosen level:
+기본 설정에서 *유지되는* 것: 점유 **48 이상이 120초 런의 99%, 연속 평탄 구간
+55.41초** (2 UE). 원하는 수준으로 고정하려면 `-o`를 쓴다.
 
 ```bash
-bin/rss-run -e 1 -u 2 -o 48 -H 1900 -d 0     # hold 48 contexts indefinitely
+bin/rss-run -e 1 -u 2 -o 48 -H 1900 -d 0     # 48개 컨텍스트를 무기한 유지
 ```
 
-### Mode B — reduced capacity, held saturation
+### 모드 B — 용량 축소, 포화 유지
 
-`bin/rss-gnb-profile` lowers the cell's capacity through **configuration only**
-— it never touches gNB source. It keeps a `.orig` backup and is idempotent.
+`bin/rss-gnb-profile`은 **설정만으로** 셀 용량을 낮춘다 — gNB 소스는 건드리지
+않는다. `.orig` 백업을 남기고 멱등적으로 동작한다.
 
 ```bash
-# on the host that owns each config file
-bin/rss-gnb-profile --role du apply     # capacity 96 -> 12, t300 -> 2000 ms
-bin/rss-gnb-profile --role cu apply     # procedure guard -> 5000 ms
-# restart your gNB so it reloads the config, then:
+# 각 설정 파일을 가진 호스트에서 실행
+bin/rss-gnb-profile --role du apply     # 용량 96 -> 12, t300 -> 2000 ms
+bin/rss-gnb-profile --role cu apply     # 절차 가드 -> 5000 ms
+# gNB를 재기동해 설정을 다시 읽게 한 뒤:
 bin/rss-run -e 1 -u 2 -r 0 -H 1500 -d 0
 ...
 bin/rss-gnb-profile --role du restore
 bin/rss-gnb-profile --role cu restore
 ```
 
-Capacity 12 with a measured hold of about 1.6 s needs only about 7.5 attempts/s,
-which the tool reaches comfortably. Measured over a **200 s window** of a 420 s
-run (2 UE, `-r 0`, `-H 1500`):
+용량 12에 실측 유지 시간 약 1.6초면 약 7.5회/초만 필요하고, 이 도구는 여유롭게
+도달한다. 420초 런 중 **200초 구간** 측정값 (2 UE, `-r 0`, `-H 1500`):
 
-| | `-r 1` (default) | `-r 0` |
+| | `-r 1` (기본) | `-r 0` |
 |---|---:|---:|
-| attempts/s | 5.6 | 6.5 |
-| peak occupancy | 12 / 12 | 12 / 12 |
+| 시도/초 | 5.6 | 6.5 |
+| 피크 점유 | 12 / 12 | 12 / 12 |
 | `RRCReject` | 388 | **7,551 (61.3/s)** |
 | `DU is not able to serve the UE` | 130 | **2,517 (20.4/s)** |
-| occupancy >= 6 / 12 | — | **100% of the window, 199.8 s continuous** |
-| occupancy >= 9 / 12 | — | 94% of the window, 15.2 s continuous |
-| occupancy >= 12 / 12 | — | 33%, 0.87 s continuous |
-| longest lapse with no rejection | — | **0.45 s** |
+| 점유 >= 6 / 12 | — | **구간의 100%, 연속 199.8초** |
+| 점유 >= 9 / 12 | — | 구간의 94%, 연속 15.2초 |
+| 점유 >= 12 / 12 | — | 33%, 연속 0.87초 |
+| 거절이 없던 최장 공백 | — | **0.45초** |
 | `rrcSetupComplete` / NGAP | 0 / 0 | **0 / 0** |
 
-Read the two kinds of row separately:
+두 종류의 행을 따로 읽어야 한다.
 
-- **Occupancy at or above half capacity was held for the entire window**, in one
-  199.8 s unbroken stretch. Nothing in the run was trending toward release, so
-  the duration is bounded by how long you let it run, not by the tool.
-- **Occupancy exactly at 12 is only 33%** — and that is expected. At capacity the
-  gNB refuses the next UE instantly, so the count sits just under the cap and
-  bounces. What stays true the whole time is the refusal.
-- **Denial was continuous**: 0.02 s ramp-up to the first rejection, then
-  123 s+ with no lapse longer than 0.45 s.
-- **The scenario stayed clean**: no `rrcSetupComplete`, no `InitialUEMessage`,
-  so nothing completed and the core was never reached.
+- **용량 절반 이상의 점유는 구간 내내 유지됐다.** 199.8초 끊김 없는 한 구간이다.
+  해제 쪽으로 기울어지는 추세가 전혀 없었으므로, 지속 시간의 한계는 도구가
+  아니라 얼마나 오래 돌리는지에 달려 있다.
+- **점유가 정확히 12인 비율은 33%뿐** — 그리고 이게 정상이다. 용량에 닿으면
+  gNB가 다음 UE를 즉시 거절하므로, 카운트는 상한 바로 아래에서 튄다. 그동안
+  내내 유지되는 것은 **거절**이다.
+- **서비스 거부는 연속적이었다**: 첫 거절까지 0.02초, 이후 123초 이상 동안
+  0.45초보다 긴 공백 없음.
+- **시나리오는 깨끗하게 유지됐다**: `rrcSetupComplete` 없음,
+  `InitialUEMessage` 없음. 완료된 것이 없고 코어에는 닿지 않았다.
 
-**`-r 0` (`HONOR_REJECT=0`) is what holds it.** With `-r 1` the attacker obeys
-the `RRCReject` back-off and spends 95% of the run idle.
+**유지시키는 핵심은 `-r 0`(`HONOR_REJECT=0`)이다.** `-r 1`이면 공격자가
+`RRCReject`의 백오프를 지키면서 런의 95%를 쉰다.
 
-> **Verified end-to-end on the testbed through this package.** A `-d 0` run of
-> `bin/rss-run -e 1 -u 2 -r 0 -H 1500` was left going for **36.5 min
-> continuous**: occupancy held **>= 6 / 12 for 98% of the run (one 426 s
-> unbroken plateau)** and the gNB refused service for the **entire 2191 s**
-> (longest lapse 2.53 s), with **0 `rrcSetupComplete` and 0 `InitialUEMessage`**.
-> The run length was bounded only by when it was stopped. Full numbers in
-> [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md) §8.
+> **이 패키지로 테스트베드에서 end-to-end 검증 완료.**
+> `bin/rss-run -e 1 -u 2 -r 0 -H 1500`을 `-d 0`으로 **36.5분 연속** 돌렸다:
+> 점유는 **런의 98% 동안 6 / 12 이상(끊김 없는 426초 평탄 구간 1개)**을
+> 유지했고, gNB는 **2191초 전체**에 걸쳐 서비스를 거절했으며(최장 공백 2.53초),
+> **`rrcSetupComplete` 0건, `InitialUEMessage` 0건**이었다. 런 길이의 한계는
+> 중지 시점뿐이었다. 전체 수치는
+> [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md) §8에 있다.
 
-At capacity the gNB refuses the next UE immediately, so occupancy oscillates
-just below the cap while service is denied the whole time. "Is denial held" is
-therefore answered by the rejection stream, which `bin/rss-report` prints as
-**denial continuity**, not by occupancy sitting exactly on the cap.
+용량에 닿으면 gNB가 다음 UE를 즉시 거절하므로, 점유는 상한 바로 아래에서
+진동하는 동안 서비스는 계속 거부된다. 따라서 "거부가 유지되는가"는 점유가 정확히
+상한에 앉아 있는지가 아니라, `bin/rss-report`가 **denial continuity**로 출력하는
+거절 스트림이 답한다.
 
-### Running with no time limit
+### 시간 제한 없이 실행
 
 ```bash
-bin/rss-run -e 1 -u 2 -r 0 -d 0       # no time limit
-pkill -INT -x nr-uesoftmodem          # stop
+bin/rss-run -e 1 -u 2 -r 0 -d 0       # 시간 제한 없음
+pkill -INT -x nr-uesoftmodem          # 중지
 ```
 
-With `-d 0` both kill switches are disarmed on purpose, so **you** are the kill
-switch. With `-d N` two independent ones are armed: the in-process timer and an
-outer `timeout` at `N+20` seconds.
+`-d 0`에서는 두 킬 스위치가 의도적으로 해제되므로 **사람이** 킬 스위치다.
+`-d N`이면 독립적인 두 개가 걸린다: 프로세스 내부 타이머와 `N+20`초의 외부
+`timeout`.
 
 ---
 
-## Choosing NUM_UES
+## NUM_UES 선택
 
-Measured on the reference testbed (OCUDU 26.10, default gNB config, capacity 96,
-hold 2000 ms, 60 s runs, one shared ZMQ radio):
+레퍼런스 테스트베드 실측 (OCUDU 26.10, gNB 기본 설정, 용량 96, 유지 2000 ms,
+60초 런, 공유 ZMQ 무선 1개):
 
-| UE | attempts/s | peak occupancy | `RRCReject` | `channel timeout` (sample loss) | gaps >= 200 ms |
+| UE | 시도/초 | 피크 점유 | `RRCReject` | `channel timeout`(샘플 손실) | 200 ms 이상 공백 |
 |---:|---:|---:|---:|---:|---:|
 | 1 | 33.8 | 90 / 96 | 0 | 0 | 0 |
-| 2 | 38.6 | **96 / 96** | 33 | 5,136 | 3 (5% of run) |
+| 2 | 38.6 | **96 / 96** | 33 | 5,136 | 3 (런의 5%) |
 | 3 | 36.2 | 96 / 96 | 198 | 14,718 | 22 (39%) |
 | 4 | 37.4 | 96 / 96 | 312 | 39,765 | 25 (45%) |
 
-Read this carefully, because it is not "more UEs is better":
+"UE가 많을수록 좋다"가 아니므로 주의해서 읽어야 한다.
 
-- **The attempt rate does not grow past 2 UE.** All instances share one radio
-  and one DU MAC, so the shared layer saturates at 36-38 attempts/s.
-- **What grows is sample loss.** The device discards any uplink write whose
-  timestamp it has already passed, and more instances means more of that.
-- Loss shows up as **1-second stalls**, which drain occupancy. At 4 UE, 45% of
-  the run is inside such a gap; at 2 UE, 5%.
-- So **2 UE is the recommended setting**: it is the smallest count that reaches
-  capacity, and it has the fewest stalls.
+- **시도 레이트는 2 UE를 넘으면 늘지 않는다.** 모든 인스턴스가 무선 하나와 DU
+  MAC 하나를 공유하므로, 공유 계층이 36~38회/초에서 포화된다.
+- **늘어나는 것은 샘플 손실이다.** 디바이스는 자신이 이미 지나친 타임스탬프의
+  상향 write를 버리고, 인스턴스가 많아지면 그 비율이 올라간다.
+- 손실은 **1초 단위 정지**로 나타나고, 그동안 점유가 빠진다. 4 UE에서는 런의
+  45%가 그런 공백 안이고, 2 UE에서는 5%다.
+- 따라서 **2 UE가 권장값**이다. 용량에 도달하는 가장 작은 수이면서 정지가 가장
+  적다.
 
-Use 1 UE when you want a clean, loss-free attempt stream for detector training
-(0 sample loss, but it stops at 90/96 and produces no rejects). Use 3-4 UE only
-if you want many `RRCReject` events and do not care about throughput numbers.
+탐지기 학습용으로 손실 없는 깨끗한 시도 스트림이 필요하면 1 UE를 쓴다(샘플 손실
+0, 다만 90/96에서 멈추고 거절이 발생하지 않는다). `RRCReject` 이벤트를 많이
+만들고 싶고 처리량 수치는 상관없을 때만 3~4 UE를 쓴다.
 
 ---
 
-## Reading the verdict
+## 판정 읽기
 
-`bin/rss-report` prints three blocks.
+`bin/rss-report`는 세 블록을 출력한다.
 
-**Occupancy** — concurrent incomplete `RRC Setup Procedure`s, paired by UE id
-from the gNB log, plus how long occupancy stayed at each level:
+**점유(Occupancy)** — gNB 로그에서 UE id로 짝지은 동시 미완료
+`RRC Setup Procedure` 수와, 각 수준에 머문 시간:
 
 ```
 peak occupancy 96   at 06:31:24
@@ -259,118 +499,118 @@ sustained occupancy
   >=  96   12.6 s of 59 s ( 21%)   longest plateau  0.93 s
 ```
 
-A high *percentage* with a sub-second *longest plateau* is a sawtooth, not held
-saturation. Both numbers are printed because the percentage alone is misleading.
+*비율*이 높은데 *최장 평탄 구간*이 1초 미만이면 포화 유지가 아니라 톱니파다.
+비율만 보면 오해를 부르기 때문에 두 숫자를 함께 출력한다.
 
-**gNB counters** — `RRCReject`, `DU is not able to serve the UE`,
+**gNB 카운터** — `RRCReject`, `DU is not able to serve the UE`,
 `rrcSetupComplete`, `NGAP InitialUEMessage`.
 
-**UE side** — attempts and the cost breakdown of one attempt cycle.
+**UE 측** — 시도 횟수와 한 시도 주기의 비용 분해.
 
-### What you may claim
+### 주장할 수 있는 것
 
-| Claim | Evidence needed |
+| 주장 | 필요한 근거 |
 |---|---|
-| reached the configured resource limit | peak occupancy at capacity **and** `RRCReject` present |
-| saturation held | a long plateau at capacity, not just a high percentage |
-| scenario stayed A-type | `rrcSetupComplete` 0 **and** `NGAP InitialUEMessage` 0 |
-| normal users were denied service | a separate normal UE measured failing to attach |
-| "the gNB was disabled" | the two rows above, together |
+| 설정된 자원 한도에 도달했다 | 피크 점유가 용량에 도달 **그리고** `RRCReject` 존재 |
+| 포화가 유지됐다 | 높은 비율만이 아니라 용량에서의 긴 평탄 구간 |
+| 시나리오가 A형을 유지했다 | `rrcSetupComplete` 0 **그리고** `NGAP InitialUEMessage` 0 |
+| 정상 사용자가 서비스를 거부당했다 | 별도의 정상 UE가 접속 실패하는 것을 실측 |
+| "gNB를 무력화했다" | 위 두 행을 함께 |
 
-The last two cannot be shown with a single ZMQ port pair, because the attacker
-and a normal UE cannot both be attached. That is a property of the testbed, not
-of this tool.
+마지막 두 개는 ZMQ 포트 쌍 하나로는 보일 수 없다. 공격자와 정상 UE가 동시에
+접속할 수 없기 때문이다. 이것은 도구가 아니라 테스트베드의 성질이다.
 
 ---
 
-## Optimisations that are in the tool
+## 도구에 들어간 최적화
 
-Each of these was measured, not assumed.
+아래는 모두 가정이 아니라 측정의 결과다.
 
-**1. ZMQ TX wake-up (about 3x the attempt rate).** Upstream's TX poll thread
-can only be woken by a socket event. Once a sample request has arrived but the
-local TX queue is still empty, the peer is blocked waiting for the reply and
-sends nothing more, so `zmq_poll` can only return on its own **10 ms** timeout.
-UE and DU talk over `127.0.0.1`, where a round trip is tens of microseconds, so
-that 10 ms is a timeout constant, not transport latency: a sub-millisecond
-lateness cost a whole radio frame. Measured before the fix: 4250 starved
-requests x **10.01 ms** = 42.5 s lost in an 80 s run.
+**1. ZMQ TX 웨이크업 (시도 레이트 약 3배).** 업스트림의 TX 폴 스레드는 소켓
+이벤트로만 깨어날 수 있다. 샘플 요청은 도착했지만 로컬 TX 큐가 아직 비어 있으면,
+상대는 응답을 기다리며 블록된 상태라 더 이상 아무것도 보내지 않는다. 그래서
+`zmq_poll`은 자기 자신의 **10 ms** 타임아웃으로만 복귀한다. UE와 DU는
+`127.0.0.1`로 통신하고 왕복은 수십 마이크로초이므로, 그 10 ms는 전송 지연이 아니라
+타임아웃 상수다: 1 ms 미만의 늦음이 무선 프레임 하나를 통째로 잡아먹었다. 수정 전
+실측: 굶은 요청 4250건 × **10.01 ms** = 80초 런에서 42.5초 손실.
 
-| | upstream (`=0`) | fixed (`=-2`) |
+| | 업스트림 (`=0`) | 수정 (`=-2`) |
 |---|---:|---:|
-| radio time per wall second | 0.46-0.54 | **2.39-2.46** |
-| attempts/s | 6.7 | **19.5-33.8** |
-| peak occupancy | 20 / 96 | **90-96 / 96** |
+| 벽시계 1초당 무선 시간 | 0.46-0.54 | **2.39-2.46** |
+| 시도/초 | 6.7 | **19.5-33.8** |
+| 피크 점유 | 20 / 96 | **90-96 / 96** |
 
-**2. Radio sharing inside one process.** Multiple UE instances share one ZMQ
-radio: one instance fetches each slot and the others take a copy, and the uplink
-of all instances is summed into a single device write. An external ZMQ broker
-was rejected because it would copy the sample stream a second time.
+**2. 한 프로세스 안에서의 무선 공유.** 여러 UE 인스턴스가 ZMQ 무선 하나를
+공유한다. 한 인스턴스가 각 슬롯을 가져오고 나머지는 복사본을 받으며, 모든
+인스턴스의 상향은 하나의 디바이스 write로 합산된다. 외부 ZMQ 브로커는 샘플
+스트림을 한 번 더 복사하게 되므로 기각했다.
 
-**3. Per-UE read cursors.** A round-robin copy returned a different sample count
-than the caller asked for and tripped OAI's `unitTransfer == res` assertion.
-Cursors give each instance exactly what it requested, in stream order.
+**3. UE별 읽기 커서.** 라운드로빈 복사는 호출자가 요청한 것과 다른 샘플 수를
+반환해서 OAI의 `unitTransfer == res` 어서션을 깨뜨렸다. 커서를 쓰면 각
+인스턴스가 요청한 만큼을 스트림 순서대로 정확히 받는다.
 
-**4. Lockstep cursors (`RSS_SHARE_LOCKSTEP=1`).** Instances join at different
-stream positions after cell search and keep a constant offset, which makes every
-slot produce one uplink batch per instance instead of one merged batch. The gate
-holds them together. Partial effect, measured at 4 UE: out-of-order batches
-9.19% -> 7.70%, sample loss 33,144 -> 27,139, radio time 1.12 -> 1.26.
+**4. 락스텝 커서 (`RSS_SHARE_LOCKSTEP=1`).** 인스턴스들은 셀 탐색 후 서로 다른
+스트림 위치에서 합류해 일정한 오프셋을 유지하는데, 그러면 모든 슬롯이 병합된
+배치 하나 대신 인스턴스마다 상향 배치 하나를 만든다. 게이트가 이들을 함께
+묶는다. 효과는 부분적이며 4 UE 실측: 순서 어긋난 배치 9.19% -> 7.70%, 샘플 손실
+33,144 -> 27,139, 무선 시간 1.12 -> 1.26.
 
-**5. Measurement tools that do not lie.** `analysis/cu_occupancy.py` pairs
-procedure start and end by UE id and reports plateaus, not just peaks.
-`analysis/cu_count.py` compares only inside the run window. Both exist because
-earlier versions silently reported whole-log totals and peak-only numbers.
+**5. 거짓말하지 않는 측정 도구.** `analysis/cu_occupancy.py`는 절차의 시작과
+종료를 UE id로 짝지어 피크만이 아니라 평탄 구간을 보고한다. `analysis/cu_count.py`는
+런 구간 안에서만 비교한다. 둘 다 이전 버전이 로그 전체 합계와 피크만을 조용히
+보고했기 때문에 존재한다.
 
 ---
 
-## Rejected optimisations (do not re-try these)
+## 기각된 최적화 (다시 시도하지 말 것)
 
-| Idea | Result |
+| 아이디어 | 결과 |
 |---|---|
-| raise `TRANSMIT_TS_ALIGN_TIMEOUT` | no effect by construction: `align()` returns "timestamp passed" from its first branch, before the timeout is used |
-| `sched_yield` spin instead of sleeping (`=-1`) | starved wait 28.5 s -> 0.117 s but radio time 2.15 -> 1.26 and attempts fell. It starves the producer thread it waits on |
-| condition variable instead of usleep (`=-2` vs `>0`) | same cost: 237 us vs 240 us. The remaining wait is the producer's real latency, not the wait mechanism. Kept as the default anyway since it burns no CPU |
-| `MSG4_WAIT=0` (abandon at Msg3) | UE side looked 5x faster (10878 attempts) but the gNB created **1** context. Without waiting for Msg4 the random access never completes, so Msg3 never reaches the gNB |
-| `RSS_SHARE_WR_MONOTONIC=1` | sample loss 21,178 -> 0 but attempts 2387 -> **32**. The clamp advances by one read per flush, which assumes one flush per slot; there are more, so it ran away into the future |
-| core pinning (`UE_TASKSET`) | worse: 33.8 -> 24.2 attempts/s, peak 90 -> 51 |
-| `ACK_GATE=0` | no change (34.1 vs 33.8 attempts/s) |
+| `TRANSMIT_TS_ALIGN_TIMEOUT` 상향 | 구조상 무효과: `align()`은 타임아웃을 쓰기 전, 첫 분기에서 "timestamp passed"로 반환한다 |
+| 슬립 대신 `sched_yield` 스핀 (`=-1`) | 굶은 대기 28.5초 -> 0.117초이지만 무선 시간 2.15 -> 1.26이고 시도가 줄었다. 자신이 기다리는 생산자 스레드를 굶긴다 |
+| usleep 대신 조건 변수 (`=-2` vs `>0`) | 비용 동일: 237 us vs 240 us. 남은 대기는 대기 방식이 아니라 생산자의 실제 지연이다. CPU를 태우지 않으므로 기본값으로 유지 |
+| `MSG4_WAIT=0` (Msg3에서 포기) | UE 쪽은 5배 빨라 보였지만(10878 시도) gNB가 만든 컨텍스트는 **1개**였다. Msg4를 기다리지 않으면 랜덤 액세스가 완료되지 않아 Msg3이 gNB에 닿지 않는다 |
+| `RSS_SHARE_WR_MONOTONIC=1` | 샘플 손실 21,178 -> 0이지만 시도 2387 -> **32**. 클램프가 flush당 읽기 1회씩 전진하는데 이는 슬롯당 flush 1회를 가정한다. 실제로는 더 많아서 미래로 달아났다 |
+| 코어 핀닝 (`UE_TASKSET`) | 더 나쁨: 33.8 -> 24.2 시도/초, 피크 90 -> 51 |
+| `ACK_GATE=0` | 변화 없음 (34.1 vs 33.8 시도/초) |
 
 ---
 
-## Known limits
+## 알려진 한계
 
-- **One attempt cycle costs 40 ms of radio time** and 30 ms of that is the
-  random access procedure itself. The UE cannot shorten it, so a single
-  instance is capped near 35 attempts/s on this testbed.
-- **Held saturation is not demonstrated at default gNB config.** Capacity is
-  reached (peak 96, rejects present) but the longest continuous plateau at 96
-  measured 0.93 s. The cause is quantified: the shared radio discards about
-  8-17% of uplink writes, which produces 1-second stalls.
-- **Radio time is not real time.** After the TX fix it runs about 2.4x *faster*
-  than real time with one instance, because ZMQ has no pacing. Report
-  `air_per_wall` from the run log beside any per-second number.
-- **Numbers vary between sessions.** Three 4-UE runs gave 2202-2387 attempts but
-  sample loss 21k-40k and radio time 0.87-1.63. Compare only within a session.
-- **A single ZMQ port pair cannot host the attacker and a normal UE at the same
-  time**, so service denial for a normal user cannot be measured on this path.
+- **한 시도 주기는 무선 시간 40 ms를 쓰고**, 그중 30 ms가 랜덤 액세스 절차
+  자체다. UE가 줄일 수 없으므로 이 테스트베드에서 단일 인스턴스는 35회/초
+  근처가 상한이다.
+- **gNB 기본 설정에서는 포화 유지를 입증하지 못했다.** 용량에는 도달하지만(피크
+  96, 거절 발생) 96에서의 최장 연속 평탄 구간은 0.93초였다. 원인은 정량화돼
+  있다: 공유 무선이 상향 write의 약 8~17%를 버리고, 이것이 1초 단위 정지를
+  만든다.
+- **무선 시간은 실시간이 아니다.** TX 수정 이후 단일 인스턴스에서는 실시간보다
+  약 2.4배 *빠르게* 흐른다. ZMQ에 페이싱이 없기 때문이다. 초당 수치를 보고할
+  때는 런 로그의 `air_per_wall`을 함께 적는다.
+- **세션 간 수치가 흔들린다.** 4 UE 런 3회에서 시도는 2202~2387이었지만 샘플
+  손실은 21k~40k, 무선 시간은 0.87~1.63이었다. 비교는 같은 세션 안에서만 한다.
+- **ZMQ 포트 쌍 하나로는 공격자와 정상 UE를 동시에 붙일 수 없으므로**, 이 경로
+  에서는 정상 사용자에 대한 서비스 거부를 측정할 수 없다.
 
 ---
 
-## Files
+## 파일
 
 ```
-bin/rss-build        apply the patch and build the attacker UE
-bin/rss-run          run one experiment
-bin/rss-report       verdict from the gNB log plus the UE JSONL
-conf/rss.conf.example  every knob, documented inline
-patch/rss-ue.patch   the UE-side patch (OAI 2026.w38)
-analysis/            occupancy, counters, attempt cost breakdown
+bin/rss-build        패치 적용 후 공격 UE 빌드
+bin/rss-run          실험 1회 실행
+bin/rss-report       gNB 로그 + UE JSONL로 판정
+conf/rss.conf.example  모든 노브, 주석으로 문서화
+patch/rss-ue.patch   UE 측 패치 (OAI 2026.w38)
+analysis/            점유, 카운터, 시도 비용 분해
+docs/MECHANISM.ko.md 공격이 왜 통하는지: 소스·설정·실측 논증
+docs/MEASUREMENTS.md 측정 기록 원본 (영문)
 ```
 
-Every run writes `run.json` (all knobs and the cell), `attempts.jsonl`
-(one record per attempt, with both clocks) and `ue.log`.
+모든 런은 `run.json`(모든 노브와 셀), `attempts.jsonl`(시도당 레코드 1건, 두
+시계 모두 포함), `ue.log`를 남긴다.
 
-**`attempts.jsonl` is the label feed for a detection team.** Each record carries
-`run_id`, `ue`, `seq`, `t_ns` (wall), `air_ms` (radio), the event, the
-transmitted UE identity and the intended versus actual reach of the attempt.
+**`attempts.jsonl`이 탐지팀을 위한 라벨 피드다.** 각 레코드에는 `run_id`, `ue`,
+`seq`, `t_ns`(벽시계), `air_ms`(무선), 이벤트, 전송된 UE identity, 그리고 시도의
+의도된 도달 범위와 실제 도달 범위가 담긴다.

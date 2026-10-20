@@ -6,7 +6,7 @@
 #   Run it only inside an RF-shielded or virtual-RF testbed you own.
 #
 # Everything is configurable. Precedence: command line > environment >
-# conf/rss.conf > built-in default. See README.md.
+# conf/rss.conf > built-in default. See README.en.md.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -25,7 +25,7 @@ HONOR_REJECT=${HONOR_REJECT:-1}      # obey RRCReject waitTime
 ACK_GATE=${ACK_GATE:-1}              # do not restart RA while the Msg4 ACK is pending
 RA_GATE=${RA_GATE:-1}                # do not restart RA while one is in flight
 GATE_TIMEOUT_MS=${GATE_TIMEOUT_MS:-500}
-MSG4_WAIT=${MSG4_WAIT:-1}            # 1 = A-type. 0 produces no gNB load, see README
+MSG4_WAIT=${MSG4_WAIT:-1}            # 1 = A-type. 0 produces no gNB load, see README.en.md
 RUN_ID=${RUN_ID:-}
 
 # ---- radio / UE sharing (environment knobs read by the patched UE) ----------
@@ -73,7 +73,7 @@ usage: $0 [options]
   -n ID    run id                            (RUN_ID)
   -h       this help
 Every option has an environment variable of the same name; conf/rss.conf sets
-defaults. See README.md for the full list including radio knobs.
+defaults. See README.en.md for the full list including radio knobs.
 EOF
   exit "${1:-1}"
 }

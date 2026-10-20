@@ -9,7 +9,7 @@ ENABLE=0                 # 0 = normal UE (regression baseline), 1 = attack.
 NUM_UES=2                # attacker UE instances sharing one radio.
                          #     Measured: 1 reaches 90/96, 2 reaches 96/96.
                          #     More than 2 does not raise the attempt rate and
-                         #     adds sample loss. See README "choosing NUM_UES".
+                         #     adds sample loss. See README.en.md "choosing NUM_UES".
 INTERVAL_MS=0            # extra delay between a skipped Msg5 and the next try.
                          #     0 = as fast as the radio allows.
 MAX_DURATION_S=120       # in-process kill switch. 0 = run until stopped.
@@ -29,7 +29,7 @@ RA_GATE=1                # 1 = do not restart RA while one is still in flight
 GATE_TIMEOUT_MS=500      # force the retry if a gate held it this long
 MSG4_WAIT=1              # KEEP 1. 0 abandons the attempt at Msg3, which looks
                          #     5x faster on the UE side but produced 1 gNB
-                         #     context out of 10878 attempts. See README.
+                         #     context out of 10878 attempts. See README.en.md.
 
 # ------------------------------------------------------------ radio efficiency
 RSS_ZMQ_TX_WAIT_US=-2    # how the ZMQ TX thread waits for local samples.
@@ -39,7 +39,7 @@ RSS_ZMQ_TX_WAIT_US=-2    # how the ZMQ TX thread waits for local samples.
                          #  -2 = condition variable (default)
                          # Leaving this at 0 costs about 3x the attempt rate.
 RSS_SHARE_LOCKSTEP=1     # hold the per-UE downlink cursors together
-RSS_SHARE_WR_MONOTONIC=0 # KEEP 0. See README "rejected optimisations".
+RSS_SHARE_WR_MONOTONIC=0 # KEEP 0. See README.en.md "rejected optimisations".
 
 # --------------------------------------------------------------- local paths
 OAI=/root/OAI

@@ -16,7 +16,7 @@ index 95346ae..f59f61f 100644
 + *
 + * An external ZMQ broker was rejected: it would copy 23.04 MS/s * 8 B per
 + * direction a second time on a path that already runs about 6x slower than
-+ * real time (see testbed-checklist.md 12.3). Sharing inside the process keeps
++ * real time (see docs/MEASUREMENTS.md). Sharing inside the process keeps
 + * the number of ZMQ round trips per slot unchanged: one UE fetches each slot
 + * and the others receive a copy, and the uplink of all UEs is summed into a
 + * single device write. The gNB is never modified.

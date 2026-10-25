@@ -1,0 +1,5 @@
+# Local research records kept out of the tree
+/findings/
+
+# Linked worktrees
+.worktrees/

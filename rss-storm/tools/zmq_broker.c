@@ -36,8 +36,10 @@ static long dl_rounds, ul_rounds;
 static int ul_await[MAX_UE];
 static int seen_real;
 
-static void *ring[RING]; static size_t rlen[RING];
-static int r_head, r_cnt;
+static void *hist[RING]; static size_t hlen[RING];
+static uint64_t h_base, h_count;      /* absolute index window of downlink */
+static uint64_t ue_next[MAX_UE];
+static int ue_started[MAX_UE];      /* per-UE next block index */
 static pthread_mutex_t r_mtx = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t r_cv = PTHREAD_COND_INITIALIZER;
 
@@ -73,13 +75,14 @@ static void *dl_fetch(void *arg) {
     void *blk = NULL; size_t bl = 0;
     if (req(dl_du) || pull(dl_du, &blk, &bl)) break;   /* DU paces us */
     pthread_mutex_lock(&r_mtx);
-    if (r_cnt == RING) { free(ring[r_head]); r_head = (r_head + 1) % RING; r_cnt--; }
-    ring[(r_head + r_cnt) % RING] = blk; rlen[(r_head + r_cnt) % RING] = bl;
-    r_cnt++;
-    pthread_cond_signal(&r_cv);
+    if (h_count == RING) { free(hist[h_base % RING]); h_base++; h_count--; }
+    hist[(h_base + h_count) % RING] = blk; hlen[(h_base + h_count) % RING] = bl;
+    h_count++;
+    pthread_cond_broadcast(&r_cv);
     pthread_mutex_unlock(&r_mtx);
     if ((++dl_rounds % 20000) == 0)
-      fprintf(stderr, "[broker] DL fetched=%ld q=%d\n", dl_rounds, r_cnt);
+      fprintf(stderr, "[broker] DL fetched=%ld q=%llu\n", dl_rounds,
+              (unsigned long long)h_count);
   }
   return NULL;
 }
@@ -92,15 +95,19 @@ static void *dl_serve(void *arg) {
       if (stop) return NULL;
       continue;                                     /* timeout: keep waiting */
     }
+    /* Every UE sees the same block sequence: this is a broadcast downlink, not
+       a queue per UE. A FIFO handed a different block to each UE, so two UEs
+       consumed twice as fast as the DU produced and both resynced. */
+    ue_started[i] = 1;
     pthread_mutex_lock(&r_mtx);
-    while (r_cnt == 0 && !stop) pthread_cond_wait(&r_cv, &r_mtx);
+    uint64_t target = ue_next[i];
+    while (!stop && target >= h_base + h_count) pthread_cond_wait(&r_cv, &r_mtx);
     if (stop) { pthread_mutex_unlock(&r_mtx); return NULL; }
-    void *blk = ring[r_head]; size_t bl = rlen[r_head];
-    r_head = (r_head + 1) % RING; r_cnt--;
-    pthread_cond_broadcast(&r_cv);
+    if (target < h_base) target = h_base;            /* too far behind: skip */
+    void *blk = hist[target % RING]; size_t bl = hlen[target % RING];
+    ue_next[i] = target + 1;
     pthread_mutex_unlock(&r_mtx);
     int rc = push(dl_ue[i], blk, bl);
-    free(blk);
     if (rc) return NULL;
   }
   return NULL;
@@ -180,7 +187,16 @@ static void *ul_thread(void *arg) {
        hold the reply. Both directions then stop together instead of letting the
        DU TX queue overflow or dropping downlink blocks. */
     pthread_mutex_lock(&r_mtx);
-    while (r_cnt > 64 && !stop) pthread_cond_wait(&r_cv, &r_mtx);
+    for (;;) {
+      if (stop) break;
+      /* Only UEs that have started consuming may hold the clock back. A UE
+         that is still booting would otherwise pin the gate at 0 for everyone. */
+      uint64_t slow = h_base;
+      for (int i = 0; i < n_ue; i++)
+        if (ue_started[i] && ue_next[i] < slow) slow = ue_next[i];
+      if ((h_base + h_count) - slow <= 64) break;
+      pthread_cond_wait(&r_cv, &r_mtx);
+    }
     pthread_mutex_unlock(&r_mtx);
     if (stop) break;
     if (push(ul_du, out, bytes)) { free(out); break; }

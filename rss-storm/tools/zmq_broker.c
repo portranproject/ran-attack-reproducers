@@ -33,13 +33,15 @@ static int n_ue;
 static void *dl_du, *ul_du, *dl_ue[MAX_UE], *ul_ue[MAX_UE];
 static volatile int stop;
 static long dl_rounds, ul_rounds;
-static int ul_await[MAX_UE];
-static int seen_real;
+static int ul_await[MAX_UE];      /* request outstanding per UE */
+static int seen_real;              /* at least one UE supplied uplink */
 
-static void *hist[RING]; static size_t hlen[RING];
-static uint64_t h_base, h_count;      /* absolute index window of downlink */
-static uint64_t ue_next[MAX_UE];
-static int ue_started[MAX_UE];      /* per-UE next block index */
+#define SLOT_BYTES (11520 * sizeof(int16_t))
+#define RING_BYTES (16u << 20)
+static unsigned char *rbuf;        /* downlink byte history, broadcast */
+static uint64_t w_off;             /* bytes appended so far */
+static uint64_t r_off[MAX_UE];     /* per-UE next byte */
+static int ue_started[MAX_UE];     /* UE asked for downlink at least once */
 static pthread_mutex_t r_mtx = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t r_cv = PTHREAD_COND_INITIALIZER;
 
@@ -69,20 +71,33 @@ static int req(void *s) { unsigned char d = 0; return push(s, &d, 1); }
 static int rep_recv(void *s) { void *b = NULL; size_t l = 0;
   if (pull(s, &b, &l)) return -1; free(b); return 0; }
 
+static uint64_t slowest_reader(void) {
+  uint64_t slow = w_off;
+  for (int i = 0; i < n_ue; i++)
+    if (ue_started[i] && r_off[i] < slow) slow = r_off[i];
+  return slow;
+}
+
 static void *dl_fetch(void *arg) {
   (void)arg;
   while (!stop) {
+    pthread_mutex_lock(&r_mtx);
+    while (!stop && w_off - slowest_reader() >= RING_BYTES - 4 * SLOT_BYTES)
+      pthread_cond_wait(&r_cv, &r_mtx);
+    pthread_mutex_unlock(&r_mtx);
+    if (stop) break;
     void *blk = NULL; size_t bl = 0;
     if (req(dl_du) || pull(dl_du, &blk, &bl)) break;   /* DU paces us */
     pthread_mutex_lock(&r_mtx);
-    if (h_count == RING) { free(hist[h_base % RING]); h_base++; h_count--; }
-    hist[(h_base + h_count) % RING] = blk; hlen[(h_base + h_count) % RING] = bl;
-    h_count++;
+    const unsigned char *p = (const unsigned char *)blk;
+    for (size_t o = 0; o < bl; o++) rbuf[(w_off + o) % RING_BYTES] = p[o];
+    w_off += bl;
     pthread_cond_broadcast(&r_cv);
     pthread_mutex_unlock(&r_mtx);
+    free(blk);
     if ((++dl_rounds % 20000) == 0)
-      fprintf(stderr, "[broker] DL fetched=%ld q=%llu\n", dl_rounds,
-              (unsigned long long)h_count);
+      fprintf(stderr, "[broker] DL bytes=%llu q=%llu\n",
+              (unsigned long long)w_off, (unsigned long long)(w_off - slowest_reader()));
   }
   return NULL;
 }
@@ -90,25 +105,23 @@ static void *dl_fetch(void *arg) {
 struct serve_arg { int i; };
 static void *dl_serve(void *arg) {
   int i = ((struct serve_arg *)arg)->i;
+  static unsigned char out[MAX_UE][SLOT_BYTES];  /* one buffer per UE thread */
   while (!stop) {
     if (rep_recv(dl_ue[i])) {                        /* UE asks for a block */
       if (stop) return NULL;
       continue;                                     /* timeout: keep waiting */
     }
-    /* Every UE sees the same block sequence: this is a broadcast downlink, not
-       a queue per UE. A FIFO handed a different block to each UE, so two UEs
-       consumed twice as fast as the DU produced and both resynced. */
-    ue_started[i] = 1;
     pthread_mutex_lock(&r_mtx);
-    uint64_t target = ue_next[i];
-    while (!stop && target >= h_base + h_count) pthread_cond_wait(&r_cv, &r_mtx);
+    ue_started[i] = 1;
+    uint64_t pos = r_off[i];
+    while (!stop && pos + SLOT_BYTES > w_off) pthread_cond_wait(&r_cv, &r_mtx);
     if (stop) { pthread_mutex_unlock(&r_mtx); return NULL; }
-    if (target < h_base) target = h_base;            /* too far behind: skip */
-    void *blk = hist[target % RING]; size_t bl = hlen[target % RING];
-    ue_next[i] = target + 1;
+    if (pos + RING_BYTES < w_off) pos = w_off - SLOT_BYTES;   /* too far behind */
+    for (size_t o = 0; o < SLOT_BYTES; o++) out[i][o] = rbuf[(pos + o) % RING_BYTES];
+    r_off[i] = pos + SLOT_BYTES;
+    pthread_cond_broadcast(&r_cv);
     pthread_mutex_unlock(&r_mtx);
-    int rc = push(dl_ue[i], blk, bl);
-    if (rc) return NULL;
+    if (push(dl_ue[i], out[i], SLOT_BYTES)) return NULL;
   }
   return NULL;
 }
@@ -116,11 +129,8 @@ static void *dl_serve(void *arg) {
 static unsigned char *pend[MAX_UE];
 static size_t pend_len[MAX_UE];
 
-/* Take exactly want bytes from UE i's uplink stream, accumulating whatever
-   block sizes the UE happens to send. The DU advances its sample clock by the
-   reply size, so a reply of four blocks makes the DU jump four slots; the
-   transport has to deliver one slot per request. */
 static int take_fixed(int i, unsigned char *out, size_t want) {
+  if (i != 0 && !ue_started[i]) { memset(out, 0, want); return 0; }
   size_t have = 0;
   while (have < want) {
     if (pend_len[i] > 0) {
@@ -133,10 +143,6 @@ static int take_fixed(int i, unsigned char *out, size_t want) {
     }
     void *b = NULL; size_t l = 0;
     int ok = 0;
-    /* Before any UE has produced uplink, wait for the first one: replying
-       silence first shifts the sample axis and PRACH lands outside the DU
-       window. After the stream has started, a UE with nothing in this slot
-       contributes silence, which is what the air would carry. */
     int blocking = (!seen_real && i == 0);
     if (ul_await[i]) {
       ok = blocking ? (pull(ul_ue[i], &b, &l) == 0) : (pull_nb(ul_ue[i], &b, &l) == 0);
@@ -187,16 +193,8 @@ static void *ul_thread(void *arg) {
        hold the reply. Both directions then stop together instead of letting the
        DU TX queue overflow or dropping downlink blocks. */
     pthread_mutex_lock(&r_mtx);
-    for (;;) {
-      if (stop) break;
-      /* Only UEs that have started consuming may hold the clock back. A UE
-         that is still booting would otherwise pin the gate at 0 for everyone. */
-      uint64_t slow = h_base;
-      for (int i = 0; i < n_ue; i++)
-        if (ue_started[i] && ue_next[i] < slow) slow = ue_next[i];
-      if ((h_base + h_count) - slow <= 64) break;
+    while (!stop && w_off - slowest_reader() > (1u << 20))
       pthread_cond_wait(&r_cv, &r_mtx);
-    }
     pthread_mutex_unlock(&r_mtx);
     if (stop) break;
     if (push(ul_du, out, bytes)) { free(out); break; }
@@ -213,6 +211,7 @@ static void *ul_thread(void *arg) {
         clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &next, NULL);
     }
     free(out);
+    if (ul_rounds < 5) fprintf(stderr, "[broker] UL rnd=%ld used=%d started0=%d started1=%d\n", ul_rounds, used_ue, ue_started[0], ue_started[1]);
     if ((++ul_rounds % 20000) == 0)
       fprintf(stderr, "[broker] UL=%ld block=%zu used_ue=%d\n", ul_rounds, bytes, used_ue);
   }
@@ -229,6 +228,8 @@ int main(int argc, char **argv) {
   int base = argc > 4 ? atoi(argv[4]) : 4600;
   signal(SIGINT, on_sig); signal(SIGTERM, on_sig);
 
+  rbuf = calloc(RING_BYTES, 1);
+  if (!rbuf) { perror("rbuf"); return 1; }
   void *ctx = zmq_ctx_new();
   char ep[64];
   dl_du = zmq_socket(ctx, ZMQ_REQ);

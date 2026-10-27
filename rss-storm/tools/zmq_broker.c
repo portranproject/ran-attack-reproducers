@@ -33,12 +33,21 @@ static int n_ue;
 static void *dl_du, *ul_du, *dl_ue[MAX_UE], *ul_ue[MAX_UE];
 static volatile int stop;
 static long dl_rounds, ul_rounds;
+static int ul_await[MAX_UE];
 
 static void *ring[RING]; static size_t rlen[RING];
 static int r_head, r_cnt;
 static pthread_mutex_t r_mtx = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t r_cv = PTHREAD_COND_INITIALIZER;
 
+static int pull_nb(void *s, void **buf, size_t *len) {
+  zmq_msg_t m; zmq_msg_init(&m);
+  if (zmq_msg_recv(&m, s, ZMQ_DONTWAIT) < 0) { zmq_msg_close(&m); return -1; }
+  *len = zmq_msg_size(&m);
+  *buf = malloc(*len ? *len : 1);
+  if (*len) memcpy(*buf, zmq_msg_data(&m), *len);
+  zmq_msg_close(&m); return 0;
+}
 static int pull(void *s, void **buf, size_t *len) {
   zmq_msg_t m; zmq_msg_init(&m);
   if (zmq_msg_recv(&m, s, 0) < 0) { zmq_msg_close(&m); return -1; }
@@ -96,36 +105,77 @@ static void *dl_serve(void *arg) {
   return NULL;
 }
 
+static unsigned char *pend[MAX_UE];
+static size_t pend_len[MAX_UE];
+
+/* Take exactly want bytes from UE i's uplink stream, accumulating whatever
+   block sizes the UE happens to send. The DU advances its sample clock by the
+   reply size, so a reply of four blocks makes the DU jump four slots; the
+   transport has to deliver one slot per request. */
+static int take_fixed(int i, unsigned char *out, size_t want) {
+  size_t have = 0;
+  while (have < want) {
+    if (pend_len[i] > 0) {
+      size_t n = pend_len[i] < (want - have) ? pend_len[i] : (want - have);
+      memcpy(out + have, pend[i], n);
+      memmove(pend[i], pend[i] + n, pend_len[i] - n);
+      pend_len[i] -= n;
+      have += n;
+      continue;
+    }
+    void *b = NULL; size_t l = 0;
+    int ok = 0;
+    if (ul_await[i]) {
+      ok = (pull_nb(ul_ue[i], &b, &l) == 0);
+      if (ok) ul_await[i] = 0;
+    } else if (req(ul_ue[i]) == 0) {
+      ul_await[i] = 1;
+      ok = (pull_nb(ul_ue[i], &b, &l) == 0);
+      if (ok) ul_await[i] = 0;
+    }
+    if (!ok) break;
+    pend[i] = realloc(pend[i], pend_len[i] + l);
+    if (!pend[i]) { free(b); return -1; }
+    memcpy(pend[i] + pend_len[i], b, l);
+    pend_len[i] += l;
+    free(b);
+  }
+  if (have < want) memset(out + have, 0, want - have);
+  return (int)have;
+}
+
 static void *ul_thread(void *arg) {
   (void)arg;
   while (!stop) {
     if (rep_recv(ul_du)) break;
-    size_t n = 0, bytes = 0;
-    int32_t *acc = NULL;
+    const size_t want_bytes = DEF_SAMPLES * sizeof(int16_t);
+    int32_t acc[DEF_SAMPLES];
+    memset(acc, 0, sizeof acc);
     int used_ue = 0;
+    unsigned char buf[DEF_SAMPLES * sizeof(int16_t)];
     for (int i = 0; i < n_ue; i++) {
-      void *b = NULL; size_t l = 0;
-      int ok = (req(ul_ue[i]) == 0) && (pull(ul_ue[i], &b, &l) == 0);
-      size_t got = ok ? l / sizeof(int16_t) : 0;
-      if (!acc) {
-        n = ok ? got : DEF_SAMPLES;
-        bytes = n * sizeof(int16_t);
-        acc = calloc(n ? n : 1, sizeof(int32_t));
-      }
-      if (ok) {
+      int got_bytes = take_fixed(i, buf, want_bytes);
+      if (got_bytes > 0) {
         used_ue = 1;
-        const int16_t *s = (const int16_t *)b;
-        size_t m = got < n ? got : n;
-        for (size_t j = 0; j < m; j++) acc[j] += s[j];
-        free(b);
+        const int16_t *sv = (const int16_t *)buf;
+        size_t m = (size_t)got_bytes / sizeof(int16_t);
+        for (size_t j = 0; j < m; j++) acc[j] += sv[j];
       }
     }
+    const size_t n = DEF_SAMPLES, bytes = want_bytes;
     int16_t *out = malloc(bytes ? bytes : 2);
     for (size_t j = 0; j < n; j++) {
       int32_t v = acc[j];
       out[j] = v > 32767 ? 32767 : (v < -32768 ? -32768 : (int16_t)v);
     }
-    free(acc);
+    /* Pace the DU clock by UE consumption: one uplink reply per slot is what
+       advances the DU. If the downlink ring is filling up, the UE is behind, so
+       hold the reply. Both directions then stop together instead of letting the
+       DU TX queue overflow or dropping downlink blocks. */
+    pthread_mutex_lock(&r_mtx);
+    while (r_cnt > 64 && !stop) pthread_cond_wait(&r_cv, &r_mtx);
+    pthread_mutex_unlock(&r_mtx);
+    if (stop) break;
     if (push(ul_du, out, bytes)) { free(out); break; }
     if (!used_ue) {  /* silence keeps the DU clock at radio rate */
       static struct timespec next;

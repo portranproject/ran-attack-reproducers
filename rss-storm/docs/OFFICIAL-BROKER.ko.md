@@ -1,0 +1,62 @@
+# 공식 srsRAN GNU Radio 브로커로 다중 UE 재현 (2026-10-29)
+
+## 결론
+
+srsRAN/OCUDU가 문서로 제공하는 **공식 다중 UE 브로커**(GNU Radio 플로우그래프)가
+우리 OCUDU gNB + OAI UE 조합에서도 **그대로 동작**한다. 커스텀 브로커를 만들 필요가
+없었다. UE 3대가 동시에 `Initial sync` → `SIB1` → `RRCSetupComplete`까지 도달했다.
+
+## 왜 되는가
+
+- OCUDU의 ZMQ 장치는 `ZMQ_REP`(TX)/`ZMQ_REQ`(RX)를 쓴다(`lib/radio/zmq`).
+- 공식 브로커 플로우그래프도 `zeromq_rep_sink`/`zeromq_req_source` = REQ/REP다.
+- OAI UE의 `oai_zmqdevif`는 OCUDU-ZMQ 상호운용 패치로 같은 프로토콜을 말한다.
+  그래서 브로커를 사이에 넣어도 양쪽이 그대로 연결된다.
+
+## 구성
+
+- gNB(`du.yaml`): `tx_port=tcp://127.0.0.1:2000,rx_port=tcp://127.0.0.1:2001`
+- 브로커(GNU Radio):
+  - DL: `req_source` → gNB 2000, `rep_sink` → UE 2100/2200/2300
+  - UL: `req_source` ← UE 2101/2201/2301, `rep_sink` → gNB 2001
+- UE i 포트: `tx = 21xx1`, `rx = 21xx0` (UE1 2101/2100, UE2 2201/2200, UE3 2301/2300)
+
+## 절차
+
+```
+# DU 호스트
+apt-get install -y gnuradio xvfb
+curl -sL https://docs.srsran.com/projects/project/en/latest/_downloads/0e089ea8fa3a22bf1eec673ab3dffd94/multi_ue_scenario.grc -o /root/multi_ue.grc
+grcc /root/multi_ue.grc                     # -> ~/multi_ue_scenario.py
+sed -i "s/11520000/23040000/" ~/multi_ue_scenario.py   # 우리 셀 srate
+
+# 1) CU(코어/RIC/CU) 먼저, 2) DU 새로 시작, 3) UE 3개, 4) 플로우그래프
+./ctl.sh start
+timeout 75 nr-uesoftmodem ... --zmq.[0].tx_channels tcp://127.0.0.1:2101 --zmq.[0].rx_channels tcp://127.0.0.1:2100 &
+timeout 75 nr-uesoftmodem ... --zmq.[0].tx_channels tcp://127.0.0.1:2201 --zmq.[0].rx_channels tcp://127.0.0.1:2200 &
+timeout 75 nr-uesoftmodem ... --zmq.[0].tx_channels tcp://127.0.0.1:2301 --zmq.[0].rx_channels tcp://127.0.0.1:2300 &
+sleep 3
+xvfb-run -a timeout 60 python3 ~/multi_ue_scenario.py
+```
+
+## 실측 (CU cap 30)
+
+- 정상 UE 3대(스톰 없음): 3대 모두 `Initial sync`, `SIB1 decoded`, `RRCSetupComplete`.
+  (같은 IMSI 3개라 NAS 등록은 경합해 해제됨.)
+- 공격 2대 + 증인 1대: 3대 모두 동기. 증인(정상 Msg5 경로)은 **28회 시도, 접속 0회**.
+  단 `attempt_end`가 전부 `no_msg4`였다. 즉 이번 실패는 CU 거부가 아니라 **RA 단계
+  실패**다. 공격 UE의 PRACH 부하로 증인의 RA가 먼저 무너진 것이다.
+
+## 다음 단계
+
+1. 공격 UE를 1대로 줄이고(RA 경합 완화) CU 포화는 유지되는지 확인. CU 30에서 1대
+   ~16회/s면 점유 42로 포화가 유지된다.
+2. `cell_cfg.prach`에 `total_nof_ra_preambles: 64`, `nof_ssb_per_ro: 1`,
+   `nof_cb_preambles_per_ssb: 64`를 넣어 PRACH 경합을 완화(공식 문서 권장).
+3. 그 상태에서 증인의 `actual_reach`가 `rrc_reject`로 바뀌는지 확인. 그것이 목표
+   (CU 과부하로 정상 UE 연결 불가)의 직접 증거다.
+
+## 참고
+
+- 공식 문서: https://docs.srsran.com/projects/project/en/latest/tutorials/source/srsUE/source/index.html
+- 플로우그래프 다운로드: `.../_downloads/0e089ea8fa3a22bf1eec673ab3dffd94/multi_ue_scenario.grc`

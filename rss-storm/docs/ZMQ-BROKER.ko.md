@@ -145,3 +145,13 @@ DU  RX: REQ connect 4557  UE TX: REP bind 4557
 - 다음 진단: 1) UE 첫 블록 이후 RX 폴 스레드 상태(요청 카운터/버퍼 수위),
   2) `zmq_rx_stream::receive`의 타임스탬프 전진 방식과 DU 블록 크기 관계,
   3) 필요하면 66c4641 방식(블록 통과)으로 되돌려 2 UE만 브로드캐스트로 확장.
+
+### 2026-10-29: 알려진 정상 버전(66c4641) 재검증
+
+- 66c4641(블록 통과 FIFO)로 되돌려 1 UE를 두 번(40초·55초) 실행했다.
+  두 번 모두 `Initial sync successful`(2회)와 `SIB1 decoded`, `4-Step CBRA` 시작까지
+  갔으나 `RA-Msg3 transmitted`가 0이었다.
+- 2026-10-28 저녁의 완전 접속(RRCSetupComplete·Registration·PDU)은 같은 구성에서
+  1회 성공한 것이다. 즉 **단일 UE 접속도 아직 재현율이 낮다**(3회 중 1회).
+- 원인 후보는 UL 샘플 축 정렬(첫 UL 블록의 DU 슬롯 오프셋)과 DU의 1초 REQ 타임아웃
+  사이의 경합이다. 성공/실패 로그의 차이를 다음 라운드에서 비교한다.

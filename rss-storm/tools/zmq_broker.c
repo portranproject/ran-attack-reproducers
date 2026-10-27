@@ -68,6 +68,12 @@ static int push(void *s, const void *b, size_t l) {
   int rc = zmq_msg_send(&m, s, 0); zmq_msg_close(&m); return rc < 0 ? -1 : 0;
 }
 static int req(void *s) { unsigned char d = 0; return push(s, &d, 1); }
+static int req_nb(void *s) {
+  zmq_msg_t m; zmq_msg_init_size(&m, 1);
+  memset(zmq_msg_data(&m), 0, 1);
+  int rc = zmq_msg_send(&m, s, ZMQ_DONTWAIT);
+  zmq_msg_close(&m); return rc < 0 ? -1 : 0;
+}
 static int rep_recv(void *s) { void *b = NULL; size_t l = 0;
   if (pull(s, &b, &l)) return -1; free(b); return 0; }
 
@@ -143,13 +149,12 @@ static int take_fixed(int i, unsigned char *out, size_t want) {
     }
     void *b = NULL; size_t l = 0;
     int ok = 0;
-    int blocking = (!seen_real && i == 0);
     if (ul_await[i]) {
-      ok = blocking ? (pull(ul_ue[i], &b, &l) == 0) : (pull_nb(ul_ue[i], &b, &l) == 0);
+      ok = (pull_nb(ul_ue[i], &b, &l) == 0);
       if (ok) ul_await[i] = 0;
     } else if (req(ul_ue[i]) == 0) {
       ul_await[i] = 1;
-      ok = blocking ? (pull(ul_ue[i], &b, &l) == 0) : (pull_nb(ul_ue[i], &b, &l) == 0);
+      ok = (pull_nb(ul_ue[i], &b, &l) == 0);
       if (ok) ul_await[i] = 0;
     }
     if (!ok) break;
@@ -163,10 +168,38 @@ static int take_fixed(int i, unsigned char *out, size_t want) {
   return (int)have;
 }
 
+/* Before the stream has started, ask every UE at once and wait briefly for
+   any reply. Blocking on UE 0 alone let one slow process stall the whole
+   uplink, and the DU's read times out after one second. */
+static void warm_first_uplink(int timeout_ms) {
+  zmq_pollitem_t items[MAX_UE];
+  int n = 0;
+  for (int i = 0; i < n_ue; i++) {
+    if (!ul_await[i]) ul_await[i] = (req_nb(ul_ue[i]) == 0);
+    items[n].socket = ul_ue[i]; items[n].fd = 0;
+    items[n].events = ZMQ_POLLIN; items[n].revents = 0;
+    n++;
+  }
+  if (zmq_poll(items, n, timeout_ms) <= 0) return;
+  for (int i = 0; i < n_ue; i++) {
+    if (!(items[i].revents & ZMQ_POLLIN)) continue;
+    void *b = NULL; size_t l = 0;
+    if (pull_nb(ul_ue[i], &b, &l) == 0) {
+      pend[i] = realloc(pend[i], pend_len[i] + l);
+      if (!pend[i]) { free(b); continue; }
+      memcpy(pend[i] + pend_len[i], b, l);
+      pend_len[i] += l;
+      free(b);
+      ul_await[i] = 0;
+    }
+  }
+}
+
 static void *ul_thread(void *arg) {
   (void)arg;
   while (!stop) {
     if (rep_recv(ul_du)) break;
+    if (!seen_real) warm_first_uplink(200);
     const size_t want_bytes = DEF_SAMPLES * sizeof(int16_t);
     int32_t acc[DEF_SAMPLES];
     memset(acc, 0, sizeof acc);

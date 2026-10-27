@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# rss-probe — run one experiment and measure the PROBE UE's data plane.
+#
+# Why this exists. Every availability number taken so far was a CONNECTION
+# number: "what fraction of the window did the probe hold an RRC context".
+# The goal condition is that a normal UE cannot connect AND cannot communicate,
+# and the second half was never measured. This pings the core data-network
+# gateway through the probe's own tunnel for the whole attack window, so a run
+# reports loss and RTT as well as connection time.
+#
+# The probe is UE instance 0 (PROBE_UES=1), which owns oaitun_ue1.
+#
+#   rss-probe -n <run_id> [any rss-run option...]
+#
+# ISOLATED LAB USE ONLY.
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOGDIR=${LOGDIR:-/root/rss-runs}
+GW=${GW:-10.45.1.1}              # core data-network gateway (ogstun)
+# Keep this light. At 50 pps of 1200-byte payload the measurement perturbs what
+# it measures: on 2026-10-26 the LOW-pressure control lost 97.98% of its packets
+# while the full-pressure run lost 7.6%, because the probe's own traffic starves
+# the ZMQ radio the attacker instances share with it. 5 pps of 64 bytes is about
+# 5 kbit/s and still resolves a blackout to 200 ms.
+PING_SIZE=${PING_SIZE:-64}
+PING_INTERVAL=${PING_INTERVAL:-0.2}
+IFACE=${IFACE:-oaitun_ue1}
+# Seconds to wait for the probe's tunnel. This clock starts when rss-run does,
+# and rss-run restarts the gNB first, which took 25 s of a 40 s budget on
+# 2026-10-26 and made an attached probe look like a blocked one. The wait also
+# ends as soon as the run ends, so a generous value costs nothing.
+ATTACH_WAIT=${ATTACH_WAIT:-150}
+
+RUN_ID=""
+args=()
+while (( $# )); do
+  case "$1" in
+    -n) RUN_ID="$2"; args+=(-n "$2"); shift 2;;
+    *)  args+=("$1"); shift;;
+  esac
+done
+[[ -n $RUN_ID ]] || { echo "rss-probe: -n <run_id> is required" >&2; exit 1; }
+
+# PROBE_UES is how the lab suite asks for the probe. rss-run also reads the
+# variable, but a conf that pins PROBE_UES=0 would win over the environment, so
+# pass it as -p too unless the caller already did.
+if (( ${PROBE_UES:-0} > 0 )); then
+  has_p=0
+  for a in "${args[@]:-}"; do [[ $a == -p ]] && has_p=1; done
+  (( has_p )) || args+=(-p "$PROBE_UES")
+fi
+
+OUT="$LOGDIR/$RUN_ID"
+RUNLOG="$LOGDIR/$RUN_ID.runlog"
+
+# The tunnel survives a previous run, so an address left over from one would be
+# mistaken for this probe attaching instantly. Drop it before we start.
+ip addr flush dev "$IFACE" 2>/dev/null || true
+
+"$HERE/rss-run" "${args[@]}" >"$RUNLOG" 2>&1 &
+RPID=$!
+
+# Wait for the probe to get an address. Report how long it took: that is the
+# attach latency under attack, which is itself part of "can a normal UE connect".
+t0=$(date +%s.%N)
+IP=""
+for _ in $(seq 1 $((ATTACH_WAIT * 10))); do
+  kill -0 $RPID 2>/dev/null || break
+  # `ip` exits 1 while the device is absent; with pipefail that would abort us.
+  IP=$(ip -4 -o addr show "$IFACE" 2>/dev/null | awk '{print $4}' | cut -d/ -f1 || true)
+  [[ -n $IP ]] && break
+  sleep 0.1
+done
+t1=$(date +%s.%N)
+
+mkdir -p -- "$OUT" 2>/dev/null || true
+if [[ -z $IP ]]; then
+  echo "{\"probe_attached\":false,\"attach_wait_s\":$ATTACH_WAIT}" > "$OUT/probe_data.json"
+  echo "rss-probe: probe never got an address on $IFACE"
+else
+  printf '{"probe_attached":true,"probe_ip":"%s","attach_s":%.3f,"gw":"%s","size":%d,"interval":%s}\n' \
+    "$IP" "$(echo "$t1 - $t0" | bc -l)" "$GW" "$PING_SIZE" "$PING_INTERVAL" > "$OUT/probe_data.json"
+  echo "rss-probe: probe $IP up after $(printf '%.2f' "$(echo "$t1 - $t0" | bc -l)") s — pinging $GW"
+  # -D timestamps every reply so the loss can be sliced by time afterwards.
+  # No -w: the ping ends when the UE process does, which is the exact window.
+  ping -D -n -I "$IFACE" -s "$PING_SIZE" -i "$PING_INTERVAL" "$GW" >"$OUT/probe_ping.txt" 2>&1 &
+  PPID_=$!
+fi
+
+wait $RPID || true
+[[ -n ${PPID_:-} ]] && { sleep 0.3; kill -INT $PPID_ 2>/dev/null || true; wait $PPID_ 2>/dev/null || true; }
+
+# gNB-side and NAS-side outcome of this run. Read-only: both lines are already
+# emitted at the gNB's configured log level.
+ODU_LOG=${ODU_LOG:-/tmp/odu.log}
+cr=$(grep -c 'ConRes CE ACKed' "$ODU_LOG" 2>/dev/null || true); cr=${cr:-0}
+dh=$(grep -c 'Maximum number of reTxs 4 exceeded' "$ODU_LOG" 2>/dev/null || true); dh=${dh:-0}
+sc=$(grep -c 'Generating RRCSetupComplete' "$OUT/ue.log" 2>/dev/null || true); sc=${sc:-0}
+ra=$(grep -c 'Registration Accept' "$OUT/ue.log" 2>/dev/null || true); ra=${ra:-0}
+pa=$(grep -c 'PDU Session Establishment Accept' "$OUT/ue.log" 2>/dev/null || true); pa=${pa:-0}
+printf '{"conres_ce_acked":%s,"dl_harq_maxretx_discard":%s,"rrc_setup_complete":%s,"registration_accept":%s,"pdu_accept":%s}\n' \
+  "$cr" "$dh" "$sc" "$ra" "$pa" > "$OUT/gnb_nas.json"
+
+tail -25 "$RUNLOG"
+echo "== gNB / NAS"
+cat "$OUT/gnb_nas.json"
+echo "== probe data plane"
+if [[ -s ${OUT}/probe_ping.txt ]]; then
+  tail -4 "$OUT/probe_ping.txt"
+else
+  echo "   (no ping output — probe never attached)"
+fi
+echo "== artifacts in $OUT  (probe_ping.txt, probe_data.json)"

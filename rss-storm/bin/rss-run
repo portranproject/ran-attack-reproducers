@@ -33,6 +33,8 @@ ACK_GATE=${ACK_GATE:-1}              # do not restart RA while the Msg4 ACK is p
 RA_GATE=${RA_GATE:-1}                # do not restart RA while one is in flight
 GATE_TIMEOUT_MS=${GATE_TIMEOUT_MS:-500}
 MSG4_WAIT=${MSG4_WAIT:-1}            # 1 = A-type. 0 produces no gNB load, see README.en.md
+PROBE_UES=${PROBE_UES:-0}            # instances 0..N-1 connect normally (the victim measurement)
+PROBE_DELAY_MS=${PROBE_DELAY_MS:-0}  # probe waits this long before its first attach
 RUN_ID=${RUN_ID:-}
 
 # ---- radio / UE sharing (environment knobs read by the patched UE) ----------
@@ -77,6 +79,8 @@ usage: $0 [options]
   -g 0|1   Msg4 HARQ ACK gate                (ACK_GATE, now $ACK_GATE)
   -G 0|1   random access gate                (RA_GATE, now $RA_GATE)
   -M 0|1   wait for Msg4 (keep 1)            (MSG4_WAIT, now $MSG4_WAIT)
+  -p N     normal-UE probes, instances 0..N-1 (PROBE_UES, now $PROBE_UES)
+  -t MS    probe's first attach delay        (PROBE_DELAY_MS, now $PROBE_DELAY_MS)
   -n ID    run id                            (RUN_ID)
   -h       this help
 Every option has an environment variable of the same name; conf/rss.conf sets
@@ -85,18 +89,32 @@ EOF
   exit "${1:-1}"
 }
 
-while getopts "e:u:i:d:o:H:c:r:g:G:M:n:h" opt; do case "$opt" in
+while getopts "e:u:i:d:o:H:c:r:g:G:M:p:t:n:h" opt; do case "$opt" in
   e) ENABLE=$OPTARG;; u) NUM_UES=$OPTARG;; i) INTERVAL_MS=$OPTARG;;
   d) MAX_DURATION_S=$OPTARG;; o) TARGET_OCCUPANCY=$OPTARG;; H) HOLD_MS=$OPTARG;;
   c) COMPLETION_PCT=$OPTARG;; r) HONOR_REJECT=$OPTARG;; g) ACK_GATE=$OPTARG;;
-  G) RA_GATE=$OPTARG;; M) MSG4_WAIT=$OPTARG;; n) RUN_ID=$OPTARG;;
+  G) RA_GATE=$OPTARG;; M) MSG4_WAIT=$OPTARG;; p) PROBE_UES=$OPTARG;;
+  t) PROBE_DELAY_MS=$OPTARG;; n) RUN_ID=$OPTARG;;
   h) usage 0;; *) usage;;
 esac; done
 
 [[ $ENABLE == 0 || $ENABLE == 1 ]] || { echo "-e must be 0 or 1" >&2; exit 1; }
 (( NUM_UES >= 1 )) || { echo "-u must be >= 1" >&2; exit 1; }
+(( PROBE_UES >= 0 && PROBE_UES <= NUM_UES )) || { echo "-p must be 0..-u ($NUM_UES)" >&2; exit 1; }
+(( PROBE_DELAY_MS >= 0 )) || { echo "-t must be >= 0" >&2; exit 1; }
 (( MAX_DURATION_S >= 0 && MAX_DURATION_S <= 86400 )) || { echo "-d must be 0..86400" >&2; exit 1; }
 [[ -x $UE_BIN ]] || { echo "UE binary not found: $UE_BIN  (run bin/rss-build first)" >&2; exit 1; }
+
+# A probe connects normally and then goes idle, so it never joins the shared
+# radio's lockstep batch. Counting it there makes every batch wait for it and
+# collapses the storm (measured 2026-10-26: 2,127 attempts without a probe vs 80
+# with one). Count only the instances that actually storm, unless every instance
+# is a probe.
+SHARE_NUE=$NUM_UES
+if (( PROBE_UES > 0 && NUM_UES > PROBE_UES )); then
+  SHARE_NUE=$((NUM_UES - PROBE_UES))
+  export RSS_SHARE_NUE=$SHARE_NUE
+fi
 
 if [[ -z $RUN_ID ]]; then
   RUN_ID="$([[ $ENABLE == 1 ]] && echo A || echo base)u$NUM_UES-$(date -u +%Y%m%dT%H%M%SZ)"
@@ -131,13 +149,16 @@ cat > "$OUT/run.json" <<EOF
           "max_duration_s":$MAX_DURATION_S,"target_occupancy":$TARGET_OCCUPANCY,
           "hold_ms":$HOLD_MS,"completion_pct":$COMPLETION_PCT,
           "honor_reject":$HONOR_REJECT,"ack_gate":$ACK_GATE,"ra_gate":$RA_GATE,
-          "gate_timeout_ms":$GATE_TIMEOUT_MS,"msg4_wait":$MSG4_WAIT},
+          "gate_timeout_ms":$GATE_TIMEOUT_MS,"msg4_wait":$MSG4_WAIT,
+           "probe_ues":$PROBE_UES,"probe_delay_ms":$PROBE_DELAY_MS},
  "radio":{"zmq_tx_wait_us":$RSS_ZMQ_TX_WAIT_US,"share_lockstep":$RSS_SHARE_LOCKSTEP,
+           "share_nue":$SHARE_NUE,
           "share_wr_monotonic":$RSS_SHARE_WR_MONOTONIC},
  "t_start_utc":"$(date -u +%FT%TZ)"}
 EOF
 
 echo "== $RUN_ID  attack=$ENABLE ue=$NUM_UES interval=${INTERVAL_MS}ms target_occ=$TARGET_OCCUPANCY kill=${MAX_DURATION_S}s"
+(( PROBE_UES > 0 )) && echo "   probe: $PROBE_UES normal UE(s), first attach at ${PROBE_DELAY_MS} ms, storm shares n_ue=$SHARE_NUE"
 
 # 1. restart the gNB together with the UE. NOTE: never pipe this command. A
 #    pipeline can block forever because the pipe's write end stays open after
@@ -174,6 +195,7 @@ ARGS=(-O "$UE_CFG" --band "$BAND" -C "$DL_FREQ" --numerology "$NUMEROLOGY" -r "$
       --rss.ra_gate "$RA_GATE" --rss.gate_timeout_ms "$GATE_TIMEOUT_MS"
       --rss.target_occupancy "$TARGET_OCCUPANCY" --rss.hold_ms "$HOLD_MS"
       --rss.msg4_wait "$MSG4_WAIT"
+      --rss.probe_ues "$PROBE_UES" --rss.probe_delay_ms "$PROBE_DELAY_MS"
       --rss.run_id "$RUN_ID" --rss.log_file "$JSONL" "${EXTRA[@]}")
 
 echo "== launching UE (log: $UE_LOG)"

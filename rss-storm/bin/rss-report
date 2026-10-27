@@ -54,6 +54,9 @@ if [[ -n $JSONL ]]; then
   echo
   echo "== UE side ($JSONL; whole file, not filtered by --since/--until)"
   python3 "$HERE/analysis/attempt_phases.py" "$JSONL"
+  echo
+  echo "== normal-UE probe (-p)"
+  python3 "$HERE/analysis/probe_summary.py" "$JSONL"
 fi
 
 echo

@@ -60,3 +60,26 @@ xvfb-run -a timeout 60 python3 ~/multi_ue_scenario.py
 
 - 공식 문서: https://docs.srsran.com/projects/project/en/latest/tutorials/source/srsUE/source/index.html
 - 플로우그래프 다운로드: `.../_downloads/0e089ea8fa3a22bf1eec673ab3dffd94/multi_ue_scenario.grc`
+
+## 2026-10-29 추가 실측: RA 단계에서 막힘
+
+- 공격 1대 + 증인 1대 + 유휴 UE 1대(총 3)로 CU 30에서 60초 실행.
+- 3대 모두 `Initial sync`까지 성공. 그러나 **유휴 UE까지 포함해 전원이
+  `RRCSetupComplete`에 도달하지 못했다.** 증인은 19회 시도, 전부 `no_msg4`.
+- 공격 UE도 3~5회 시도에 그쳤다. 즉 공격 강도 이전에, 브로커를 경유한 상태에서
+  RA(Msg3/Msg4)가 안정적으로 성립하지 않는다.
+- 같은 구성의 초기 스모크 테스트(정상 UE 3대)에서는 3대 모두 `RRCSetupComplete`가
+  나왔다. 즉 **간헐적으로 성립하지만 안정적이지 않다.**
+
+### 원인 후보
+
+- 플로우그래프의 `blocks_throttle`+`slow_down_ratio`(기본 4)가 샘플을 1/4 속도로
+  흘린다. srsUE는 이에 맞춰 설계됐지만, OAI UE의 PHY/타이밍은 실시간 샘플을
+  전제로 해서 UL 타이밍이 어긋날 수 있다.
+- 다음 시도: `slow_down_ratio`를 1로 두고(스로틀 제거 효과) 같은 실험을 반복한다.
+
+### 다음 단계
+
+1. `slow_down_ratio=1`로 변경해 RA 성립 여부 확인.
+2. 성립하면 공격 1대 + 증인 1대로 CU 거부(`actual_reach=rrc_reject`) 확인.
+3. 계속 불안정하면 공식 브로커는 srsUE 전제임을 인정하고, 좁은 증거로 마무리.

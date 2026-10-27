@@ -46,12 +46,22 @@ DU  RX: REQ connect 4557  UE TX: REP bind 4557
 ## 현재 상태 (2026-10-28)
 
 - 빌드: `gcc -O2 -pthread -o /root/zmq_broker tools/zmq_broker.c -lzmq`
-- 단일 UE로 DU와 동기 획득까지 확인: `Initial sync successful, PCI: 1`,
-  RF overflow 0, UL 약 2,000블록/s(0.5 ms/블록).
-- 아직 접속(RRCSetupComplete/Registration/PDU)에는 도달하지 못했다. 50초 로그에서
-  초기 동기 2회, 재동기 2회, `RA-Msg3 transmitted` 0회.
-- 추정 원인: DL 배포가 UE 요청 시점과 어긋나 SIB 디코딩이 진행되지 못함. DL 서버를
-  별도 스레드로 분리하고 큐 수위·블록 크기를 맞추는 작업이 남았다.
+- DL 경로 동작 확인: UE가 브로커를 통해 `Initial sync successful, PCI: 1`을 얻고
+  **`SIB1 decoded`까지 성공**했다. RF overflow 0, UL 페이싱 약 2,000블록/s.
+- UE 로그로 확인한 배선: `TX socket ... bound to 4600`, `RX socket ... connected to 4601`.
+- 막힌 곳: UE가 브로커로 상향 블록을 전혀 내보내지 않는다(`used_ue=0`, 5초 대기로도).
+  그래서 `RA-Msg3 transmitted`가 0이고 접속으로 진행하지 못한다.
+- 회귀 하나 기록: DL fetch를 소비자 속도로 조절하면 DU의 TX 큐가 넘쳐 RF overflow가
+  386만 회 발생했다. DU는 계속 당겨야 하고, 버퍼(1024블록)로 흡수해야 한다.
+
+## 다음 진단
+
+1. 브로커의 UE별 요청/응답 카운터를 찍어, UE의 `zmq_tx_channel`이 요청을 받고도
+   응답하지 않는지(데이터 없음) 아니면 요청 자체가 전달되지 않는지 구분한다.
+2. UE 쪽에서 RA 시작 여부(`Initialization of 4-Step CBRA procedure`)와 PRACH 송신을
+   확인한다. SIB1 이후 RA가 시작되지 않으면 RRC idle 진입 문제를 본다.
+3. UE의 REP가 "데이터가 있을 때만" 응답한다면, 브로커는 요청을 보낸 채 기다리는
+   대신 UE가 실제로 송신하는 슬롯에만 요청하도록 바꾼다.
 
 ## 다음 단계
 

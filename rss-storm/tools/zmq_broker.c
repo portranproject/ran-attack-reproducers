@@ -34,6 +34,7 @@ static void *dl_du, *ul_du, *dl_ue[MAX_UE], *ul_ue[MAX_UE];
 static volatile int stop;
 static long dl_rounds, ul_rounds;
 static int ul_await[MAX_UE];
+static int seen_real;
 
 static void *ring[RING]; static size_t rlen[RING];
 static int r_head, r_cnt;
@@ -125,12 +126,17 @@ static int take_fixed(int i, unsigned char *out, size_t want) {
     }
     void *b = NULL; size_t l = 0;
     int ok = 0;
+    /* Before any UE has produced uplink, wait for the first one: replying
+       silence first shifts the sample axis and PRACH lands outside the DU
+       window. After the stream has started, a UE with nothing in this slot
+       contributes silence, which is what the air would carry. */
+    int blocking = (!seen_real && i == 0);
     if (ul_await[i]) {
-      ok = (pull_nb(ul_ue[i], &b, &l) == 0);
+      ok = blocking ? (pull(ul_ue[i], &b, &l) == 0) : (pull_nb(ul_ue[i], &b, &l) == 0);
       if (ok) ul_await[i] = 0;
     } else if (req(ul_ue[i]) == 0) {
       ul_await[i] = 1;
-      ok = (pull_nb(ul_ue[i], &b, &l) == 0);
+      ok = blocking ? (pull(ul_ue[i], &b, &l) == 0) : (pull_nb(ul_ue[i], &b, &l) == 0);
       if (ok) ul_await[i] = 0;
     }
     if (!ok) break;
@@ -157,6 +163,7 @@ static void *ul_thread(void *arg) {
       int got_bytes = take_fixed(i, buf, want_bytes);
       if (got_bytes > 0) {
         used_ue = 1;
+        seen_real = 1;
         const int16_t *sv = (const int16_t *)buf;
         size_t m = (size_t)got_bytes / sizeof(int16_t);
         for (size_t j = 0; j < m; j++) acc[j] += sv[j];
@@ -221,7 +228,7 @@ int main(int argc, char **argv) {
     dl_ue[i] = zmq_socket(ctx, ZMQ_REP);
     snprintf(ep, sizeof ep, "tcp://127.0.0.1:%d", base + 2 * i + 1);
     if (zmq_bind(dl_ue[i], ep)) { perror("bind dl_ue"); return 1; }
-    int t = 5000;   /* UE may need seconds before its first uplink block */
+    int t = -1;     /* block until the UE supplies the first block */
     zmq_setsockopt(ul_ue[i], ZMQ_RCVTIMEO, &t, sizeof t);
     t = 200;
     zmq_setsockopt(dl_ue[i], ZMQ_RCVTIMEO, &t, sizeof t);

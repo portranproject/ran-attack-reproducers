@@ -65,6 +65,17 @@ DU  RX: REQ connect 4557  UE TX: REP bind 4557
 - 진행: UE가 `SIB1 decoded` → `4-Step CBRA procedure` 시작까지 도달했다.
   아직 `RA-Msg3 transmitted`가 0이고 접속 전에 재동기한다.
 
+### 2026-10-28 저녁: 단일 UE 완전 접속 성공
+
+- UE별 미결 요청 상태와 11520샘플 절단에 더해, **첫 실제 상향 블록이 나올 때까지
+  DU에 응답하지 않도록** 고쳤다. 무음을 먼저 보내면 샘플 축이 밀려 PRACH가 DU 창을
+  벗어나던 문제다. 스트림이 시작된 뒤에는 슬롯마다 무음(0)을 더한다.
+- 결과(1 UE): `Initial sync successful` → `RRCSetupComplete` → `Registration Accept`
+  → `PDU Session Establishment Accept`, UE IPv4 10.45.1.2. RF overflow 0.
+  브로커 경유로 정상 UE가 완전히 접속한 첫 사례다.
+- 결과(2 UE): 두 UE 모두 동기 획득(sync=1)했고 상향도 흐르지만, Msg3 전에 두 프로세스가
+  모두 SIGSEGV로 종료됐다. 원인 미확정. 다음 라운드에서 gdb로 백트레이스를 잡는다.
+
 ### 남은 문제 (추정)
 
 - UL 스트림 정렬. UE가 첫 블록을 내기 전에 브로커가 무음을 넣으면, 그 무음이

@@ -47,5 +47,16 @@ SIGSEGV는 0회였다. 거부 상태에서의 생존 검증은 X5-r19 결과로 
 | CU 포화 | 90 이하(실측 30·15) | 96(기본) | CU admission limit | 검증 진행 |
 | DU 포화 | 8192(기본) | 96(기본) | DU 컨텍스트/RA 자원 | 다음 단계 |
 
-CU 포화 프로파일은 `cu.yaml`의 `max_nof_ues`만 바꾼다. DU 포화 프로파일은 CU를 기본값으로
-되돌리고, 공격 UE를 2개 이상으로 올려 DU 용량 96을 채운다.
+전환은 CU 호스트에서 `bin/rss-gnb-profile`로 한다. CU 설정만 만지고 OCUDU 소스는 건드리지 않는다.
+
+```
+# CU 포화 (CU admission limit이 먼저 걸림). 90 이하만 허용된다.
+bin/rss-gnb-profile --role cu cap 90      # 또는 30, 15
+bin/rss-gnb-profile --role cu cap show    # 현재 값 확인
+
+# DU 포화 (CU는 기본 8192, DU 용량 96이 먼저 걸림)
+bin/rss-gnb-profile --role cu cap default
+```
+
+DU 용량은 `du.yaml` 기본값 그대로 둔다(부팅 로그의 `Capacity: 96`). DU 포화 버전에서는
+공격 UE를 2개 이상으로 올려 96개 컨텍스트를 채운다. 두 버전 모두 재시작 후 적용된다.

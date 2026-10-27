@@ -36,9 +36,10 @@ CFGDIR=${CFGDIR:-/root/OCUDU/configs}
 while [[ $# -gt 0 ]]; do case "$1" in
   --role) ROLE="$2"; shift 2;;
   apply|restore|show) ACTION="$1"; shift;;
-  *) echo "usage: $0 --role cu|du apply|restore|show"; exit 1;;
+  cap) ACTION=cap; CAP="${2:-}"; shift; [[ -n $CAP ]] && shift;;
+  *) echo "usage: $0 --role cu|du apply|restore|show | --role cu cap <1..90|default|show>"; exit 1;;
 esac; done
-[[ -n "$ROLE" && -n "${ACTION:-}" ]] || { echo "usage: $0 --role cu|du apply|restore|show"; exit 1; }
+[[ -n "$ROLE" && -n "${ACTION:-}" ]] || { echo "usage: $0 --role cu|du apply|restore|show | --role cu cap <1..90|default|show>"; exit 1; }
 
 case "$ROLE" in
   du) F="$CFGDIR/du.yaml";;
@@ -111,5 +112,29 @@ PY
     fi
     echo "== applied to $F"; sed -n '1,30p' "$F"
     echo "   verify with:  $0 --role $ROLE show   (then restart the gNB)"
+    ;;
+  cap)
+    # Two saturation profiles share this knob:
+    #   cap 1..90  -> CU admission limit binds first (DU cell keeps its capacity)
+    #   cap default-> CU back to 8192, so the DU's own capacity (96) binds first
+    [[ $ROLE == cu ]] || { echo "cap edits the CU config only"; exit 1; }
+    if [[ $CAP == show ]]; then grep -n 'max_nof_ues' "$F" || echo "  (no max_nof_ues)"; exit 0; fi
+    if [[ $CAP == default ]]; then N=8192
+    else
+      [[ $CAP =~ ^[0-9]+$ ]] && (( CAP >= 1 && CAP <= 90 )) \
+        || { echo "cap must be 1..90 or default (approved profile: 90 or lower)" >&2; exit 1; }
+      N=$CAP
+    fi
+    python3 - "$F" "$N" <<'PY'
+import re, sys
+p, n = sys.argv[1], sys.argv[2]
+s = open(p).read()
+new, hits = re.subn(r'(?m)^(\s*max_nof_ues:\s*)\d+', lambda m: m.group(1) + n, s)
+if hits != 1:
+    raise SystemExit(f"max_nof_ues not found exactly once in {p} (hits={hits})")
+open(p, "w").write(new)
+PY
+    echo "== $F now:"; grep -n 'max_nof_ues' "$F"
+    echo "   CU profile: restart the CU; DU profile: leave du.yaml at its shipped capacity (96)"
     ;;
 esac

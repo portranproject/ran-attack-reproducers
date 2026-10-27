@@ -36,7 +36,8 @@ static long dl_rounds, ul_rounds;
 static int ul_await[MAX_UE];      /* request outstanding per UE */
 static int seen_real;              /* at least one UE supplied uplink */
 
-#define SLOT_BYTES (11520 * sizeof(int16_t))
+#define SLOT_BYTES (11520 * sizeof(int16_t))      /* uplink reply size */
+#define DL_SLOT_BYTES (46080 * sizeof(int16_t))   /* UE downlink read size */
 #define RING_BYTES (16u << 20)
 static unsigned char *rbuf;        /* downlink byte history, broadcast */
 static uint64_t w_off;             /* bytes appended so far */
@@ -88,7 +89,7 @@ static void *dl_fetch(void *arg) {
   (void)arg;
   while (!stop) {
     pthread_mutex_lock(&r_mtx);
-    while (!stop && w_off - slowest_reader() >= RING_BYTES - 4 * SLOT_BYTES)
+    while (!stop && w_off - slowest_reader() >= RING_BYTES - 4 * DL_SLOT_BYTES)
       pthread_cond_wait(&r_cv, &r_mtx);
     pthread_mutex_unlock(&r_mtx);
     if (stop) break;
@@ -98,6 +99,7 @@ static void *dl_fetch(void *arg) {
     const unsigned char *p = (const unsigned char *)blk;
     for (size_t o = 0; o < bl; o++) rbuf[(w_off + o) % RING_BYTES] = p[o];
     w_off += bl;
+    if (dl_rounds < 5) fprintf(stderr, "[broker] dl#%ld bl=%zu w_off=%llu\n", dl_rounds, bl, (unsigned long long)w_off);
     pthread_cond_broadcast(&r_cv);
     pthread_mutex_unlock(&r_mtx);
     free(blk);
@@ -111,7 +113,7 @@ static void *dl_fetch(void *arg) {
 struct serve_arg { int i; };
 static void *dl_serve(void *arg) {
   int i = ((struct serve_arg *)arg)->i;
-  static unsigned char out[MAX_UE][SLOT_BYTES];  /* one buffer per UE thread */
+  static unsigned char out[MAX_UE][DL_SLOT_BYTES];  /* one buffer per UE thread */
   while (!stop) {
     if (rep_recv(dl_ue[i])) {                        /* UE asks for a block */
       if (stop) return NULL;
@@ -120,14 +122,15 @@ static void *dl_serve(void *arg) {
     pthread_mutex_lock(&r_mtx);
     ue_started[i] = 1;
     uint64_t pos = r_off[i];
-    while (!stop && pos + SLOT_BYTES > w_off) pthread_cond_wait(&r_cv, &r_mtx);
+    while (!stop && pos + DL_SLOT_BYTES > w_off) pthread_cond_wait(&r_cv, &r_mtx);
     if (stop) { pthread_mutex_unlock(&r_mtx); return NULL; }
-    if (pos + RING_BYTES < w_off) pos = w_off - SLOT_BYTES;   /* too far behind */
-    for (size_t o = 0; o < SLOT_BYTES; o++) out[i][o] = rbuf[(pos + o) % RING_BYTES];
-    r_off[i] = pos + SLOT_BYTES;
+    if (pos + RING_BYTES < w_off) pos = w_off - DL_SLOT_BYTES;   /* too far behind */
+    for (size_t o = 0; o < DL_SLOT_BYTES; o++) out[i][o] = rbuf[(pos + o) % RING_BYTES];
+    r_off[i] = pos + DL_SLOT_BYTES;
     pthread_cond_broadcast(&r_cv);
     pthread_mutex_unlock(&r_mtx);
-    if (push(dl_ue[i], out[i], SLOT_BYTES)) return NULL;
+    if (r_off[i] < 5 * DL_SLOT_BYTES) fprintf(stderr, "[broker] serve ue%d pos=%llu w_off=%llu\n", i, (unsigned long long)pos, (unsigned long long)w_off);
+    if (push(dl_ue[i], out[i], DL_SLOT_BYTES)) return NULL;
   }
   return NULL;
 }
@@ -180,7 +183,9 @@ static void warm_first_uplink(int timeout_ms) {
     items[n].events = ZMQ_POLLIN; items[n].revents = 0;
     n++;
   }
-  if (zmq_poll(items, n, timeout_ms) <= 0) return;
+  int pr = zmq_poll(items, n, timeout_ms);
+  fprintf(stderr, "[broker] warm poll=%d\n", pr);
+  if (pr <= 0) return;
   for (int i = 0; i < n_ue; i++) {
     if (!(items[i].revents & ZMQ_POLLIN)) continue;
     void *b = NULL; size_t l = 0;
@@ -199,7 +204,8 @@ static void *ul_thread(void *arg) {
   (void)arg;
   while (!stop) {
     if (rep_recv(ul_du)) break;
-    if (!seen_real) warm_first_uplink(200);
+    static int warmed;
+    if (!seen_real && !warmed) { warmed = 1; warm_first_uplink(200); }
     const size_t want_bytes = DEF_SAMPLES * sizeof(int16_t);
     int32_t acc[DEF_SAMPLES];
     memset(acc, 0, sizeof acc);

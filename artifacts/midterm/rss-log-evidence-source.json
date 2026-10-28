@@ -1,0 +1,36 @@
+{
+  "source": "tool/runs/ocu-saturation-window.log",
+  "source_sha256": "33988b6c4211e956c0f174d0aa9340053f18aef02f6c621caf911e4639a42552",
+  "note": "Read-only rendering of preserved testbed logs. Not a live terminal capture. Original lines unchanged.",
+  "blocks": [
+    {
+      "title": "접속 절차 시작",
+      "line_numbers": [
+        1
+      ],
+      "records": [
+        "2026-10-19T22:03:31.124655 [RRC     ] [I] ue=7 c-rnti=0x4601: \"RRC Setup Procedure\" started..."
+      ]
+    },
+    {
+      "title": "완료 대기 시간 초과",
+      "line_numbers": [
+        28
+      ],
+      "records": [
+        "2026-10-19T22:03:38.123679 [RRC     ] [W] ue=7 c-rnti=0x4601: \"RRC Setup Procedure\" timed out after 7000ms"
+      ]
+    },
+    {
+      "title": "추가 접속 거절",
+      "line_numbers": [
+        13,
+        14
+      ],
+      "records": [
+        "2026-10-19T22:03:32.616990 [RRC     ] [W] ue=19 c-rnti=0x460d: Sending rrcReject. Cause: DU is not able to serve the UE",
+        "2026-10-19T22:03:32.617015 [RRC     ] [D] ue=19 c-rnti=0x460d: Tx SRB0 CCCH DL rrcReject (1 B)"
+      ]
+    }
+  ]
+}

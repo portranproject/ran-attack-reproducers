@@ -1,0 +1,7 @@
+/root/OCUDU/lib/cu_cp/ue_manager/ue_manager_impl.cpp:28:  max_nof_ues(cfg.max_nof_ues),
+/root/OCUDU/lib/cu_cp/ue_manager/ue_manager_impl.cpp:68:bool ue_manager::ue_admission_limit_reached() const
+/root/OCUDU/lib/cu_cp/ue_manager/ue_manager_impl.cpp:70:  return ues.size() > max_nof_ues;
+/root/OCUDU/lib/cu_cp/ue_manager/ue_manager_impl.cpp:454:  if (short_i_rnti_to_ue_index.size() == max_nof_ues or full_i_rnti_to_ue_index.size() == max_nof_ues) {
+/root/OCUDU/lib/cu_cp/du_processor/du_processor_impl.cpp:595:    if (ue_mng.ue_admission_limit_reached()) {
+/root/OCUDU/apps/units/o_cu_cp/cu_cp/cu_cp_unit_config.h:521:  uint16_t max_nof_dus = 6;
+/root/OCUDU/apps/units/o_cu_cp/cu_cp/cu_cp_unit_config.h:525:  uint32_t max_nof_ues = 8192;

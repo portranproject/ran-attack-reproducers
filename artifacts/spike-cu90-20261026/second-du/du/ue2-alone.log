@@ -1,0 +1,2346 @@
+CMDLINE: "./nr-uesoftmodem" "-O" "/root/oai_nrue.conf" "--band" "78" "-C" "3489420000" "--numerology" "1" "-r" "51" "-E" "--ue-scan-carrier" "--uecap_file" "/root/OAI/targets/PROJECTS/GENERIC-NR-5GC/CONF/uecap_ports1.xml" "--device.name" "oai_zmqdevif" "--zmq.[0].tx_channels" "tcp://127.0.0.1:4559" "--zmq.[0].rx_channels" "tcp://127.0.0.1:4558" 
+[CONFIG] function config_libconfig_init returned 0
+[UTIL]   running in SA mode (no --phy-test, --do-ra, --nsa option present)
+[0m[UTIL]   threadCreate() for Tpool0_-1: creating thread with affinity ffffffff, priority 97
+[0m[UTIL]   threadCreate() for Tpool1_-1: creating thread with affinity ffffffff, priority 97
+[0m[UTIL]   threadCreate() for Tpool2_-1: creating thread with affinity ffffffff, priority 97
+[0m[UTIL]   threadCreate() for Tpool3_-1: creating thread with affinity ffffffff, priority 97
+[0m[UTIL]   threadCreate() for Tpool4_-1: creating thread with affinity ffffffff, priority 97
+[0m[UTIL]   threadCreate() for Tpool5_-1: creating thread with affinity ffffffff, priority 97
+[0m[UTIL]   threadCreate() for Tpool6_-1: creating thread with affinity ffffffff, priority 97
+[0m[UTIL]   threadCreate() for Tpool7_-1: creating thread with affinity ffffffff, priority 97
+[0m[OPT]    OPT disabled
+[0m[HW]     Version: Branch: HEAD Abrev. Hash: 1c2f4d3 Date: Sun Sep 20 13:52:16 2026 +0200
+[0m[NR_RRC] create TASK_RRC_NRUE 
+[0m[UTIL]   threadCreate() for TASK_RRC_NRUE: creating thread with affinity ffffffff, priority 50
+[0m[UTIL]   threadCreate() for TASK_NAS_NRUE: creating thread with affinity ffffffff, priority 50
+[0m[SIM]    UICC simulation: IMSI=001010123456780, IMEISV=6754567890123413, Ki=00112233445566778899aabbccddeeff, OPc=63bfa50ee6523365ff14c1f45f88737d
+[0m[SIM]    overriding potential uicc0.dnn/nssai_sst/nssai_sd from uicc0.pdu_sessions
+[0m[SIM]    will request PDU session ID 1, type 1, DNN internet, NSSAI 1.ffffff
+[0m[NR_MAC] [UE 0] RA pipelining depth 1
+[0m[NR_MAC] [UE0] Initializing MAC
+[0m[NR_MAC] Initializing dl and ul config_request. num_slots = 20
+[0m[RLC]    Activated srb0 for UE 0
+[0m[UTIL]   threadCreate() for timer thread: creating thread with affinity ffffffff, priority 2
+[0m[UTIL]   threadCreate() for time source realtime: creating thread with affinity ffffffff, priority 2
+[0m[UTIL]   time manager configuration: [time source: reatime] [mode: standalone] [server IP: 127.0.0.1} [server port: 7374] (server IP/port not used)
+[0m[PHY]    Set UE nb_rx_antenna 1, nb_tx_antenna 1, threequarter_fs 1, ofdm_offset_divisor 8
+[0m[PHY]    SA init parameters. DL freq 3489420000 UL offset 0 SSB numerology 1 N_RB_DL 51
+[0m[PHY]    Init: N_RB_DL 51, first_carrier_offset 462, nb_prefix_samples 54,nb_prefix_samples0 66, ofdm_symbol_size 768
+[0m[93m[PHY]    samples_per_subframe 23040/per second 23040000, wCP 21504
+[0m[PHY]    Set UE_fo_compensation 0, UE_scan_carrier 1, UE_no_timing_correction 0 
+, chest-freq 0, chest-time 0
+[0m[UTIL]   threadCreate() for SYNC__actor: creating thread with affinity ffffffff, priority 97
+[0m[UTIL]   threadCreate() for DL__actor: creating thread with affinity ffffffff, priority 97
+[0m[UTIL]   threadCreate() for DL__actor: creating thread with affinity ffffffff, priority 97
+[0m[UTIL]   threadCreate() for DL__actor: creating thread with affinity ffffffff, priority 97
+[0m[UTIL]   threadCreate() for DL__actor: creating thread with affinity ffffffff, priority 97
+[0m[UTIL]   threadCreate() for UL__actor: creating thread with affinity ffffffff, priority 97
+[0m[UTIL]   threadCreate() for UL__actor: creating thread with affinity ffffffff, priority 97
+[0m[PHY]    Initializing UE vars for gNB TXant 1, UE RXant 1
+[0m[PHY]    prs_config configuration NOT found..!! Skipped configuring UE for the PRS reception
+[0m[PHY]    HW: Configuring ru_id 0, sample_rate 23040000.000000, tx/rx num_channels 1/1, duplex_mode TDD
+[0m[PHY]    HW: Configuring channel 0 (rf_chain 0): setting tx_freq 3489420000 Hz, rx_freq 3489420000 Hz, tune_offset 0
+[0m[PHY]    HW: Configuring channel 0 (rf_chain 0): setting tx_gain 0, rx_gain 110
+[0m[UTIL]   threadCreate() for ru_start_thread: creating thread with affinity ffffffff, priority 97
+[0m[HW]     [ZMQ] tx_antennas: 1, rx_antennas: 1
+[0m[HW]     [ZMQ] TX socket for antenna 0 bound to tcp://127.0.0.1:4559
+[0m[HW]     [ZMQ] RX socket for antenna 0 connected to tcp://127.0.0.1:4558
+[0m[HW]     [RAU] has loaded RFSIMULATOR device.
+[0m[PHY]    Intializing UE Threads for instance 0 ...
+[0m[UTIL]   threadCreate() for UEthread_0: creating thread with affinity ffffffff, priority 97
+[0m[UTIL]   threadCreate() for L1_UE_stats_0: creating thread with affinity ffffffff, priority 1
+[0mTYPE <CTRL-C> TO TERMINATE
+[93m[PHY]    UE set to scan all GSCN in current bandwidth
+[0m[93m[NR_PHY] Starting sync detection
+[0m[PHY]    [UE thread Synch] Running Initial Synch 
+[0m[NR_PHY] Starting cell search with center freq: 3489420000, bandwidth: 51. Scanning for 8 number of GSCN.
+[0m[NR_PHY] Scanning GSCN: 7835, with SSB offset: 0, SSB Freq: 3483840000.000000
+[0m[NR_PHY] Scanning GSCN: 7836, with SSB offset: 48, SSB Freq: 3485280000.000000
+[0m[NR_PHY] Scanning GSCN: 7837, with SSB offset: 96, SSB Freq: 3486720000.000000
+[0m[NR_PHY] Scanning GSCN: 7838, with SSB offset: 144, SSB Freq: 3488160000.000000
+[0m[NR_PHY] Scanning GSCN: 7839, with SSB offset: 192, SSB Freq: 3489600000.000000
+[0m[NR_PHY] Scanning GSCN: 7840, with SSB offset: 240, SSB Freq: 3491040000.000000
+[0m[NR_PHY] Scanning GSCN: 7841, with SSB offset: 288, SSB Freq: 3492480000.000000
+[0m[NR_PHY] Scanning GSCN: 7842, with SSB offset: 336, SSB Freq: 3493920000.000000
+[0m[32m[PHY]    Initial sync: pbch decoded sucessfully, ssb index 0
+[0m[PHY]    pbch rx ok. rsrp:67 dB/RE, adjust_rxgain:-17 dB
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[93m[PHY]    Initial sync: pbch not decoded, ssb index 0
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[93m[PHY]    SSS detection on a null signal skipping it
+[0m[NR_PHY] Cell Detected with GSCN: 7835, SSB SC offset: 0, SSB Ref: 3483840000.000000, PSS Corr peak: 107 dB, PSS Corr Average: 71
+[0m[PHY]    [UE0] In synch, rx_offset 302 samples
+[0m[PHY]    [UE 0] Measured Carrier Frequency offset 0 Hz
+[0m[32m[PHY]    Initial sync successful, PCI: 2
+[0m[PHY]    HW: Configuring channel 0 (rf_chain 0): setting tx_freq 3489420000 Hz, rx_freq 3489420000 Hz, tune_offset 0
+[0m[PHY]    Got synch: hw_slot_offset 0, carrier off 0 Hz
+[0m[NR_RRC] [UE 0] RNTI 0x0000 BCCH update: phyCellID 0->2, arfcn_ssb 0->632256
+[0m[32m[PHY]    UE synchronized! decoded_frame_rx=110 skipped_frames=4
+[0m[PHY]    Resynchronizing RX by 302 samples
+[0m[HW]     received write reorder clear context
+[0m[PHY]    max_pos_acc = 0, shiftForNextFrame = 0
+[0m[93m[NR_RRC] [RSS] probe_ues knob = 0
+[0m[93m[NR_RRC] [RSS] rss_poll reached: ue=0 enabled=0 probe=0 polled=0
+[0m[32m[NR_RRC] [UE 0] RNTI 0x0000 SIB1 decoded
+[0m[NR_MAC] [UE 0] Initial cell selection: dl_frequency=3480240 kHz (from command-line, band=78, scs=1)
+[0m[NR_MAC] Computing frequency (nrarfcn 632016 => 3480240 KHz, NR band 78
+[0m[NR_MAC] Initial cell selection: uplink_frequency=3480240 kHz (from absoluteFrequencyPointA=632016, band=78, scs=1)
+[0m[NR_MAC] TDD period index = 6, based on the sum of dl_UL_TransmissionPeriodicity from Pattern1 (5.000000 ms) and Pattern2 (0.000000 ms): Total = 5.000000 ms
+[0m[NR_MAC] Set TDD configuration period to: 7 DL slots, 3 UL slots, 10 slots per period (NR_TDD_UL_DL_Pattern is 6 DL slots, 3 UL slots, 8 DL symbols, 0 UL symbols)
+[0m[NR_MAC] Configured 1 TDD patterns (total slots: pattern1 = 10, pattern2 = 0)
+[0m[PHY]    N_TA_offset changed from 0 to 300
+[0m[MAC]    Initialization of 4-Step CBRA procedure
+[0m[NR_MAC] [UE 0] selected PRACH occasion: start_symbol 0 fdm 0 slot 19 format 180
+[0m[NR_MAC] PRACH scheduler: Selected RO Frame 128, Slot 19, Symbol 0, Fdm 0
+[0m[PHY]    PRACH [UE 0] in frame.slot 128.19, placing PRACH in position 1192, Msg1/MsgA-Preamble frequency start 11 (k1 11), preamble_offset 51, first_nonzero_root_idx 0, preambleIndex = 51
+[0m[PHY]    [UE 0] RAR-Msg2 decoded
+[0m[NR_MAC] [UE 0][RAPROC][RA-RNTI 010b] Got RAPID RAR subPDU
+[0m[32m[NR_MAC] [UE 0][RAPROC][129.10] Found RAR with the intended RAPID 51
+[0m[32m[NR_MAC] [RAPROC][129.17] RA-Msg3 transmitted
+[0m[32m[NR_MAC] [UE 0][130.10][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[0m[NR_RRC] [UE 0] RNTI 0x4601 [RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup
+[0m[RLC]    Added srb 1 to UE 0
+[0m[NR_RRC] [UE 0] RNTI 0x4601 State = NR_RRC_CONNECTED
+[0m[NAS]    Generate Initial NAS Message: Registration Request
+[0m[NR_RRC] [UE 0] RNTI 0x4601 [RAPROC] Logical Channel UL-DCCH (SRB1), Generating RRCSetupComplete (bytes33)
+[0m[NAS]    [UE 0] Received NR_NAS_CONN_ESTABLISH_IND: asCause 0
+[0m[MAC]    [UE 0] Applying CellGroupConfig from gNodeB
+[0m[1;31m[NR_MAC] NR_SRI_PUSCH_PowerControl not implemented, power control will not work as intended
+[0m[NAS]    [UE 0] Received NAS_DOWNLINK_DATA_IND type FGS_AUTHENTICATION_REQUEST with length 42
+[0mkausf:f2 9 49 40 c6 f3 d 81 7b 4 f4 18 2a 80 5b 10 e4 2b df e0 ea b9 ea 6f 81 6a f1 77 49 d4 e1 58 
+kseaf:2e 12 f5 d8 65 9b cb 3b 5 3b 9f d2 eb 45 86 c9 b0 a6 a0 d9 d2 f6 9d 8 76 dd d0 d 57 8d 22 20 
+kamf:84 a d0 17 18 aa 2a f1 fe 55 32 44 f5 33 bf 2e 47 c0 e2 86 a6 9b 42 71 87 33 27 7e ec 31 67 27 
+[NR_MAC] [136.15] Received TA_COMMAND 30 TAGID 0 CC_id 0 
+[0m[NAS]    [UE 0] Received NAS_DOWNLINK_DATA_IND type FGS_SECURITY_MODE_COMMAND with length 19
+[0mknas_int: da 24 1b 32 d1 a3 d9 74 5f b7 68 4 92 ac c 1 
+knas_enc: 98 8b 48 8b be 97 b9 fe ff 23 e2 73 81 c4 25 58 
+[NAS]    Generate Initial NAS Message: Registration Request
+[0mmac 38 48 a2 f5 
+[HW]     [ZMQ] TX antenna 0: 250 REQs starved / 2614 served, 37 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] [140.15] Received TA_COMMAND 30 TAGID 0 CC_id 0 
+[0m[NR_RRC] [UE 0] RNTI 0x4601 Received securityModeCommand (gNB 0)
+[0m[NR_RRC] [UE 0] RNTI 0x4601 Receiving from SRB1 (DL-DCCH), Processing securityModeCommand
+[0m[NR_RRC] [UE 0] RNTI 0x4601 Security algorithm is set to nea0
+[0m[NR_RRC] [UE 0] RNTI 0x4601 Integrity protection algorithm is set to nia2
+[0m[NR_RRC] deriving kRRCenc, kRRCint from KgNB=2e 6f c1 54 31 62 51 88 c6 cc 46 3e 6c 05 4b 83 7b bd 9b e6 de 67 be 77 04 84 cd 2f 59 a3 66 15 [0m
+[NR_RRC] [UE 0] RNTI 0x4601 Receiving from SRB1 (DL-DCCH), encoding securityModeComplete, rrc_TransactionIdentifier: 1
+[0m[NR_RRC] securityModeComplete payload: 2a 00 00 00 00 00 00 00 70 23 00 e0 94 7c 00 00 [0m
+[NR_RRC] [UE 0] RNTI 0x4601 Received Capability Enquiry (gNB 0)
+[0m[NR_RRC] [UE 0] RNTI 0x4601 Receiving from SRB1 (DL-DCCH), Processing UECapabilityEnquiry
+[0m<UE-NR-Capability>
+    <accessStratumRelease><rel15/></accessStratumRelease>
+    <pdcp-Parameters>
+        <supportedROHC-Profiles>
+            <profile0x0000><false/></profile0x0000>
+            <profile0x0001><false/></profile0x0001>
+            <profile0x0002><false/></profile0x0002>
+            <profile0x0003><false/></profile0x0003>
+            <profile0x0004><false/></profile0x0004>
+            <profile0x0006><false/></profile0x0006>
+            <profile0x0101><false/></profile0x0101>
+            <profile0x0102><false/></profile0x0102>
+            <profile0x0103><false/></profile0x0103>
+            <profile0x0104><false/></profile0x0104>
+        </supportedROHC-Profiles>
+        <maxNumberROHC-ContextSessions><cs2/></maxNumberROHC-ContextSessions>
+        <shortSN><supported/></shortSN>
+    </pdcp-Parameters>
+    <rlc-Parameters>
+        <am-WithShortSN><supported/></am-WithShortSN>
+        <um-WithShortSN><supported/></um-WithShortSN>
+        <um-WithLongSN><supported/></um-WithLongSN>
+    </rlc-Parameters>
+    <mac-Parameters>
+        <mac-ParametersXDD-Diff>
+            <logicalChannelSR-DelayTimer><supported/></logicalChannelSR-DelayTimer>
+            <multipleSR-Configurations><supported/></multipleSR-Configurations>
+        </mac-ParametersXDD-Diff>
+    </mac-Parameters>
+    <phy-Parameters>
+        <phy-ParametersCommon>
+            <nzp-CSI-RS-IntefMgmt><supported/></nzp-CSI-RS-IntefMgmt>
+            <dynamicHARQ-ACK-Codebook><supported/></dynamicHARQ-ACK-Codebook>
+            <semiStaticHARQ-ACK-Codebook><supported/></semiStaticHARQ-ACK-Codebook>
+            <pdsch-MappingTypeA><supported/></pdsch-MappingTypeA>
+            <rateMatchingResrcSetSemi-Static><supported/></rateMatchingResrcSetSemi-Static>
+            <ext2>
+                <maxLayersMIMO-Indication><supported/></maxLayersMIMO-Indication>
+            </ext2>
+        </phy-ParametersCommon>
+        <phy-ParametersFRX-Diff>
+            <twoFL-DMRS>
+                11
+            </twoFL-DMRS>
+            <supportedDMRS-TypeDL><type1/></supportedDMRS-TypeDL>
+            <supportedDMRS-TypeUL><type1And2/></supportedDMRS-TypeUL>
+            <onePortsPTRS>
+                01
+            </onePortsPTRS>
+            <pucch-F2-WithFH><supported/></pucch-F2-WithFH>
+            <pucch-F3-WithFH><supported/></pucch-F3-WithFH>
+            <absoluteTPC-Command><supported/></absoluteTPC-Command>
+            <pusch-HalfPi-BPSK><supported/></pusch-HalfPi-BPSK>
+            <pucch-F3-4-HalfPi-BPSK><supported/></pucch-F3-4-HalfPi-BPSK>
+            <ext1>
+                <csi-RS-IM-ReceptionForFeedback>
+                    <maxConfigNumberNZP-CSI-RS-PerCC>8</maxConfigNumberNZP-CSI-RS-PerCC>
+                    <maxConfigNumberPortsAcrossNZP-CSI-RS-PerCC>64</maxConfigNumberPortsAcrossNZP-CSI-RS-PerCC>
+                    <maxConfigNumberCSI-IM-PerCC><n8/></maxConfigNumberCSI-IM-PerCC>
+                    <maxNumberSimultaneousNZP-CSI-RS-PerCC>4</maxNumberSimultaneousNZP-CSI-RS-PerCC>
+                    <totalNumberPortsSimultaneousNZP-CSI-RS-PerCC>32</totalNumberPortsSimultaneousNZP-CSI-RS-PerCC>
+                </csi-RS-IM-ReceptionForFeedback>
+                <csi-ReportFramework>
+                    <maxNumberPeriodicCSI-PerBWP-ForCSI-Report>2</maxNumberPeriodicCSI-PerBWP-ForCSI-Report>
+                    <maxNumberAperiodicCSI-PerBWP-ForCSI-Report>2</maxNumberAperiodicCSI-PerBWP-ForCSI-Report>
+                    <maxNumberSemiPersistentCSI-PerBWP-ForCSI-Report>0</maxNumberSemiPersistentCSI-PerBWP-ForCSI-Report>
+                    <maxNumberPeriodicCSI-PerBWP-ForBeamReport>2</maxNumberPeriodicCSI-PerBWP-ForBeamReport>
+                    <maxNumberAperiodicCSI-PerBWP-ForBeamReport>2</maxNumberAperiodicCSI-PerBWP-ForBeamReport>
+                    <maxNumberAperiodicCSI-triggeringStatePerCC><n63/></maxNumberAperiodicCSI-triggeringStatePerCC>
+                    <maxNumberSemiPersistentCSI-PerBWP-ForBeamReport>0</maxNumberSemiPersistentCSI-PerBWP-ForBeamReport>
+                    <simultaneousCSI-ReportsPerCC>4</simultaneousCSI-ReportsPerCC>
+                </csi-ReportFramework>
+                <mux-SR-HARQ-ACK-CSI-PUCCH-OncePerSlot>
+                    <sameSymbol><supported/></sameSymbol>
+                </mux-SR-HARQ-ACK-CSI-PUCCH-OncePerSlot>
+                <oneFL-DMRS-TwoAdditionalDMRS-UL><supported/></oneFL-DMRS-TwoAdditionalDMRS-UL>
+                <twoFL-DMRS-TwoAdditionalDMRS-UL><supported/></twoFL-DMRS-TwoAdditionalDMRS-UL>
+            </ext1>
+        </phy-ParametersFRX-Diff>
+        <phy-ParametersFR1>
+            <pdsch-256QAM-FR1><supported/></pdsch-256QAM-FR1>
+            <pdsch-RE-MappingFR1-PerSymbol><n10/></pdsch-RE-MappingFR1-PerSymbol>
+            <ext1>
+                <pdsch-RE-MappingFR1-PerSlot><n32/></pdsch-RE-MappingFR1-PerSlot>
+            </ext1>
+        </phy-ParametersFR1>
+    </phy-Parameters>
+    <rf-Parameters>
+        <supportedBandListNR>
+            <BandNR>
+                <bandNR>78</bandNR>
+                <mimo-ParametersPerBand>
+                    <tci-StatePDSCH>
+                        <maxNumberConfiguredTCI-StatesPerCC><n16/></maxNumberConfiguredTCI-StatesPerCC>
+                        <maxNumberActiveTCI-PerBWP><n1/></maxNumberActiveTCI-PerBWP>
+                    </tci-StatePDSCH>
+                    <pusch-TransCoherence><nonCoherent/></pusch-TransCoherence>
+                    <periodicBeamReport><supported/></periodicBeamReport>
+                    <aperiodicBeamReport><supported/></aperiodicBeamReport>
+                    <maxNumberNonGroupBeamReporting><n4/></maxNumberNonGroupBeamReporting>
+                    <maxNumberSSB-BFD>2</maxNumberSSB-BFD>
+                    <maxNumberCSI-RS-SSB-CBD>8</maxNumberCSI-RS-SSB-CBD>
+                    <beamReportTiming>
+                        <scs-15kHz><sym8/></scs-15kHz>
+                        <scs-30kHz><sym14/></scs-30kHz>
+                    </beamReportTiming>
+                    <ext1>
+                        <beamManagementSSB-CSI-RS>
+                            <maxNumberSSB-CSI-RS-ResourceOneTx><n8/></maxNumberSSB-CSI-RS-ResourceOneTx>
+                            <maxNumberCSI-RS-Resource><n32/></maxNumberCSI-RS-Resource>
+                            <maxNumberCSI-RS-ResourceTwoTx><n8/></maxNumberCSI-RS-ResourceTwoTx>
+                            <supportedCSI-RS-Density><oneAndThree/></supportedCSI-RS-Density>
+                            <maxNumberAperiodicCSI-RS-Resource><n32/></maxNumberAperiodicCSI-RS-Resource>
+                        </beamManagementSSB-CSI-RS>
+                        <codebookParameters>
+                            <type1>
+                                <singlePanel>
+                                    <supportedCSI-RS-ResourceList>
+                                        <SupportedCSI-RS-Resource>
+                                            <maxNumberTxPortsPerResource><p8/></maxNumberTxPortsPerResource>
+                                            <maxNumberResourcesPerBand>8</maxNumberResourcesPerBand>
+                                            <totalNumberTxPortsPerBand>64</totalNumberTxPortsPerBand>
+                                        </SupportedCSI-RS-Resource>
+                                        <SupportedCSI-RS-Resource>
+                                            <maxNumberTxPortsPerResource><p4/></maxNumberTxPortsPerResource>
+                                            <maxNumberResourcesPerBand>8</maxNumberResourcesPerBand>
+                                            <totalNumberTxPortsPerBand>32</totalNumberTxPortsPerBand>
+                                        </SupportedCSI-RS-Resource>
+                                        <SupportedCSI-RS-Resource>
+                                            <maxNumberTxPortsPerResource><p16/></maxNumberTxPortsPerResource>
+                                            <maxNumberResourcesPerBand>4</maxNumberResourcesPerBand>
+                                            <totalNumberTxPortsPerBand>64</totalNumberTxPortsPerBand>
+                                        </SupportedCSI-RS-Resource>
+                                        <SupportedCSI-RS-Resource>
+                                            <maxNumberTxPortsPerResource><p32/></maxNumberTxPortsPerResource>
+                                            <maxNumberResourcesPerBand>2</maxNumberResourcesPerBand>
+                                            <totalNumberTxPortsPerBand>64</totalNumberTxPortsPerBand>
+                                        </SupportedCSI-RS-Resource>
+                                    </supportedCSI-RS-ResourceList>
+                                    <modes><mode1/></modes>
+                                    <maxNumberCSI-RS-PerResourceSet>4</maxNumberCSI-RS-PerResourceSet>
+                                </singlePanel>
+                            </type1>
+                        </codebookParameters>
+                        <csi-RS-IM-ReceptionForFeedback>
+                            <maxConfigNumberNZP-CSI-RS-PerCC>8</maxConfigNumberNZP-CSI-RS-PerCC>
+                            <maxConfigNumberPortsAcrossNZP-CSI-RS-PerCC>64</maxConfigNumberPortsAcrossNZP-CSI-RS-PerCC>
+                            <maxConfigNumberCSI-IM-PerCC><n8/></maxConfigNumberCSI-IM-PerCC>
+                            <maxNumberSimultaneousNZP-CSI-RS-PerCC>4</maxNumberSimultaneousNZP-CSI-RS-PerCC>
+                            <totalNumberPortsSimultaneousNZP-CSI-RS-PerCC>32</totalNumberPortsSimultaneousNZP-CSI-RS-PerCC>
+                        </csi-RS-IM-ReceptionForFeedback>
+                        <csi-ReportFramework>
+                            <maxNumberPeriodicCSI-PerBWP-ForCSI-Report>2</maxNumberPeriodicCSI-PerBWP-ForCSI-Report>
+                            <maxNumberAperiodicCSI-PerBWP-ForCSI-Report>2</maxNumberAperiodicCSI-PerBWP-ForCSI-Report>
+                            <maxNumberSemiPersistentCSI-PerBWP-ForCSI-Report>0</maxNumberSemiPersistentCSI-PerBWP-ForCSI-Report>
+                            <maxNumberPeriodicCSI-PerBWP-ForBeamReport>2</maxNumberPeriodicCSI-PerBWP-ForBeamReport>
+                            <maxNumberAperiodicCSI-PerBWP-ForBeamReport>2</maxNumberAperiodicCSI-PerBWP-ForBeamReport>
+                            <maxNumberAperiodicCSI-triggeringStatePerCC><n63/></maxNumberAperiodicCSI-triggeringStatePerCC>
+                            <maxNumberSemiPersistentCSI-PerBWP-ForBeamReport>0</maxNumberSemiPersistentCSI-PerBWP-ForBeamReport>
+                            <simultaneousCSI-ReportsPerCC>4</simultaneousCSI-ReportsPerCC>
+                        </csi-ReportFramework>
+                        <csi-RS-ForTracking>
+                            <maxBurstLength>2</maxBurstLength>
+                            <maxSimultaneousResourceSetsPerCC>1</maxSimultaneousResourceSetsPerCC>
+                            <maxConfiguredResourceSetsPerCC>8</maxConfiguredResourceSetsPerCC>
+                            <maxConfiguredResourceSetsAllCC>16</maxConfiguredResourceSetsAllCC>
+                        </csi-RS-ForTracking>
+                    </ext1>
+                </mimo-ParametersPerBand>
+                <multipleTCI><supported/></multipleTCI>
+                <pusch-256QAM><supported/></pusch-256QAM>
+                <ue-PowerClass><pc2/></ue-PowerClass>
+                <channelBWs-DL>
+                    <fr1>
+                        <scs-15kHz>
+                            0000000000
+                        </scs-15kHz>
+                        <scs-30kHz>
+                            0001011111
+                        </scs-30kHz>
+                        <scs-60kHz>
+                            0000000000
+                        </scs-60kHz>
+                    </fr1>
+                </channelBWs-DL>
+                <channelBWs-UL>
+                    <fr1>
+                        <scs-15kHz>
+                            0000000000
+                        </scs-15kHz>
+                        <scs-30kHz>
+                            0001011111
+                        </scs-30kHz>
+                        <scs-60kHz>
+                            0000000000
+                        </scs-60kHz>
+                    </fr1>
+                </channelBWs-UL>
+                <ext1>
+                    <maxUplinkDutyCycle-PC2-FR1><n100/></maxUplinkDutyCycle-PC2-FR1>
+                </ext1>
+                <ext4>
+                    <channelBWs-DL-v1590>
+                        <fr1>
+                            <scs-30kHz>
+                                1000000000000000
+                            </scs-30kHz>
+                        </fr1>
+                    </channelBWs-DL-v1590>
+                    <channelBWs-UL-v1590>
+                        <fr1>
+                            <scs-30kHz>
+                                1000000000000000
+                            </scs-30kHz>
+                        </fr1>
+                    </channelBWs-UL-v1590>
+                </ext4>
+            </BandNR>
+        </supportedBandListNR>
+        <supportedBandCombinationList>
+            <BandCombination>
+                <bandList>
+                        <nr>
+                            <bandNR>78</bandNR>
+                            <ca-BandwidthClassDL-NR><a/></ca-BandwidthClassDL-NR>
+                            <ca-BandwidthClassUL-NR><a/></ca-BandwidthClassUL-NR>
+                        </nr>
+                    
+                </bandList>
+                <featureSetCombination>0</featureSetCombination>
+                <powerClass-v1530><pc2/></powerClass-v1530>
+            </BandCombination>
+        </supportedBandCombinationList>
+        <appliedFreqBandListFilter>
+                <bandInformationNR>
+                    <bandNR>78</bandNR>
+                </bandInformationNR>
+            
+        </appliedFreqBandListFilter>
+        <ext1>
+            <supportedBandCombinationList-v1540>
+                <BandCombination-v1540>
+                    <bandList-v1540>
+                        <BandParameters-v1540>
+                            <srs-TxSwitch>
+                                <supportedSRS-TxPortSwitch><t2r4/></supportedSRS-TxPortSwitch>
+                            </srs-TxSwitch>
+                        </BandParameters-v1540>
+                    </bandList-v1540>
+                    <ca-ParametersNR-v1540>
+                        <csi-RS-IM-ReceptionForFeedbackPerBandComb>
+                            <maxNumberSimultaneousNZP-CSI-RS-ActBWP-AllCC>8</maxNumberSimultaneousNZP-CSI-RS-ActBWP-AllCC>
+                            <totalNumberPortsSimultaneousNZP-CSI-RS-ActBWP-AllCC>64</totalNumberPortsSimultaneousNZP-CSI-RS-ActBWP-AllCC>
+                        </csi-RS-IM-ReceptionForFeedbackPerBandComb>
+                        <simultaneousCSI-ReportsAllCC>8</simultaneousCSI-ReportsAllCC>
+                    </ca-ParametersNR-v1540>
+                </BandCombination-v1540>
+            </supportedBandCombinationList-v1540>
+        </ext1>
+    </rf-Parameters>
+    <measAndMobParameters>
+        <measAndMobParametersCommon>
+            <ssb-RLM><supported/></ssb-RLM>
+            <ext1>
+                <eventB-MeasAndReport><supported/></eventB-MeasAndReport>
+                <handoverFDD-TDD><supported/></handoverFDD-TDD>
+            </ext1>
+            <ext2>
+                <periodicEUTRA-MeasAndReport><supported/></periodicEUTRA-MeasAndReport>
+            </ext2>
+        </measAndMobParametersCommon>
+        <measAndMobParametersXDD-Diff>
+            <intraAndInterF-MeasAndReport><supported/></intraAndInterF-MeasAndReport>
+            <eventA-MeasAndReport><supported/></eventA-MeasAndReport>
+            <ext1>
+                <handoverInterF><supported/></handoverInterF>
+                <handoverLTE-EPC><supported/></handoverLTE-EPC>
+            </ext1>
+        </measAndMobParametersXDD-Diff>
+        <measAndMobParametersFRX-Diff>
+            <ss-SINR-Meas><supported/></ss-SINR-Meas>
+            <ext1>
+                <handoverInterF><supported/></handoverInterF>
+                <handoverLTE-EPC><supported/></handoverLTE-EPC>
+            </ext1>
+            <ext3>
+                <simultaneousRxDataSSB-DiffNumerology><supported/></simultaneousRxDataSSB-DiffNumerology>
+            </ext3>
+        </measAndMobParametersFRX-Diff>
+    </measAndMobParameters>
+    <featureSets>
+        <featureSetsDownlink>
+            <FeatureSetDownlink>
+                <featureSetListPerDownlinkCC>
+                    <FeatureSetDownlinkPerCC-Id>1</FeatureSetDownlinkPerCC-Id>
+                </featureSetListPerDownlinkCC>
+                <ue-SpecificUL-DL-Assignment><supported/></ue-SpecificUL-DL-Assignment>
+            </FeatureSetDownlink>
+            <FeatureSetDownlink>
+                <featureSetListPerDownlinkCC>
+                    <FeatureSetDownlinkPerCC-Id>2</FeatureSetDownlinkPerCC-Id>
+                </featureSetListPerDownlinkCC>
+                <ue-SpecificUL-DL-Assignment><supported/></ue-SpecificUL-DL-Assignment>
+            </FeatureSetDownlink>
+            <FeatureSetDownlink>
+                <featureSetListPerDownlinkCC>
+                    <FeatureSetDownlinkPerCC-Id>3</FeatureSetDownlinkPerCC-Id>
+                </featureSetListPerDownlinkCC>
+                <ue-SpecificUL-DL-Assignment><supported/></ue-SpecificUL-DL-Assignment>
+            </FeatureSetDownlink>
+            <FeatureSetDownlink>
+                <featureSetListPerDownlinkCC>
+                    <FeatureSetDownlinkPerCC-Id>4</FeatureSetDownlinkPerCC-Id>
+                </featureSetListPerDownlinkCC>
+                <ue-SpecificUL-DL-Assignment><supported/></ue-SpecificUL-DL-Assignment>
+            </FeatureSetDownlink>
+            <FeatureSetDownlink>
+                <featureSetListPerDownlinkCC>
+                    <FeatureSetDownlinkPerCC-Id>5</FeatureSetDownlinkPerCC-Id>
+                </featureSetListPerDownlinkCC>
+                <ue-SpecificUL-DL-Assignment><supported/></ue-SpecificUL-DL-Assignment>
+            </FeatureSetDownlink>
+            <FeatureSetDownlink>
+                <featureSetListPerDownlinkCC>
+                    <FeatureSetDownlinkPerCC-Id>6</FeatureSetDownlinkPerCC-Id>
+                </featureSetListPerDownlinkCC>
+                <ue-SpecificUL-DL-Assignment><supported/></ue-SpecificUL-DL-Assignment>
+            </FeatureSetDownlink>
+            <FeatureSetDownlink>
+                <featureSetListPerDownlinkCC>
+                    <FeatureSetDownlinkPerCC-Id>7</FeatureSetDownlinkPerCC-Id>
+                </featureSetListPerDownlinkCC>
+                <ue-SpecificUL-DL-Assignment><supported/></ue-SpecificUL-DL-Assignment>
+            </FeatureSetDownlink>
+            <FeatureSetDownlink>
+                <featureSetListPerDownlinkCC>
+                    <FeatureSetDownlinkPerCC-Id>8</FeatureSetDownlinkPerCC-Id>
+                </featureSetListPerDownlinkCC>
+                <ue-SpecificUL-DL-Assignment><supported/></ue-SpecificUL-DL-Assignment>
+            </FeatureSetDownlink>
+            <FeatureSetDownlink>
+                <featureSetListPerDownlinkCC>
+                    <FeatureSetDownlinkPerCC-Id>9</FeatureSetDownlinkPerCC-Id>
+                </featureSetListPerDownlinkCC>
+                <ue-SpecificUL-DL-Assignment><supported/></ue-SpecificUL-DL-Assignment>
+            </FeatureSetDownlink>
+            <FeatureSetDownlink>
+                <featureSetListPerDownlinkCC>
+                    <FeatureSetDownlinkPerCC-Id>10</FeatureSetDownlinkPerCC-Id>
+                </featureSetListPerDownlinkCC>
+                <ue-SpecificUL-DL-Assignment><supported/></ue-SpecificUL-DL-Assignment>
+            </FeatureSetDownlink>
+            <FeatureSetDownlink>
+                <featureSetListPerDownlinkCC>
+                    <FeatureSetDownlinkPerCC-Id>11</FeatureSetDownlinkPerCC-Id>
+                </featureSetListPerDownlinkCC>
+                <ue-SpecificUL-DL-Assignment><supported/></ue-SpecificUL-DL-Assignment>
+            </FeatureSetDownlink>
+            <FeatureSetDownlink>
+                <featureSetListPerDownlinkCC>
+                    <FeatureSetDownlinkPerCC-Id>12</FeatureSetDownlinkPerCC-Id>
+                </featureSetListPerDownlinkCC>
+                <ue-SpecificUL-DL-Assignment><supported/></ue-SpecificUL-DL-Assignment>
+            </FeatureSetDownlink>
+        </featureSetsDownlink>
+        <featureSetsDownlinkPerCC>
+            <FeatureSetDownlinkPerCC>
+                <supportedSubcarrierSpacingDL><kHz30/></supportedSubcarrierSpacingDL>
+                <supportedBandwidthDL>
+                    <fr1><mhz100/></fr1>
+                </supportedBandwidthDL>
+                <maxNumberMIMO-LayersPDSCH><fourLayers/></maxNumberMIMO-LayersPDSCH>
+                <supportedModulationOrderDL><qam256/></supportedModulationOrderDL>
+            </FeatureSetDownlinkPerCC>
+            <FeatureSetDownlinkPerCC>
+                <supportedSubcarrierSpacingDL><kHz30/></supportedSubcarrierSpacingDL>
+                <supportedBandwidthDL>
+                    <fr1><mhz100/></fr1>
+                </supportedBandwidthDL>
+                <channelBW-90mhz><supported/></channelBW-90mhz>
+                <maxNumberMIMO-LayersPDSCH><fourLayers/></maxNumberMIMO-LayersPDSCH>
+                <supportedModulationOrderDL><qam256/></supportedModulationOrderDL>
+            </FeatureSetDownlinkPerCC>
+            <FeatureSetDownlinkPerCC>
+                <supportedSubcarrierSpacingDL><kHz15/></supportedSubcarrierSpacingDL>
+                <supportedBandwidthDL>
+                    <fr1><mhz20/></fr1>
+                </supportedBandwidthDL>
+                <maxNumberMIMO-LayersPDSCH><twoLayers/></maxNumberMIMO-LayersPDSCH>
+                <supportedModulationOrderDL><qam256/></supportedModulationOrderDL>
+            </FeatureSetDownlinkPerCC>
+            <FeatureSetDownlinkPerCC>
+                <supportedSubcarrierSpacingDL><kHz15/></supportedSubcarrierSpacingDL>
+                <supportedBandwidthDL>
+                    <fr1><mhz40/></fr1>
+                </supportedBandwidthDL>
+                <maxNumberMIMO-LayersPDSCH><fourLayers/></maxNumberMIMO-LayersPDSCH>
+                <supportedModulationOrderDL><qam256/></supportedModulationOrderDL>
+            </FeatureSetDownlinkPerCC>
+            <FeatureSetDownlinkPerCC>
+                <supportedSubcarrierSpacingDL><kHz30/></supportedSubcarrierSpacingDL>
+                <supportedBandwidthDL>
+                    <fr1><mhz40/></fr1>
+                </supportedBandwidthDL>
+                <maxNumberMIMO-LayersPDSCH><fourLayers/></maxNumberMIMO-LayersPDSCH>
+                <supportedModulationOrderDL><qam256/></supportedModulationOrderDL>
+            </FeatureSetDownlinkPerCC>
+            <FeatureSetDownlinkPerCC>
+                <supportedSubcarrierSpacingDL><kHz30/></supportedSubcarrierSpacingDL>
+                <supportedBandwidthDL>
+                    <fr1><mhz80/></fr1>
+                </supportedBandwidthDL>
+                <maxNumberMIMO-LayersPDSCH><fourLayers/></maxNumberMIMO-LayersPDSCH>
+                <supportedModulationOrderDL><qam256/></supportedModulationOrderDL>
+            </FeatureSetDownlinkPerCC>
+            <FeatureSetDownlinkPerCC>
+                <supportedSubcarrierSpacingDL><kHz30/></supportedSubcarrierSpacingDL>
+                <supportedBandwidthDL>
+                    <fr1><mhz20/></fr1>
+                </supportedBandwidthDL>
+                <maxNumberMIMO-LayersPDSCH><fourLayers/></maxNumberMIMO-LayersPDSCH>
+                <supportedModulationOrderDL><qam256/></supportedModulationOrderDL>
+            </FeatureSetDownlinkPerCC>
+            <FeatureSetDownlinkPerCC>
+                <supportedSubcarrierSpacingDL><kHz15/></supportedSubcarrierSpacingDL>
+                <supportedBandwidthDL>
+                    <fr1><mhz30/></fr1>
+                </supportedBandwidthDL>
+                <maxNumberMIMO-LayersPDSCH><twoLayers/></maxNumberMIMO-LayersPDSCH>
+                <supportedModulationOrderDL><qam256/></supportedModulationOrderDL>
+            </FeatureSetDownlinkPerCC>
+            <FeatureSetDownlinkPerCC>
+                <supportedSubcarrierSpacingDL><kHz15/></supportedSubcarrierSpacingDL>
+                <supportedBandwidthDL>
+                    <fr1><mhz20/></fr1>
+                </supportedBandwidthDL>
+                <maxNumberMIMO-LayersPDSCH><fourLayers/></maxNumberMIMO-LayersPDSCH>
+                <supportedModulationOrderDL><qam256/></supportedModulationOrderDL>
+            </FeatureSetDownlinkPerCC>
+            <FeatureSetDownlinkPerCC>
+                <supportedSubcarrierSpacingDL><kHz15/></supportedSubcarrierSpacingDL>
+                <supportedBandwidthDL>
+                    <fr1><mhz15/></fr1>
+                </supportedBandwidthDL>
+                <maxNumberMIMO-LayersPDSCH><twoLayers/></maxNumberMIMO-LayersPDSCH>
+                <supportedModulationOrderDL><qam256/></supportedModulationOrderDL>
+            </FeatureSetDownlinkPerCC>
+            <FeatureSetDownlinkPerCC>
+                <supportedSubcarrierSpacingDL><kHz15/></supportedSubcarrierSpacingDL>
+                <supportedBandwidthDL>
+                    <fr1><mhz30/></fr1>
+                </supportedBandwidthDL>
+                <maxNumberMIMO-LayersPDSCH><fourLayers/></maxNumberMIMO-LayersPDSCH>
+                <supportedModulationOrderDL><qam256/></supportedModulationOrderDL>
+            </FeatureSetDownlinkPerCC>
+            <FeatureSetDownlinkPerCC>
+                <supportedSubcarrierSpacingDL><kHz30/></supportedSubcarrierSpacingDL>
+                <supportedBandwidthDL>
+                    <fr1><mhz60/></fr1>
+                </supportedBandwidthDL>
+                <maxNumberMIMO-LayersPDSCH><fourLayers/></maxNumberMIMO-LayersPDSCH>
+                <supportedModulationOrderDL><qam256/></supportedModulationOrderDL>
+            </FeatureSetDownlinkPerCC>
+        </featureSetsDownlinkPerCC>
+        <featureSetsUplink>
+            <FeatureSetUplink>
+                <featureSetListPerUplinkCC>
+                    <FeatureSetUplinkPerCC-Id>1</FeatureSetUplinkPerCC-Id>
+                </featureSetListPerUplinkCC>
+                <supportedSRS-Resources>
+                    <maxNumberAperiodicSRS-PerBWP><n16/></maxNumberAperiodicSRS-PerBWP>
+                    <maxNumberAperiodicSRS-PerBWP-PerSlot>6</maxNumberAperiodicSRS-PerBWP-PerSlot>
+                    <maxNumberPeriodicSRS-PerBWP><n16/></maxNumberPeriodicSRS-PerBWP>
+                    <maxNumberPeriodicSRS-PerBWP-PerSlot>6</maxNumberPeriodicSRS-PerBWP-PerSlot>
+                    <maxNumberSemiPersistentSRS-PerBWP><n2/></maxNumberSemiPersistentSRS-PerBWP>
+                    <maxNumberSemiPersistentSRS-PerBWP-PerSlot>2</maxNumberSemiPersistentSRS-PerBWP-PerSlot>
+                    <maxNumberSRS-Ports-PerResource><n1/></maxNumberSRS-Ports-PerResource>
+                </supportedSRS-Resources>
+            </FeatureSetUplink>
+            <FeatureSetUplink>
+                <featureSetListPerUplinkCC>
+                    <FeatureSetUplinkPerCC-Id>2</FeatureSetUplinkPerCC-Id>
+                </featureSetListPerUplinkCC>
+                <supportedSRS-Resources>
+                    <maxNumberAperiodicSRS-PerBWP><n16/></maxNumberAperiodicSRS-PerBWP>
+                    <maxNumberAperiodicSRS-PerBWP-PerSlot>6</maxNumberAperiodicSRS-PerBWP-PerSlot>
+                    <maxNumberPeriodicSRS-PerBWP><n16/></maxNumberPeriodicSRS-PerBWP>
+                    <maxNumberPeriodicSRS-PerBWP-PerSlot>6</maxNumberPeriodicSRS-PerBWP-PerSlot>
+                    <maxNumberSemiPersistentSRS-PerBWP><n2/></maxNumberSemiPersistentSRS-PerBWP>
+                    <maxNumberSemiPersistentSRS-PerBWP-PerSlot>2</maxNumberSemiPersistentSRS-PerBWP-PerSlot>
+                    <maxNumberSRS-Ports-PerResource><n1/></maxNumberSRS-Ports-PerResource>
+                </supportedSRS-Resources>
+            </FeatureSetUplink>
+            <FeatureSetUplink>
+                <featureSetListPerUplinkCC>
+                    <FeatureSetUplinkPerCC-Id>3</FeatureSetUplinkPerCC-Id>
+                </featureSetListPerUplinkCC>
+                <supportedSRS-Resources>
+                    <maxNumberAperiodicSRS-PerBWP><n16/></maxNumberAperiodicSRS-PerBWP>
+                    <maxNumberAperiodicSRS-PerBWP-PerSlot>6</maxNumberAperiodicSRS-PerBWP-PerSlot>
+                    <maxNumberPeriodicSRS-PerBWP><n16/></maxNumberPeriodicSRS-PerBWP>
+                    <maxNumberPeriodicSRS-PerBWP-PerSlot>6</maxNumberPeriodicSRS-PerBWP-PerSlot>
+                    <maxNumberSemiPersistentSRS-PerBWP><n2/></maxNumberSemiPersistentSRS-PerBWP>
+                    <maxNumberSemiPersistentSRS-PerBWP-PerSlot>2</maxNumberSemiPersistentSRS-PerBWP-PerSlot>
+                    <maxNumberSRS-Ports-PerResource><n1/></maxNumberSRS-Ports-PerResource>
+                </supportedSRS-Resources>
+            </FeatureSetUplink>
+            <FeatureSetUplink>
+                <featureSetListPerUplinkCC>
+                    <FeatureSetUplinkPerCC-Id>4</FeatureSetUplinkPerCC-Id>
+                </featureSetListPerUplinkCC>
+                <supportedSRS-Resources>
+                    <maxNumberAperiodicSRS-PerBWP><n16/></maxNumberAperiodicSRS-PerBWP>
+                    <maxNumberAperiodicSRS-PerBWP-PerSlot>6</maxNumberAperiodicSRS-PerBWP-PerSlot>
+                    <maxNumberPeriodicSRS-PerBWP><n16/></maxNumberPeriodicSRS-PerBWP>
+                    <maxNumberPeriodicSRS-PerBWP-PerSlot>6</maxNumberPeriodicSRS-PerBWP-PerSlot>
+                    <maxNumberSemiPersistentSRS-PerBWP><n2/></maxNumberSemiPersistentSRS-PerBWP>
+                    <maxNumberSemiPersistentSRS-PerBWP-PerSlot>2</maxNumberSemiPersistentSRS-PerBWP-PerSlot>
+                    <maxNumberSRS-Ports-PerResource><n1/></maxNumberSRS-Ports-PerResource>
+                </supportedSRS-Resources>
+            </FeatureSetUplink>
+            <FeatureSetUplink>
+                <featureSetListPerUplinkCC>
+                    <FeatureSetUplinkPerCC-Id>5</FeatureSetUplinkPerCC-Id>
+                </featureSetListPerUplinkCC>
+                <supportedSRS-Resources>
+                    <maxNumberAperiodicSRS-PerBWP><n16/></maxNumberAperiodicSRS-PerBWP>
+                    <maxNumberAperiodicSRS-PerBWP-PerSlot>6</maxNumberAperiodicSRS-PerBWP-PerSlot>
+                    <maxNumberPeriodicSRS-PerBWP><n16/></maxNumberPeriodicSRS-PerBWP>
+                    <maxNumberPeriodicSRS-PerBWP-PerSlot>6</maxNumberPeriodicSRS-PerBWP-PerSlot>
+                    <maxNumberSemiPersistentSRS-PerBWP><n2/></maxNumberSemiPersistentSRS-PerBWP>
+                    <maxNumberSemiPersistentSRS-PerBWP-PerSlot>2</maxNumberSemiPersistentSRS-PerBWP-PerSlot>
+                    <maxNumberSRS-Ports-PerResource><n1/></maxNumberSRS-Ports-PerResource>
+                </supportedSRS-Resources>
+            </FeatureSetUplink>
+            <FeatureSetUplink>
+                <featureSetListPerUplinkCC>
+                    <FeatureSetUplinkPerCC-Id>6</FeatureSetUplinkPerCC-Id>
+                </featureSetListPerUplinkCC>
+                <supportedSRS-Resources>
+                    <maxNumberAperiodicSRS-PerBWP><n16/></maxNumberAperiodicSRS-PerBWP>
+                    <maxNumberAperiodicSRS-PerBWP-PerSlot>6</maxNumberAperiodicSRS-PerBWP-PerSlot>
+                    <maxNumberPeriodicSRS-PerBWP><n16/></maxNumberPeriodicSRS-PerBWP>
+                    <maxNumberPeriodicSRS-PerBWP-PerSlot>6</maxNumberPeriodicSRS-PerBWP-PerSlot>
+                    <maxNumberSemiPersistentSRS-PerBWP><n2/></maxNumberSemiPersistentSRS-PerBWP>
+                    <maxNumberSemiPersistentSRS-PerBWP-PerSlot>2</maxNumberSemiPersistentSRS-PerBWP-PerSlot>
+                    <maxNumberSRS-Ports-PerResource><n1/></maxNumberSRS-Ports-PerResource>
+                </supportedSRS-Resources>
+            </FeatureSetUplink>
+            <FeatureSetUplink>
+                <featureSetListPerUplinkCC>
+                    <FeatureSetUplinkPerCC-Id>7</FeatureSetUplinkPerCC-Id>
+                </featureSetListPerUplinkCC>
+                <supportedSRS-Resources>
+                    <maxNumberAperiodicSRS-PerBWP><n16/></maxNumberAperiodicSRS-PerBWP>
+                    <maxNumberAperiodicSRS-PerBWP-PerSlot>6</maxNumberAperiodicSRS-PerBWP-PerSlot>
+                    <maxNumberPeriodicSRS-PerBWP><n16/></maxNumberPeriodicSRS-PerBWP>
+                    <maxNumberPeriodicSRS-PerBWP-PerSlot>6</maxNumberPeriodicSRS-PerBWP-PerSlot>
+                    <maxNumberSemiPersistentSRS-PerBWP><n2/></maxNumberSemiPersistentSRS-PerBWP>
+                    <maxNumberSemiPersistentSRS-PerBWP-PerSlot>2</maxNumberSemiPersistentSRS-PerBWP-PerSlot>
+                    <maxNumberSRS-Ports-PerResource><n1/></maxNumberSRS-Ports-PerResource>
+                </supportedSRS-Resources>
+            </FeatureSetUplink>
+            <FeatureSetUplink>
+                <featureSetListPerUplinkCC>
+                    <FeatureSetUplinkPerCC-Id>8</FeatureSetUplinkPerCC-Id>
+                </featureSetListPerUplinkCC>
+                <supportedSRS-Resources>
+                    <maxNumberAperiodicSRS-PerBWP><n16/></maxNumberAperiodicSRS-PerBWP>
+                    <maxNumberAperiodicSRS-PerBWP-PerSlot>6</maxNumberAperiodicSRS-PerBWP-PerSlot>
+                    <maxNumberPeriodicSRS-PerBWP><n16/></maxNumberPeriodicSRS-PerBWP>
+                    <maxNumberPeriodicSRS-PerBWP-PerSlot>6</maxNumberPeriodicSRS-PerBWP-PerSlot>
+                    <maxNumberSemiPersistentSRS-PerBWP><n2/></maxNumberSemiPersistentSRS-PerBWP>
+                    <maxNumberSemiPersistentSRS-PerBWP-PerSlot>2</maxNumberSemiPersistentSRS-PerBWP-PerSlot>
+                    <maxNumberSRS-Ports-PerResource><n1/></maxNumberSRS-Ports-PerResource>
+                </supportedSRS-Resources>
+            </FeatureSetUplink>
+            <FeatureSetUplink>
+                <featureSetListPerUplinkCC>
+                    <FeatureSetUplinkPerCC-Id>9</FeatureSetUplinkPerCC-Id>
+                </featureSetListPerUplinkCC>
+                <supportedSRS-Resources>
+                    <maxNumberAperiodicSRS-PerBWP><n16/></maxNumberAperiodicSRS-PerBWP>
+                    <maxNumberAperiodicSRS-PerBWP-PerSlot>6</maxNumberAperiodicSRS-PerBWP-PerSlot>
+                    <maxNumberPeriodicSRS-PerBWP><n16/></maxNumberPeriodicSRS-PerBWP>
+                    <maxNumberPeriodicSRS-PerBWP-PerSlot>6</maxNumberPeriodicSRS-PerBWP-PerSlot>
+                    <maxNumberSemiPersistentSRS-PerBWP><n2/></maxNumberSemiPersistentSRS-PerBWP>
+                    <maxNumberSemiPersistentSRS-PerBWP-PerSlot>2</maxNumberSemiPersistentSRS-PerBWP-PerSlot>
+                    <maxNumberSRS-Ports-PerResource><n1/></maxNumberSRS-Ports-PerResource>
+                </supportedSRS-Resources>
+            </FeatureSetUplink>
+            <FeatureSetUplink>
+                <featureSetListPerUplinkCC>
+                    <FeatureSetUplinkPerCC-Id>10</FeatureSetUplinkPerCC-Id>
+                </featureSetListPerUplinkCC>
+                <supportedSRS-Resources>
+                    <maxNumberAperiodicSRS-PerBWP><n16/></maxNumberAperiodicSRS-PerBWP>
+                    <maxNumberAperiodicSRS-PerBWP-PerSlot>6</maxNumberAperiodicSRS-PerBWP-PerSlot>
+                    <maxNumberPeriodicSRS-PerBWP><n16/></maxNumberPeriodicSRS-PerBWP>
+                    <maxNumberPeriodicSRS-PerBWP-PerSlot>6</maxNumberPeriodicSRS-PerBWP-PerSlot>
+                    <maxNumberSemiPersistentSRS-PerBWP><n2/></maxNumberSemiPersistentSRS-PerBWP>
+                    <maxNumberSemiPersistentSRS-PerBWP-PerSlot>2</maxNumberSemiPersistentSRS-PerBWP-PerSlot>
+                    <maxNumberSRS-Ports-PerResource><n1/></maxNumberSRS-Ports-PerResource>
+                </supportedSRS-Resources>
+            </FeatureSetUplink>
+            <FeatureSetUplink>
+                <featureSetListPerUplinkCC>
+                    <FeatureSetUplinkPerCC-Id>11</FeatureSetUplinkPerCC-Id>
+                </featureSetListPerUplinkCC>
+                <supportedSRS-Resources>
+                    <maxNumberAperiodicSRS-PerBWP><n16/></maxNumberAperiodicSRS-PerBWP>
+                    <maxNumberAperiodicSRS-PerBWP-PerSlot>6</maxNumberAperiodicSRS-PerBWP-PerSlot>
+                    <maxNumberPeriodicSRS-PerBWP><n16/></maxNumberPeriodicSRS-PerBWP>
+                    <maxNumberPeriodicSRS-PerBWP-PerSlot>6</maxNumberPeriodicSRS-PerBWP-PerSlot>
+                    <maxNumberSemiPersistentSRS-PerBWP><n2/></maxNumberSemiPersistentSRS-PerBWP>
+                    <maxNumberSemiPersistentSRS-PerBWP-PerSlot>2</maxNumberSemiPersistentSRS-PerBWP-PerSlot>
+                    <maxNumberSRS-Ports-PerResource><n1/></maxNumberSRS-Ports-PerResource>
+                </supportedSRS-Resources>
+            </FeatureSetUplink>
+            <FeatureSetUplink>
+                <featureSetListPerUplinkCC>
+                    <FeatureSetUplinkPerCC-Id>12</FeatureSetUplinkPerCC-Id>
+                </featureSetListPerUplinkCC>
+                <supportedSRS-Resources>
+                    <maxNumberAperiodicSRS-PerBWP><n16/></maxNumberAperiodicSRS-PerBWP>
+                    <maxNumberAperiodicSRS-PerBWP-PerSlot>6</maxNumberAperiodicSRS-PerBWP-PerSlot>
+                    <maxNumberPeriodicSRS-PerBWP><n16/></maxNumberPeriodicSRS-PerBWP>
+                    <maxNumberPeriodicSRS-PerBWP-PerSlot>6</maxNumberPeriodicSRS-PerBWP-PerSlot>
+                    <maxNumberSemiPersistentSRS-PerBWP><n2/></maxNumberSemiPersistentSRS-PerBWP>
+                    <maxNumberSemiPersistentSRS-PerBWP-PerSlot>2</maxNumberSemiPersistentSRS-PerBWP-PerSlot>
+                    <maxNumberSRS-Ports-PerResource><n1/></maxNumberSRS-Ports-PerResource>
+                </supportedSRS-Resources>
+            </FeatureSetUplink>
+            <FeatureSetUplink>
+                <featureSetListPerUplinkCC>
+                    <FeatureSetUplinkPerCC-Id>11</FeatureSetUplinkPerCC-Id>
+                </featureSetListPerUplinkCC>
+                <supportedSRS-Resources>
+                    <maxNumberAperiodicSRS-PerBWP><n1/></maxNumberAperiodicSRS-PerBWP>
+                    <maxNumberAperiodicSRS-PerBWP-PerSlot>6</maxNumberAperiodicSRS-PerBWP-PerSlot>
+                    <maxNumberPeriodicSRS-PerBWP><n16/></maxNumberPeriodicSRS-PerBWP>
+                    <maxNumberPeriodicSRS-PerBWP-PerSlot>6</maxNumberPeriodicSRS-PerBWP-PerSlot>
+                    <maxNumberSemiPersistentSRS-PerBWP><n2/></maxNumberSemiPersistentSRS-PerBWP>
+                    <maxNumberSemiPersistentSRS-PerBWP-PerSlot>2</maxNumberSemiPersistentSRS-PerBWP-PerSlot>
+                    <maxNumberSRS-Ports-PerResource><n1/></maxNumberSRS-Ports-PerResource>
+                </supportedSRS-Resources>
+            </FeatureSetUplink>
+        </featureSetsUplink>
+        <featureSetsUplinkPerCC>
+            <FeatureSetUplinkPerCC>
+                <supportedSubcarrierSpacingUL><kHz30/></supportedSubcarrierSpacingUL>
+                <supportedBandwidthUL>
+                    <fr1><mhz100/></fr1>
+                </supportedBandwidthUL>
+                <mimo-CB-PUSCH>
+                    <maxNumberMIMO-LayersCB-PUSCH><oneLayer/></maxNumberMIMO-LayersCB-PUSCH>
+                    <maxNumberSRS-ResourcePerSet>1</maxNumberSRS-ResourcePerSet>
+                </mimo-CB-PUSCH>
+                <supportedModulationOrderUL><qam256/></supportedModulationOrderUL>
+            </FeatureSetUplinkPerCC>
+            <FeatureSetUplinkPerCC>
+                <supportedSubcarrierSpacingUL><kHz30/></supportedSubcarrierSpacingUL>
+                <supportedBandwidthUL>
+                    <fr1><mhz100/></fr1>
+                </supportedBandwidthUL>
+                <channelBW-90mhz><supported/></channelBW-90mhz>
+                <mimo-CB-PUSCH>
+                    <maxNumberMIMO-LayersCB-PUSCH><oneLayer/></maxNumberMIMO-LayersCB-PUSCH>
+                    <maxNumberSRS-ResourcePerSet>1</maxNumberSRS-ResourcePerSet>
+                </mimo-CB-PUSCH>
+                <supportedModulationOrderUL><qam256/></supportedModulationOrderUL>
+            </FeatureSetUplinkPerCC>
+            <FeatureSetUplinkPerCC>
+                <supportedSubcarrierSpacingUL><kHz15/></supportedSubcarrierSpacingUL>
+                <supportedBandwidthUL>
+                    <fr1><mhz20/></fr1>
+                </supportedBandwidthUL>
+                <mimo-CB-PUSCH>
+                    <maxNumberMIMO-LayersCB-PUSCH><oneLayer/></maxNumberMIMO-LayersCB-PUSCH>
+                    <maxNumberSRS-ResourcePerSet>1</maxNumberSRS-ResourcePerSet>
+                </mimo-CB-PUSCH>
+                <supportedModulationOrderUL><qam256/></supportedModulationOrderUL>
+            </FeatureSetUplinkPerCC>
+            <FeatureSetUplinkPerCC>
+                <supportedSubcarrierSpacingUL><kHz15/></supportedSubcarrierSpacingUL>
+                <supportedBandwidthUL>
+                    <fr1><mhz40/></fr1>
+                </supportedBandwidthUL>
+                <mimo-CB-PUSCH>
+                    <maxNumberMIMO-LayersCB-PUSCH><oneLayer/></maxNumberMIMO-LayersCB-PUSCH>
+                    <maxNumberSRS-ResourcePerSet>1</maxNumberSRS-ResourcePerSet>
+                </mimo-CB-PUSCH>
+                <supportedModulationOrderUL><qam256/></supportedModulationOrderUL>
+            </FeatureSetUplinkPerCC>
+            <FeatureSetUplinkPerCC>
+                <supportedSubcarrierSpacingUL><kHz30/></supportedSubcarrierSpacingUL>
+                <supportedBandwidthUL>
+                    <fr1><mhz40/></fr1>
+                </supportedBandwidthUL>
+                <mimo-CB-PUSCH>
+                    <maxNumberMIMO-LayersCB-PUSCH><oneLayer/></maxNumberMIMO-LayersCB-PUSCH>
+                    <maxNumberSRS-ResourcePerSet>1</maxNumberSRS-ResourcePerSet>
+                </mimo-CB-PUSCH>
+                <supportedModulationOrderUL><qam256/></supportedModulationOrderUL>
+            </FeatureSetUplinkPerCC>
+            <FeatureSetUplinkPerCC>
+                <supportedSubcarrierSpacingUL><kHz30/></supportedSubcarrierSpacingUL>
+                <supportedBandwidthUL>
+                    <fr1><mhz80/></fr1>
+                </supportedBandwidthUL>
+                <mimo-CB-PUSCH>
+                    <maxNumberMIMO-LayersCB-PUSCH><oneLayer/></maxNumberMIMO-LayersCB-PUSCH>
+                    <maxNumberSRS-ResourcePerSet>1</maxNumberSRS-ResourcePerSet>
+                </mimo-CB-PUSCH>
+                <supportedModulationOrderUL><qam256/></supportedModulationOrderUL>
+            </FeatureSetUplinkPerCC>
+            <FeatureSetUplinkPerCC>
+                <supportedSubcarrierSpacingUL><kHz30/></supportedSubcarrierSpacingUL>
+                <supportedBandwidthUL>
+                    <fr1><mhz20/></fr1>
+                </supportedBandwidthUL>
+                <mimo-CB-PUSCH>
+                    <maxNumberMIMO-LayersCB-PUSCH><oneLayer/></maxNumberMIMO-LayersCB-PUSCH>
+                    <maxNumberSRS-ResourcePerSet>1</maxNumberSRS-ResourcePerSet>
+                </mimo-CB-PUSCH>
+                <supportedModulationOrderUL><qam256/></supportedModulationOrderUL>
+            </FeatureSetUplinkPerCC>
+            <FeatureSetUplinkPerCC>
+                <supportedSubcarrierSpacingUL><kHz15/></supportedSubcarrierSpacingUL>
+                <supportedBandwidthUL>
+                    <fr1><mhz30/></fr1>
+                </supportedBandwidthUL>
+                <mimo-CB-PUSCH>
+                    <maxNumberMIMO-LayersCB-PUSCH><oneLayer/></maxNumberMIMO-LayersCB-PUSCH>
+                    <maxNumberSRS-ResourcePerSet>1</maxNumberSRS-ResourcePerSet>
+                </mimo-CB-PUSCH>
+                <supportedModulationOrderUL><qam256/></supportedModulationOrderUL>
+            </FeatureSetUplinkPerCC>
+            <FeatureSetUplinkPerCC>
+                <supportedSubcarrierSpacingUL><kHz15/></supportedSubcarrierSpacingUL>
+                <supportedBandwidthUL>
+                    <fr1><mhz15/></fr1>
+                </supportedBandwidthUL>
+                <mimo-CB-PUSCH>
+                    <maxNumberMIMO-LayersCB-PUSCH><oneLayer/></maxNumberMIMO-LayersCB-PUSCH>
+                    <maxNumberSRS-ResourcePerSet>1</maxNumberSRS-ResourcePerSet>
+                </mimo-CB-PUSCH>
+                <supportedModulationOrderUL><qam256/></supportedModulationOrderUL>
+            </FeatureSetUplinkPerCC>
+            <FeatureSetUplinkPerCC>
+                <supportedSubcarrierSpacingUL><kHz30/></supportedSubcarrierSpacingUL>
+                <supportedBandwidthUL>
+                    <fr1><mhz100/></fr1>
+                </supportedBandwidthUL>
+                <mimo-CB-PUSCH>
+                    <maxNumberMIMO-LayersCB-PUSCH><oneLayer/></maxNumberMIMO-LayersCB-PUSCH>
+                    <maxNumberSRS-ResourcePerSet>1</maxNumberSRS-ResourcePerSet>
+                </mimo-CB-PUSCH>
+                <supportedModulationOrderUL><qam256/></supportedModulationOrderUL>
+            </FeatureSetUplinkPerCC>
+            <FeatureSetUplinkPerCC>
+                <supportedSubcarrierSpacingUL><kHz30/></supportedSubcarrierSpacingUL>
+                <supportedBandwidthUL>
+                    <fr1><mhz100/></fr1>
+                </supportedBandwidthUL>
+                <channelBW-90mhz><supported/></channelBW-90mhz>
+                <mimo-CB-PUSCH>
+                    <maxNumberMIMO-LayersCB-PUSCH><oneLayer/></maxNumberMIMO-LayersCB-PUSCH>
+                    <maxNumberSRS-ResourcePerSet>1</maxNumberSRS-ResourcePerSet>
+                </mimo-CB-PUSCH>
+                <supportedModulationOrderUL><qam256/></supportedModulationOrderUL>
+            </FeatureSetUplinkPerCC>
+            <FeatureSetUplinkPerCC>
+                <supportedSubcarrierSpacingUL><kHz30/></supportedSubcarrierSpacingUL>
+                <supportedBandwidthUL>
+                    <fr1><mhz60/></fr1>
+                </supportedBandwidthUL>
+                <mimo-CB-PUSCH>
+                    <maxNumberMIMO-LayersCB-PUSCH><oneLayer/></maxNumberMIMO-LayersCB-PUSCH>
+                    <maxNumberSRS-ResourcePerSet>1</maxNumberSRS-ResourcePerSet>
+                </mimo-CB-PUSCH>
+                <supportedModulationOrderUL><qam256/></supportedModulationOrderUL>
+            </FeatureSetUplinkPerCC>
+        </featureSetsUplinkPerCC>
+        <ext1>
+            <featureSetsDownlink-v1540>
+                <FeatureSetDownlink-v1540>
+                    <oneFL-DMRS-TwoAdditionalDMRS-DL><supported/></oneFL-DMRS-TwoAdditionalDMRS-DL>
+                    <twoFL-DMRS-TwoAdditionalDMRS-DL><supported/></twoFL-DMRS-TwoAdditionalDMRS-DL>
+                </FeatureSetDownlink-v1540>
+                <FeatureSetDownlink-v1540>
+                    <oneFL-DMRS-TwoAdditionalDMRS-DL><supported/></oneFL-DMRS-TwoAdditionalDMRS-DL>
+                    <twoFL-DMRS-TwoAdditionalDMRS-DL><supported/></twoFL-DMRS-TwoAdditionalDMRS-DL>
+                </FeatureSetDownlink-v1540>
+                <FeatureSetDownlink-v1540>
+                    <oneFL-DMRS-TwoAdditionalDMRS-DL><supported/></oneFL-DMRS-TwoAdditionalDMRS-DL>
+                    <twoFL-DMRS-TwoAdditionalDMRS-DL><supported/></twoFL-DMRS-TwoAdditionalDMRS-DL>
+                </FeatureSetDownlink-v1540>
+                <FeatureSetDownlink-v1540>
+                    <oneFL-DMRS-TwoAdditionalDMRS-DL><supported/></oneFL-DMRS-TwoAdditionalDMRS-DL>
+                    <twoFL-DMRS-TwoAdditionalDMRS-DL><supported/></twoFL-DMRS-TwoAdditionalDMRS-DL>
+                </FeatureSetDownlink-v1540>
+                <FeatureSetDownlink-v1540>
+                    <oneFL-DMRS-TwoAdditionalDMRS-DL><supported/></oneFL-DMRS-TwoAdditionalDMRS-DL>
+                    <twoFL-DMRS-TwoAdditionalDMRS-DL><supported/></twoFL-DMRS-TwoAdditionalDMRS-DL>
+                </FeatureSetDownlink-v1540>
+                <FeatureSetDownlink-v1540>
+                    <oneFL-DMRS-TwoAdditionalDMRS-DL><supported/></oneFL-DMRS-TwoAdditionalDMRS-DL>
+                    <twoFL-DMRS-TwoAdditionalDMRS-DL><supported/></twoFL-DMRS-TwoAdditionalDMRS-DL>
+                </FeatureSetDownlink-v1540>
+                <FeatureSetDownlink-v1540>
+                    <oneFL-DMRS-TwoAdditionalDMRS-DL><supported/></oneFL-DMRS-TwoAdditionalDMRS-DL>
+                    <twoFL-DMRS-TwoAdditionalDMRS-DL><supported/></twoFL-DMRS-TwoAdditionalDMRS-DL>
+                </FeatureSetDownlink-v1540>
+                <FeatureSetDownlink-v1540>
+                    <oneFL-DMRS-TwoAdditionalDMRS-DL><supported/></oneFL-DMRS-TwoAdditionalDMRS-DL>
+                    <twoFL-DMRS-TwoAdditionalDMRS-DL><supported/></twoFL-DMRS-TwoAdditionalDMRS-DL>
+                </FeatureSetDownlink-v1540>
+                <FeatureSetDownlink-v1540>
+                    <oneFL-DMRS-TwoAdditionalDMRS-DL><supported/></oneFL-DMRS-TwoAdditionalDMRS-DL>
+                    <twoFL-DMRS-TwoAdditionalDMRS-DL><supported/></twoFL-DMRS-TwoAdditionalDMRS-DL>
+                </FeatureSetDownlink-v1540>
+                <FeatureSetDownlink-v1540>
+                    <oneFL-DMRS-TwoAdditionalDMRS-DL><supported/></oneFL-DMRS-TwoAdditionalDMRS-DL>
+                    <twoFL-DMRS-TwoAdditionalDMRS-DL><supported/></twoFL-DMRS-TwoAdditionalDMRS-DL>
+                </FeatureSetDownlink-v1540>
+                <FeatureSetDownlink-v1540>
+                    <oneFL-DMRS-TwoAdditionalDMRS-DL><supported/></oneFL-DMRS-TwoAdditionalDMRS-DL>
+                    <twoFL-DMRS-TwoAdditionalDMRS-DL><supported/></twoFL-DMRS-TwoAdditionalDMRS-DL>
+                </FeatureSetDownlink-v1540>
+                <FeatureSetDownlink-v1540>
+                    <oneFL-DMRS-TwoAdditionalDMRS-DL><supported/></oneFL-DMRS-TwoAdditionalDMRS-DL>
+                    <twoFL-DMRS-TwoAdditionalDMRS-DL><supported/></twoFL-DMRS-TwoAdditionalDMRS-DL>
+                </FeatureSetDownlink-v1540>
+            </featureSetsDownlink-v1540>
+        </ext1>
+    </featureSets>
+    <featureSetCombinations>
+        <FeatureSetCombination>
+            <FeatureSetsPerBand>
+                    <nr>
+                        <downlinkSetNR>2</downlinkSetNR>
+                        <uplinkSetNR>2</uplinkSetNR>
+                    </nr>
+                
+            </FeatureSetsPerBand>
+        </FeatureSetCombination>
+    </featureSetCombinations>
+    <nonCriticalExtension>
+        <interRAT-Parameters>
+            <eutra>
+                <supportedBandListEUTRA>
+                    <FreqBandIndicatorEUTRA>7</FreqBandIndicatorEUTRA>
+                    <FreqBandIndicatorEUTRA>38</FreqBandIndicatorEUTRA>
+                </supportedBandListEUTRA>
+                <eutra-ParametersCommon>
+                    <mfbi-EUTRA><supported/></mfbi-EUTRA>
+                </eutra-ParametersCommon>
+            </eutra>
+        </interRAT-Parameters>
+        <inactiveState><supported/></inactiveState>
+    </nonCriticalExtension>
+</UE-NR-Capability>
+[NR_RRC] [UE 0] RNTI 0x4601 NR Capability encoded, 343 bytes (2745 bits)
+[0m[NR_RRC] [UE 0] RNTI 0x4601 UECapabilityInformation Encoded 2778 bits (348 bytes)
+[0m[NAS]    [UE 0] Received NAS_DOWNLINK_DATA_IND type FGS_REGISTRATION_ACCEPT with length 58
+[0m[NAS]    Received Registration Accept with result 3GPP
+[0m[NAS]    SMS not allowed in 5GS Registration Result
+[0m[NR_RRC] 5G-GUTI: AMF pointer 0, AMF Set ID 1, 5G-TMSI 3221227503 
+[0mmac d7 26 e9 d3 
+[NR_MAC] [UE 0] paging UE_ID=1007
+[0m[NAS]    Send NAS_UPLINK_DATA_REQ message(RegistrationComplete)
+[0m[NAS]    requested PDU session ID 1 type 1 NSSAI 1.16777215 DNN internet
+[0mmac 3b 2a 73 fb 
+[NAS]    Send NAS_UPLINK_DATA_REQ message(PduSessionEstablishRequest)
+[0m[HW]     [ZMQ] TX antenna 0: 500 REQs starved / 3494 served, 76 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NAS]    [UE 0] Received NAS_DOWNLINK_DATA_IND type FGS_CONFIGURATION_UPDATE_COMMAND with length 49
+[0m[93m[NR_RRC] unknown message type 84
+[0m[RLC]    Added srb 2 to UE 0
+[0m[RLC]    Added drb 1 to UE 0
+[0m[RLC]    Added DRB to UE 0
+[0m[NR_RRC] [UE 0] RNTI 0x4601 RRCReconfiguration includes radio Bearer Configuration
+[0m[MAC]    [UE 0] Applying CellGroupConfig from gNodeB
+[0m[93m[SDAP]    Could not find SDAP entity: entity list empty (ue_id=0 pdu_session_id=1)
+[0m[SDAP]   Creating SDAP entity ue_id=0 pdu_session_id=1
+[0m[SDAP]   Default DRB for the created SDAP entity: DRB 1 
+[0m[PDCP]   Added DRB 1 to UE ID 0
+[0m[NR_RRC] [UE 0] RNTI 0x4601 State = NR_RRC_CONNECTED
+[0m[NR_RRC] rrcReconfigurationComplete Encoded 10 bits (2 bytes)
+[0m[NR_RRC] [UE 0] RNTI 0x4601  Logical Channel UL-DCCH (SRB1), Generating RRCReconfigurationComplete (bytes 2)
+[0m[NAS]    [UE 0] Received NAS_CONN_ESTABLI_CNF: errCode 1, length 68
+[0m[NAS]    Received PDU Session Establishment Accept, UE IPv4: 10.45.1.2
+[0m[SDAP]   UE 0 PDU session 1: cached QFI 1
+[0m[SDAP]   UE 0 PDU session 1: bringing TUN oaitun_ue1 up
+[0m[UTIL]   threadCreate() for ue_tun_read_0_p1: creating thread with affinity ffffffff, priority 1
+[0m[32m[OIP]    TUN Interface oaitun_ue1 successfully configured, IPv4 10.45.1.2, IPv6 (null)
+[0m[HW]     [ZMQ] TX antenna 0: 750 REQs starved / 4516 served, 113 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 256.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 24/0 avg code rate 0.9, avg bit/symbol 6.4, avg per TB: (nb RBs 0.8, nb symbols 4.5)
+    UL harq: 9/0 avg code rate 0.9, avg bit/symbol 5.1, avg per TB: (nb RBs 6.9, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 1000 REQs starved / 5614 served, 147 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0mEntering ITTI signals handler
+TYPE <CTRL-C> TO TERMINATE
+[HW]     [ZMQ] TX antenna 0: 1250 REQs starved / 6765 served, 181 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 384.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 24/0 avg code rate 0.9, avg bit/symbol 6.4, avg per TB: (nb RBs 0.8, nb symbols 4.5)
+    UL harq: 9/0 avg code rate 0.9, avg bit/symbol 5.1, avg per TB: (nb RBs 6.9, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 1500 REQs starved / 7803 served, 216 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 1750 REQs starved / 8710 served, 252 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 2000 REQs starved / 9855 served, 290 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 512.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 24/0 avg code rate 0.9, avg bit/symbol 6.4, avg per TB: (nb RBs 0.8, nb symbols 4.5)
+    UL harq: 9/0 avg code rate 0.9, avg bit/symbol 5.1, avg per TB: (nb RBs 6.9, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 2250 REQs starved / 10961 served, 324 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 2500 REQs starved / 12016 served, 361 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 640.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 24/0 avg code rate 0.9, avg bit/symbol 6.4, avg per TB: (nb RBs 0.8, nb symbols 4.5)
+    UL harq: 9/0 avg code rate 0.9, avg bit/symbol 5.1, avg per TB: (nb RBs 6.9, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 2750 REQs starved / 13124 served, 398 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 3000 REQs starved / 14113 served, 431 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 768.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 24/0 avg code rate 0.9, avg bit/symbol 6.4, avg per TB: (nb RBs 0.8, nb symbols 4.5)
+    UL harq: 9/0 avg code rate 0.9, avg bit/symbol 5.1, avg per TB: (nb RBs 6.9, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 3250 REQs starved / 15177 served, 467 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 3500 REQs starved / 16148 served, 503 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 3750 REQs starved / 17208 served, 536 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 896.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 25/0 avg code rate 0.9, avg bit/symbol 6.6, avg per TB: (nb RBs 0.8, nb symbols 4.8)
+    UL harq: 10/0 avg code rate 0.9, avg bit/symbol 5.4, avg per TB: (nb RBs 6.7, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 4000 REQs starved / 18226 served, 570 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 4250 REQs starved / 19346 served, 609 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 0.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 25/0 avg code rate 0.9, avg bit/symbol 6.6, avg per TB: (nb RBs 0.8, nb symbols 4.8)
+    UL harq: 10/0 avg code rate 0.9, avg bit/symbol 5.4, avg per TB: (nb RBs 6.7, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 4500 REQs starved / 20525 served, 647 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 4750 REQs starved / 21654 served, 684 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 5000 REQs starved / 22695 served, 720 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 128.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 25/0 avg code rate 0.9, avg bit/symbol 6.6, avg per TB: (nb RBs 0.8, nb symbols 4.8)
+    UL harq: 10/0 avg code rate 0.9, avg bit/symbol 5.4, avg per TB: (nb RBs 6.7, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 5250 REQs starved / 23735 served, 756 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 5500 REQs starved / 24759 served, 791 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 256.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 25/0 avg code rate 0.9, avg bit/symbol 6.6, avg per TB: (nb RBs 0.8, nb symbols 4.8)
+    UL harq: 10/0 avg code rate 0.9, avg bit/symbol 5.4, avg per TB: (nb RBs 6.7, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 5750 REQs starved / 25845 served, 826 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 6000 REQs starved / 26995 served, 860 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 6250 REQs starved / 27957 served, 897 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 384.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 25/0 avg code rate 0.9, avg bit/symbol 6.6, avg per TB: (nb RBs 0.8, nb symbols 4.8)
+    UL harq: 10/0 avg code rate 0.9, avg bit/symbol 5.4, avg per TB: (nb RBs 6.7, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 6500 REQs starved / 29080 served, 931 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 6750 REQs starved / 30206 served, 967 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 512.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 25/0 avg code rate 0.9, avg bit/symbol 6.6, avg per TB: (nb RBs 0.8, nb symbols 4.8)
+    UL harq: 10/0 avg code rate 0.9, avg bit/symbol 5.4, avg per TB: (nb RBs 6.7, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 7000 REQs starved / 31271 served, 1002 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 7250 REQs starved / 32321 served, 1040 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 640.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 25/0 avg code rate 0.9, avg bit/symbol 6.6, avg per TB: (nb RBs 0.8, nb symbols 4.8)
+    UL harq: 10/0 avg code rate 0.9, avg bit/symbol 5.4, avg per TB: (nb RBs 6.7, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 7500 REQs starved / 33329 served, 1076 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[93m[HW]     Timeout waiting for TX path to align samples
+[0m[93m[HW]     Error, channel timeout
+[0m[93m[HW]     Error, channel timeout
+[0m[93m[HW]     Error, channel timeout
+[0m[HW]     [ZMQ] TX antenna 0: 7750 REQs starved / 34367 served, 1213 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 8000 REQs starved / 35505 served, 1248 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 768.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 25/0 avg code rate 0.9, avg bit/symbol 6.6, avg per TB: (nb RBs 0.8, nb symbols 4.8)
+    UL harq: 10/0 avg code rate 0.9, avg bit/symbol 5.4, avg per TB: (nb RBs 6.7, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 8250 REQs starved / 36524 served, 1283 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 8500 REQs starved / 37603 served, 1320 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 896.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 25/0 avg code rate 0.9, avg bit/symbol 6.6, avg per TB: (nb RBs 0.8, nb symbols 4.8)
+    UL harq: 10/0 avg code rate 0.9, avg bit/symbol 5.4, avg per TB: (nb RBs 6.7, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 8750 REQs starved / 38600 served, 1355 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 9000 REQs starved / 39720 served, 1389 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[93m[HW]     Timeout waiting for TX path to align samples
+[0m[93m[HW]     Error, channel timeout
+[0m[93m[HW]     Error, channel timeout
+[0m[93m[HW]     Error, channel timeout
+[0m[HW]     [ZMQ] TX antenna 0: 9250 REQs starved / 40724 served, 1523 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 0.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 25/0 avg code rate 0.9, avg bit/symbol 6.6, avg per TB: (nb RBs 0.8, nb symbols 4.8)
+    UL harq: 10/0 avg code rate 0.9, avg bit/symbol 5.4, avg per TB: (nb RBs 6.7, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 9500 REQs starved / 41787 served, 1559 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[93m[HW]     Timeout waiting for TX path to align samples
+[0m[93m[HW]     Error, channel timeout
+[0m[93m[HW]     Error, channel timeout
+[0m[93m[HW]     Error, channel timeout
+[0m[HW]     [ZMQ] TX antenna 0: 9750 REQs starved / 42814 served, 1693 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 128.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 26/0 avg code rate 0.9, avg bit/symbol 6.7, avg per TB: (nb RBs 0.8, nb symbols 5.1)
+    UL harq: 11/0 avg code rate 0.9, avg bit/symbol 5.6, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 10000 REQs starved / 43746 served, 1728 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 10250 REQs starved / 44818 served, 1761 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] [208.15] Received TA_COMMAND 32 TAGID 0 CC_id 0 
+[0m[NR_MAC] [212.15] Received TA_COMMAND 32 TAGID 0 CC_id 0 
+[0m[HW]     [ZMQ] TX antenna 0: 10500 REQs starved / 45809 served, 1797 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 256.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 28/0 avg code rate 0.9, avg bit/symbol 6.9, avg per TB: (nb RBs 0.9, nb symbols 5.6)
+    UL harq: 11/0 avg code rate 0.9, avg bit/symbol 5.6, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 10750 REQs starved / 46837 served, 1833 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 11000 REQs starved / 47955 served, 1867 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 384.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 28/0 avg code rate 0.9, avg bit/symbol 6.9, avg per TB: (nb RBs 0.9, nb symbols 5.6)
+    UL harq: 11/0 avg code rate 0.9, avg bit/symbol 5.6, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[93m[HW]     Timeout waiting for TX path to align samples
+[0m[93m[HW]     Error, channel timeout
+[0m[93m[HW]     Error, channel timeout
+[0m[93m[HW]     Error, channel timeout
+[0m[HW]     [ZMQ] TX antenna 0: 11250 REQs starved / 49093 served, 2004 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 11500 REQs starved / 50050 served, 2037 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 512.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 28/0 avg code rate 0.9, avg bit/symbol 6.9, avg per TB: (nb RBs 0.9, nb symbols 5.6)
+    UL harq: 11/0 avg code rate 0.9, avg bit/symbol 5.6, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 11750 REQs starved / 51080 served, 2073 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 12000 REQs starved / 52186 served, 2107 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 12250 REQs starved / 53169 served, 2141 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 640.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 28/0 avg code rate 0.9, avg bit/symbol 6.9, avg per TB: (nb RBs 0.9, nb symbols 5.6)
+    UL harq: 11/0 avg code rate 0.9, avg bit/symbol 5.6, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 12500 REQs starved / 54131 served, 2174 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 12750 REQs starved / 55265 served, 2211 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 768.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 28/0 avg code rate 0.9, avg bit/symbol 6.9, avg per TB: (nb RBs 0.9, nb symbols 5.6)
+    UL harq: 11/0 avg code rate 0.9, avg bit/symbol 5.6, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 13000 REQs starved / 56338 served, 2247 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 13250 REQs starved / 57260 served, 2282 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 13500 REQs starved / 58280 served, 2319 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 896.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 28/0 avg code rate 0.9, avg bit/symbol 6.9, avg per TB: (nb RBs 0.9, nb symbols 5.6)
+    UL harq: 11/0 avg code rate 0.9, avg bit/symbol 5.6, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 13750 REQs starved / 59351 served, 2356 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 14000 REQs starved / 60435 served, 2390 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 0.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 28/0 avg code rate 0.9, avg bit/symbol 6.9, avg per TB: (nb RBs 0.9, nb symbols 5.6)
+    UL harq: 11/0 avg code rate 0.9, avg bit/symbol 5.6, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 14250 REQs starved / 61460 served, 2423 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 14500 REQs starved / 62571 served, 2457 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 14750 REQs starved / 63685 served, 2491 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 128.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 28/0 avg code rate 0.9, avg bit/symbol 6.9, avg per TB: (nb RBs 0.9, nb symbols 5.6)
+    UL harq: 11/0 avg code rate 0.9, avg bit/symbol 5.6, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 15000 REQs starved / 64820 served, 2524 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 15250 REQs starved / 65812 served, 2559 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 256.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 28/0 avg code rate 0.9, avg bit/symbol 6.9, avg per TB: (nb RBs 0.9, nb symbols 5.6)
+    UL harq: 11/0 avg code rate 0.9, avg bit/symbol 5.6, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 15500 REQs starved / 66918 served, 2596 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 15750 REQs starved / 67899 served, 2631 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 384.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 28/0 avg code rate 0.9, avg bit/symbol 6.9, avg per TB: (nb RBs 0.9, nb symbols 5.6)
+    UL harq: 11/0 avg code rate 0.9, avg bit/symbol 5.6, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 16000 REQs starved / 68981 served, 2663 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 16250 REQs starved / 70101 served, 2699 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 16500 REQs starved / 71170 served, 2733 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 512.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 28/0 avg code rate 0.9, avg bit/symbol 6.9, avg per TB: (nb RBs 0.9, nb symbols 5.6)
+    UL harq: 11/0 avg code rate 0.9, avg bit/symbol 5.6, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 16750 REQs starved / 72291 served, 2770 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 17000 REQs starved / 73342 served, 2805 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 640.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 28/0 avg code rate 0.9, avg bit/symbol 6.9, avg per TB: (nb RBs 0.9, nb symbols 5.6)
+    UL harq: 11/0 avg code rate 0.9, avg bit/symbol 5.6, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 17250 REQs starved / 74394 served, 2839 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 17500 REQs starved / 75310 served, 2874 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 17750 REQs starved / 76393 served, 2909 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 768.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 28/0 avg code rate 0.9, avg bit/symbol 6.9, avg per TB: (nb RBs 0.9, nb symbols 5.6)
+    UL harq: 11/0 avg code rate 0.9, avg bit/symbol 5.6, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 18000 REQs starved / 77451 served, 2942 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 18250 REQs starved / 78499 served, 2979 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 896.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 28/0 avg code rate 0.9, avg bit/symbol 6.9, avg per TB: (nb RBs 0.9, nb symbols 5.6)
+    UL harq: 11/0 avg code rate 0.9, avg bit/symbol 5.6, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 18500 REQs starved / 79626 served, 3014 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 18750 REQs starved / 80704 served, 3053 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 19000 REQs starved / 81690 served, 3090 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 0.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 28/0 avg code rate 0.9, avg bit/symbol 6.9, avg per TB: (nb RBs 0.9, nb symbols 5.6)
+    UL harq: 11/0 avg code rate 0.9, avg bit/symbol 5.6, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 19250 REQs starved / 82750 served, 3126 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 19500 REQs starved / 83680 served, 3162 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 128.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 28/0 avg code rate 0.9, avg bit/symbol 6.9, avg per TB: (nb RBs 0.9, nb symbols 5.6)
+    UL harq: 11/0 avg code rate 0.9, avg bit/symbol 5.6, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 19750 REQs starved / 84804 served, 3196 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 20000 REQs starved / 86007 served, 3232 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] [230.10] Received TA_COMMAND 30 TAGID 0 CC_id 0 
+[0m[NR_MAC] [234.15] Received TA_COMMAND 30 TAGID 0 CC_id 0 
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 256.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 30/0 avg code rate 0.9, avg bit/symbol 7.1, avg per TB: (nb RBs 1.0, nb symbols 6.0)
+    UL harq: 11/0 avg code rate 0.9, avg bit/symbol 5.6, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 20250 REQs starved / 87037 served, 3271 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] [294.15] Received TA_COMMAND 32 TAGID 0 CC_id 0 
+[0m[NR_MAC] [298.15] Received TA_COMMAND 32 TAGID 0 CC_id 0 
+[0m[HW]     [ZMQ] TX antenna 0: 20500 REQs starved / 87992 served, 3307 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 20750 REQs starved / 89021 served, 3343 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 384.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 33/0 avg code rate 0.9, avg bit/symbol 7.2, avg per TB: (nb RBs 1.1, nb symbols 6.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 21000 REQs starved / 90101 served, 3380 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 21250 REQs starved / 91141 served, 3416 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 512.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 33/0 avg code rate 0.9, avg bit/symbol 7.2, avg per TB: (nb RBs 1.1, nb symbols 6.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 21500 REQs starved / 92208 served, 3449 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 21750 REQs starved / 93170 served, 3483 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 22000 REQs starved / 94278 served, 3518 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 640.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 33/0 avg code rate 0.9, avg bit/symbol 7.2, avg per TB: (nb RBs 1.1, nb symbols 6.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 22250 REQs starved / 95336 served, 3551 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 22500 REQs starved / 96332 served, 3584 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 768.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 33/0 avg code rate 0.9, avg bit/symbol 7.2, avg per TB: (nb RBs 1.1, nb symbols 6.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 22750 REQs starved / 97404 served, 3617 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 23000 REQs starved / 98472 served, 3653 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 23250 REQs starved / 99464 served, 3688 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 896.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 33/0 avg code rate 0.9, avg bit/symbol 7.2, avg per TB: (nb RBs 1.1, nb symbols 6.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 23500 REQs starved / 100513 served, 3722 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 23750 REQs starved / 101537 served, 3755 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 0.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 33/0 avg code rate 0.9, avg bit/symbol 7.2, avg per TB: (nb RBs 1.1, nb symbols 6.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 24000 REQs starved / 102741 served, 3793 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 24250 REQs starved / 103782 served, 3830 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 128.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 33/0 avg code rate 0.9, avg bit/symbol 7.2, avg per TB: (nb RBs 1.1, nb symbols 6.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 24500 REQs starved / 104867 served, 3865 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 24750 REQs starved / 105950 served, 3901 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 25000 REQs starved / 107113 served, 3937 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 256.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 33/0 avg code rate 0.9, avg bit/symbol 7.2, avg per TB: (nb RBs 1.1, nb symbols 6.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 25250 REQs starved / 108257 served, 3972 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 25500 REQs starved / 109272 served, 4008 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 384.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 33/0 avg code rate 0.9, avg bit/symbol 7.2, avg per TB: (nb RBs 1.1, nb symbols 6.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 25750 REQs starved / 110227 served, 4042 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 26000 REQs starved / 111383 served, 4078 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 26250 REQs starved / 112445 served, 4113 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 512.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 33/0 avg code rate 0.9, avg bit/symbol 7.2, avg per TB: (nb RBs 1.1, nb symbols 6.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 26500 REQs starved / 113427 served, 4150 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 26750 REQs starved / 114432 served, 4183 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 640.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 33/0 avg code rate 0.9, avg bit/symbol 7.2, avg per TB: (nb RBs 1.1, nb symbols 6.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 27000 REQs starved / 115402 served, 4218 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 27250 REQs starved / 116387 served, 4250 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 27500 REQs starved / 117567 served, 4285 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 768.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 33/0 avg code rate 0.9, avg bit/symbol 7.2, avg per TB: (nb RBs 1.1, nb symbols 6.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 27750 REQs starved / 118534 served, 4319 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 28000 REQs starved / 119583 served, 4353 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 896.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 33/0 avg code rate 0.9, avg bit/symbol 7.2, avg per TB: (nb RBs 1.1, nb symbols 6.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 28250 REQs starved / 120682 served, 4385 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 28500 REQs starved / 121862 served, 4419 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 0.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 33/0 avg code rate 0.9, avg bit/symbol 7.2, avg per TB: (nb RBs 1.1, nb symbols 6.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 28750 REQs starved / 122864 served, 4453 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 29000 REQs starved / 123936 served, 4485 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 29250 REQs starved / 124948 served, 4518 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 128.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 33/0 avg code rate 0.9, avg bit/symbol 7.2, avg per TB: (nb RBs 1.1, nb symbols 6.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 29500 REQs starved / 126027 served, 4555 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 29750 REQs starved / 127107 served, 4592 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 256.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 33/0 avg code rate 0.9, avg bit/symbol 7.2, avg per TB: (nb RBs 1.1, nb symbols 6.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 30000 REQs starved / 128257 served, 4626 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 30250 REQs starved / 129408 served, 4663 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] [366.15] Received TA_COMMAND 30 TAGID 0 CC_id 0 
+[0m[NR_MAC] [370.15] Received TA_COMMAND 30 TAGID 0 CC_id 0 
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 384.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 35/0 avg code rate 0.9, avg bit/symbol 7.3, avg per TB: (nb RBs 1.1, nb symbols 6.9)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 30500 REQs starved / 130425 served, 4699 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] [430.15] Received TA_COMMAND 32 TAGID 0 CC_id 0 
+[0m[NR_MAC] [434.15] Received TA_COMMAND 32 TAGID 0 CC_id 0 
+[0m[NR_MAC] [438.15] Received TA_COMMAND 32 TAGID 0 CC_id 0 
+[0m[HW]     [ZMQ] TX antenna 0: 30750 REQs starved / 131507 served, 4735 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] [442.15] Received TA_COMMAND 32 TAGID 0 CC_id 0 
+[0m[NR_MAC] [453.3] Received TA_COMMAND 30 TAGID 0 CC_id 0 
+[0m[HW]     [ZMQ] TX antenna 0: 31000 REQs starved / 132490 served, 4771 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 512.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 40/0 avg code rate 0.9, avg bit/symbol 7.4, avg per TB: (nb RBs 1.2, nb symbols 7.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 31250 REQs starved / 133506 served, 4805 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 31500 REQs starved / 134574 served, 4839 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 640.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 40/0 avg code rate 0.9, avg bit/symbol 7.4, avg per TB: (nb RBs 1.2, nb symbols 7.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 31750 REQs starved / 135561 served, 4874 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 32000 REQs starved / 136630 served, 4908 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 32250 REQs starved / 137639 served, 4942 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 768.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 40/0 avg code rate 0.9, avg bit/symbol 7.4, avg per TB: (nb RBs 1.2, nb symbols 7.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 32500 REQs starved / 138691 served, 4976 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 32750 REQs starved / 139664 served, 5010 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 896.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 40/0 avg code rate 0.9, avg bit/symbol 7.4, avg per TB: (nb RBs 1.2, nb symbols 7.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 33000 REQs starved / 140777 served, 5047 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 33250 REQs starved / 141935 served, 5083 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 33500 REQs starved / 143095 served, 5115 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 0.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 40/0 avg code rate 0.9, avg bit/symbol 7.4, avg per TB: (nb RBs 1.2, nb symbols 7.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 33750 REQs starved / 144073 served, 5148 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 34000 REQs starved / 145131 served, 5182 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 128.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 40/0 avg code rate 0.9, avg bit/symbol 7.4, avg per TB: (nb RBs 1.2, nb symbols 7.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 34250 REQs starved / 146174 served, 5217 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 34500 REQs starved / 147255 served, 5251 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 34750 REQs starved / 148264 served, 5284 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 256.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 40/0 avg code rate 0.9, avg bit/symbol 7.4, avg per TB: (nb RBs 1.2, nb symbols 7.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 35000 REQs starved / 149253 served, 5318 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 35250 REQs starved / 150345 served, 5351 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 384.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 40/0 avg code rate 0.9, avg bit/symbol 7.4, avg per TB: (nb RBs 1.2, nb symbols 7.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 35500 REQs starved / 151467 served, 5386 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 35750 REQs starved / 152615 served, 5422 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 512.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 40/0 avg code rate 0.9, avg bit/symbol 7.4, avg per TB: (nb RBs 1.2, nb symbols 7.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 36000 REQs starved / 153864 served, 5459 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 36250 REQs starved / 154985 served, 5492 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 640.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 40/0 avg code rate 0.9, avg bit/symbol 7.4, avg per TB: (nb RBs 1.2, nb symbols 7.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 36500 REQs starved / 156103 served, 5525 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 36750 REQs starved / 157199 served, 5558 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 37000 REQs starved / 158451 served, 5595 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 768.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 40/0 avg code rate 0.9, avg bit/symbol 7.4, avg per TB: (nb RBs 1.2, nb symbols 7.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 37250 REQs starved / 159455 served, 5628 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 37500 REQs starved / 160450 served, 5661 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 896.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 40/0 avg code rate 0.9, avg bit/symbol 7.4, avg per TB: (nb RBs 1.2, nb symbols 7.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 37750 REQs starved / 161519 served, 5697 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 38000 REQs starved / 162585 served, 5729 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[93m[HW]     Timeout waiting for TX path to align samples
+[0m[93m[HW]     Error, channel timeout
+[0m[93m[HW]     Error, channel timeout
+[0m[93m[HW]     Error, channel timeout
+[0m[HW]     [ZMQ] TX antenna 0: 38250 REQs starved / 163637 served, 5865 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 0.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 40/0 avg code rate 0.9, avg bit/symbol 7.4, avg per TB: (nb RBs 1.2, nb symbols 7.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 38500 REQs starved / 164747 served, 5900 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 38750 REQs starved / 165939 served, 5935 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 128.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 40/0 avg code rate 0.9, avg bit/symbol 7.4, avg per TB: (nb RBs 1.2, nb symbols 7.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 39000 REQs starved / 166945 served, 5968 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 39250 REQs starved / 167971 served, 6004 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 256.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 40/0 avg code rate 0.9, avg bit/symbol 7.4, avg per TB: (nb RBs 1.2, nb symbols 7.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 39500 REQs starved / 169067 served, 6039 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 39750 REQs starved / 170150 served, 6074 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 40000 REQs starved / 171280 served, 6108 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 384.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 40/0 avg code rate 0.9, avg bit/symbol 7.4, avg per TB: (nb RBs 1.2, nb symbols 7.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 40250 REQs starved / 172238 served, 6144 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 40500 REQs starved / 173291 served, 6179 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 512.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 40/0 avg code rate 0.9, avg bit/symbol 7.4, avg per TB: (nb RBs 1.2, nb symbols 7.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 40750 REQs starved / 174279 served, 6213 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 41000 REQs starved / 175307 served, 6250 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 41250 REQs starved / 176417 served, 6285 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 640.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 40/0 avg code rate 0.9, avg bit/symbol 7.4, avg per TB: (nb RBs 1.2, nb symbols 7.5)
+    UL harq: 12/0 avg code rate 0.9, avg bit/symbol 5.8, avg per TB: (nb RBs 6.6, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 41500 REQs starved / 177427 served, 6322 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 41750 REQs starved / 178540 served, 6361 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 768.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 42000 REQs starved / 179577 served, 6395 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 42250 REQs starved / 180586 served, 6430 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 42500 REQs starved / 181573 served, 6466 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 896.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 42750 REQs starved / 182598 served, 6501 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 43000 REQs starved / 183538 served, 6537 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 0.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 43250 REQs starved / 184539 served, 6572 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 43500 REQs starved / 185496 served, 6607 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 43750 REQs starved / 186546 served, 6639 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 128.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 44000 REQs starved / 187535 served, 6674 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 44250 REQs starved / 188733 served, 6709 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 256.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 44500 REQs starved / 189613 served, 6742 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 44750 REQs starved / 190812 served, 6779 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 384.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 45000 REQs starved / 191910 served, 6816 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 45250 REQs starved / 192868 served, 6851 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 45500 REQs starved / 193978 served, 6885 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 512.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 45750 REQs starved / 195007 served, 6920 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 46000 REQs starved / 196058 served, 6952 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[93m[HW]     Timeout waiting for TX path to align samples
+[0m[93m[HW]     Error, channel timeout
+[0m[93m[HW]     Error, channel timeout
+[0m[93m[HW]     Error, channel timeout
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 640.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 46250 REQs starved / 197033 served, 7087 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 46500 REQs starved / 198180 served, 7122 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 46750 REQs starved / 199288 served, 7160 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 768.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 47000 REQs starved / 200251 served, 7196 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 47250 REQs starved / 201200 served, 7233 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 896.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 47500 REQs starved / 202140 served, 7268 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 47750 REQs starved / 203252 served, 7306 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 48000 REQs starved / 204294 served, 7341 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 0.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 48250 REQs starved / 205368 served, 7379 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 48500 REQs starved / 206496 served, 7414 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 128.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 48750 REQs starved / 207581 served, 7451 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 49000 REQs starved / 208639 served, 7489 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 49250 REQs starved / 209662 served, 7525 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 256.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 49500 REQs starved / 210667 served, 7562 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 49750 REQs starved / 211740 served, 7597 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 384.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 50000 REQs starved / 212752 served, 7636 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 50250 REQs starved / 213754 served, 7671 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 50500 REQs starved / 214784 served, 7705 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 512.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 50750 REQs starved / 215800 served, 7738 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 51000 REQs starved / 216898 served, 7773 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 640.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 51250 REQs starved / 217914 served, 7811 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 51500 REQs starved / 218928 served, 7847 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 51750 REQs starved / 219976 served, 7878 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 768.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 52000 REQs starved / 221100 served, 7913 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 52250 REQs starved / 222094 served, 7951 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 896.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 52500 REQs starved / 223156 served, 7987 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 52750 REQs starved / 224338 served, 8022 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 0.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 53000 REQs starved / 225350 served, 8058 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 53250 REQs starved / 226288 served, 8094 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 53500 REQs starved / 227354 served, 8131 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 128.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 53750 REQs starved / 228459 served, 8169 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 54000 REQs starved / 229448 served, 8204 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 256.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 54250 REQs starved / 230539 served, 8238 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 54500 REQs starved / 231478 served, 8276 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 54750 REQs starved / 232518 served, 8312 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 384.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 55000 REQs starved / 233561 served, 8346 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 55250 REQs starved / 234587 served, 8380 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 512.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 55500 REQs starved / 235662 served, 8415 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 55750 REQs starved / 236834 served, 8453 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 56000 REQs starved / 237818 served, 8489 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 640.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 56250 REQs starved / 238948 served, 8525 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 56500 REQs starved / 240027 served, 8559 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 768.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 56750 REQs starved / 241061 served, 8597 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 57000 REQs starved / 242122 served, 8632 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 896.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 57250 REQs starved / 243135 served, 8668 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 57500 REQs starved / 243989 served, 8703 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 57750 REQs starved / 245018 served, 8739 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 0.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 58000 REQs starved / 246111 served, 8771 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 58250 REQs starved / 247159 served, 8807 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 128.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 58500 REQs starved / 248170 served, 8842 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 58750 REQs starved / 249133 served, 8878 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 59000 REQs starved / 250269 served, 8913 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 256.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 59250 REQs starved / 251332 served, 8948 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 59500 REQs starved / 252428 served, 8981 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 384.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 59750 REQs starved / 253467 served, 9016 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 60000 REQs starved / 254487 served, 9050 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 60250 REQs starved / 255591 served, 9082 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 512.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 60500 REQs starved / 256629 served, 9120 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 60750 REQs starved / 257742 served, 9153 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 640.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 61000 REQs starved / 258839 served, 9188 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 61250 REQs starved / 259832 served, 9223 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 61500 REQs starved / 260807 served, 9259 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 768.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 61750 REQs starved / 261831 served, 9294 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 62000 REQs starved / 262787 served, 9331 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 896.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 62250 REQs starved / 263963 served, 9369 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 62500 REQs starved / 265098 served, 9403 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 0.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 62750 REQs starved / 266123 served, 9439 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 63000 REQs starved / 267111 served, 9473 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 63250 REQs starved / 268193 served, 9509 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 128.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 63500 REQs starved / 269304 served, 9546 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 63750 REQs starved / 270338 served, 9585 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 256.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 64000 REQs starved / 271336 served, 9620 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 64250 REQs starved / 272369 served, 9654 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[93m[HW]     Timeout waiting for TX path to align samples
+[0m[93m[HW]     Error, channel timeout
+[0m[93m[HW]     Error, channel timeout
+[0m[93m[HW]     Error, channel timeout
+[0m[HW]     [ZMQ] TX antenna 0: 64500 REQs starved / 273399 served, 9792 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 384.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 64750 REQs starved / 274420 served, 9827 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 65000 REQs starved / 275458 served, 9862 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 512.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 65250 REQs starved / 276480 served, 9898 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 65500 REQs starved / 277459 served, 9931 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 65750 REQs starved / 278432 served, 9970 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 640.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 66000 REQs starved / 279338 served, 10007 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 66250 REQs starved / 280287 served, 10043 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 66500 REQs starved / 281235 served, 10079 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 768.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 66750 REQs starved / 282184 served, 10118 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 67000 REQs starved / 283215 served, 10154 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 896.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 67250 REQs starved / 284217 served, 10189 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 67500 REQs starved / 285189 served, 10226 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 67750 REQs starved / 286087 served, 10262 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 0.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 68000 REQs starved / 287038 served, 10300 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 68250 REQs starved / 287987 served, 10341 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 68500 REQs starved / 288909 served, 10376 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 128.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 68750 REQs starved / 289979 served, 10415 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 69000 REQs starved / 290993 served, 10450 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 256.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 69250 REQs starved / 291991 served, 10486 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 69500 REQs starved / 293029 served, 10524 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 69750 REQs starved / 293933 served, 10562 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 384.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 70000 REQs starved / 295021 served, 10604 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 70250 REQs starved / 295953 served, 10641 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 512.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 70500 REQs starved / 296919 served, 10680 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 70750 REQs starved / 297908 served, 10721 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 71000 REQs starved / 299018 served, 10760 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 640.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 71250 REQs starved / 300079 served, 10797 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 71500 REQs starved / 301131 served, 10838 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 768.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 71750 REQs starved / 302030 served, 10873 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 72000 REQs starved / 303019 served, 10910 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 72250 REQs starved / 303855 served, 10947 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 896.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 72500 REQs starved / 304734 served, 10983 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 72750 REQs starved / 305709 served, 11022 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 73000 REQs starved / 306725 served, 11059 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 0.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 73250 REQs starved / 307743 served, 11100 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 73500 REQs starved / 308689 served, 11139 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 73750 REQs starved / 309509 served, 11174 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 128.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 74000 REQs starved / 310555 served, 11211 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 74250 REQs starved / 311515 served, 11250 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 256.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 74500 REQs starved / 312377 served, 11283 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 74750 REQs starved / 313339 served, 11322 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 75000 REQs starved / 314379 served, 11360 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 384.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 75250 REQs starved / 315314 served, 11397 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 75500 REQs starved / 316322 served, 11434 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 512.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 75750 REQs starved / 317266 served, 11469 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 76000 REQs starved / 318190 served, 11506 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 76250 REQs starved / 319203 served, 11544 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 640.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 76500 REQs starved / 320195 served, 11582 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 76750 REQs starved / 321161 served, 11618 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 77000 REQs starved / 322160 served, 11657 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 768.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 77250 REQs starved / 323191 served, 11692 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 77500 REQs starved / 324220 served, 11728 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 896.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 77750 REQs starved / 325125 served, 11765 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 78000 REQs starved / 326070 served, 11803 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 78250 REQs starved / 327027 served, 11838 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 0.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 78500 REQs starved / 328016 served, 11879 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 78750 REQs starved / 329065 served, 11915 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 79000 REQs starved / 330055 served, 11952 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 128.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 79250 REQs starved / 331019 served, 11992 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 79500 REQs starved / 331979 served, 12029 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 256.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 79750 REQs starved / 332990 served, 12066 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 80000 REQs starved / 333991 served, 12103 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 80250 REQs starved / 334900 served, 12142 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 384.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 80500 REQs starved / 335840 served, 12178 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 80750 REQs starved / 336829 served, 12216 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 81000 REQs starved / 337724 served, 12254 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 512.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 81250 REQs starved / 338695 served, 12291 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 81500 REQs starved / 339699 served, 12328 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 640.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 81750 REQs starved / 340664 served, 12368 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 82000 REQs starved / 341703 served, 12405 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 82250 REQs starved / 342720 served, 12444 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 768.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 82500 REQs starved / 343740 served, 12482 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 82750 REQs starved / 344769 served, 12522 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 896.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 83000 REQs starved / 345628 served, 12560 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 83250 REQs starved / 346629 served, 12599 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 83500 REQs starved / 347619 served, 12638 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 0.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 83750 REQs starved / 348692 served, 12677 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 84000 REQs starved / 349670 served, 12713 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 128.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 84250 REQs starved / 350719 served, 12749 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 84500 REQs starved / 351734 served, 12788 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 84750 REQs starved / 352799 served, 12825 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 256.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 85000 REQs starved / 353741 served, 12862 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 85250 REQs starved / 354750 served, 12899 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 384.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 85500 REQs starved / 355701 served, 12938 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 85750 REQs starved / 356795 served, 12977 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 86000 REQs starved / 357719 served, 13016 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 512.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 86250 REQs starved / 358620 served, 13053 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 86500 REQs starved / 359498 served, 13092 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 86750 REQs starved / 360401 served, 13130 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 640.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 87000 REQs starved / 361383 served, 13166 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 87250 REQs starved / 362340 served, 13204 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 87500 REQs starved / 363244 served, 13240 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 768.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 87750 REQs starved / 364175 served, 13276 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 88000 REQs starved / 365147 served, 13315 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 896.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 88250 REQs starved / 366141 served, 13350 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 88500 REQs starved / 367033 served, 13387 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[93m[HW]     Timeout waiting for TX path to align samples
+[0m[93m[HW]     Error, channel timeout
+[0m[93m[HW]     Error, channel timeout
+[0m[93m[HW]     Error, channel timeout
+[0m[HW]     [ZMQ] TX antenna 0: 88750 REQs starved / 368025 served, 13524 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 0.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 89000 REQs starved / 369060 served, 13565 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 89250 REQs starved / 370051 served, 13603 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 89500 REQs starved / 370978 served, 13643 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 128.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 60.0 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 41/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.6)
+    UL harq: 13/0 avg code rate 0.9, avg bit/symbol 5.9, avg per TB: (nb RBs 6.5, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 89750 REQs starved / 371930 served, 13682 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 90000 REQs starved / 372871 served, 13721 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 256.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 90250 REQs starved / 373870 served, 13756 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 90500 REQs starved / 374870 served, 13795 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 90750 REQs starved / 375805 served, 13830 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 384.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 91000 REQs starved / 376859 served, 13870 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 91250 REQs starved / 377818 served, 13908 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 512.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 91500 REQs starved / 378886 served, 13949 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 91750 REQs starved / 379796 served, 13988 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 92000 REQs starved / 380831 served, 14027 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 640.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 92250 REQs starved / 381833 served, 14066 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 92500 REQs starved / 382798 served, 14105 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 92750 REQs starved / 383699 served, 14140 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 768.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 93000 REQs starved / 384660 served, 14178 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 93250 REQs starved / 385501 served, 14214 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 93500 REQs starved / 386375 served, 14253 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 896.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 93750 REQs starved / 387315 served, 14291 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 94000 REQs starved / 388232 served, 14330 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 0.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 94250 REQs starved / 389278 served, 14370 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 94500 REQs starved / 390230 served, 14409 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 94750 REQs starved / 391260 served, 14447 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 128.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 95000 REQs starved / 392256 served, 14485 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 95250 REQs starved / 393190 served, 14523 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 256.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 95500 REQs starved / 394135 served, 14563 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 95750 REQs starved / 395082 served, 14603 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 96000 REQs starved / 396056 served, 14641 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 384.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 96250 REQs starved / 397003 served, 14678 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 96500 REQs starved / 397960 served, 14712 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 96750 REQs starved / 398937 served, 14750 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 512.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 97000 REQs starved / 399870 served, 14786 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 97250 REQs starved / 400765 served, 14820 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 640.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 97500 REQs starved / 401889 served, 14858 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 97750 REQs starved / 402932 served, 14891 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 98000 REQs starved / 403950 served, 14928 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 768.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 98250 REQs starved / 404951 served, 14964 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 98500 REQs starved / 406002 served, 15001 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 896.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 98750 REQs starved / 406945 served, 15038 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 99000 REQs starved / 407928 served, 15075 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 99250 REQs starved / 408971 served, 15112 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 0.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 99500 REQs starved / 409914 served, 15149 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 99750 REQs starved / 410860 served, 15187 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 100000 REQs starved / 411860 served, 15222 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 128.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 100250 REQs starved / 412821 served, 15257 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 100500 REQs starved / 413765 served, 15293 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 256.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 100750 REQs starved / 414780 served, 15331 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 101000 REQs starved / 415812 served, 15368 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 101250 REQs starved / 416860 served, 15408 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 384.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 101500 REQs starved / 417902 served, 15446 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 101750 REQs starved / 418792 served, 15483 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 512.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 102000 REQs starved / 419750 served, 15521 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 102250 REQs starved / 420780 served, 15556 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 102500 REQs starved / 421778 served, 15593 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 640.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 102750 REQs starved / 422751 served, 15634 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 103000 REQs starved / 423638 served, 15671 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 103250 REQs starved / 424654 served, 15709 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 768.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 103500 REQs starved / 425550 served, 15746 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 103750 REQs starved / 426400 served, 15782 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 104000 REQs starved / 427220 served, 15818 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 896.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 104250 REQs starved / 428160 served, 15856 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 104500 REQs starved / 429110 served, 15894 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 0.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 104750 REQs starved / 430302 served, 15932 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 105000 REQs starved / 431266 served, 15967 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 105250 REQs starved / 432241 served, 16006 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 128.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 105500 REQs starved / 433341 served, 16044 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 105750 REQs starved / 434324 served, 16081 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 256.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 106000 REQs starved / 435325 served, 16117 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 106250 REQs starved / 436261 served, 16154 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 106500 REQs starved / 437305 served, 16193 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 384.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 106750 REQs starved / 438429 served, 16232 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 107000 REQs starved / 439360 served, 16271 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 512.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 107250 REQs starved / 440235 served, 16308 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 107500 REQs starved / 441401 served, 16346 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 107750 REQs starved / 442311 served, 16386 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 640.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 108000 REQs starved / 443300 served, 16426 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 108250 REQs starved / 444240 served, 16464 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 108500 REQs starved / 445103 served, 16500 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 768.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 108750 REQs starved / 446071 served, 16539 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 109000 REQs starved / 447080 served, 16579 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 896.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 109250 REQs starved / 448063 served, 16620 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 109500 REQs starved / 448991 served, 16657 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[93m[HW]     Timeout waiting for TX path to align samples
+[0m[93m[HW]     Error, channel timeout
+[0m[93m[HW]     Error, channel timeout
+[0m[93m[HW]     Error, channel timeout
+[0m[HW]     [ZMQ] TX antenna 0: 109750 REQs starved / 450057 served, 16795 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 0.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 110000 REQs starved / 450951 served, 16833 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 110250 REQs starved / 451900 served, 16870 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 110500 REQs starved / 452821 served, 16906 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 128.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 110750 REQs starved / 453707 served, 16944 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 111000 REQs starved / 454776 served, 16979 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 256.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 111250 REQs starved / 455704 served, 17013 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 111500 REQs starved / 456553 served, 17051 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 111750 REQs starved / 457435 served, 17092 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 384.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 112000 REQs starved / 458352 served, 17130 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 112250 REQs starved / 459281 served, 17168 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 112500 REQs starved / 460266 served, 17206 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 512.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 112750 REQs starved / 461141 served, 17242 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 113000 REQs starved / 462181 served, 17280 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 640.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 113250 REQs starved / 463214 served, 17320 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 113500 REQs starved / 464201 served, 17358 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 113750 REQs starved / 465161 served, 17395 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 768.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 114000 REQs starved / 466056 served, 17431 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 114250 REQs starved / 467057 served, 17469 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 114500 REQs starved / 467998 served, 17506 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 896.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 114750 REQs starved / 468847 served, 17544 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 115000 REQs starved / 469773 served, 17579 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 115250 REQs starved / 470656 served, 17616 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 0.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 115500 REQs starved / 471632 served, 17657 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 115750 REQs starved / 472503 served, 17696 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 128.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 116000 REQs starved / 473547 served, 17737 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 116250 REQs starved / 474512 served, 17775 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 116500 REQs starved / 475472 served, 17811 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 256.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 116750 REQs starved / 476434 served, 17847 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 117000 REQs starved / 477391 served, 17887 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 117250 REQs starved / 478396 served, 17926 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 384.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 117500 REQs starved / 479337 served, 17965 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 117750 REQs starved / 480291 served, 18004 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 512.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 118000 REQs starved / 481361 served, 18043 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 118250 REQs starved / 482300 served, 18082 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 118500 REQs starved / 483292 served, 18119 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 640.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 118750 REQs starved / 484315 served, 18159 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 119000 REQs starved / 485381 served, 18202 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 768.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 119250 REQs starved / 486330 served, 18239 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 119500 REQs starved / 487223 served, 18277 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 119750 REQs starved / 488099 served, 18314 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 896.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 120000 REQs starved / 489087 served, 18355 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 120250 REQs starved / 490001 served, 18391 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 120500 REQs starved / 490931 served, 18429 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 0.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 120750 REQs starved / 491765 served, 18466 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 121000 REQs starved / 492640 served, 18507 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 121250 REQs starved / 493561 served, 18549 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[NR_MAC] UE 0 RNTI 4601 stats sfn: 128.7, cumulated bad DCI 0
+    DL Chan: SSB 0 SINR 59.2 dB RSRP -22 dBm, RI 1 CQI 15 CSI-RS RSRP -22 dBm
+    DL harq: 42/0 avg code rate 0.9, avg bit/symbol 7.5, avg per TB: (nb RBs 1.3, nb symbols 7.7)
+    UL harq: 14/0 avg code rate 0.9, avg bit/symbol 6.1, avg per TB: (nb RBs 6.4, nb symbols 14.0)
+[0m[HW]     [ZMQ] TX antenna 0: 121500 REQs starved / 494461 served, 18594 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m[HW]     [ZMQ] TX antenna 0: 121750 REQs starved / 495369 served, 18636 ms waiting for the local TX queue (RSS_ZMQ_TX_WAIT_US=-2)
+[0m

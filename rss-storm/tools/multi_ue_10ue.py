@@ -65,7 +65,7 @@ class multi_ue_scenario(gr.top_block, Qt.QWidget):
         self.ue3_path_loss_db = ue3_path_loss_db = 20
         self.ue2_path_loss_db = ue2_path_loss_db = 10
         self.ue1_path_loss_db = ue1_path_loss_db = 0
-        self.slow_down_ratio = slow_down_ratio = 1
+        self.slow_down_ratio = slow_down_ratio = 4
         self.samp_rate = samp_rate = 23040000
 
         ##################################################

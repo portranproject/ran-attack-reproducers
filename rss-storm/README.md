@@ -463,7 +463,11 @@ UE 바이너리의 기존 사본은 `bin/rss-build`가 남긴 `.orig`에 있다.
 | `-r 0\|1` | `HONOR_REJECT` | 1 | `RRCReject`의 waitTime을 지킴 / 즉시 재시도 |
 | `-g 0\|1` | `ACK_GATE` | 1 | Msg4 ACK가 대기 중이면 랜덤 액세스를 다시 시작하지 않음 |
 | `-G 0\|1` | `RA_GATE` | 1 | 랜덤 액세스가 진행 중이면 다시 시작하지 않음 |
-| `-M 0\|1` | `MSG4_WAIT` | 1 | **1로 유지.** "기각된 최적화" 참고 |
+| `-M 0\|1` | `MSG4_WAIT` | 1 | 1 = Msg4를 기다린 뒤 Msg5 생략(A형). 0 = Msg3가 공중에 나간 직후 재시작 |
+| `-p N` | `PROBE_UES` | 0 | 인스턴스 0..N-1을 공격 대신 **정상 UE**로 돌린다. 연결·등록·PDU 세션까지 수행하며 "정상 UE가 여전히 붙을 수 있는가"를 재는 측정기다 |
+| `-t MS` | `PROBE_DELAY_MS` | 0 | probe가 **첫** 접속을 이만큼 늦춘다. 공격이 시작된 뒤 도착하는 UE를 모델링한다 |
+| `-A 0\|1` | `MSG4_ACK` | 1 | 0 = Msg4를 복호하고 HARQ-ACK을 보내지 않는다. gNB가 DTX로 보고 ConRes+rrcSetup을 DL HARQ로 재전송한다(OCUDU 최대 5회). 보유시간은 CU-CP 가드가 정하므로 불변 |
+| — | `GNB_SETTLE_S` | 4 | `GNB_STOP_CMD`과 `GNB_RESTART_CMD` 사이 대기. `pkill -9`는 F1-U 소켓 해제보다 먼저 반환하므로 즉시 재기동하면 2152 바인드가 실패하고 **죽은 셀을 상대로 런이 계속된다** |
 | — | `GATE_TIMEOUT_MS` | 500 | 게이트가 이만큼 붙잡고 있으면 재시도를 강제한다(0 = 강제 없음). 명령행 옵션은 없다 |
 | `-n ID` | `RUN_ID` | 자동 | 런 식별자 |
 
@@ -479,6 +483,7 @@ CU 로그 수치가 일치했다는 내부 기록은 있지만 원본은 이 패
 |---|---|---|
 | `RSS_ZMQ_TX_WAIT_US` | `-2` | ZMQ TX 스레드가 로컬 샘플을 기다리는 방식: `0` 업스트림의 블로킹 10 ms 폴, `>0` usleep(n), `-1` 스핀, `-2` 조건 변수 |
 | `RSS_SHARE_LOCKSTEP` | `1` | UE별 하향 커서를 함께 묶어 둔다 |
+| `RSS_SHARE_NUE` | 자동 | 락스텝 배치에 참여하는 인스턴스 수. `-p` 사용 시 `rss-run`이 `NUM_UES - PROBE_UES`로 설정한다. 연결된 probe는 송신을 멈추므로 여기에 포함하면 배치가 매번 기다린다(2026-10-26 실측: probe 없이 2,127회 vs probe 포함 80회) |
 | `RSS_SHARE_WR_MONOTONIC` | `0` | **0으로 유지.** "기각된 최적화" 참고 |
 
 ### 셀, 경로, 배치
@@ -696,7 +701,7 @@ sustained occupancy
 | `TRANSMIT_TS_ALIGN_TIMEOUT` 상향 | 구조상 무효과: `align()`은 타임아웃을 쓰기 전, 첫 분기에서 "timestamp passed"로 반환한다 |
 | 슬립 대신 `sched_yield` 스핀 (`=-1`) | 굶은 대기 28.5초 -> 0.117초이지만 무선 시간 2.15 -> 1.26이고 시도가 줄었다. 자신이 기다리는 생산자 스레드를 굶긴다 |
 | usleep 대신 조건 변수 (`=-2` vs `>0`) | 비용 동일: 237 us vs 240 us. 남은 대기는 대기 방식이 아니라 생산자의 실제 지연이다. CPU를 태우지 않으므로 기본값으로 유지 |
-| `MSG4_WAIT=0` (Msg3에서 포기) | UE는 10,878 시도를 기록했지만 gNB가 만든 컨텍스트는 **1개**였다. Msg4를 기다리지 않으면 랜덤 액세스가 완료되지 않아 Msg3이 gNB에 닿지 않는다 |
+| ~~`MSG4_WAIT=0` (Msg3에서 포기)~~ — **기각 철회(2026-10-26)** | UE 10,878 시도 대 gNB 컨텍스트 1개는 맞지만, 원인은 gNB가 아니라 **우리 훅 위치**였다. 재시도를 `nr_rrc_ue_prepare_RRCSetupRequest()`에서 걸었는데 그 시점의 Msg3 PUSCH는 아직 큐에만 있어서 `reset_ra()`의 memset이 전송 전에 지웠다. 판정을 `rss_poll()`의 RA 게이트(`nrRA_WAIT_CONTENTION_RESOLUTION`, 즉 `nr_Msg3_transmitted()` 이후)로 옮겨 고쳤다 |
 | `RSS_SHARE_WR_MONOTONIC=1` | 샘플 손실 21,178 -> 0이지만 시도 2387 -> **32**. 클램프가 flush당 읽기 1회씩 전진하는데 이는 슬롯당 flush 1회를 가정한다. 실제로는 더 많아서 미래로 달아났다 |
 | 코어 핀닝 (`UE_TASKSET`) | 더 나쁨: 33.8 -> 24.2 시도/초, 피크 90 -> 51 |
 | `ACK_GATE=0` | 변화 없음 (34.1 vs 33.8 시도/초) |

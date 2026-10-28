@@ -1,0 +1,8 @@
+{"type":"run","run_id":"SAT2-1019T220308Z","scenario":"A",
+ "rf_path":"zmq","ue_base":"oai-nr 1c2f4d3c2e",
+ "ue_branch":"rss-ue-a-type",
+ "cell":{"band":"n78","scs_khz":30,"bw_mhz":20,"prb":51},
+ "gnb_cfg":{"t300_ms":1000,"guard_ms":1000,"hold_ms":2000,"rrc_reject_wait_time_s":"unset"},
+ "knobs":{"enable":1,"interval_ms":20,"completion_pct":0,
+          "honor_reject":1,"ack_gate":1,"max_duration_s":60},
+ "t_start_utc":"2026-10-19T22:03:08Z"}

@@ -494,6 +494,8 @@ out of the file if you want the environment to win.
 | `-g 0\|1` | `ACK_GATE` | 1 | do not restart random access while the Msg4 ACK is pending |
 | `-G 0\|1` | `RA_GATE` | 1 | do not restart random access while one is in flight |
 | `-M 0\|1` | `MSG4_WAIT` | 1 | **keep 1**, see "rejected optimisations" |
+| `-p N` | `PROBE_UES` | 0 | instances 0..N-1 are **ordinary UEs**, not storm instances: they connect, register and get a PDU session. This is the "can a normal UE still connect" measurement |
+| `-t MS` | `PROBE_DELAY_MS` | 0 | the probe waits this long before its **first** attach, modelling a UE that arrives after the attack began |
 | — | `GATE_TIMEOUT_MS` | 500 | force the retry if a gate has held it this long (0 = never force). No command-line letter |
 | `-n ID` | `RUN_ID` | auto | run identifier |
 
@@ -510,6 +512,7 @@ keep it separate from occupancy observed in CU logs.
 |---|---|---|
 | `RSS_ZMQ_TX_WAIT_US` | `-2` | how the ZMQ TX thread waits for local samples: `0` upstream blocking 10 ms poll, `>0` usleep(n), `-1` spin, `-2` condition variable |
 | `RSS_SHARE_LOCKSTEP` | `1` | hold the per-UE downlink cursors together |
+| `RSS_SHARE_NUE` | auto | how many instances join the lockstep batch. `rss-run` sets it to `NUM_UES - PROBE_UES` whenever `-p` is used: a probe that has connected goes idle, and counting it here makes every batch wait for it (2,127 attempts without a probe vs 80 with one, measured 2026-10-26) |
 | `RSS_SHARE_WR_MONOTONIC` | `0` | **keep 0**, see "rejected optimisations" |
 
 ### Cell, paths, placement

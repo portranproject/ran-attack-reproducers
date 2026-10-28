@@ -32,9 +32,37 @@ HONOR_REJECT=1           # 1 = obey RRCReject waitTime, 0 = retry immediately
 ACK_GATE=1               # 1 = do not restart RA while the Msg4 HARQ ACK is pending
 RA_GATE=1                # 1 = do not restart RA while one is still in flight
 GATE_TIMEOUT_MS=500      # force the retry if a gate held it this long
-MSG4_WAIT=1              # KEEP 1. 0 abandons the attempt at Msg3, which looks
-                         #     5x faster on the UE side but produced 1 gNB
-                         #     context out of 10878 attempts. See README.en.md.
+MSG4_WAIT=1              # 1 = wait for Msg4, then skip Msg5 (A-type).
+                         #     0 = restart as soon as Msg3 is on the air.
+                         #     The old 10878-attempts-1-context result for 0 was
+                         #     OUR bug, not the gNB's behaviour: the retry was
+                         #     armed while the Msg3 PUSCH was still queued, so
+                         #     reset_ra() dropped it. Fixed 2026-10-26; the
+                         #     decision now sits in rss_poll()'s RA gate.
+MSG4_ACK=1               # 1 = ACK Msg4 normally.
+                         #     0 = decode Msg4 and withhold the HARQ-ACK. The
+                         #     gNB reads DTX and retransmits ConRes+rrcSetup
+                         #     over DL HARQ (OCUDU: up to 5 transmissions), in
+                         #     a scheduler that outranks connected-UE traffic.
+                         #     Context lifetime is unchanged (CU-CP guard).
+GNB_SETTLE_S=4           # wait between GNB_STOP_CMD and GNB_RESTART_CMD. A
+                         #     pkill -9 stop returns before the F1-U socket is
+                         #     released, and the restart then fails to bind
+                         #     2152 while the run carries on against a dead cell.
+
+# ------------------------------------------------- the normal-UE measurement
+PROBE_UES=0              # instances 0..N-1 behave as ordinary UEs: they connect,
+                         #     register and get a PDU session. This is the "can a
+                         #     normal UE still connect" measurement, not part of
+                         #     the storm. Costs one instance of NUM_UES.
+                         #     rss-run then sets RSS_SHARE_NUE = NUM_UES - PROBE_UES
+                         #     so the idle probe does not gate the shared radio's
+                         #     lockstep batch (measured 2026-10-26: 2,127 attempts
+                         #     without a probe vs 80 with it and this left unset).
+PROBE_DELAY_MS=0         # the probe waits this long before its FIRST attach,
+                         #     modelling a UE that arrives after the attack began.
+                         #     Without it the probe wins the first race and is
+                         #     immune for the rest of the run.
 
 # ------------------------------------------------------------ radio efficiency
 RSS_ZMQ_TX_WAIT_US=-2    # how the ZMQ TX thread waits for local samples.
@@ -86,7 +114,7 @@ GNB_STOP_CMD=
 # --------------------------------------------------------------- CPU placement
 UE_TASKSET=              # e.g. "2-7". Measured: pinning made things WORSE here.
 GNB_TASKSET=
-UE_EXTRA=                # extra nr-uesoftmodem arguments
+UE_EXTRA=${UE_EXTRA:-}   # extra nr-uesoftmodem arguments (env overridable)
 
 # ----------------------------------------------------------------- reporting
 GNB_LOG=/tmp/ocu.log     # CU log, read by bin/rss-report

@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Laptop-side driver. Must run from here, not from the DU box, because the DU
+# box cannot restart the CU.
+#
+# Why the check exists: on 2026-10-26 the CU-CP's F1-C listener died while the
+# ocu process stayed alive and kept logging CU-UP heartbeats every second. Every
+# DU restart after that failed with "F1-C: Failed to connect ... Connection
+# refused" and eleven consecutive runs produced zero attempts. A live process is
+# not a working CU; the listener is what has to be checked.
+set -u
+P=/Volumes/owc/Users/ideal/tmp/p5-panel/p5
+CU=52.78.45.138
+DU=54.180.134.162
+SSH="ssh -n -i $P/portran-key.pem -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$P/known_hosts -o ConnectTimeout=20 -o ServerAliveInterval=30"
+T=$(date -u +%m%dT%H%M%SZ)
+echo "SUITE=$T"
+
+cu_listening() { $SSH ubuntu@$CU 'sudo ss -lnp 2>/dev/null | grep -q 38472'; }
+
+ensure_cu() {
+  if cu_listening; then echo "   CU F1-C: listening"; return 0; fi
+  echo "   CU F1-C: MISSING -> restarting CU (core/RIC/ocu)"
+  $SSH ubuntu@$CU 'sudo /root/workspace/ctl.sh start' >/dev/null 2>&1 || true
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    cu_listening && { echo "   CU F1-C: back"; return 0; }
+    sleep 6
+  done
+  echo "   CU F1-C: STILL MISSING — aborting suite"
+  return 1
+}
+
+run() {
+  local id="$1"; shift
+  echo "######## $id-$T"
+  ensure_cu || exit 1
+  $SSH ubuntu@$DU "sudo EVICT_UES=0 PROBE_UES=1 /root/rss-storm/bin/rss-probe -n '$id-$T' $* 2>&1 | grep -E 'rss-probe:|attempts|ack_held|ch.timeout|CRASHED|INVALID|gNB|conres_ce_acked|packets transmitted'"
+}
+
+for k in 1 2 3; do
+  run "M1_$k" -e 1 -u 3 -d 60 -r 0 -o 0 -M 1 -A 1
+  run "M2_$k" -e 1 -u 3 -d 60 -r 0 -o 0 -M 1 -A 0
+  run "M3_$k" -e 1 -u 3 -d 60 -r 0 -o 0 -M 0 -A 1
+done
+run "L2_1" -e 1 -u 3 -d 60 -r 0 -o 0 -i 2000 -M 1 -A 1
+run "L2_2" -e 1 -u 3 -d 60 -r 0 -o 0 -i 2000 -M 1 -A 1
+echo "######## SUITE DONE $T"

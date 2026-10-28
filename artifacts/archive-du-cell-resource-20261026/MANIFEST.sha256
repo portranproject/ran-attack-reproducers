@@ -1,0 +1,13 @@
+aaa8ff6ccde910173cbe3965f5c6c8e9a8f6a086291afd53954caf3679eb442a  ./ARCHIVE.md
+9769590ea07184cdba1f2e7667b8a2f065c957b75c1198d2e1eac74e16dc9853  ./findings/anas-completed-context-hold.md
+29dda6db4640461882e416a5a5b921ffa09fcf73773c49bfadd72b3c7b4c2429  ./findings/coverage-the-remaining-lever.md
+3aab4dabc3f34b742289dc7c6a8266c1cf516b410f67dd775075a6754dd8f380  ./findings/gap-metric-mechanism.md
+3e36eb3ed1a44b367487dd94bb8b89c08e99cd11446b3ab17ef36912549d9d7d  ./findings/normal-ue-denial.md
+362db1937f834961e5386c99060ae7656a809dccf4a3344ec73977b58c5d035c  ./findings/ocudu-f1c-listener-teardown.md
+28fca9f5fea68382f1bdc13eddf338bc223ba6f00e5d4a590d7b5961b7c5c973  ./findings/ocudu-reest-unauthenticated-release.md
+85e61f3655e45821af9c2c4725f1fcc09f6753fb0d6d047ed85cce13f3ff5861  ./findings/ra-pipelining-design.md
+9e7016e3a23be7514f6dd18057de4c1d7015f737aca77ea37d3b3fc0f843f988  ./findings/security-report-draft.md
+7dca9ce6c01a8fc65838f3de66cf7e938523c8e906bef2dd273e511a8004d6f3  ./midterm-rss-draft.md
+b0ab5cd450d4a943baf7cccc90be7e936ed05f408d9f06b66fd058582e53bd44  ./patches/anas-identity.c
+62a87bc332e355b1973ca4922fae4aeedfec31b830ec2b39e06e0eeb355cdc45  ./patches/rss-ue-anas.patch
+a58e59f70f7bb2db449978554ba634076e500b9db84390f165f0bb16254410d7  ./patches/rss-ue-full-20261023.patch

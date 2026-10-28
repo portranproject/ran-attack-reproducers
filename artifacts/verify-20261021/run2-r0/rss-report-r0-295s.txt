@@ -1,0 +1,38 @@
+== occupancy (/tmp/ocu.log, 05:27:10..05:32:05)
+window [2026-10-21T05:27:10, 2026-10-21T05:32:05) (295.0 s)
+evidence uncertain: initial occupancy is unknown; reconstructed from available records
+unmatched endings 0; repeated live starts 0 (through window end)
+observed carry-in 46
+started        11181  (37.9/s wall)
+peak occupancy 96   at 2026-10-21T05:27:10.614034 (observed)
+still live     76 (observed, just before window end)
+end reasons    {'timed out': 11151}
+hold time wall median 1999 ms  p90 2000 ms (matched endings only)
+observed occupancy (capacity reference 96, requested window 295.0 s)
+  >=  24    295.0 s of 295.0 s ( 100%)   longest observed plateau 295.00 s
+  >=  48    295.0 s of 295.0 s ( 100%)   longest observed plateau 294.98 s
+  >=  72    220.5 s of 295.0 s (  75%)   longest observed plateau  44.53 s
+  >=  96      0.9 s of 295.0 s (   0%)   longest observed plateau   0.87 s
+
+== gNB counters
+window [2026-10-21T05:27:10, 2026-10-21T05:32:05) (295.0 s)
+counts are matching log lines, not unique messages or service outcomes
+rrcReject                     210      0.7/s
+not able to serve              70      0.2/s
+rrcSetupComplete                0      0.0/s
+InitialUEMessage                0      0.0/s
+
+observed rejection cadence (rrcReject)
+  start to first occurrence    0.63 s
+  last occurrence to end       163.47 s
+  gap between occurrences      p50 0 ms  p99 18047 ms  max 42363 ms
+service availability and capacity exhaustion cannot be inferred from these counts
+
+== how to read this
+  Occupancy is reconstructed from the procedure records available in this log.
+      Missing history or events can leave actual occupancy unknown.
+  Counts are matching log occurrences, not deduplicated protocol messages.
+      Rejection frequency alone does not establish service denial or recovery.
+  Zero completion or InitialUEMessage matches means none were observed in this
+      window; it is not proof that none occurred.
+  Service impact requires separate observations of a normal UE.

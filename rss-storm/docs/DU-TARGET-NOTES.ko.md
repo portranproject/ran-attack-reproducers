@@ -59,3 +59,16 @@
   DU 호스트 8 vCPU에서 한 프로세스 10 UE가 실질 상한이다.
 - 96 UE 경로: UE 프로세스를 CU 호스트로 분산(빌드 복사)하거나 인스턴스를 키운다.
   다음 단계: DU의 OAI 빌드 디렉터리를 CU 호스트로 복사해 5×10 + 5×10 구성 시도.
+
+## 2026-10-29: 인스턴스 상향 불가 (IAM 정책)
+
+- DU 호스트를 c6i.4xlarge로 올리려 했으나 `ec2:ModifyInstanceAttribute` 권한이 없다
+  (UnauthorizedOperation, user p5).
+- `./ctl.sh create`로 더 큰 타입을 새로 만드는 방법은 골든 AMI에서 새 인스턴스를
+  만들므로 **현재 EBS의 OAI RSS 빌드가 사라진다**. 재구축 비용이 크다.
+- 따라서 이 인스턴스 쌍(DU 8 vCPU + CU 4 vCPU)에서는 물리적으로 96 UE를 띄울 수 없다.
+  - 확인된 상한: 5 엔드포인트 × 10 UE = 50 UE(정상). 10 엔드포인트 × 5 UE는 실패.
+- 96 UE 실측을 위해서는 사용자 결정이 필요하다:
+  (a) IAM 정책에 ModifyInstanceAttribute 허용 추가(가장 안전, 비용은 시간당 증가),
+  (b) create로 새 세트(큰 타입) 생성 후 OAI RSS 패치 재적용(빌드 재구성 필요),
+  (c) 목표를 "DU에 50 UE까지 채우고 거동 관찰"로 축소.

@@ -97,3 +97,14 @@
   4% 부족하다. 96은 0.11~0.14초만 접촉한다.
 - 남은 코드 레버: archive의 RA pipelining 패치 이식(당시 "결선 완료, 측정 전",
   현재 트리와 기준 커밋이 달라 충돌 가능).
+
+## 2026-10-29: archive RA pipelining 패치 이식성 점검
+
+- `/root/rss-full.patch`(archive, 3,437줄)를 현재 OAI 트리에 `patch -p1 --dry-run`:
+  - 다수 파일이 "Reversed (or previously applied)"로 스킵됨 → 안정 RSS 코드는 이미 있음.
+  - 실제 실패: `openair2/RRC/NR_UE/rrc_proto.h` Hunk #1 FAILED,
+    `rrc_timers_and_constants.c` Hunk #1/#3 FAILED (우리 probe pacing 패치와 충돌).
+  - pipelining 핵심 코드(`ra_pool`, `RA_config_t *ra`, `rss_ra_alloc`)는 현재 트리에
+    **없음**이 확인됨(소스 grep 0건).
+- 즉 +4%를 메울 코드는 archive 패치에만 있고, 그대로는 적용되지 않는다. 수동 이식은
+  약 10개 파일(타이머 인자·포인터 전환 포함)에 걸친 작업으로, 빌드 실패 위험이 있다.

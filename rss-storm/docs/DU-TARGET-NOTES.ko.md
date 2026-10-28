@@ -108,3 +108,15 @@
     **없음**이 확인됨(소스 grep 0건).
 - 즉 +4%를 메울 코드는 archive 패치에만 있고, 그대로는 적용되지 않는다. 수동 이식은
   약 10개 파일(타이머 인자·포인터 전환 포함)에 걸친 작업으로, 빌드 실패 위험이 있다.
+
+## 2026-10-29: DU 용량 90 시도 — PUCCH 설정 검증 실패
+
+- 산술: 용량 90이면 필요 수락률이 90/2.14 = 42.1/s로 내려가, 실측 43.0/s로 천장 유지가 가능하다.
+- DU 용량은 `min(SR configs, CSI configs, SRS offsets, 2048-rejected)`로 계산되며(du_ran_resource_manager_impl.cpp:179),
+  PUCCH 스키마에 `--nof_cell_sr_res`(1~100), `--nof_cell_csi_res`(0~100) 키가 있다.
+- `cell_cfg.pucch.nof_cell_sr_res: 90`을 넣고 DU를 기동하면:
+  `With the given parameters, the number of PRBs for PUCCH exceeds the 50% of the BWP PRBs.`
+  → `Invalid configuration detected`. `sr_period_ms: 20` 조합도 같은 오류.
+- 즉 90 용량은 이 키 단독으로 설정 불가. PUCCH 리소스 세트 크기/포맷(nof_cell_res_set_configs,
+  resource_set_size, formats)을 함께 조정해 50% PRB 제한을 만족시켜야 한다.
+- 설정은 백업(`du.yaml.bak-pucch`)으로 원복했고, DU 정상 기동 확인(odu 1).

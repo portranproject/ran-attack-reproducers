@@ -13,22 +13,22 @@ CMDLINE: "/root/OAI/cmake_targets/ran_build/build/nr-uesoftmodem" "-O" "/root/oa
 [0m[NR_RRC] create TASK_RRC_NRUE 
 [0m[UTIL]   threadCreate() for TASK_RRC_NRUE: creating thread with affinity ffffffff, priority 50
 [0m[UTIL]   threadCreate() for TASK_NAS_NRUE: creating thread with affinity ffffffff, priority 50
-[0m[SIM]    UICC simulation: IMSI=001010123456780, IMEISV=6754567890123413, Ki=00112233445566778899aabbccddeeff, OPc=63bfa50ee6523365ff14c1f45f88737d
+[REDACTED subscriber/auth material]
 [0m[SIM]    overriding potential uicc0.dnn/nssai_sst/nssai_sd from uicc0.pdu_sessions
 [0m[SIM]    will request PDU session ID 1, type 1, DNN internet, NSSAI 1.ffffff
-[0m[SIM]    UICC simulation: IMSI=2089900007487, IMEISV=6754567890123413, Ki=fec86ba6eb707ed08905757b1bb44b8f, OPc=c42449363bbad02b66d16bc975d77cc1
+[REDACTED subscriber/auth material]
 [0m[93m[SIM]    loading PDU session parameters from legacy UICC configuration. Please update to use uicc1.pdu_sessions instead to make this warning disappear
 [0m[SIM]    will request PDU session ID 10, type 1, DNN oai, NSSAI 1.ffffff
-[0m[SIM]    UICC simulation: IMSI=2089900007487, IMEISV=6754567890123413, Ki=fec86ba6eb707ed08905757b1bb44b8f, OPc=c42449363bbad02b66d16bc975d77cc1
+[REDACTED subscriber/auth material]
 [0m[93m[SIM]    loading PDU session parameters from legacy UICC configuration. Please update to use uicc2.pdu_sessions instead to make this warning disappear
 [0m[SIM]    will request PDU session ID 10, type 1, DNN oai, NSSAI 1.ffffff
-[0m[SIM]    UICC simulation: IMSI=2089900007487, IMEISV=6754567890123413, Ki=fec86ba6eb707ed08905757b1bb44b8f, OPc=c42449363bbad02b66d16bc975d77cc1
+[REDACTED subscriber/auth material]
 [0m[93m[SIM]    loading PDU session parameters from legacy UICC configuration. Please update to use uicc3.pdu_sessions instead to make this warning disappear
 [0m[SIM]    will request PDU session ID 10, type 1, DNN oai, NSSAI 1.ffffff
-[0m[SIM]    UICC simulation: IMSI=2089900007487, IMEISV=6754567890123413, Ki=fec86ba6eb707ed08905757b1bb44b8f, OPc=c42449363bbad02b66d16bc975d77cc1
+[REDACTED subscriber/auth material]
 [0m[93m[SIM]    loading PDU session parameters from legacy UICC configuration. Please update to use uicc4.pdu_sessions instead to make this warning disappear
 [0m[SIM]    will request PDU session ID 10, type 1, DNN oai, NSSAI 1.ffffff
-[0m[SIM]    UICC simulation: IMSI=2089900007487, IMEISV=6754567890123413, Ki=fec86ba6eb707ed08905757b1bb44b8f, OPc=c42449363bbad02b66d16bc975d77cc1
+[REDACTED subscriber/auth material]
 [0m[93m[SIM]    loading PDU session parameters from legacy UICC configuration. Please update to use uicc5.pdu_sessions instead to make this warning disappear
 [0m[SIM]    will request PDU session ID 10, type 1, DNN oai, NSSAI 1.ffffff
 [0m[93m[NR_RRC] [RSS] A-type reproducer ENABLED (isolated testbed only): interval=0 ms completion=0% honor_reject=0 ack_gate=1 max_duration=20 s run_id=Au6-20261026T020226Z log=/root/rss-runs/Au6-20261026T020226Z/attempts.jsonl

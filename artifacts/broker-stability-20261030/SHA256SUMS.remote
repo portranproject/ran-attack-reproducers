@@ -1,0 +1,5 @@
+# Raw logs remain on the isolated DU. These result files contain only the
+# harness verdict; UE/NAS logs are intentionally not copied.
+4b805de826c5ab4891f7b36049a19fff325081c3ec74a4542a716e44a4df2031  /root/rss-broker-provenance-int2-20261030/bw-prov-int2-r1-1030/result.json
+8faaeee2dfaaed68f21077b5a46962feab01ab947ec3c266391d00c468d17bb0  /root/rss-broker-provenance-int2-20261030/bw-prov-int2-r2-1030/result.json
+3ed4a176b6a1c9a7de2f8fbf686d47cb9e9031d14acb94b4b7ceac6be98cf397  /root/rss-broker-provenance-int2-20261030/bw-prov-int2-r3-1030/result.json

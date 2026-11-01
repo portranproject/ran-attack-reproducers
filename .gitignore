@@ -3,3 +3,22 @@
 
 # Linked worktrees
 .worktrees/
+
+# Local run output. Existing sealed evidence stays tracked; new raw evidence does not.
+/logs/
+/tool/runs/
+/rss-storm/runs/
+/blind-dos/runs/
+/uplink-dos/runs/
+
+# New artifact payloads are local by default. Publish only top-level summaries
+# and integrity metadata after review.
+/artifacts/*/**
+!/artifacts/*/*.md
+!/artifacts/*/SHA256SUMS*
+!/artifacts/*/MANIFEST.sha256
+!/artifacts/*/campaign.json
+
+# Local interpreter/editor output
+**/__pycache__/
+.DS_Store

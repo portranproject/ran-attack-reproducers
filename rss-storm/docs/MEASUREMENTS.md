@@ -5,15 +5,18 @@ hosts, F1 over IP, attacker UE on the DU host over a ZMQ virtual radio
 (`tcp://127.0.0.1`). Cell: n78, 30 kHz SCS, 51 PRB. OAI UE at
 `1c2f4d3c2e68181cdef9f426d161163147ad4b77` (`2026.w38`).
 
-These are historical internal notes attributed to gNB logs and UE
-instrumentation. **The raw logs, run manifests, exact window boundaries and
-analysis versions are not included.** Values below have not been independently
-recomputed. Preserve this distinction when citing them; this file is a summary,
-not a raw dataset or a regression fixture for the current parsers.
+Unless a section names a retained artifact, these are historical internal notes
+attributed to gNB logs and UE instrumentation. **The raw logs, run manifests,
+exact window boundaries and analysis versions are not included for the
+historical sections.** Preserve this distinction when citing them; this file is
+a summary, not a regression fixture for the current parsers. Section 5 records
+the newer p5 evidence retained under `artifacts/p5-msg3-only-20261030/`.
 
 Counts of matching log lines are **not unique messages or UEs**. Duplicate
 logging and incomplete coverage may affect them. Zero matches do not prove
-that an event never occurred. Normal-user attachment failure was not measured.
+that an event never occurred. The historical sections did not measure
+normal-user attachment failure; section 5 adds only a same-process ZMQ probe,
+not an independent UE.
 The current offline parsers use explicit start-inclusive, end-exclusive windows
 and cautious observational labels; historical outputs below predate those checks.
 
@@ -131,14 +134,55 @@ They also cannot be combined with occupancy figures from the 200 s window.
 
 ---
 
-## 5. Rejected ideas
+## 5. MAC-confirmed post-RRCSetupRequest abort on p5 (2026-10-30)
+
+The initial `MSG4_WAIT=0` experiment reset random access before the queued Msg3
+reached PHY, so the UE counter ran while the gNB created only one context. The
+current post-RRCSetupRequest abort implementation moves the decision after the MAC scheduler's
+actual Msg3 handoff, bridges that confirmation to RRC, then performs the
+camped-idle reset. It is a separate variant, not RRCSetupComplete-omission.
+
+| run | observed result |
+|---|---|
+| `G2-msg3-0140` | 10 UE `msg3_tx`, zero attacker Msg4, and 10/10 unique TC-RNTIs joined to current-run CU `Rx ... rrcSetupRequest` |
+| `G4-u1-i0-clean` | capacity-12 profile (`nof_cell_sr_res: 1`): 661 MAC-confirmed Msg3 and 661 CU requests; 55 RRC procedure starts, 606 `DU is not able to serve` rejections, reconstructed peak 12 |
+| `G13-pair-attack-valid` | same capacity-12 profile: marker-authenticated duration SIGKILL; 1,029 total Msg3, zero attacker/probe Msg4; CU 921 requests, 84 starts, 837 resource rejections, zero `InitialUEMessage` and PDU success |
+| `G14-pair-recovery-control` | capacity-12 post-restart control; probe attached on its first attempt and completed Registration/PDU/TUN |
+| `G34-control-cap96-hold32-valid` | corrected capacity-96 profile; attack-off Registration/PDU/TUN succeeded |
+| `G35-msg3-cap96-hold32-probe` | corrected capacity-96 profile; 11/11 probe TC-RNTIs reached the CU and were resource-rejected; Msg4/Msg5/connection zero for 10.13 s |
+
+All ten G13 probe TC-RNTIs matched exactly one CU request and one
+`DU is not able to serve` rejection. Thus the probe reached the gNB rather than
+disappearing in the UE's shared-radio path. The G4 peak of 12 came from the
+explicit SR-resource override and is not evidence of a second hidden pool.
+
+The corrected capacity-96 campaign first falsified sustained denial: G21 and
+G32 both allowed the normal probe to connect. G26 then isolated the cause as
+100 consecutive undecoded CSI reports followed by `t310=1000ms`. Extending the
+experiment cleanup window without changing capacity produced G35: 11 normal
+probe Msg3 transmissions, 11 exact CU requests, 11 DU-resource rejections, and
+zero Msg4/Msg5/connection over 10.13 seconds. The final profile and hashes are
+retained in the
+[capacity-96 artifact](../../artifacts/p5-msg3-cap96-20261030/README.md).
+
+G13/G14 use an ordinary probe in the **same OAI process and shared ZMQ radio**.
+They are controlled diagnostic evidence of admission denial and post-restart
+service availability, not spontaneous recovery or an independent physical
+normal-UE DoS result. Independent service-impact claims
+still require a stable separate-process broker or shielded OTA witness. Selected
+JSON evidence, the G13 CU slice and hashes are retained in the
+[p5 post-RRCSetupRequest-abort artifact](../../artifacts/p5-msg3-only-20261030/README.md).
+
+---
+
+## 6. Rejected ideas
 
 | Idea | Measured result |
 |---|---|
 | raise `TRANSMIT_TS_ALIGN_TIMEOUT` from 0 ms | no effect by construction: `align()` returns "timestamp passed" from its first branch, before the timeout is read |
 | `sched_yield` spin (`=-1`) | starved wait 28.5 s to 0.117 s, but radio time 2.15 to 1.26 and attempts fell. It starves the producer it waits on |
 | condition variable vs usleep | 237 us vs 240 us per starved request. The residual is the producer's real latency, not the wait mechanism |
-| `MSG4_WAIT=0` | UE logged 10,878 attempts; the gNB created **1** context. Without waiting for Msg4 the random access never completes, so Msg3 never arrives |
+| old pre-PHY `MSG4_WAIT=0` hook | UE logged 10,878 attempts while the gNB created **1** context because the reset erased queued Msg3 before PHY transmission. Superseded by the MAC-confirmed post-RRCSetupRequest-abort path in section 5 |
 | `RSS_SHARE_WR_MONOTONIC=1` | sample loss 21,178 to 0 but attempts 2,387 to **32**. The clamp advances once per flush and there are more flushes than slots, so it ran into the future |
 | `RSS_SHARE_LOCKSTEP=1` | partial: out-of-order batches 9.19% to 7.70%, loss 33,144 to 27,139, radio time 1.12 to 1.26. Kept on |
 | core pinning | worse: 33.8 to 24.2 attempts/s, peak 90 to 51 |
@@ -146,7 +190,7 @@ They also cannot be combined with occupancy figures from the 200 s window.
 
 ---
 
-## 6. Variance
+## 7. Variance
 
 Three 4-UE runs in different sessions: attempts 2202–2387, sample loss
 21k–40k, radio time 0.87–1.63. Attempt counts are stable; loss and radio time
@@ -154,7 +198,7 @@ are not. **Compare loss and timing only within one session.**
 
 ---
 
-## 7. Tool bugs found while measuring
+## 8. Tool bugs found while measuring
 
 Recorded so they are not reintroduced.
 
@@ -183,11 +227,11 @@ Recorded so they are not reintroduced.
 
 ---
 
-## 8. Historical longer run of the packaged tool
+## 9. Historical longer run of the packaged tool
 
 Run `ZWperm`, 2026-10-20. The **packaged** `rss-storm` deployed to the DU host
 and driven entirely through `bin/rss-run` — not the development scripts — then
-read back through the packaged `analysis/` on the CU host. Mode B profile
+read back through the packaged `analysis/` on the CU host. reduced-capacity diagnostic profile
 applied (`nof_cell_sr_res 1`, `t300 2000`, capacity 12). Command:
 
 ```
@@ -238,7 +282,7 @@ Interpretation limits:
 - Full capacity was recorded for 36%, with a longest interval of 1.8 s.
   Recurring rejection logs do not establish continuous denial, especially with
   the recorded 2.53 s gap and unresolved analysis-window boundaries.
-- Zero matching completion/core-message lines is consistent with A-type under
+- Zero matching completion/core-message lines is consistent with RRCSetupComplete-omission under
   adequate logging, but coverage cannot be rechecked here.
 - Normal-user service impact and stability beyond this run were not tested.
 - The notes report no issue with `--rss.gate_timeout_ms` (default 500) during

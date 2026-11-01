@@ -15,6 +15,8 @@ NUM_UES=2                # attacker UE instances sharing one radio.
                          #     adds sample loss. See README.en.md "choosing NUM_UES".
 INTERVAL_MS=0            # extra delay between a skipped Msg5 and the next try.
                          #     0 = as fast as the radio allows.
+PHASE_MS=0               # per-retry stride: every attack retry adds UE id x this many ms.
+                         #     Probe and attack-off paths are unchanged.
 MAX_DURATION_S=120       # in-process kill switch. 0 = run until stopped.
 TARGET_OCCUPANCY=0       # hold this many incomplete contexts at the gNB.
                          #     0 = unlimited (maximum pressure).
@@ -27,12 +29,12 @@ HOLD_MS=2000             # how long the gNB keeps one incomplete context.
                          #     early and the real value was 1627 ms.
 COMPLETION_PCT=0         # ONE-SHOT CHECK, not sustained mixed traffic: above 0
                          #     the reproducer completes one attempt normally and
-                         #     then ENDS THE RUN. Keep 0 for A-type.
+                         #     then ENDS THE RUN. Keep 0 for RRCSetupComplete-omission.
 HONOR_REJECT=1           # 1 = obey RRCReject waitTime, 0 = retry immediately
 ACK_GATE=1               # 1 = do not restart RA while the Msg4 HARQ ACK is pending
 RA_GATE=1                # 1 = do not restart RA while one is still in flight
 GATE_TIMEOUT_MS=500      # force the retry if a gate held it this long
-MSG4_WAIT=1              # 1 = wait for Msg4, then skip Msg5 (A-type).
+MSG4_WAIT=1              # 1 = wait for Msg4, then skip Msg5 (RRCSetupComplete-omission).
                          #     0 = restart as soon as Msg3 is on the air.
                          #     The old 10878-attempts-1-context result for 0 was
                          #     OUR bug, not the gNB's behaviour: the retry was
@@ -55,14 +57,18 @@ PROBE_UES=0              # instances 0..N-1 behave as ordinary UEs: they connect
                          #     register and get a PDU session. This is the "can a
                          #     normal UE still connect" measurement, not part of
                          #     the storm. Costs one instance of NUM_UES.
-                         #     rss-run then sets RSS_SHARE_NUE = NUM_UES - PROBE_UES
-                         #     so the idle probe does not gate the shared radio's
-                         #     lockstep batch (measured 2026-10-26: 2,127 attempts
-                         #     without a probe vs 80 with it and this left unset).
-PROBE_DELAY_MS=0         # the probe waits this long before its FIRST attach,
-                         #     modelling a UE that arrives after the attack began.
-                         #     Without it the probe wins the first race and is
-                         #     immune for the rest of the run.
+                         #     A same-process probe remains part of the shared
+                         #     PHY batch. It is diagnostic instrumentation, not
+                         #     an independent normal-UE witness.
+PROBE_DELAY_MS=0         # mixed process: wait this long after the first attacker
+                         #     Msg3. All-probe process: wait from process start, so
+                         #     an independent witness can stay RF-connected first.
+PROBE_RA_ONLY=0          # 1 = repeat RA and skip Msg5 instead of completing attach.
+                         #     This measures RRC admission only; it is not a
+                         #     normal-UE/PDU-session availability result.
+PROBE_INTERVAL_MS=1000   # minimum interval between RA-only probe attempts.
+                         #     Keep this near a stock UE retry cadence so the
+                         #     measurement probe does not fill the CU itself.
 
 # ------------------------------------------------------------ radio efficiency
 RSS_ZMQ_TX_WAIT_US=-2    # how the ZMQ TX thread waits for local samples.
@@ -72,6 +78,8 @@ RSS_ZMQ_TX_WAIT_US=-2    # how the ZMQ TX thread waits for local samples.
                          #  -2 = condition variable (default)
                          # Leaving this at 0 costs about 3x the attempt rate.
 RSS_SHARE_LOCKSTEP=1     # hold the per-UE downlink cursors together
+RSS_SHARE_NUE=           # leave unset: rss-run uses NUM_UES and rejects partial
+                         #     batches because every PHY instance writes samples.
 RSS_SHARE_WR_MONOTONIC=0 # KEEP 0. See README.en.md "rejected optimisations".
 
 # --------------------------------------------------------------- local paths
@@ -90,13 +98,53 @@ PRB=51
 DEVICE=oai_zmqdevif
 ZMQ_TX=tcp://127.0.0.1:4557
 ZMQ_RX=tcp://127.0.0.1:4556
+# DEVICE is intentionally fixed to oai_zmqdevif. The current build and runners
+# always pass ZMQ endpoints; OTA needs a separate hardware-specific path with
+# SDR inventory, gains, clocking and RF-safety validation.
 
 # ------------------------------------------------------------ gNB restart hook
 # A ZMQ virtual radio has no clock of its own: the sample exchange IS the clock,
 # so the DU and the UE must start together or the streams never align. Put your
-# DU/gNB restart command here. Leave empty on a real SDR.
+# DU/gNB restart command here.
 GNB_RESTART_CMD=
 GNB_STOP_CMD=
+GNB_READY_CMD=           # optional, read-only command that exits 0 only when
+                         #     the DU radio endpoint and F1 association are
+                         #     ready. rss-run polls it before launching the UE.
+GNB_READY_TIMEOUT_S=30   # total readiness wait; failure aborts the run.
+GNB_READY_INTERVAL_S=1   # delay between checks.
+GNB_READY_PROBE_TIMEOUT_S=5 # maximum time for one check; it must return fast.
+ODU_LOG=                 # optional readable, append-only OCUDU DU log on this
+                         #     host or a mounted path. rss-run seals its inode,
+                         #     prefix and byte offset after readiness, then uses
+                         #     only this run's complete FAPI UCI lines to confirm
+                         #     UE Msg4 HARQ-ACK candidates. Rotation/truncation
+                         #     leaves final RRCSetupComplete-omission labels unknown; never point this at
+                         #     a full copied log from another run.
+                         #     OCUDU emits UCI.indication only at FAPI debug:
+                         #     use a single-sector log with log.fapi_level=debug
+                         #     and confirm one normal-control line in rss-doctor.
+ODU_SECTOR_ID=           # required with ODU_LOG; exact OCUDU Sector#N to join.
+                         #     Other or missing sector prefixes fail closed.
+
+# -------------------------------------------------------- cross-host time basis
+# Leave these unmeasured until the lab records an actual clock comparison.
+# Missing offset/uncertainty makes detector/response latency unscorable; it must
+# not be silently treated as zero skew.
+CLOCK_SYNC_METHOD=unmeasured
+CLOCK_OFFSET_NS=null
+CLOCK_UNCERTAINTY_NS=null
+CLOCK_EVIDENCE_SHA256= # hash of the offset/uncertainty measurement, not secrets
+
+# ------------------------------------------------------- five-UE broker witness
+# Used only by bin/rss-broker-witness.  It waits for all five independent OAI
+# processes to report Initial sync before starting the requested observation
+# window.  A timeout is an infrastructure-invalid run, not an attack result.
+BROKER_SYNC_TIMEOUT_S=30
+BROKER_RETRY_ATTEMPTS=3 # bin/rss-broker-witness-retry only; each try uses a
+                        #     new immutable BASE-tryNN run directory. It retries
+                        #     only a clean five-UE sync timeout, never a valid
+                        #     service failure or a teardown anomaly.
 #
 # Whatever brings your DU up and down, as a single shell command. Three rules:
 #   1. It must start the DU ONLY. A command that also starts a normal UE will
@@ -110,11 +158,14 @@ GNB_STOP_CMD=
 #   GNB_RESTART_CMD='/opt/ran/du-up.sh'
 #   GNB_RESTART_CMD='docker compose -f /srv/ran/du.yml up -d --force-recreate'
 #   GNB_RESTART_CMD='/root/workspace/ctl.sh start'   # a box-side DU-only script
+# Example readiness hook (adapt the log signature to your deployment):
+#   GNB_READY_CMD='grep -q "F1.*connected" /tmp/odu.log && ss -ltn | grep -q ":4556 "'
 
 # --------------------------------------------------------------- CPU placement
 UE_TASKSET=              # e.g. "2-7". Measured: pinning made things WORSE here.
 GNB_TASKSET=
-UE_EXTRA=${UE_EXTRA:-}   # extra nr-uesoftmodem arguments (env overridable)
+UE_EXTRA=${UE_EXTRA:-}   # tuning/logging args only (env overridable). rss-run
+                         # rejects radio, cell, --rss.*, -O and --num-ues overrides.
 
 # ----------------------------------------------------------------- reporting
 GNB_LOG=/tmp/ocu.log     # CU log, read by bin/rss-report

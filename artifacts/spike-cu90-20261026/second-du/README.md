@@ -52,4 +52,5 @@
 - `du/ue2-alone.log` — probe alone (success)
 - `du/ue2-attack.log` — probe under attack (no RRC)
 - `du/attack2.log` — attack 60 s self-check (collapse)
-- `cu/cu.tar.gz`, `du/du.tar.gz` — raw bundles
+- `cu/cu.tar.gz`, `du/du.tar.gz` — 보존 bundles. DU UE 로그의 과거
+  `UICC simulation` credential 행은 2026-10-30에 정제했고 DU bundle도 다시 만들었다.

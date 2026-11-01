@@ -1,5 +1,6 @@
 # local config (copy from conf/rss.conf.example)
 conf/rss.conf
+conf/ota-inventory.json
 # run artifacts
 runs/
 *.log

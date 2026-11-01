@@ -39,7 +39,7 @@ esac; done
 say() { printf '%s\n' "$*"; }
 
 # ---------------------------------------------------------------- 1. the tree
-if [[ -d $OAI/.git ]]; then
+if git -C "$OAI" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   say "== OAI tree exists: $OAI"
 else
   say "== cloning OAI into $OAI  (this may take a while)"

@@ -61,8 +61,10 @@ CU가 DU보다 먼저 새 UE를 거절하는지 확인한다.
 - `du/odu-first-run-filtered.log` — DU 로그 필터. 타임스탬프 형식이 달라 **비어 있다**.
   DU 여유의 근거는 `du/not-able-count.txt`(0)와 `du/run-first/`의 부팅 로그다.
   DU 원본 `/tmp/odu.log` 전체는 stop 전에 복사하지 않았고, `not able` 0은 실행 중 로그에서 센 값이다.
-- `du/run-first/`, `du/run-probe/` — UE 로그·attempts·run.json
-- `cu/spike-cu90-cu.tar.gz`, `du/spike-cu90-du.tar.gz` — 원본 묶음
+- `du/run-first/`, `du/run-probe/` — UE 로그·attempts·run.json. UE 로그의 과거
+  `UICC simulation` credential 행은 2026-10-30에 고정 marker로 정제했다.
+- `cu/spike-cu90-cu.tar.gz`, `du/spike-cu90-du.tar.gz` — 보존 묶음. DU 묶음은
+  credential 정제 파일로 다시 만들었으므로 수집 당시 byte 원본이 아니다.
 
 ## 원복
 

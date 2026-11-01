@@ -37,3 +37,6 @@
 - `cu/cu.yaml`, `cu/admission-count.txt` (969), `cu/ocu-tail.log`
 - `du/du2.yaml`, `du/ue2-alone.log` (success), `du/ue2-attack.log` (no SSB),
   `du/attack.log` (3,178 attempts / 2,168 msg5_skip), `du/probe-*.log`
+
+UE 로그의 과거 `UICC simulation` credential 행은 2026-10-30에 고정 marker로
+정제했고 `du/du.tar.gz`도 정제 파일로 다시 만들었다.

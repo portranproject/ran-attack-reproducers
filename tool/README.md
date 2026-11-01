@@ -1,9 +1,9 @@
-# tool/ — A형 RSS 재현기 (OAI nr-UE 패치)
+# tool/ — RRCSetupComplete 미전송형 RSS 재현기 (OAI nr-UE 패치)
 
 > 상태: **초안, 박스 미적용·미빌드.** 2026-10-20. 근거 표시는 [../comparison-5g.md](../comparison-5g.md) §0 규칙.
 
 [../HANDOFF.md](../HANDOFF.md) "제안 구현 구조"의 1차 산출물이다. 목표는 M1a —
-기본 설정에서 A형이 성립하는지(미완료 절차가 생겼다가 2초 뒤 해제되는 것이 반복되는지)만 본다.
+기본 설정에서 RRCSetupComplete 미전송형이 성립하는지(미완료 절차가 생겼다가 2초 뒤 해제되는 것이 반복되는지)만 본다.
 
 ## 무엇을 바꿨나
 
@@ -40,7 +40,7 @@ RA 재시작의 `reset_ra()` memset이 예약된 ACK PUCCH를 지우기 때문�
 
 | 인자 | 기본 | 뜻 |
 |---|---|---|
-| `--rss.enable` | 0 | 1이면 A형 |
+| `--rss.enable` | 0 | 1이면 RRCSetupComplete 미전송형 |
 | `--rss.interval_ms` | 100 | Msg5 생략 후 다음 `RRCSetupRequest`까지. **벽시계 기준**(틱 누적 아님). 0 = 다음 틱 즉시 |
 | **`--rss.target_occupancy`** | 0 | **포화도 조절.** gNB에 유지할 미완료 컨텍스트 수. 0 = 무제한. 실측 결과 CU 동시 점유가 이 값과 일치 |
 | **`--rss.hold_ms`** | 2000 | gNB의 컨텍스트 보유 시간(= `t300` + guard). 위 폐루프가 쓰는 창 길이 |
@@ -60,13 +60,13 @@ RA 재시작의 `reset_ra()` memset이 예약된 ACK PUCCH를 지우기 때문�
 `design.md` §8 스키마의 1차 구현. 이벤트 단위 한 줄씩 남기고 `collect.sh`가 집계한다.
 
 ```json
-{"type":"event","run_id":"A-001","seq":17,"t_ns":1792441600000000000,"event":"attempt_start","ue_identity":"0x1a2b3c4d5e","identity_type":"randomValue"}
-{"type":"event","run_id":"A-001","seq":17,"t_ns":1792441600012000000,"event":"msg4_rx","intended_reach":"msg5_skip","actual_reach":"msg5_skip","tc_rnti":"0x4601"}
-{"type":"event","run_id":"A-001","seq":17,"t_ns":1792441600112000000,"event":"retrigger"}
+{"type":"event","run_id":"X001","seq":17,"t_ns":1792441600000000000,"event":"attempt_start","ue_identity":"0x1a2b3c4d5e","identity_type":"randomValue"}
+{"type":"event","run_id":"X001","seq":17,"t_ns":1792441600012000000,"event":"msg4_rx","intended_reach":"msg5_skip","actual_reach":"msg5_skip","tc_rnti":"0x4601"}
+{"type":"event","run_id":"X001","seq":17,"t_ns":1792441600112000000,"event":"retrigger"}
 ```
 
 `ue_identity`는 실제 공중에 나가는 값이다(`randomValue` = rv[0..4], 마지막 비트 unused).
-`tc_rnti`로 탐지팀의 F1 캡처와 조인한다.
+`tc_rnti`로 분석기 운영자의 F1 캡처와 조인한다.
 
 ## 쓰는 순서
 
@@ -83,8 +83,8 @@ bash /root/deploy.sh
 # 3) 회귀 시험: 공격 off로 정상 접속이 그대로 되는지
 bash /root/run_attack.sh -e 0
 
-# 4) 승인 후: 30초 A형
-bash /root/run_attack.sh -e 1 -i 100 -d 30 -n A-$(date -u +%m%dT%H%M)
+# 4) 승인 후: 30초 RRCSetupComplete 미전송형
+bash /root/run_attack.sh -e 1 -i 100 -d 30 -n X-$(date -u +%m%dT%H%M)
 
 # 5) 판정 (CU 박스에서)
 OCU_LOG=/tmp/ocu.log JSONL=/root/rss-runs/<run_id>/attempts.jsonl bash /root/collect.sh
@@ -140,7 +140,7 @@ sudo bash gnb_profile.sh --role du restore
 - **RRC 틱은 10 ms가 아니다** — ZMQ 경로 실측 22~34 ms. 그래서 타이머를 벽시계로 바꿨다(checklist §9.1).
 - `ack_pending_postpone`은 아직 0건이다. 틱이 27 ms라 ACK PUCCH가 늘 먼저 나가기 때문이며, 틱 제약이 풀리면 이 게이트가 실제로 필요해진다.
 - 정상 상태에서도 ZMQ에서 Msg5가 약 8% 유실된다(24회 중 2회) ✅ → 판정 시 기준선으로 뺀다.
-- `completion_pct > 0`은 NAS 등록·release 경로를 타므로 A형의 '코어 미도달' 전제가 깨진다. 별도 라벨로 본다.
+- `completion_pct > 0`은 NAS 등록·release 경로를 타므로 RRCSetupComplete 미전송형의 '코어 미도달' 전제가 깨진다. 별도 라벨로 본다.
 - 공격 실행은 사용자 승인 후, p5 세트 전용. `max_duration_s`와 `timeout` 둘 다 켠다.
 
 ## 다중 공격 UE (`-u N`)

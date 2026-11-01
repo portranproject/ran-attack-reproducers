@@ -9,6 +9,7 @@
 # environment > built-in default (the conf file is sourced first, so a key set
 # there wins over an exported variable). See README.en.md.
 set -euo pipefail
+umask 077
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONF="${RSS_CONF:-$HERE/conf/rss.conf}"
@@ -24,6 +25,7 @@ fi
 ENABLE=${ENABLE:-0}                  # 0 = regression (normal UE), 1 = attack
 NUM_UES=${NUM_UES:-1}                # attacker UE instances sharing the radio
 INTERVAL_MS=${INTERVAL_MS:-0}        # delay between a skipped Msg5 and the next try
+PHASE_MS=${PHASE_MS:-0}              # per-retry stride per non-probe UE id
 MAX_DURATION_S=${MAX_DURATION_S:-60} # in-process kill switch, 0 = run until stopped
 TARGET_OCCUPANCY=${TARGET_OCCUPANCY:-0}  # hold this many incomplete contexts, 0 = unlimited
 HOLD_MS=${HOLD_MS:-2000}             # gNB hold time per context, used by the controller
@@ -32,9 +34,12 @@ HONOR_REJECT=${HONOR_REJECT:-1}      # obey RRCReject waitTime
 ACK_GATE=${ACK_GATE:-1}              # do not restart RA while the Msg4 ACK is pending
 RA_GATE=${RA_GATE:-1}                # do not restart RA while one is in flight
 GATE_TIMEOUT_MS=${GATE_TIMEOUT_MS:-500}
-MSG4_WAIT=${MSG4_WAIT:-1}            # 1 = A-type. 0 produces no gNB load, see README.en.md
+MSG4_WAIT=${MSG4_WAIT:-1}            # 1 = omit RRCSetupComplete; 0 = abort after confirmed RRCSetupRequest
+MSG4_ACK=${MSG4_ACK:-1}              # 1 = ACK Msg4, 0 = withhold its HARQ ACK
 PROBE_UES=${PROBE_UES:-0}            # instances 0..N-1 connect normally (the victim measurement)
-PROBE_DELAY_MS=${PROBE_DELAY_MS:-0}  # probe waits this long before its first attach
+PROBE_DELAY_MS=${PROBE_DELAY_MS:-0}  # mixed: after attacker Msg3; all-probe: after process start
+PROBE_RA_ONLY=${PROBE_RA_ONLY:-0}    # probe repeats RA and skips Msg5
+PROBE_INTERVAL_MS=${PROBE_INTERVAL_MS:-1000} # minimum RA-only probe interval
 RUN_ID=${RUN_ID:-}
 
 # ---- radio / UE sharing (environment knobs read by the patched UE) ----------
@@ -45,6 +50,7 @@ export RSS_SHARE_WR_MONOTONIC=${RSS_SHARE_WR_MONOTONIC:-0}
 # ---- local paths and cell --------------------------------------------------
 OAI=${OAI:-/root/OAI}
 UE_BIN=${UE_BIN:-$OAI/cmake_targets/ran_build/build/nr-uesoftmodem}
+PATCH=${PATCH:-$HERE/patch/rss-ue-curated.patch}
 UE_CFG=${UE_CFG:-/root/oai_nrue.conf}
 UECAP=${UECAP:-$OAI/targets/PROJECTS/GENERIC-NR-5GC/CONF/uecap_ports1.xml}
 LOGDIR=${LOGDIR:-/root/rss-runs}
@@ -58,12 +64,24 @@ DEVICE=${DEVICE:-oai_zmqdevif}
 UE_EXTRA=${UE_EXTRA:-}
 UE_TASKSET=${UE_TASKSET:-}
 GNB_TASKSET=${GNB_TASKSET:-}
+EXTRA=()
+[[ -n $UE_EXTRA ]] && read -r -a EXTRA <<< "$UE_EXTRA"
 
 # Optional: command that restarts your gNB/DU. ZMQ virtual radio needs the DU
-# and the UE to start together, so leave this set on a ZMQ testbed. On a real
-# SDR you can leave it empty.
+# and the UE to start together. This runner currently supports ZMQ only.
 GNB_RESTART_CMD=${GNB_RESTART_CMD:-}
 GNB_STOP_CMD=${GNB_STOP_CMD:-}
+GNB_SETTLE_S=${GNB_SETTLE_S:-4}
+GNB_READY_CMD=${GNB_READY_CMD:-}
+GNB_READY_TIMEOUT_S=${GNB_READY_TIMEOUT_S:-30}
+GNB_READY_INTERVAL_S=${GNB_READY_INTERVAL_S:-1}
+GNB_READY_PROBE_TIMEOUT_S=${GNB_READY_PROBE_TIMEOUT_S:-5}
+ODU_LOG=${ODU_LOG:-}
+ODU_SECTOR_ID=${ODU_SECTOR_ID:-}
+CLOCK_SYNC_METHOD=${CLOCK_SYNC_METHOD:-unmeasured}
+CLOCK_OFFSET_NS=${CLOCK_OFFSET_NS:-null}
+CLOCK_UNCERTAINTY_NS=${CLOCK_UNCERTAINTY_NS:-null}
+CLOCK_EVIDENCE_SHA256=${CLOCK_EVIDENCE_SHA256:-}
 
 usage() {
   cat <<EOF
@@ -76,45 +94,121 @@ usage: $0 [options]
   -H MS    gNB hold time for the controller  (HOLD_MS, now $HOLD_MS)
   -c PCT   percent completed normally        (COMPLETION_PCT, now $COMPLETION_PCT)
   -r 0|1   honor RRCReject waitTime          (HONOR_REJECT, now $HONOR_REJECT)
-  -g 0|1   Msg4 HARQ ACK gate                (ACK_GATE, now $ACK_GATE)
+  -g 0|1   RRCSetup (Msg4) HARQ ACK gate     (ACK_GATE, now $ACK_GATE)
   -G 0|1   random access gate                (RA_GATE, now $RA_GATE)
-  -M 0|1   wait for Msg4 (keep 1)            (MSG4_WAIT, now $MSG4_WAIT)
+  -M 0|1   1=omit RRCSetupComplete, 0=abort after confirmed RRCSetupRequest
+                                              (MSG4_WAIT, now $MSG4_WAIT)
+  -A 0|1   send RRCSetup (Msg4) HARQ ACK     (MSG4_ACK, now $MSG4_ACK)
   -p N     normal-UE probes, instances 0..N-1 (PROBE_UES, now $PROBE_UES)
-  -t MS    probe's first attach delay        (PROBE_DELAY_MS, now $PROBE_DELAY_MS)
+  -t MS    probe delay: attacker RRCSetupRequest (Msg3)/process start
+                                              (PROBE_DELAY_MS, now $PROBE_DELAY_MS)
   -n ID    run id                            (RUN_ID)
   -h       this help
+  PHASE_MS per-retry non-probe UE stride, 0..5000 ms (now $PHASE_MS; env/conf only)
 Every option has an environment variable of the same name; conf/rss.conf sets
 defaults. See README.en.md for the full list including radio knobs.
 EOF
   exit "${1:-1}"
 }
 
-while getopts "e:u:i:d:o:H:c:r:g:G:M:p:t:n:h" opt; do case "$opt" in
+while getopts "e:u:i:d:o:H:c:r:g:G:M:A:p:t:n:h" opt; do case "$opt" in
   e) ENABLE=$OPTARG;; u) NUM_UES=$OPTARG;; i) INTERVAL_MS=$OPTARG;;
   d) MAX_DURATION_S=$OPTARG;; o) TARGET_OCCUPANCY=$OPTARG;; H) HOLD_MS=$OPTARG;;
   c) COMPLETION_PCT=$OPTARG;; r) HONOR_REJECT=$OPTARG;; g) ACK_GATE=$OPTARG;;
-  G) RA_GATE=$OPTARG;; M) MSG4_WAIT=$OPTARG;; p) PROBE_UES=$OPTARG;;
+  G) RA_GATE=$OPTARG;; M) MSG4_WAIT=$OPTARG;; A) MSG4_ACK=$OPTARG;; p) PROBE_UES=$OPTARG;;
   t) PROBE_DELAY_MS=$OPTARG;; n) RUN_ID=$OPTARG;;
   h) usage 0;; *) usage;;
 esac; done
 
 [[ $ENABLE == 0 || $ENABLE == 1 ]] || { echo "-e must be 0 or 1" >&2; exit 1; }
+[[ $MSG4_WAIT == 0 || $MSG4_WAIT == 1 ]] || { echo "-M must be 0 or 1" >&2; exit 1; }
+[[ $MSG4_ACK == 0 || $MSG4_ACK == 1 ]] || { echo "-A must be 0 or 1" >&2; exit 1; }
+[[ $PROBE_RA_ONLY == 0 || $PROBE_RA_ONLY == 1 ]] || { echo "PROBE_RA_ONLY must be 0 or 1" >&2; exit 1; }
 (( NUM_UES >= 1 )) || { echo "-u must be >= 1" >&2; exit 1; }
 (( PROBE_UES >= 0 && PROBE_UES <= NUM_UES )) || { echo "-p must be 0..-u ($NUM_UES)" >&2; exit 1; }
 (( PROBE_DELAY_MS >= 0 )) || { echo "-t must be >= 0" >&2; exit 1; }
+(( PROBE_INTERVAL_MS >= 10 )) || { echo "PROBE_INTERVAL_MS must be >= 10" >&2; exit 1; }
+[[ $PHASE_MS =~ ^(0|[1-9][0-9]*)$ ]] && (( PHASE_MS <= 5000 )) \
+  || { echo "PHASE_MS must be 0..5000" >&2; exit 1; }
 (( MAX_DURATION_S >= 0 && MAX_DURATION_S <= 86400 )) || { echo "-d must be 0..86400" >&2; exit 1; }
-[[ -x $UE_BIN ]] || { echo "UE binary not found: $UE_BIN  (run bin/rss-build first)" >&2; exit 1; }
-
-# A probe connects normally and then goes idle, so it never joins the shared
-# radio's lockstep batch. Counting it there makes every batch wait for it and
-# collapses the storm (measured 2026-10-26: 2,127 attempts without a probe vs 80
-# with one). Count only the instances that actually storm, unless every instance
-# is a probe.
-SHARE_NUE=$NUM_UES
-if (( PROBE_UES > 0 && NUM_UES > PROBE_UES )); then
-  SHARE_NUE=$((NUM_UES - PROBE_UES))
-  export RSS_SHARE_NUE=$SHARE_NUE
+[[ $GNB_SETTLE_S =~ ^[0-9]+$ ]] || { echo "GNB_SETTLE_S must be a non-negative integer" >&2; exit 1; }
+for ready_value in GNB_READY_TIMEOUT_S GNB_READY_INTERVAL_S GNB_READY_PROBE_TIMEOUT_S; do
+  [[ ${!ready_value} =~ ^[1-9][0-9]*$ ]] \
+    || { echo "$ready_value must be a positive integer" >&2; exit 1; }
+done
+(( GNB_READY_TIMEOUT_S <= 300 )) || { echo "GNB_READY_TIMEOUT_S must be <= 300" >&2; exit 1; }
+[[ $CLOCK_SYNC_METHOD =~ ^[a-zA-Z0-9._-]+$ ]] \
+  || { echo "CLOCK_SYNC_METHOD must use letters, digits, '.', '_' or '-'" >&2; exit 1; }
+[[ $CLOCK_OFFSET_NS == null || $CLOCK_OFFSET_NS =~ ^-?(0|[1-9][0-9]*)$ ]] \
+  || { echo "CLOCK_OFFSET_NS must be null or an integer" >&2; exit 1; }
+[[ $CLOCK_UNCERTAINTY_NS == null || $CLOCK_UNCERTAINTY_NS =~ ^(0|[1-9][0-9]*)$ ]] \
+  || { echo "CLOCK_UNCERTAINTY_NS must be null or a non-negative integer" >&2; exit 1; }
+CLOCK_EVIDENCE_JSON=null
+if [[ -n $CLOCK_EVIDENCE_SHA256 ]]; then
+  [[ $CLOCK_EVIDENCE_SHA256 =~ ^[0-9a-f]{64}$ ]] \
+    || { echo "CLOCK_EVIDENCE_SHA256 must be a lowercase SHA-256" >&2; exit 1; }
+  CLOCK_EVIDENCE_JSON="\"$CLOCK_EVIDENCE_SHA256\""
 fi
+DU_SECTOR_JSON=null
+if [[ -n $ODU_LOG ]]; then
+  [[ $ODU_SECTOR_ID =~ ^(0|[1-9][0-9]*)$ ]] && (( ODU_SECTOR_ID <= 65535 )) \
+    || { echo "ODU_SECTOR_ID must be 0..65535 when ODU_LOG is set" >&2; exit 1; }
+  DU_SECTOR_JSON=$ODU_SECTOR_ID
+elif [[ -n $ODU_SECTOR_ID ]]; then
+  echo "ODU_SECTOR_ID requires ODU_LOG" >&2
+  exit 1
+fi
+if [[ $MSG4_ACK == 0 ]] && (( COMPLETION_PCT > 0 )); then
+  echo "-A 0 cannot be combined with -c > 0: a completed attacker must ACK Msg4" >&2
+  exit 1
+fi
+if [[ $ENABLE == 1 && $MSG4_WAIT == 0 ]] && (( TARGET_OCCUPANCY > 0 )); then
+  echo "-M 0 cannot use -o > 0: Msg3-only occupancy needs gNB-observed lifetime control" >&2
+  exit 1
+fi
+[[ $DEVICE == oai_zmqdevif ]] \
+  || { echo "DEVICE=$DEVICE is unsupported: this runner is ZMQ-only; OTA needs a hardware-specific build, radio arguments and safety validation" >&2; exit 1; }
+# OAI accepts duplicate options; a later UE_EXTRA token could otherwise replace
+# the runner's radio, cell, kill-switch or attack settings.
+for extra_arg in "${EXTRA[@]}"; do
+  case $extra_arg in
+    -O|-O*|-C|-C*|-E|-r|-r*|--band|--band=*|--numerology|--numerology=*|\
+    --ue-scan-carrier|--uecap_file|--uecap_file=*|--device.*|--zmq.*|\
+    --num-ues|--num-ues=*|--rss.*)
+      echo "UE_EXTRA must not override runner-owned option: $extra_arg" >&2
+      exit 1
+      ;;
+  esac
+done
+[[ -x $UE_BIN ]] || { echo "UE binary not found: $UE_BIN  (run bin/rss-build first)" >&2; exit 1; }
+[[ -f $PATCH ]] || { echo "RSS patch not found: $PATCH" >&2; exit 1; }
+
+sha256_file() {
+  python3 -c 'import hashlib,sys; h=hashlib.sha256(); f=open(sys.argv[1], "rb"); [h.update(b) for b in iter(lambda:f.read(1048576), b"")]; print(h.hexdigest())' "$1"
+}
+UE_COMMIT_FULL=$(git -C "$OAI" rev-parse HEAD 2>/dev/null || echo unknown)
+UE_BASE_SHORT=$(git -C "$OAI" rev-parse --short HEAD 2>/dev/null || echo unknown)
+UE_BRANCH=$(git -C "$OAI" branch --show-current 2>/dev/null || echo unknown)
+UE_BIN_SHA256=$(sha256_file "$UE_BIN")
+PATCH_SHA256=$(sha256_file "$PATCH")
+RUNNER_SHA256=$(sha256_file "$HERE/bin/rss-run")
+LABEL_EXPORTER_SHA256=$(sha256_file "$HERE/analysis/export_labels.py")
+DU_CAPTURE_SHA256=$(sha256_file "$HERE/analysis/capture_du_log.py")
+LOG_REDACTOR_SHA256=$(sha256_file "$HERE/analysis/sanitize_ue_log.py")
+ARTIFACT_SCANNER_SHA256=$(sha256_file "$HERE/analysis/check_sensitive_artifacts.py")
+
+# Every UE instance still runs PHY and writes radio samples after RRC attach.
+# Excluding a probe from the aggregation threshold flushes partial uplink
+# batches and sends timestamps backwards (live failure 2026-10-30: 9,489 ZMQ
+# channel timeouts followed by a probe retry crash). Keep the threshold equal
+# to the number of PHY instances; probe isolation requires a separate process
+# and RF path, not a smaller lockstep count.
+SHARE_NUE=${RSS_SHARE_NUE:-$NUM_UES}
+(( SHARE_NUE >= 1 && SHARE_NUE <= NUM_UES )) \
+  || { echo "RSS_SHARE_NUE must be 1..NUM_UES ($NUM_UES)" >&2; exit 1; }
+(( SHARE_NUE == NUM_UES )) \
+  || { echo "RSS_SHARE_NUE must equal NUM_UES ($NUM_UES): every PHY instance writes to the shared radio" >&2; exit 1; }
+export RSS_SHARE_NUE=$SHARE_NUE
 
 if [[ -z $RUN_ID ]]; then
   RUN_ID="$([[ $ENABLE == 1 ]] && echo A || echo base)u$NUM_UES-$(date -u +%Y%m%dT%H%M%SZ)"
@@ -135,30 +229,58 @@ fi
 
 OUT="$LOGDIR/$RUN_ID"
 [[ -d $LOGDIR ]] || mkdir -p -- "$LOGDIR"
-mkdir -- "$OUT" \
+mkdir -m 700 -- "$OUT" \
   || { echo "cannot create new run directory $OUT — existing results are never overwritten" >&2; exit 1; }
 JSONL="$OUT/attempts.jsonl"
 UE_LOG="$OUT/ue.log"
+DU_LOG_REQUESTED=false
+[[ -n $ODU_LOG ]] && DU_LOG_REQUESTED=true
+DU_ACK_JOIN=not_requested
+DU_LOG_HASH_JSON=null
+# Label-v1 scenario values stay frozen so sealed runs remain replayable.
+SCENARIO=A
+(( ENABLE == 0 )) && SCENARIO=baseline
+(( ENABLE == 1 && MSG4_WAIT == 0 )) && SCENARIO=A_early
+(( ENABLE == 1 && MSG4_WAIT == 1 && MSG4_ACK == 0 )) && SCENARIO=A_no_ack
+SCENARIO_NAME=RRCSetupComplete-omission
+[[ $SCENARIO == baseline ]] && SCENARIO_NAME=normal-control
+[[ $SCENARIO == A_early ]] && SCENARIO_NAME=post-RRCSetupRequest-abort
+[[ $SCENARIO == A_no_ack ]] && SCENARIO_NAME=RRCSetup-HARQ-ACK-withholding
+T_START_UTC=$(date -u +%FT%TZ)
+T_START_NS=$(python3 -c 'import time; print(time.time_ns())')
 
 cat > "$OUT/run.json" <<EOF
-{"type":"run","run_id":"$RUN_ID","scenario":"$([[ $ENABLE == 1 ]] && echo A || echo baseline)",
- "rf_path":"$DEVICE","ue_base":"$(git -C "$OAI" rev-parse --short HEAD 2>/dev/null || echo unknown)",
- "ue_branch":"$(git -C "$OAI" branch --show-current 2>/dev/null || echo unknown)",
+{"schema_version":"rss.run.v1","type":"run","run_id":"$RUN_ID","scenario":"$SCENARIO",
+ "rf_path":"$DEVICE","ue_base":"$UE_BASE_SHORT","ue_branch":"$UE_BRANCH",
+ "software":{"ue_commit":"$UE_COMMIT_FULL","ue_binary_sha256":"$UE_BIN_SHA256",
+             "rss_patch_sha256":"$PATCH_SHA256","runner_sha256":"$RUNNER_SHA256",
+             "label_exporter_sha256":"$LABEL_EXPORTER_SHA256",
+             "du_capture_sha256":"$DU_CAPTURE_SHA256",
+             "log_redactor_sha256":"$LOG_REDACTOR_SHA256",
+             "artifact_scanner_sha256":"$ARTIFACT_SCANNER_SHA256"},
  "cell":{"band":"$BAND","dl_freq_hz":$DL_FREQ,"numerology":$NUMEROLOGY,"prb":$PRB},
- "knobs":{"enable":$ENABLE,"num_ues":$NUM_UES,"interval_ms":$INTERVAL_MS,
+ "knobs":{"enable":$ENABLE,"num_ues":$NUM_UES,"interval_ms":$INTERVAL_MS,"phase_ms":$PHASE_MS,
           "max_duration_s":$MAX_DURATION_S,"target_occupancy":$TARGET_OCCUPANCY,
           "hold_ms":$HOLD_MS,"completion_pct":$COMPLETION_PCT,
           "honor_reject":$HONOR_REJECT,"ack_gate":$ACK_GATE,"ra_gate":$RA_GATE,
-          "gate_timeout_ms":$GATE_TIMEOUT_MS,"msg4_wait":$MSG4_WAIT,
-           "probe_ues":$PROBE_UES,"probe_delay_ms":$PROBE_DELAY_MS},
+          "gate_timeout_ms":$GATE_TIMEOUT_MS,"msg4_wait":$MSG4_WAIT,"msg4_ack":$MSG4_ACK,
+          "probe_ues":$PROBE_UES,"probe_delay_ms":$PROBE_DELAY_MS,
+          "probe_ra_only":$PROBE_RA_ONLY,"probe_interval_ms":$PROBE_INTERVAL_MS},
  "radio":{"zmq_tx_wait_us":$RSS_ZMQ_TX_WAIT_US,"share_lockstep":$RSS_SHARE_LOCKSTEP,
            "share_nue":$SHARE_NUE,
           "share_wr_monotonic":$RSS_SHARE_WR_MONOTONIC},
- "t_start_utc":"$(date -u +%FT%TZ)"}
+ "orchestration":{"gnb_settle_s":$GNB_SETTLE_S,
+                   "gnb_ready_check":$([[ -n $GNB_READY_CMD ]] && echo true || echo false),
+                   "gnb_ready_timeout_s":$GNB_READY_TIMEOUT_S,
+                   "du_log_capture_requested":$DU_LOG_REQUESTED,
+                   "du_sector_id":$DU_SECTOR_JSON},
+ "clock_sync":{"method":"$CLOCK_SYNC_METHOD","offset_ns":$CLOCK_OFFSET_NS,
+               "uncertainty_ns":$CLOCK_UNCERTAINTY_NS,"evidence_sha256":$CLOCK_EVIDENCE_JSON},
+ "t_start_utc":"$T_START_UTC","t_start_ns":$T_START_NS}
 EOF
 
-echo "== $RUN_ID  attack=$ENABLE ue=$NUM_UES interval=${INTERVAL_MS}ms target_occ=$TARGET_OCCUPANCY kill=${MAX_DURATION_S}s"
-(( PROBE_UES > 0 )) && echo "   probe: $PROBE_UES normal UE(s), first attach at ${PROBE_DELAY_MS} ms, storm shares n_ue=$SHARE_NUE"
+echo "== $RUN_ID  scenario=$SCENARIO_NAME attack=$ENABLE ue=$NUM_UES interval=${INTERVAL_MS}ms phase=${PHASE_MS}ms msg4_ack=$MSG4_ACK target_occ=$TARGET_OCCUPANCY kill=${MAX_DURATION_S}s"
+(( PROBE_UES > 0 )) && echo "   probe: $PROBE_UES normal UE(s), first attach delay ${PROBE_DELAY_MS} ms, storm shares n_ue=$SHARE_NUE"
 
 # 1. restart the gNB together with the UE. NOTE: never pipe this command. A
 #    pipeline can block forever because the pipe's write end stays open after
@@ -167,10 +289,57 @@ if [[ -n $GNB_STOP_CMD ]]; then
   bash -c "$GNB_STOP_CMD" >"$OUT/gnb_stop.txt" 2>&1 </dev/null || true
 fi
 if [[ -n $GNB_RESTART_CMD ]]; then
+  if [[ -n $GNB_STOP_CMD ]] && (( GNB_SETTLE_S > 0 )); then
+    echo "== waiting ${GNB_SETTLE_S}s for gNB resources to settle"
+    sleep "$GNB_SETTLE_S"
+  fi
   echo "== restarting gNB"
   bash -c "$GNB_RESTART_CMD" >"$OUT/gnb_boot.txt" 2>&1 </dev/null \
     || { echo "   !! gNB restart failed"; tail -8 "$OUT/gnb_boot.txt"; exit 1; }
   sed -n '1,6p' "$OUT/gnb_boot.txt"
+fi
+
+# A restart command returning only proves that the launcher returned. It does
+# not prove that the DU has bound its radio endpoint or associated over F1.
+# Deployments expose that state differently, so let the lab provide one quick,
+# read-only command and refuse to start the UE until it succeeds.
+if [[ -n $GNB_READY_CMD ]]; then
+  echo "== waiting up to ${GNB_READY_TIMEOUT_S}s for gNB readiness"
+  : > "$OUT/gnb_ready.txt"
+  ready=0
+  ready_attempt=0
+  ready_started=$SECONDS
+  while (( SECONDS - ready_started < GNB_READY_TIMEOUT_S )); do
+    ready_attempt=$((ready_attempt + 1))
+    printf 'attempt=%s elapsed_s=%s\n' "$ready_attempt" "$((SECONDS - ready_started))" \
+      >> "$OUT/gnb_ready.txt"
+    if timeout --signal=TERM --kill-after=1 "${GNB_READY_PROBE_TIMEOUT_S}s" \
+         bash -c "$GNB_READY_CMD" >> "$OUT/gnb_ready.txt" 2>&1 </dev/null; then
+      ready=1
+      break
+    fi
+    (( SECONDS - ready_started < GNB_READY_TIMEOUT_S )) && sleep "$GNB_READY_INTERVAL_S"
+  done
+  if (( ready == 0 )); then
+    echo "   !! gNB did not become ready; UE was not launched"
+    tail -12 "$OUT/gnb_ready.txt"
+    exit 1
+  fi
+  echo "   ready after $ready_attempt check(s)"
+fi
+
+# A full DU log can reuse SFN and RNTI values after wrap/restart. When a local
+# append-only DU log is available, seal its current inode, offset and prefix so
+# only this run's complete lines can be used for per-attempt HARQ-ACK joins.
+if [[ -n $ODU_LOG ]]; then
+  DU_ACK_JOIN=capture_start_failed
+  if python3 "$HERE/analysis/capture_du_log.py" start "$ODU_LOG" \
+       "$OUT/du_log_start.json" 2>"$OUT/du_log_capture.err"; then
+    DU_ACK_JOIN=capturing
+  else
+    echo "   !! DU log capture unavailable; final RRCSetupComplete-omission labels will remain unknown"
+    tail -3 "$OUT/du_log_capture.err" || true
+  fi
 fi
 
 if [[ -n $GNB_TASKSET ]]; then
@@ -182,55 +351,244 @@ fi
 
 PIN=()
 [[ -n $UE_TASKSET ]] && PIN=(taskset -c "$UE_TASKSET") && echo "== pinned UE -> cores $UE_TASKSET"
-EXTRA=()
-[[ -n $UE_EXTRA ]] && read -r -a EXTRA <<< "$UE_EXTRA"
 
 ARGS=(-O "$UE_CFG" --band "$BAND" -C "$DL_FREQ" --numerology "$NUMEROLOGY" -r "$PRB"
       -E --ue-scan-carrier --uecap_file "$UECAP" --device.name "$DEVICE"
       '--zmq.[0].tx_channels' "$ZMQ_TX" '--zmq.[0].rx_channels' "$ZMQ_RX"
       --num-ues "$NUM_UES"
-      --rss.enable "$ENABLE" --rss.interval_ms "$INTERVAL_MS"
+      --rss.enable "$ENABLE" --rss.interval_ms "$INTERVAL_MS" --rss.phase_ms "$PHASE_MS"
       --rss.max_duration_s "$MAX_DURATION_S" --rss.completion_pct "$COMPLETION_PCT"
       --rss.honor_reject "$HONOR_REJECT" --rss.ack_gate "$ACK_GATE"
       --rss.ra_gate "$RA_GATE" --rss.gate_timeout_ms "$GATE_TIMEOUT_MS"
       --rss.target_occupancy "$TARGET_OCCUPANCY" --rss.hold_ms "$HOLD_MS"
-      --rss.msg4_wait "$MSG4_WAIT"
+      --rss.msg4_wait "$MSG4_WAIT" --rss.msg4_ack "$MSG4_ACK"
       --rss.probe_ues "$PROBE_UES" --rss.probe_delay_ms "$PROBE_DELAY_MS"
+      --rss.probe_ra_only "$PROBE_RA_ONLY" --rss.probe_interval_ms "$PROBE_INTERVAL_MS"
       --rss.run_id "$RUN_ID" --rss.log_file "$JSONL" "${EXTRA[@]}")
 
 echo "== launching UE (log: $UE_LOG)"
 rc=0
+DURATION_STOP=0
 if (( MAX_DURATION_S > 0 )); then
-  # Two independent kill switches: the in-process one and this outer timeout.
-  timeout --signal=INT --kill-after=10 "$((MAX_DURATION_S + 20))" \
-    "${PIN[@]}" "$UE_BIN" "${ARGS[@]}" >"$UE_LOG" 2>&1 </dev/null || rc=$?
+  DURATION_MARKER="$OUT/.duration_limit"
+  FORCED_KILL_MARKER="$OUT/.duration_sigkill"
+  UE_PID=
+  UE_WATCHDOG_PID=
+  stop_active_ue() {
+    trap - INT TERM
+    [[ -z ${UE_WATCHDOG_PID:-} ]] || kill "$UE_WATCHDOG_PID" 2>/dev/null || true
+    if [[ -n ${UE_PID:-} ]] && kill -0 "$UE_PID" 2>/dev/null; then
+      kill -TERM "$UE_PID" 2>/dev/null || true
+      for _ in {1..25}; do
+        kill -0 "$UE_PID" 2>/dev/null || break
+        sleep 0.2
+      done
+      kill -0 "$UE_PID" 2>/dev/null && kill -KILL "$UE_PID" 2>/dev/null || true
+    fi
+    [[ -z ${UE_PID:-} ]] || wait "$UE_PID" 2>/dev/null || true
+    exit 130
+  }
+
+  "${PIN[@]}" "$UE_BIN" "${ARGS[@]}" >"$UE_LOG" 2>&1 </dev/null &
+  UE_PID=$!
+  # OAI w38 crashes in multi-UE teardown after INT and TERM. Mark the duration
+  # boundary first, then bypass its signal handlers with the OS kill switch.
+  (
+    sleep "$MAX_DURATION_S"
+    : > "$DURATION_MARKER"
+    if kill -0 "$UE_PID" 2>/dev/null; then
+      : > "$FORCED_KILL_MARKER"
+      kill -KILL "$UE_PID" 2>/dev/null || true
+    fi
+  ) &
+  UE_WATCHDOG_PID=$!
+  trap stop_active_ue INT TERM
+  if wait "$UE_PID"; then rc=0; else rc=$?; fi
+  trap - INT TERM
+  kill "$UE_WATCHDOG_PID" 2>/dev/null || true
+  wait "$UE_WATCHDOG_PID" 2>/dev/null || true
+  if [[ -e $DURATION_MARKER ]]; then
+    DURATION_STOP=1
+    rm -f -- "$DURATION_MARKER"
+  fi
 else
-  echo "   unlimited run: stop with  pkill -INT -x nr-uesoftmodem"
+  echo "   unlimited run: stop this runner with Ctrl-C"
   "${PIN[@]}" "$UE_BIN" "${ARGS[@]}" >"$UE_LOG" 2>&1 </dev/null || rc=$?
 fi
-# Do not call every non-zero exit "the kill switch": a crash is a crash and the
-# run is then invalid. 124 = outer timeout, 130/2 = SIGINT, 139 = SIGSEGV.
-CRASHED=0
-case $rc in
-  0)      ;;
-  2|130)  echo "   (UE stopped by SIGINT — the in-process kill switch, or you)";;
-  124)    echo "   (outer timeout fired at $((MAX_DURATION_S + 20)) s)";;
-  137)    echo "   (UE killed with SIGKILL)";;
-  139)    echo "   !! UE CRASHED (SIGSEGV, rc=139). This run is INVALID — read $UE_LOG"; CRASHED=1;;
-  *)      echo "   (UE exited rc=$rc)";;
-esac
-pkill -9 -x nr-uesoftmodem 2>/dev/null || true
+DURATION_FORCED_KILL=0
+if [[ ${FORCED_KILL_MARKER:-} && -e $FORCED_KILL_MARKER ]]; then
+  DURATION_FORCED_KILL=1
+  rm -f -- "$FORCED_KILL_MARKER"
+fi
+DETACH_COUNT=$(grep -c 'Received detach indication' "$UE_LOG" 2>/dev/null || true)
+DETACH_COUNT=${DETACH_COUNT:-0}
+DURATION_ALL_DETACHED=false
+(( DETACH_COUNT >= NUM_UES )) && DURATION_ALL_DETACHED=true
+INVALID=0
+STOP_REASON=clean_exit
+if (( DURATION_STOP )) && [[ $rc == 0 || $rc == 2 || $rc == 130 || $rc == 143 ]]; then
+  echo "   (duration limit reached at ${MAX_DURATION_S}s; UE stopped by controlled TERM)"
+  STOP_REASON=duration_limit
+elif (( DURATION_STOP && DURATION_FORCED_KILL )) && [[ $rc == 137 ]]; then
+  echo "   (duration limit reached at ${MAX_DURATION_S}s; controlled KILL used)"
+  STOP_REASON=duration_limit_sigkill
+else
+  # Do not call every non-zero exit a controlled stop: a crash is a crash.
+  case $rc in
+    0)      ;;
+    2|130)  echo "   (UE stopped by SIGINT)"; STOP_REASON=signal_int;;
+    137)    echo "   !! UE killed with SIGKILL. This run is INVALID"; INVALID=1; STOP_REASON=sigkill;;
+    139)    echo "   !! UE CRASHED (SIGSEGV, rc=139). This run is INVALID — read $UE_LOG"; INVALID=1; STOP_REASON=sigsegv;;
+    143)    echo "   !! UE received SIGTERM before every MAC detached. This run is INVALID"; INVALID=1; STOP_REASON=early_sigterm;;
+    *)      echo "   !! UE exited rc=$rc. This run is INVALID"; INVALID=1; STOP_REASON=unexpected_exit;;
+  esac
+fi
 
-echo "{\"t_stop_utc\":\"$(date -u +%FT%TZ)\"}" > "$OUT/run_stop.json"
+# OAI historically logged subscriber/auth material at SIM info level. The
+# curated patch removes that source log; this second gate sanitizes unexpected
+# regressions before any later processing or evidence sealing.
+if REDACTION_OUTPUT=$(python3 "$HERE/analysis/sanitize_ue_log.py" \
+     "$UE_LOG" "$OUT/ue_redaction.json" "$RUN_ID" 2>"$OUT/ue_redaction.err"); then
+  echo "   $REDACTION_OUTPUT"
+else
+  echo "   !! UE log needed security redaction; this run is INVALID"
+  [[ -n ${REDACTION_OUTPUT:-} ]] && echo "   $REDACTION_OUTPUT"
+  (( INVALID == 0 )) && STOP_REASON=sensitive_ue_log_redacted
+  INVALID=1
+fi
+
+if [[ $DU_ACK_JOIN == capturing ]]; then
+  if python3 "$HERE/analysis/capture_du_log.py" finish "$ODU_LOG" \
+       "$OUT/du_log_start.json" "$OUT/odu.log" "$OUT/du_log_slice.json" \
+       2>>"$OUT/du_log_capture.err"; then
+    DU_ACK_JOIN=slice_ready
+    DU_LOG_SHA256=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sha256"])' \
+      "$OUT/du_log_slice.json")
+    DU_LOG_HASH_JSON="\"$DU_LOG_SHA256\""
+  else
+    DU_ACK_JOIN=capture_finish_failed
+    echo "   !! DU log changed or had no complete run lines; ACK join skipped"
+    tail -3 "$OUT/du_log_capture.err" || true
+  fi
+fi
 
 echo "== self-check"
-(( CRASHED )) && echo "   !! the UE crashed, so every number below is from a partial run"
+(( INVALID )) && echo "   !! every number below is from an invalid or partial run"
 if [[ $ENABLE == 1 ]]; then
-  grep -m1 '\[RSS\]' "$UE_LOG" || echo "   !! no [RSS] banner: knobs were NOT parsed, run is invalid"
+  if grep -m1 '\[RSS\]' "$UE_LOG"; then true
+  else echo "   !! no [RSS] banner: knobs were NOT parsed, run is invalid"; INVALID=1; STOP_REASON=missing_rss_banner; fi
 fi
-printf '   attempts   %s\n' "$(grep -c '"event":"attempt_start"' "$JSONL" 2>/dev/null || echo 0)"
-printf '   msg5_skip  %s\n' "$(grep -c 'msg5_skip' "$JSONL" 2>/dev/null || echo 0)"
-printf '   ch.timeout %s\n' "$(grep -c 'Error, channel timeout' "$UE_LOG" 2>/dev/null || echo 0)"
+ATTEMPTS=$(grep -c '"event":"attempt_start"' "$JSONL" 2>/dev/null || true); ATTEMPTS=${ATTEMPTS:-0}
+MSG3_TX=$(grep -c '"event":"msg3_tx"' "$JSONL" 2>/dev/null || true); MSG3_TX=${MSG3_TX:-0}
+MSG4_RX_ALL=$(grep -c '"event":"msg4_rx"' "$JSONL" 2>/dev/null || true); MSG4_RX_ALL=${MSG4_RX_ALL:-0}
+MSG4_RX=0
+if [[ $ENABLE == 1 ]] && ! MSG4_RX=$(python3 -c '
+import json, sys
+with open(sys.argv[1], errors="strict") as handle:
+    print(sum(1 for line in handle if line.strip()
+              and (record := json.loads(line)).get("event") == "msg4_rx"
+              and record.get("ue", -1) >= int(sys.argv[2])))
+' "$JSONL" "$PROBE_UES"); then
+  echo "   !! cannot count attacker Msg4 events: run is invalid"
+  MSG4_RX=0
+  INVALID=1
+  STOP_REASON=invalid_attempt_log
+fi
+CHANNEL_TIMEOUTS=$(grep -c 'Error, channel timeout' "$UE_LOG" 2>/dev/null || true); CHANNEL_TIMEOUTS=${CHANNEL_TIMEOUTS:-0}
+printf '   attempts   %s\n' "$ATTEMPTS"
+printf '   msg3.tx    %s\n' "$MSG3_TX"
+printf '   msg4.attack %s  total=%s\n' "$MSG4_RX" "$MSG4_RX_ALL"
+printf '   ch.timeout %s\n' "$CHANNEL_TIMEOUTS"
+if [[ $ENABLE == 1 ]] && (( ATTEMPTS == 0 )); then
+  echo "   !! attack run produced zero attempts: run is invalid"
+  (( INVALID == 0 )) && STOP_REASON=zero_attempts
+  INVALID=1
+fi
+if [[ $ENABLE == 1 && $MSG4_WAIT == 0 ]] && (( MSG3_TX == 0 )); then
+  echo "   !! post-RRCSetupRequest abort produced no MAC-confirmed Msg3 transmission: run is invalid"
+  (( INVALID == 0 )) && STOP_REASON=zero_msg3_tx
+  INVALID=1
+fi
+if [[ $ENABLE == 1 && $MSG4_WAIT == 0 ]] && (( MSG4_RX > 0 )); then
+  echo "   !! post-RRCSetupRequest abort reached Msg4 instead of stopping after Msg3: run is invalid"
+  (( INVALID == 0 )) && STOP_REASON=early_reached_msg4
+  INVALID=1
+fi
+LABELS="$OUT/ground_truth.jsonl"
+LABELS_TMP="$OUT/.ground_truth.jsonl.tmp"
+LABEL_STATUS=no_events
+if [[ -s $JSONL ]]; then
+  LABEL_ARGS=("$OUT/run.json" "$JSONL")
+  [[ $DU_ACK_JOIN == slice_ready ]] && LABEL_ARGS+=("$OUT/odu.log")
+  if python3 "$HERE/analysis/export_labels.py" "${LABEL_ARGS[@]}" > "$LABELS_TMP"; then
+    mv -- "$LABELS_TMP" "$LABELS"
+    LABEL_STATUS=ok
+  else
+    echo "   !! label export failed: run is invalid"
+    LABEL_STATUS=failed
+    [[ $DU_ACK_JOIN == slice_ready ]] && DU_ACK_JOIN=join_failed
+    (( INVALID == 0 )) && STOP_REASON=label_export_failed
+    INVALID=1
+  fi
+else
+  : > "$LABELS"
+fi
+CANONICAL_A_UE=$(grep -c '"canonical_a_ue":true' "$LABELS" 2>/dev/null || true); CANONICAL_A_UE=${CANONICAL_A_UE:-0}
+CANONICAL_A=$(grep -c '"canonical_a":true' "$LABELS" 2>/dev/null || true); CANONICAL_A=${CANONICAL_A:-0}
+A_INCONCLUSIVE=$(grep -c '"canonical_a":null' "$LABELS" 2>/dev/null || true); A_INCONCLUSIVE=${A_INCONCLUSIVE:-0}
+CANONICAL_MSG3_UE=$(grep -c '"canonical_msg3_ue":true' "$LABELS" 2>/dev/null || true); CANONICAL_MSG3_UE=${CANONICAL_MSG3_UE:-0}
+CANONICAL_MSG3=$(grep -c '"canonical_msg3_only":true' "$LABELS" 2>/dev/null || true); CANONICAL_MSG3=${CANONICAL_MSG3:-0}
+MSG3_INCONCLUSIVE=$(grep -c '"canonical_msg3_only":null' "$LABELS" 2>/dev/null || true); MSG3_INCONCLUSIVE=${MSG3_INCONCLUSIVE:-0}
+if [[ $DU_ACK_JOIN == slice_ready ]]; then
+  if (( CANONICAL_A > 0 )); then DU_ACK_JOIN=matched
+  else DU_ACK_JOIN=no_match
+  fi
+fi
+printf '   RRCSetupComplete omission UE-side %s\n' "$CANONICAL_A_UE"
+printf '   RRCSetupComplete omission final   %s\n' "$CANONICAL_A"
+printf '   RRCSetupComplete omission unknown %s\n' "$A_INCONCLUSIVE"
+printf '   post-RRCSetupRequest abort UE-side %s\n' "$CANONICAL_MSG3_UE"
+printf '   post-RRCSetupRequest abort final   %s\n' "$CANONICAL_MSG3"
+printf '   post-RRCSetupRequest abort unknown %s\n' "$MSG3_INCONCLUSIVE"
+printf '   DU ACK join %s\n' "$DU_ACK_JOIN"
+T_STOP_UTC=$(date -u +%FT%TZ)
+T_STOP_NS=$(python3 -c 'import time; print(time.time_ns())')
+ARTIFACT_SCAN=failed
+if python3 "$HERE/analysis/check_sensitive_artifacts.py" "$OUT" \
+     >"$OUT/sensitive_artifact_check.txt" 2>"$OUT/sensitive_artifact_check.err"; then
+  ARTIFACT_SCAN=ok
+else
+  echo "   !! sensitive artifact scan failed; evidence will not be sealed"
+  (( INVALID == 0 )) && STOP_REASON=sensitive_artifact_scan_failed
+  INVALID=1
+fi
+write_run_stop() {
+  VALID_JSON=true
+  (( INVALID )) && VALID_JSON=false
+  cat > "$OUT/run_stop.json" <<EOF
+{"schema_version":"rss.run-stop.v1","run_id":"$RUN_ID","exit_status":$rc,
+ "valid":$VALID_JSON,"stop_reason":"$STOP_REASON","label_export":"$LABEL_STATUS",
+ "duration_all_detached":$DURATION_ALL_DETACHED,
+ "duration_forced_kill":$([[ $DURATION_FORCED_KILL == 1 ]] && echo true || echo false),
+ "sensitive_artifact_scan":"$ARTIFACT_SCAN",
+ "du_ack_join":"$DU_ACK_JOIN","du_log_sha256":$DU_LOG_HASH_JSON,
+ "evidence_manifest_schema":"rss.evidence-manifest.v1",
+ "t_stop_utc":"$T_STOP_UTC","t_stop_ns":$T_STOP_NS}
+EOF
+}
+write_run_stop
+if [[ $ARTIFACT_SCAN != ok ]]; then
+  echo "   !! evidence manifest skipped after sensitive artifact scan failure"
+elif EVIDENCE_OUTPUT=$(python3 "$HERE/analysis/evidence_manifest.py" seal "$OUT" 2>&1); then
+  echo "   $EVIDENCE_OUTPUT"
+else
+  echo "   !! evidence manifest failed: run is invalid"
+  printf '%s\n' "$EVIDENCE_OUTPUT" > "$OUT/evidence_seal.err"
+  (( INVALID == 0 )) && STOP_REASON=evidence_seal_failed
+  INVALID=1
+  write_run_stop
+fi
 grep -E 'shared TX:|cursors aligned' "$UE_LOG" 2>/dev/null | tail -2 || true
 echo "== artifacts in $OUT"
 echo "   next: on the CU/gNB host   bin/rss-report --since <HH:MM:SS> --until <HH:MM:SS>"
+(( INVALID == 0 ))

@@ -42,6 +42,11 @@ while (( $# )); do
 done
 [[ -n $RUN_ID ]] || { echo "rss-probe: -n <run_id> is required" >&2; exit 1; }
 
+# The run log redirection happens before rss-run can create LOGDIR. The default
+# path often exists from an older run, which used to hide this first-run bug.
+mkdir -p -- "$LOGDIR" \
+  || { echo "rss-probe: cannot create artifact directory $LOGDIR" >&2; exit 1; }
+
 # PROBE_UES is how the lab suite asks for the probe. rss-run also reads the
 # variable, but a conf that pins PROBE_UES=0 would win over the environment, so
 # pass it as -p too unless the caller already did.
@@ -88,19 +93,28 @@ else
   PPID_=$!
 fi
 
-wait $RPID || true
+RUN_RC=0
+wait $RPID || RUN_RC=$?
 [[ -n ${PPID_:-} ]] && { sleep 0.3; kill -INT $PPID_ 2>/dev/null || true; wait $PPID_ 2>/dev/null || true; }
 
-# gNB-side and NAS-side outcome of this run. Read-only: both lines are already
-# emitted at the gNB's configured log level.
+if (( RUN_RC != 0 )); then
+  echo "rss-probe: rss-run failed with rc=$RUN_RC; measurements below are invalid" >&2
+fi
+
+# gNB-side and NAS-side outcome of this run. Read-only: these lines are already
+# emitted at the gNB's configured log level. HARQ counts are cell-wide, so a
+# mixed probe run is diagnostic; only a clean single-attacker A/B isolates Msg4.
 ODU_LOG=${ODU_LOG:-/tmp/odu.log}
 cr=$(grep -c 'ConRes CE ACKed' "$ODU_LOG" 2>/dev/null || true); cr=${cr:-0}
+ha=$(grep -c 'HARQ: harq_ack=ack' "$ODU_LOG" 2>/dev/null || true); ha=${ha:-0}
+hdtx=$(grep -c 'HARQ: harq_ack=dtx' "$ODU_LOG" 2>/dev/null || true); hdtx=${hdtx:-0}
+hn=$(grep -c 'HARQ: harq_ack=nack' "$ODU_LOG" 2>/dev/null || true); hn=${hn:-0}
 dh=$(grep -c 'Maximum number of reTxs 4 exceeded' "$ODU_LOG" 2>/dev/null || true); dh=${dh:-0}
 sc=$(grep -c 'Generating RRCSetupComplete' "$OUT/ue.log" 2>/dev/null || true); sc=${sc:-0}
 ra=$(grep -c 'Registration Accept' "$OUT/ue.log" 2>/dev/null || true); ra=${ra:-0}
 pa=$(grep -c 'PDU Session Establishment Accept' "$OUT/ue.log" 2>/dev/null || true); pa=${pa:-0}
-printf '{"conres_ce_acked":%s,"dl_harq_maxretx_discard":%s,"rrc_setup_complete":%s,"registration_accept":%s,"pdu_accept":%s}\n' \
-  "$cr" "$dh" "$sc" "$ra" "$pa" > "$OUT/gnb_nas.json"
+printf '{"conres_event_logged":%s,"harq_ack_ack":%s,"harq_ack_dtx":%s,"harq_ack_nack":%s,"dl_harq_maxretx_discard":%s,"rrc_setup_complete":%s,"registration_accept":%s,"pdu_accept":%s}\n' \
+  "$cr" "$ha" "$hdtx" "$hn" "$dh" "$sc" "$ra" "$pa" > "$OUT/gnb_nas.json"
 
 tail -25 "$RUNLOG"
 echo "== gNB / NAS"
@@ -112,3 +126,4 @@ else
   echo "   (no ping output — probe never attached)"
 fi
 echo "== artifacts in $OUT  (probe_ping.txt, probe_data.json)"
+exit "$RUN_RC"

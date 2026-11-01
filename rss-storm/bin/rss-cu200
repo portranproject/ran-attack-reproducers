@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+# Four-cell artificial-hold diagnostic: three canonical-A cells and one normal witness.
+# This does not prove denial under the roughly 2 s default cleanup.
+# Isolated, privately owned ZMQ testbeds only.
+set -euo pipefail
+umask 077
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+MODE=${1:-}
+[[ $MODE == control || $MODE == attack ]] || {
+  echo "usage: $0 control|attack -n RUN_ID [-d SECONDS]" >&2
+  exit 1
+}
+shift
+
+RUN_ID=""
+DURATION_S=${DURATION_S:-32}
+while getopts "n:d:h" opt; do case "$opt" in
+  n) RUN_ID=$OPTARG;;
+  d) DURATION_S=$OPTARG;;
+  h) echo "usage: $0 control|attack -n RUN_ID [-d SECONDS]"; exit 0;;
+  *) exit 1;;
+esac; done
+
+WITNESS_DELAY_MS=${WITNESS_DELAY_MS:-15000}
+HOLD_MS=${HOLD_MS:-32000}
+LOGDIR=${LOGDIR:-/root/rss-cu200-runs}
+ODU_LOG=${ODU_LOG:-/tmp/odu4.log}
+RUNNER=${RSS_CU200_RUNNER:-$HERE/bin/rss-run}
+LOCK_FILE=${LOCK_FILE:-/tmp/rss-cu200.lock}
+FLOCK_BIN=${FLOCK_BIN:-flock}
+CU200_GNB_STOP_CMD=${CU200_GNB_STOP_CMD:-}
+CU200_GNB_RESTART_CMD=${CU200_GNB_RESTART_CMD:-}
+CU200_GNB_READY_CMD=${CU200_GNB_READY_CMD:-"pgrep -x odu >/dev/null && grep -q 'F1-C: TNL connection.*accepted' '$ODU_LOG'"}
+GNB_SETTLE_S=${GNB_SETTLE_S:-4}
+
+[[ $RUN_ID =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]] \
+  || { echo "-n must use letters, digits, '.', '_' or '-'" >&2; exit 1; }
+[[ ${RUN_ID:1:1} != O ]] \
+  || { echo "run_id second character must not be O (OAI -O parser bug)" >&2; exit 1; }
+for value in DURATION_S WITNESS_DELAY_MS HOLD_MS GNB_SETTLE_S; do
+  [[ ${!value} =~ ^[0-9]+$ ]] || { echo "$value must be a non-negative integer" >&2; exit 1; }
+done
+(( DURATION_S > 0 && DURATION_S <= 3600 )) || { echo "-d must be 1..3600" >&2; exit 1; }
+if [[ $MODE == attack ]]; then
+  (( WITNESS_DELAY_MS < DURATION_S * 1000 )) \
+    || { echo "WITNESS_DELAY_MS must be shorter than the run" >&2; exit 1; }
+  if (( DURATION_S * 1000 > HOLD_MS )); then
+    echo "attack duration must not exceed HOLD_MS: the deterministic witness window ends before the first expiry wave" >&2
+    exit 1
+  fi
+fi
+echo "warning: rss-cu200 is an artificial-hold diagnostic, not default-cleanup denial evidence" >&2
+[[ -x $RUNNER ]] || { echo "missing runner: $RUNNER" >&2; exit 1; }
+[[ -f $ODU_LOG ]] || { echo "missing ODU log: $ODU_LOG" >&2; exit 1; }
+command -v "$FLOCK_BIN" >/dev/null || { echo "missing flock: $FLOCK_BIN" >&2; exit 1; }
+if [[ -n $CU200_GNB_STOP_CMD && -z $CU200_GNB_RESTART_CMD \
+   || -z $CU200_GNB_STOP_CMD && -n $CU200_GNB_RESTART_CMD ]]; then
+  echo "CU200_GNB_STOP_CMD and CU200_GNB_RESTART_CMD must be set together" >&2
+  exit 1
+fi
+
+mkdir -p -- "$LOGDIR"
+exec 9>"$LOCK_FILE"
+"$FLOCK_BIN" -n 9 || { echo "another CU200 run is active" >&2; exit 1; }
+OUT="$LOGDIR/$RUN_ID"
+mkdir -m 700 -- "$OUT" \
+  || { echo "cannot create $OUT — existing results are never overwritten" >&2; exit 1; }
+
+if [[ -n $CU200_GNB_STOP_CMD ]]; then
+  bash -c "$CU200_GNB_STOP_CMD" 9>&-
+  (( GNB_SETTLE_S == 0 )) || sleep "$GNB_SETTLE_S"
+  bash -c "$CU200_GNB_RESTART_CMD" 9>&-
+fi
+bash -c "$CU200_GNB_READY_CMD" 9>&- \
+  || { echo "four-cell ODU is not ready" >&2; exit 1; }
+
+printf '{"schema_version":"rss.cu200.v1","run_id":"%s","mode":"%s","duration_s":%d,"witness_delay_ms":%d,"hold_ms":%d,"t_start_utc":"%s"}\n' \
+  "$RUN_ID" "$MODE" "$DURATION_S" "$WITNESS_DELAY_MS" "$HOLD_MS" "$(date -u +%FT%TZ)" \
+  > "$OUT/orchestration.json"
+
+PIDS=()
+NAMES=()
+stop_children() {
+  local pid
+  trap - EXIT INT TERM
+  for pid in "${PIDS[@]:-}"; do kill -TERM "$pid" 2>/dev/null || true; done
+  for pid in "${PIDS[@]:-}"; do wait "$pid" 2>/dev/null || true; done
+}
+trap stop_children EXIT INT TERM
+
+launch() {
+  local name=$1 sector=$2
+  local tx=$((4557 + 2 * sector)) rx=$((4556 + 2 * sector))
+  shift 2
+  env LOGDIR="$OUT" ZMQ_TX="tcp://127.0.0.1:$tx" ZMQ_RX="tcp://127.0.0.1:$rx" \
+      ODU_LOG="$ODU_LOG" ODU_SECTOR_ID="$sector" \
+      "$RUNNER" "$@" -n "$RUN_ID-$name" 9>&- > "$OUT/$name.runner.log" 2>&1 &
+  PIDS+=("$!")
+  NAMES+=("$name")
+}
+
+if [[ $MODE == control ]]; then
+  for sector in 0 1 2 3; do launch "C$sector" "$sector" -e 0 -u 1 -d "$DURATION_S"; done
+else
+  for sector in 0 1 2; do
+    launch "A$sector" "$sector" -e 1 -u 1 -i 0 -o 0 -H "$HOLD_MS" -r 0 -M 1 -A 1 -d "$DURATION_S"
+  done
+  launch W3 3 -e 1 -u 1 -p 1 -t "$WITNESS_DELAY_MS" -H "$HOLD_MS" -d "$DURATION_S"
+fi
+
+rc=0
+for pid in "${PIDS[@]}"; do wait "$pid" || rc=1; done
+trap - EXIT INT TERM
+for name in "${NAMES[@]}"; do
+  echo "== $name"
+  tail -20 "$OUT/$name.runner.log"
+done
+echo "== artifacts in $OUT"
+exit "$rc"

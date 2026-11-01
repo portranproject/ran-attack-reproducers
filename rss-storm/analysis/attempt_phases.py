@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Where the wall-clock cost of one A-type attempt goes.
+"""Where the wall-clock cost of one RRCSetupComplete-omission attempt goes.
 
 Reads a run's attempts.jsonl (each event carries both clocks: t_ns wall and
 air_ms) and splits the attempt cycle into its phases, so the next optimisation

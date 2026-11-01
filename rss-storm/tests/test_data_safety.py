@@ -9,7 +9,6 @@ import unittest
 
 
 BIN = Path(__file__).resolve().parents[1] / "bin"
-PUCCH_FIX = BIN.parent / "patch" / "oai-pucch-null-fix.patch"
 GIT = shutil.which("git")
 BASH = shutil.which("bash")
 
@@ -74,43 +73,13 @@ class DataSafetyTests(unittest.TestCase):
         patch.write_text("Deliberately invalid: tests must stop before applying.\n")
         self.env.update(OAI=str(self.repo), PATCH=str(patch), BRANCH="new-test-branch")
 
-    def make_pucch_repo(self, already_fixed=False):
-        self.make_repo()
-        scheduler = self.repo / "openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c"
-        scheduler.parent.mkdir(parents=True)
-        scheduler.write_text(
-            "  if (num_res == 1 && pucch[0].n_sr > 0 && pucch[0].sr_payload == 0)\n"
-            "    return;\n\n"
-            "  if (num_res > 1)\n"
-            "    multiplex_pucch_resource(mac, pucch, num_res);\n\n"
-            "  for (int j = 0; j < num_res; j++) {\n"
-            "    if (pucch[j].n_harq + pucch[j].n_sr + pucch[j].csi_payload.p1_bits != 0) {\n"
-        )
-        self.git("add", ".")
-        self.git("-c", "commit.gpgsign=false", "commit", "-qm", "scheduler fixture")
-        if already_fixed:
-            self.git("apply", str(PUCCH_FIX))
-            self.git("add", ".")
-            self.git("-c", "commit.gpgsign=false", "commit", "-qm", "PUCCH fix")
-        patch = self.root / "rss-fixture.patch"
-        patch.write_text("--- a/source.txt\n+++ b/source.txt\n@@ -1 +1 @@\n-original\n+patched\n")
-        self.env["PATCH"] = str(patch)
-        self.stub("cmake", "exit 77\n")
-        return scheduler
-
-    def test_build_applies_pucch_fix_before_rss_patch(self):
-        scheduler = self.make_pucch_repo()
-        result = self.run_script("rss-build")
-        self.assertIn("applying official OAI PUCCH crash fix", result.stdout)
-        self.assertIn("common_harq", scheduler.read_text())
-        self.assertEqual((self.repo / "source.txt").read_text(), "patched\n")
-
-    def test_build_reuses_existing_pucch_fix(self):
-        scheduler = self.make_pucch_repo(already_fixed=True)
-        result = self.run_script("rss-build")
-        self.assertIn("PUCCH crash fix already applied", result.stdout)
-        self.assertEqual(scheduler.read_text().count("int common_harq"), 1)
-        self.assertEqual((self.repo / "source.txt").read_text(), "patched\n")
+    def test_build_applies_the_incremental_patch_stack_in_order(self):
+        content = (BIN / "rss-build").read_text()
+        curated = content.index('git -C "$OAI" apply "$PATCH"')
+        stale_rnti = content.index('git -C "$OAI" apply "$DCI_FIX"')
+        ack_rnti = content.index('git -C "$OAI" apply "$ACK_RNTI_FIX"')
+        self.assertLess(curated, stale_rnti)
+        self.assertLess(stale_rnti, ack_rnti)
 
     def test_build_preserves_staged_unstaged_and_untracked_changes(self):
         self.make_repo()
@@ -149,6 +118,23 @@ class DataSafetyTests(unittest.TestCase):
         self.assertEqual(branch, self.git("symbolic-ref", "HEAD"))
         self.assertEqual((self.repo / "source.txt").read_text(), "original\n")
 
+    def test_build_accepts_a_clean_git_worktree(self):
+        self.make_repo()
+        worktree = self.root / "oai-worktree"
+        subprocess.check_call(
+            [GIT, "-C", str(self.repo), "worktree", "add", "-q", "--detach",
+             str(worktree), "HEAD"],
+            env=self.env,
+        )
+        build = worktree / "cmake_targets/ran_build/build"
+        build.mkdir(parents=True)
+        for name in ("nr-uesoftmodem", "liboai_zmqdevif.so"):
+            (build / name).write_text("original artifact\n")
+        self.env["OAI"] = str(worktree)
+        result = self.run_script("rss-build")
+        self.assertIn("== tree state", result.stdout)
+        self.assertNotIn("not an OAI git tree", result.stderr)
+
     def test_run_rejects_existing_directory_file_and_symlinks(self):
         logs = Path(self.env["LOGDIR"])
         logs.mkdir()
@@ -177,6 +163,69 @@ class DataSafetyTests(unittest.TestCase):
                 result = self.run_script("rss-run", "-n", run_id)
                 self.assertIn("run_id must start", result.stderr)
                 self.assertFalse(Path(self.env["LOGDIR"]).exists())
+
+    def test_probe_propagates_runner_validation_failure(self):
+        result = self.run_script("rss-probe", "-n", "bad-ack", "-A", "2")
+        self.assertIn("rss-run failed", result.stderr)
+        self.assertTrue(Path(self.env["LOGDIR"]).is_dir())
+
+    def test_ack_withholding_cannot_claim_a_completed_attacker(self):
+        result = self.run_script("rss-run", "-A", "0", "-c", "1")
+        self.assertIn("cannot be combined", result.stderr)
+
+    def test_invalid_clock_evidence_is_rejected_before_artifacts(self):
+        self.env["CLOCK_EVIDENCE_SHA256"] = "not-a-sha256"
+        result = self.run_script("rss-run", "-n", "bad-clock")
+        self.assertIn("must be a lowercase SHA-256", result.stderr)
+        self.assertFalse(Path(self.env["LOGDIR"]).exists())
+
+    def test_run_rejects_non_zmq_before_creating_artifacts_or_running_commands(self):
+        self.env["DEVICE"] = "usrpb210"
+        result = self.run_script("rss-run", "-n", "ota-unsafe")
+        self.assertIn("runner is ZMQ-only", result.stderr)
+        self.assertFalse(Path(self.env["LOGDIR"]).exists())
+
+    def test_run_rejects_runner_owned_ue_extra_before_actions(self):
+        for index, extra in enumerate(("--device.name usrpb210",
+                                       "--device.name=usrpb210",
+                                       "--rss.max_duration_s 0"), 1):
+            with self.subTest(extra=extra):
+                self.env["UE_EXTRA"] = extra
+                result = self.run_script("rss-run", "-n", f"extra-unsafe-{index}")
+                self.assertIn("must not override runner-owned option", result.stderr)
+                self.assertFalse(Path(self.env["LOGDIR"]).exists())
+
+    def test_run_still_accepts_tuning_ue_extra(self):
+        self.env["UE_EXTRA"] = "--log_config.global_log_level error --num-dl-actors 0"
+        self.env["UE_BIN"] = str(self.root / "missing-ue")
+        result = self.run_script("rss-run", "-n", "extra-tuning")
+        self.assertIn("UE binary not found", result.stderr)
+        self.assertNotIn("runner-owned option", result.stderr)
+        self.assertFalse(Path(self.env["LOGDIR"]).exists())
+
+    def test_doctor_blocks_non_zmq_instead_of_claiming_readiness(self):
+        self.env["DEVICE"] = "usrpb210"
+        result = self.run_script("rss-doctor")
+        self.assertIn("current build and runner are ZMQ-only", result.stdout)
+        self.assertIn("[FAIL]", result.stdout)
+
+    def test_doctor_blocks_runner_owned_ue_extra(self):
+        self.env["UE_EXTRA"] = "--device.name usrpb210"
+        result = self.run_script("rss-doctor")
+        self.assertIn("UE_EXTRA overrides runner-owned option", result.stdout)
+        self.assertIn("[FAIL]", result.stdout)
+
+    def test_doctor_blocks_direct_milenage_dump_binary(self):
+        Path(self.env["UE_BIN"]).write_text("milenage output ik:\n")
+        result = self.run_script("rss-doctor")
+        self.assertIn("direct Milenage authentication dumps", result.stdout)
+        self.assertIn("[FAIL]", result.stdout)
+
+    def test_doctor_accepts_dev_null_as_an_explicit_empty_conf(self):
+        self.env["RSS_CONF"] = os.devnull
+        result = self.run_script("rss-doctor")
+        self.assertIn("conf: /dev/null", result.stdout)
+        self.assertNotIn("no conf file", result.stdout)
 
 
 if __name__ == "__main__":

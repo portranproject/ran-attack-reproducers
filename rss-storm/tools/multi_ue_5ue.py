@@ -62,8 +62,8 @@ class multi_ue_scenario(gr.top_block, Qt.QWidget):
         ##################################################
         self.zmq_timeout = zmq_timeout = 100
         self.zmq_hwm = zmq_hwm = -1
-        self.ue3_path_loss_db = ue3_path_loss_db = 20
-        self.ue2_path_loss_db = ue2_path_loss_db = 10
+        self.ue3_path_loss_db = ue3_path_loss_db = 0
+        self.ue2_path_loss_db = ue2_path_loss_db = 0
         self.ue1_path_loss_db = ue1_path_loss_db = 0
         self.slow_down_ratio = slow_down_ratio = 1
         self.samp_rate = samp_rate = 23040000
@@ -72,10 +72,10 @@ class multi_ue_scenario(gr.top_block, Qt.QWidget):
         # Blocks
         ##################################################
 
-        self._ue3_path_loss_db_range = qtgui.Range(0, 100, 1, 20, 200)
+        self._ue3_path_loss_db_range = qtgui.Range(0, 100, 1, 0, 200)
         self._ue3_path_loss_db_win = qtgui.RangeWidget(self._ue3_path_loss_db_range, self.set_ue3_path_loss_db, "UE3 Pathloss [dB]", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._ue3_path_loss_db_win)
-        self._ue2_path_loss_db_range = qtgui.Range(0, 100, 1, 10, 200)
+        self._ue2_path_loss_db_range = qtgui.Range(0, 100, 1, 0, 200)
         self._ue2_path_loss_db_win = qtgui.RangeWidget(self._ue2_path_loss_db_range, self.set_ue2_path_loss_db, "UE2 Pathloss [dB]", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._ue2_path_loss_db_win)
         self._ue1_path_loss_db_range = qtgui.Range(0, 100, 1, 0, 200)
@@ -144,6 +144,28 @@ class multi_ue_scenario(gr.top_block, Qt.QWidget):
         self.wait()
 
         event.accept()
+
+    def reset_witness_uplink(self):
+        # req_source retains an outstanding request when its REP peer is replaced.
+        self.lock()
+        try:
+            old = self.zeromq_req_source_3
+            self.disconnect((old, 0), (self.blocks_mul_ul5, 0))
+            self.zeromq_req_source_3 = None
+            del old
+            self.zeromq_req_source_3 = zeromq.req_source(
+                gr.sizeof_gr_complex,
+                1,
+                'tcp://127.0.0.1:2501',
+                self.zmq_timeout,
+                False,
+                self.zmq_hwm,
+                False,
+            )
+            self.connect((self.zeromq_req_source_3, 0), (self.blocks_mul_ul5, 0))
+        finally:
+            self.unlock()
+        print("RSS_BROKER_WITNESS_UPLINK_RESET port=2501", flush=True)
 
     def get_zmq_timeout(self):
         return self.zmq_timeout
@@ -214,8 +236,18 @@ def main(top_block_cls=multi_ue_scenario, options=None):
 
         Qt.QApplication.quit()
 
+    def reset_witness_uplink(sig=None, frame=None):
+        def reset():
+            try:
+                tb.reset_witness_uplink()
+            except Exception as exc:
+                print(f"RSS_BROKER_WITNESS_UPLINK_RESET_FAILED {exc}", flush=True)
+
+        QtCore.QTimer.singleShot(0, reset)
+
     signal.signal(signal.SIGINT, sig_handler)
     signal.signal(signal.SIGTERM, sig_handler)
+    signal.signal(signal.SIGUSR1, reset_witness_uplink)
 
     timer = Qt.QTimer()
     timer.start(500)

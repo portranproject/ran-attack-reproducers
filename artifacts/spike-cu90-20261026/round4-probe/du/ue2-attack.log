@@ -14,7 +14,7 @@ CMDLINE: "./nr-uesoftmodem" "-O" "/root/oai_nrue.conf" "--band" "78" "-C" "34894
 [0m[NR_RRC] create TASK_RRC_NRUE 
 [0m[UTIL]   threadCreate() for TASK_RRC_NRUE: creating thread with affinity ffffffff, priority 50
 [0m[UTIL]   threadCreate() for TASK_NAS_NRUE: creating thread with affinity ffffffff, priority 50
-[0m[SIM]    UICC simulation: IMSI=001010123456780, IMEISV=6754567890123413, Ki=00112233445566778899aabbccddeeff, OPc=63bfa50ee6523365ff14c1f45f88737d
+[REDACTED subscriber/auth material]
 [0m[SIM]    overriding potential uicc0.dnn/nssai_sst/nssai_sd from uicc0.pdu_sessions
 [0m[SIM]    will request PDU session ID 1, type 1, DNN internet, NSSAI 1.ffffff
 [0m[NR_MAC] [UE 0] RA pipelining depth 1

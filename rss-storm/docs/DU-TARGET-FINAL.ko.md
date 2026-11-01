@@ -31,12 +31,11 @@
 
 1. UE 수: 이미 소진(역효과).
 2. 거부 백오프 해제(`-r 0`): +11% 확보, 적용 완료.
-3. RA 병렬화(`RA_DEPTH`): 노브는 있으나 풀 구현(`ra_pool`, `RA_config_t *ra`,
-   `rss_ra_alloc`)이 현재 트리에 없어 무효.
-4. archive 패치(`rss-ue-full-20261023.patch`) 이식: `rrc_proto.h` Hunk#1,
-   `rrc_timers_and_constants.c` Hunk#1/#3 충돌(우리 probe pacing 패치와 충돌).
-   약 10개 파일(타이머 인자·포인터 전환) 수동 이식이 필요하고, 패치는 당시
-   "결선 완료, 측정 전"이었다.
+3. RA 병렬화(`RA_DEPTH`): 이후 archive의 K=2 구현까지 실측했지만 UE 시도는
+   1.7% 늘고 CU context 생성은 0.5% 줄었다. 병목이 UE RA 직렬화가 아니라
+   gNB context 공급률이라 해결책에서 제외한다.
+4. archive 패치(`rss-ue-full-20261023.patch`): RA pipeline 외에도 evict/harvest와
+   탐색용 PHY/MAC 변경이 섞여 있다. 안정 패치로 이식하지 않는다.
 5. gNB/CU 설정 변경: 사용자 지시로 금지.
 
 ## 정상 UE 거부에 대해
@@ -49,8 +48,10 @@
 
 - **기존 설정·현행 도구로 "96 유지 + 정상 UE 거부"는 불가능**하다.
 - 96 피크(순간 접촉)와 평균 92, 천장에서만 거절이 재현 가능한 최대치다.
-- 다음 단계는 코드 작업이다: RA pipelining 이식(4% 확보 목표) 또는 evict/harvest 경로
-  (C-RNTI 수확 커버리지 1/3 한계 기록됨). 둘 다 새 브랜치·빌드·측정이 필요하다.
+- 이 결과는 기본 DU에서 **통제 가능한 상태 압력/탐지 입력**으로 사용한다. 96 지속 포화나
+  정상 UE 완전 거부를 이 프로필의 성공 조건으로 주장하지 않는다.
+- 다음 검증은 독립 RF 경로의 정상 UE로 attack-on/off attach/PDU/ping을 비교하는 것이다.
+  RA pipeline과 evict/harvest는 이 결과의 해결책으로 추천하지 않는다.
 
 ## 자산
 

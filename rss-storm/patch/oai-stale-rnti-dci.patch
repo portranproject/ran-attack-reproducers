@@ -1,0 +1,110 @@
+diff --git a/openair2/LAYER2/NR_MAC_UE/nr_ue_procedures.c b/openair2/LAYER2/NR_MAC_UE/nr_ue_procedures.c
+index 8343db1..f3fae44 100644
+--- a/openair2/LAYER2/NR_MAC_UE/nr_ue_procedures.c
++++ b/openair2/LAYER2/NR_MAC_UE/nr_ue_procedures.c
+@@ -122,26 +122,33 @@ const initial_pucch_resource_t initial_pucch_resource[16] = {
+ /* 15  */ {  1,       0,                 14,                   0,            4,       {    0,   3,    6,    9  }   },
+ };
+ 
+-int get_rnti_type(const NR_UE_MAC_INST_t *mac, const uint16_t rnti)
++static bool try_get_rnti_type(const NR_UE_MAC_INST_t *mac, const uint16_t rnti, nr_rnti_type_t *rnti_type)
+ {
+   const RA_config_t *ra = &mac->ra;
+-  nr_rnti_type_t rnti_type;
+ 
+   if (rnti == ra->ra_rnti) {
+-    rnti_type = TYPE_RA_RNTI_;
++    *rnti_type = TYPE_RA_RNTI_;
+   } else if (rnti == ra->MsgB_rnti && (ra->ra_state == nrRA_WAIT_MSGB || ra->ra_state == nrRA_WAIT_CONTENTION_RESOLUTION)) {
+-    rnti_type = TYPE_MSGB_RNTI_;
++    *rnti_type = TYPE_MSGB_RNTI_;
+   } else if (rnti == ra->t_crnti && (ra->ra_state == nrRA_WAIT_RAR || ra->ra_state == nrRA_WAIT_CONTENTION_RESOLUTION)) {
+-    rnti_type = TYPE_TC_RNTI_;
++    *rnti_type = TYPE_TC_RNTI_;
+   } else if (rnti == mac->crnti) {
+-    rnti_type = TYPE_C_RNTI_;
++    *rnti_type = TYPE_C_RNTI_;
+   } else if (rnti == 0xFFFE) {
+-    rnti_type = TYPE_P_RNTI_;
++    *rnti_type = TYPE_P_RNTI_;
+   } else if (rnti == 0xFFFF) {
+-    rnti_type = TYPE_SI_RNTI_;
++    *rnti_type = TYPE_SI_RNTI_;
+   } else {
+-    AssertFatal(1 == 0, "Not identified/handled rnti %d \n", rnti);
++    return false;
+   }
++
++  return true;
++}
++
++int get_rnti_type(const NR_UE_MAC_INST_t *mac, const uint16_t rnti)
++{
++  nr_rnti_type_t rnti_type;
++  AssertFatal(try_get_rnti_type(mac, rnti, &rnti_type), "Not identified/handled rnti %d \n", rnti);
+   LOG_D(MAC, "Returning rnti_type %s \n", rnti_types(rnti_type));
+   return rnti_type;
+ }
+@@ -3952,7 +3959,12 @@ static nr_dci_format_t nr_extract_dci_info(NR_UE_MAC_INST_t *mac,
+ 
+ nr_dci_format_t nr_ue_process_dci_indication_pdu(NR_UE_MAC_INST_t *mac, frame_t frame, int slot, fapi_nr_dci_indication_pdu_t *dci)
+ {
+-  const nr_rnti_type_t rnti_type = get_rnti_type(mac, dci->rnti);
++  nr_rnti_type_t rnti_type;
++  if (!try_get_rnti_type(mac, dci->rnti, &rnti_type)) {
++    LOG_D(NR_MAC_DCI, "[%04d.%02d] Ignoring DCI for inactive RNTI 0x%04x\n", frame, slot, dci->rnti);
++    mac->stats.bad_dci++;
++    return NR_DCI_NONE;
++  }
+   LOG_D(NR_MAC,
+         "Received dci indication (rnti %x, rnti_type %d, dci format %d, n_CCE %d, payloadSize %d, payload %llx)\n",
+         dci->rnti,
+diff --git a/openair2/LAYER2/NR_MAC_UE/tests/test_nr_ue_ra_procedures.cpp b/openair2/LAYER2/NR_MAC_UE/tests/test_nr_ue_ra_procedures.cpp
+index 54f0a77..4bd69df 100644
+--- a/openair2/LAYER2/NR_MAC_UE/tests/test_nr_ue_ra_procedures.cpp
++++ b/openair2/LAYER2/NR_MAC_UE/tests/test_nr_ue_ra_procedures.cpp
+@@ -130,6 +130,25 @@ bool check_csi_report_consistency(const NR_CSI_MeasConfig_t *meas)
+   UNUSED(meas);
+   return true;
+ }
++bool nr_rss_should_send_msg4_ack(int ue)
++{
++  UNUSED(ue);
++  return true;
++}
++void nr_rss_note_msg3_tx(int ue, uint16_t tc_rnti, int frame, int slot, bool retransmission)
++{
++  UNUSED(ue);
++  UNUSED(tc_rnti);
++  UNUSED(frame);
++  UNUSED(slot);
++  UNUSED(retransmission);
++}
++void nr_rss_log(int ue, const char *event, const char *fmt, ...)
++{
++  UNUSED(ue);
++  UNUSED(event);
++  UNUSED(fmt);
++}
+ void nr_mac_rrc_meas_ind_ue(module_id_t module_id,
+                             uint32_t gNB_index,
+                             uint16_t Nid_cell,
+@@ -221,6 +240,18 @@ TEST(test_init_ra, four_step_cfra)
+   EXPECT_EQ(mac.ra.cfra, 1);
+ }
+ 
++TEST(test_dci, stale_tc_rnti_is_ignored)
++{
++  NR_UE_MAC_INST_t mac = {0};
++  mac.ra.ra_state = nrRA_WAIT_CONTENTION_RESOLUTION;
++  mac.ra.t_crnti = 0x4604;
++  fapi_nr_dci_indication_pdu_t dci = {0};
++  dci.rnti = 0x4603;
++
++  EXPECT_EQ(nr_ue_process_dci_indication_pdu(&mac, 1, 1, &dci), NR_DCI_NONE);
++  EXPECT_EQ(mac.stats.bad_dci, 1);
++}
++
+ int main(int argc, char **argv)
+ {
+   logInit();

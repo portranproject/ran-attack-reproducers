@@ -7,10 +7,28 @@
 # DU restart after that failed with "F1-C: Failed to connect ... Connection
 # refused" and eleven consecutive runs produced zero attempts. A live process is
 # not a working CU; the listener is what has to be checked.
-set -u
-P=/Volumes/owc/Users/ideal/tmp/p5-panel/p5
-CU=52.78.45.138
-DU=54.180.134.162
+set -euo pipefail
+P=${P:-/Volumes/owc/Users/ideal/tmp/p5-panel/p5}
+REMOTE_RSS=${REMOTE_RSS:-/root/rss-storm}
+
+# Public IPs change whenever EC2 is stopped and started. Hard-coding the last
+# pair can target stale hosts, so resolve this panel's own set unless the caller
+# explicitly supplies CU= and DU=.
+if [[ -z ${CU:-} || -z ${DU:-} ]]; then
+  export AWS_SHARED_CREDENTIALS_FILE="$P/credentials"
+  export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-ap-northeast-2}
+  SET=${SET:-$(aws sts get-caller-identity --query Arn --output text | awk -F/ '{print $NF}')}
+  resolve_ip() {
+    aws ec2 describe-instances \
+      --filters "Name=tag:set,Values=$SET" "Name=tag:role,Values=$1" \
+                "Name=instance-state-name,Values=running" \
+      --query 'Reservations[0].Instances[0].PublicIpAddress' --output text
+  }
+  CU=${CU:-$(resolve_ip cu)}
+  DU=${DU:-$(resolve_ip du)}
+fi
+[[ -n $CU && $CU != None && -n $DU && $DU != None ]] \
+  || { echo "CU/DU running IPs not found; start the selected panel set first" >&2; exit 1; }
 SSH="ssh -n -i $P/portran-key.pem -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$P/known_hosts -o ConnectTimeout=20 -o ServerAliveInterval=30"
 T=$(date -u +%m%dT%H%M%SZ)
 echo "SUITE=$T"
@@ -31,9 +49,17 @@ ensure_cu() {
 
 run() {
   local id="$1"; shift
+  local output rc
   echo "######## $id-$T"
   ensure_cu || exit 1
-  $SSH ubuntu@$DU "sudo EVICT_UES=0 PROBE_UES=1 /root/rss-storm/bin/rss-probe -n '$id-$T' $* 2>&1 | grep -E 'rss-probe:|attempts|ack_held|ch.timeout|CRASHED|INVALID|gNB|conres_ce_acked|packets transmitted'"
+  if output=$($SSH ubuntu@$DU "sudo EVICT_UES=0 PROBE_UES=1 '$REMOTE_RSS/bin/rss-probe' -n '$id-$T' $*" 2>&1); then
+    printf '%s\n' "$output" | grep -E 'rss-probe:|attempts|msg4_ack_withheld|ch.timeout|CRASHED|INVALID|gNB|harq_ack_|dl_harq_maxretx_discard|packets transmitted'
+  else
+    rc=$?
+    printf '%s\n' "$output" >&2
+    echo "   run failed rc=$rc — aborting suite" >&2
+    return "$rc"
+  fi
 }
 
 for k in 1 2 3; do

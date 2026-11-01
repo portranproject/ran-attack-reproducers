@@ -13,7 +13,7 @@ CMDLINE: "/root/OAI/cmake_targets/ran_build/build/nr-uesoftmodem" "-O" "/root/oa
 [0m[NR_RRC] create TASK_RRC_NRUE 
 [0m[UTIL]   threadCreate() for TASK_RRC_NRUE: creating thread with affinity ffffffff, priority 50
 [0m[UTIL]   threadCreate() for TASK_NAS_NRUE: creating thread with affinity ffffffff, priority 50
-[0m[SIM]    UICC simulation: IMSI=<redacted>, IMEISV=<redacted>, Ki=<redacted>, OPc=<redacted>
+[REDACTED subscriber/auth material]
 [0m[SIM]    overriding potential uicc0.dnn/nssai_sst/nssai_sd from uicc0.pdu_sessions
 [0m[SIM]    will request PDU session ID 1, type 1, DNN internet, NSSAI 1.ffffff
 [0m[NR_MAC] [UE0] Initializing MAC

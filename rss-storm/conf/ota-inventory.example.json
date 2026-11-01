@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "lab_id": null,
+  "equipment_owned_by_team": false,
+  "subscriber_profiles_owned_by_team": false,
+  "physical_crosscheck_complete": false,
+  "endpoints": [
+    {
+      "alias": "du-sdr",
+      "role": "du",
+      "host_alias": null,
+      "model": null,
+      "serial_hash": null,
+      "rf_port": null,
+      "channel": null,
+      "antenna_alias": null,
+      "backend": null,
+      "driver_version": null,
+      "firmware_version": null,
+      "clock_source": null,
+      "time_source": null,
+      "master_clock_rate_hz": null,
+      "sample_rate_hz": null,
+      "tx_gain_max_db": null,
+      "rx_gain_max_db": null
+    },
+    {
+      "alias": "attack-sdr",
+      "role": "attack_ue",
+      "host_alias": null,
+      "model": null,
+      "serial_hash": null,
+      "rf_port": null,
+      "channel": null,
+      "antenna_alias": null,
+      "backend": null,
+      "driver_version": null,
+      "firmware_version": null,
+      "clock_source": null,
+      "time_source": null,
+      "master_clock_rate_hz": null,
+      "sample_rate_hz": null,
+      "tx_gain_max_db": null,
+      "rx_gain_max_db": null
+    },
+    {
+      "alias": "witness-sdr",
+      "role": "witness_ue",
+      "host_alias": null,
+      "model": null,
+      "serial_hash": null,
+      "rf_port": null,
+      "channel": null,
+      "antenna_alias": null,
+      "backend": null,
+      "driver_version": null,
+      "firmware_version": null,
+      "clock_source": null,
+      "time_source": null,
+      "master_clock_rate_hz": null,
+      "sample_rate_hz": null,
+      "tx_gain_max_db": null,
+      "rx_gain_max_db": null
+    }
+  ],
+  "rf_paths": [
+    {
+      "alias": "du-to-attack",
+      "from_endpoint": "du-sdr",
+      "to_endpoint": "attack-sdr",
+      "diagram_ref": null,
+      "components": [
+        {"alias": "attack-cable", "type": "cable", "attenuation_db": null},
+        {"alias": "attack-attenuator", "type": "attenuator", "attenuation_db": null}
+      ],
+      "total_attenuation_db": null
+    },
+    {
+      "alias": "du-to-witness",
+      "from_endpoint": "du-sdr",
+      "to_endpoint": "witness-sdr",
+      "diagram_ref": null,
+      "components": [
+        {"alias": "witness-cable", "type": "cable", "attenuation_db": null},
+        {"alias": "witness-attenuator", "type": "attenuator", "attenuation_db": null}
+      ],
+      "total_attenuation_db": null
+    }
+  ],
+  "leakage": {
+    "threshold": null,
+    "unit": null,
+    "instrument_alias": null,
+    "measurement_location": null,
+    "procedure_ref": null
+  },
+  "subscribers": {
+    "attack_alias": null,
+    "witness_alias": null,
+    "distinct_profiles": false
+  },
+  "witness": {
+    "endpoint_alias": "witness-sdr",
+    "process_host_alias": null,
+    "independent_sdr": false,
+    "independent_process": false,
+    "independent_rf_path": false
+  },
+  "approvals": [
+    {"reviewer_alias": null, "approved_at": null},
+    {"reviewer_alias": null, "approved_at": null}
+  ]
+}

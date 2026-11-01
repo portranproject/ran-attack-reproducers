@@ -23,14 +23,16 @@ base station source.
 
 - **OpenAirInterface (OAI)** — the UE this patch applies to.
   Patch baseline: commit `1c2f4d3c2e68181cdef9f426d161163147ad4b77` (tag
-  `2026.w38`). OAI is distributed under the OAI Public License V1.1.
+  `2026.w38`). That release identifies its source licence as the Common Source
+  Software License 1.0 (`LicenseRef-CSSL-1.0`); consult OAI's `LICENSE` file for
+  the controlling terms.
   https://gitlab.eurecom.fr/oai/openairinterface5g
 - **radio/zmq in OAI** carries `SPDX-License-Identifier: BSD-3-Clause-Open-MPI`
   and is itself derived from the OCUDU/srsRAN ZMQ radio. The fixes in
   `radio/zmq/` in this patch are changes to that code.
 - **OCUDU** (srsRAN-derived) was the base station under test. It is not modified
   and not redistributed here.
-- The A-type scenario (receive Msg4, skip `RRCSetupComplete`) follows the
+- The RRCSetupComplete-omission scenario (receive Msg4, skip `RRCSetupComplete`) follows the
   experimental setup described in the KAUST RRC storm validation paper
   (arXiv:2608.16441). Cite it if you publish results.
 - `5gattacks/5g-rrc-storm` is the closest prior public implementation. It
@@ -38,5 +40,6 @@ base station source.
   not. **It carries no licence file**, so no code from it is copied here.
 
 Because the patch applies to OAI sources, redistribution of the *patched result*
-must respect the OAI Public License V1.1. The patch, scripts and documentation
-in this directory are the original work of this project.
+must respect OAI's CSSL 1.0 terms. The patch, scripts and documentation in this
+directory are the original work of this project; this repository does not add a
+licence grant for third-party OAI code.

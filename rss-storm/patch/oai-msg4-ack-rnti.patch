@@ -1,0 +1,12 @@
+diff --git a/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c b/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c
+--- a/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c
++++ b/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c
+@@ -1840,7 +1840,7 @@ static void nr_ue_pucch_scheduler(NR_UE_MAC_INST_t *mac, frame_t frame, int slot
+         nr_rss_log(mac->ue_id,
+                    "msg4_ack_scheduled",
+                    "\"tc_rnti\":\"0x%04x\",\"frame\":%d,\"slot\":%d,\"source\":\"ra_pucch\"",
+-                   mac->ra.t_crnti,
++                   ra_pucch->pucch_pdu.rnti,
+                    frame,
+                    slot);
+       free_and_zero(mac->ra.ra_pucch);

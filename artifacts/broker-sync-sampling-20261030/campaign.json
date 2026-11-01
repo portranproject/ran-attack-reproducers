@@ -1,0 +1,33 @@
+{
+  "type": "broker_sync_sampling_plan",
+  "campaign_id": "broker-sync-sampling-20261030",
+  "planned_before_execution": true,
+  "environment": "team-owned isolated p5 ZMQ testbed",
+  "mode": "control",
+  "planned_runs": 15,
+  "adaptive_extension": false,
+  "runner": "rss-broker-witness",
+  "broker_sync_timeout_s": 60,
+  "observation_duration_s": 60,
+  "witness_delay_ms": 5000,
+  "run_ids": [
+    "bw-sync-c01-1030",
+    "bw-sync-c02-1030",
+    "bw-sync-c03-1030",
+    "bw-sync-c04-1030",
+    "bw-sync-c05-1030",
+    "bw-sync-c06-1030",
+    "bw-sync-c07-1030",
+    "bw-sync-c08-1030",
+    "bw-sync-c09-1030",
+    "bw-sync-c10-1030",
+    "bw-sync-c11-1030",
+    "bw-sync-c12-1030",
+    "bw-sync-c13-1030",
+    "bw-sync-c14-1030",
+    "bw-sync-c15-1030"
+  ],
+  "startup_buckets": ["sync_5of5_le_30s", "sync_5of5_31_to_60s", "clean_timeout_60s", "other_anomaly"],
+  "service_rule": "Report every clean 5/5 control by attach, Registration, PDU and per-run ping; do not pool loss or retry a service failure.",
+  "evidence_policy": "Keep raw UE/NAS logs on DU; store only identifier-free summaries and SHA-256 paths in the repository."
+}

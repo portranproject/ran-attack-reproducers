@@ -46,7 +46,7 @@ extern int rss_anas_id_policy(void);
 /* 인스턴스별 시도 순번. attempt_start 레코드의 seq 와 같은 값이다. */
 extern unsigned rss_attempt_seq(int ue_id);
 /* 재현성: 같은 run_id + 같은 (ue_id, seq) 는 같은 값을 돌려줘야 한다.
-   탐지팀이 라벨을 재생할 수 있어야 하므로 rand() 를 쓰지 않는다. */
+   분석기가 라벨을 재생할 수 있어야 하므로 rand() 를 쓰지 않는다. */
 extern uint32_t rss_mix32(uint32_t a, uint32_t b);
 
 /* 한 시도가 제시할 identity 를 고른다.

@@ -15,7 +15,9 @@ set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONF="${RSS_CONF:-$HERE/conf/rss.conf}"
 CONF_FOUND=0; CONF_BROKEN=0
-if [[ -f "$CONF" ]]; then
+if [[ $CONF == /dev/null ]]; then
+  CONF_FOUND=1
+elif [[ -f "$CONF" ]]; then
   # shellcheck source=/dev/null
   if . "$CONF"; then CONF_FOUND=1
   else CONF_BROKEN=1; fi
@@ -29,9 +31,13 @@ UE_CFG=${UE_CFG:-/root/oai_nrue.conf}
 UECAP=${UECAP:-$OAI/targets/PROJECTS/GENERIC-NR-5GC/CONF/uecap_ports1.xml}
 LOGDIR=${LOGDIR:-/root/rss-runs}
 DEVICE=${DEVICE:-oai_zmqdevif}
+UE_EXTRA=${UE_EXTRA:-}
 ZMQ_TX=${ZMQ_TX:-tcp://127.0.0.1:4557}
 ZMQ_RX=${ZMQ_RX:-tcp://127.0.0.1:4556}
 GNB_RESTART_CMD=${GNB_RESTART_CMD:-}
+GNB_READY_CMD=${GNB_READY_CMD:-}
+ODU_LOG=${ODU_LOG:-}
+ODU_SECTOR_ID=${ODU_SECTOR_ID:-}
 GNB_LOG=${GNB_LOG:-/tmp/ocu.log}
 ENABLE=${ENABLE:-0}
 EXPECT_COMMIT=${EXPECT_COMMIT:-1c2f4d3c2e68181cdef9f426d161163147ad4b77}
@@ -54,9 +60,24 @@ elif (( CONF_FOUND )); then ok "conf: $CONF"
 else bad "no conf file. Run: cp conf/rss.conf.example conf/rss.conf && \$EDITOR conf/rss.conf"; fi
 [[ $ENABLE == 0 ]] && ok "ENABLE=0 (attack off by default — keep it this way)" \
                    || warn "ENABLE=$ENABLE in the conf file. An accidental run would attack. Prefer ENABLE=0 and -e 1 on the command line"
+[[ $DEVICE == oai_zmqdevif ]] \
+  && ok "DEVICE=oai_zmqdevif (the only built and verified radio path)" \
+  || bad "DEVICE=$DEVICE is unsupported: current build and runner are ZMQ-only; OTA needs hardware inventory, driver arguments and safety validation"
+EXTRA=()
+[[ -n $UE_EXTRA ]] && read -r -a EXTRA <<< "$UE_EXTRA"
+for extra_arg in "${EXTRA[@]}"; do
+  case $extra_arg in
+    -O|-O*|-C|-C*|-E|-r|-r*|--band|--band=*|--numerology|--numerology=*|\
+    --ue-scan-carrier|--uecap_file|--uecap_file=*|--device.*|--zmq.*|\
+    --num-ues|--num-ues=*|--rss.*)
+      bad "UE_EXTRA overrides runner-owned option: $extra_arg"
+      break
+      ;;
+  esac
+done
 
 echo "== OAI tree"
-if [[ -d $OAI/.git ]]; then
+if git -C "$OAI" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   ok "tree: $OAI"
   HEAD=$(git -C "$OAI" rev-parse HEAD 2>/dev/null)
   BRANCH=$(git -C "$OAI" branch --show-current 2>/dev/null)
@@ -73,12 +94,26 @@ echo "== attacker UE binary"
 if [[ -x $UE_BIN ]]; then
   ok "binary: $UE_BIN"
   miss=()
-  for n in target_occupancy msg4_wait RSS_SHARE_LOCKSTEP; do
+  for n in target_occupancy msg4_wait phase_ms msg4_ack msg4_ack_withheld \
+           probe_ues probe_delay_ms probe_ra_only probe_interval_ms \
+           rss_reject_reset_skipped RSS_SHARE_LOCKSTEP RSS_SHARE_NUE; do
     c=$(strings "$UE_BIN" 2>/dev/null | grep -c "$n" || true)
     (( c > 0 )) || miss+=("$n")
   done
   if ((${#miss[@]})); then bad "binary is missing knobs (${miss[*]}) — it is a stock UE. Run: bin/rss-build"
-  else ok "knobs present (target_occupancy, msg4_wait, RSS_SHARE_LOCKSTEP)"; fi
+  else ok "attack, probe and Msg4-ACK knobs present"; fi
+  secret_log=$(strings "$UE_BIN" 2>/dev/null | grep -c 'UICC simulation: IMSI=' || true)
+  if (( secret_log > 0 )); then
+    bad "UE binary still contains the subscriber-secret UICC log. Rebuild with the current curated patch"
+  else
+    ok "subscriber-secret UICC log removed from the UE binary"
+  fi
+  vector_log=$(strings "$UE_BIN" 2>/dev/null | grep -c 'milenage output ik:' || true)
+  if (( vector_log > 0 )); then
+    bad "UE binary still contains direct Milenage authentication dumps. Rebuild with the current curated patch"
+  else
+    ok "direct Milenage authentication dumps removed from the UE binary"
+  fi
 else
   bad "no UE binary at $UE_BIN. Run: bin/rss-bootstrap then bin/rss-build"
 fi
@@ -87,7 +122,7 @@ if [[ -f $DEVLIB ]]; then
   if (( c > 0 )); then ok "ZMQ radio carries RSS_ZMQ_TX_WAIT_US"
   else bad "$DEVLIB is the stock radio (no RSS_ZMQ_TX_WAIT_US). Attempt rate will be ~3x lower. Run: bin/rss-build"; fi
 else
-  [[ $DEVICE == oai_zmqdevif ]] && bad "no $DEVLIB. Run: bin/rss-bootstrap" || warn "no ZMQ radio library (DEVICE=$DEVICE, so maybe fine)"
+  bad "no $DEVLIB. The current runner is ZMQ-only; run bin/rss-bootstrap"
 fi
 
 echo "== UE inputs"
@@ -111,8 +146,33 @@ if [[ $DEVICE == oai_zmqdevif ]]; then
   else
     ok "gNB restart hook: $GNB_RESTART_CMD"
   fi
+  if [[ -n $GNB_READY_CMD ]]; then
+    ok "gNB readiness gate configured"
+  else
+    warn "GNB_READY_CMD is empty. A restart command returning does not prove DU/F1/ZMQ readiness"
+  fi
 else
-  ok "DEVICE=$DEVICE (not ZMQ) — no restart hook needed"
+  : # The config section already records non-ZMQ as a blocker.
+fi
+
+if [[ -n $ODU_LOG ]]; then
+  if [[ ! $ODU_SECTOR_ID =~ ^(0|[1-9][0-9]*)$ ]] || (( ODU_SECTOR_ID > 65535 )); then
+    bad "ODU_SECTOR_ID must be 0..65535 when ODU_LOG is set"
+  fi
+  if [[ -f $ODU_LOG && -r $ODU_LOG ]]; then
+    ok "run-scoped DU ACK capture source readable: $ODU_LOG"
+    fapi_uci=$(tail -n 20000 -- "$ODU_LOG" 2>/dev/null \
+      | grep -c "Sector#${ODU_SECTOR_ID}:.*UCI\\.indication.*PUCCH format 0/1.*HARQ:.*harq_ack=" || true)
+    if (( fapi_uci > 0 )); then
+      ok "recent DU log exposes FAPI PUCCH 0/1 HARQ evidence"
+    else
+      warn "no recent FAPI PUCCH 0/1 HARQ evidence in ODU_LOG; OCUDU defaults to warning, so use one-sector log with fapi_level: debug and verify a normal control first"
+    fi
+  else
+    warn "ODU_LOG=$ODU_LOG is not a readable regular file; runs continue but final A labels remain unknown"
+  fi
+elif [[ -n $ODU_SECTOR_ID ]]; then
+  bad "ODU_SECTOR_ID requires ODU_LOG"
 fi
 
 echo "== verdict side (CU host only)"

@@ -16,8 +16,9 @@ if [[ -f "$CONF" ]]; then
 fi
 
 OAI=${OAI:-/root/OAI}
-PATCH=${PATCH:-$HERE/patch/rss-ue.patch}
-PUCCH_FIX="$HERE/patch/oai-pucch-null-fix.patch"
+PATCH=${PATCH:-$HERE/patch/rss-ue-curated.patch}
+DCI_FIX="$HERE/patch/oai-stale-rnti-dci.patch"
+ACK_RNTI_FIX="$HERE/patch/oai-msg4-ack-rnti.patch"
 BRANCH=${BRANCH:-rss-ue-a-type}
 BUILD="$OAI/cmake_targets/ran_build/build"
 BIN="$BUILD/nr-uesoftmodem"
@@ -27,9 +28,11 @@ BIN="$BUILD/nr-uesoftmodem"
 DEVLIB="$BUILD/liboai_zmqdevif.so"
 EXPECT_COMMIT=${EXPECT_COMMIT:-1c2f4d3c2e68181cdef9f426d161163147ad4b77}
 
-[[ -d $OAI/.git ]] || { echo "not an OAI git tree: $OAI" >&2; exit 1; }
+git -C "$OAI" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+  || { echo "not an OAI git tree: $OAI" >&2; exit 1; }
 [[ -f $PATCH ]] || { echo "patch not found: $PATCH" >&2; exit 1; }
-[[ -f $PUCCH_FIX ]] || { echo "OAI PUCCH crash fix not found: $PUCCH_FIX" >&2; exit 1; }
+[[ -f $DCI_FIX ]] || { echo "OAI stale-RNTI DCI fix not found: $DCI_FIX" >&2; exit 1; }
+[[ -f $ACK_RNTI_FIX ]] || { echo "OAI Msg4 ACK RNTI fix not found: $ACK_RNTI_FIX" >&2; exit 1; }
 [[ -d $BUILD ]] || { echo "no build dir $BUILD — build stock OAI once first" >&2; exit 1; }
 
 TREE_STATE=$(git -C "$OAI" status --porcelain --untracked-files=all --ignore-submodules=none) \
@@ -54,27 +57,29 @@ else
   git -C "$OAI" checkout -b "$BRANCH"
 fi
 
-if git -C "$OAI" apply --reverse --check "$PUCCH_FIX" >/dev/null 2>&1; then
-  echo "== OAI PUCCH crash fix already applied"
-  NEED_PUCCH_FIX=0
-elif git -C "$OAI" apply --check "$PUCCH_FIX" >/dev/null 2>&1; then
-  NEED_PUCCH_FIX=1
-else
-  echo "OAI PUCCH crash fix does not apply cleanly — nothing patched" >&2
-  exit 1
-fi
-git -C "$OAI" apply --check "$PATCH" || { echo "RSS patch does not apply cleanly — nothing patched" >&2; exit 1; }
+# Check the ordered patch stack without changing the real worktree or index.
+PATCH_INDEX_DIR=$(mktemp -d)
+PATCH_INDEX="$PATCH_INDEX_DIR/index"
+trap 'rm -f -- "$PATCH_INDEX"; rmdir -- "$PATCH_INDEX_DIR"' EXIT
+GIT_INDEX_FILE="$PATCH_INDEX" git -C "$OAI" read-tree HEAD
+for patch_file in "$PATCH" "$DCI_FIX" "$ACK_RNTI_FIX"; do
+  GIT_INDEX_FILE="$PATCH_INDEX" git -C "$OAI" apply --cached "$patch_file" \
+    || { echo "RSS patch set does not apply cleanly — nothing patched" >&2; exit 1; }
+done
+rm -f -- "$PATCH_INDEX"
+rmdir -- "$PATCH_INDEX_DIR"
+trap - EXIT
 
 # keep a way back
 if [[ -f $BIN && ! -f $BIN.orig ]]; then cp -p "$BIN" "$BIN.orig"; echo "   saved $BIN.orig"; fi
 if [[ -f $DEVLIB && ! -f $DEVLIB.orig ]]; then cp -p "$DEVLIB" "$DEVLIB.orig"; echo "   saved $DEVLIB.orig"; fi
 
-if (( NEED_PUCCH_FIX )); then
-  echo "== applying official OAI PUCCH crash fix (3d4b1923)"
-  git -C "$OAI" apply "$PUCCH_FIX"
-fi
 echo "== applying $PATCH"
 git -C "$OAI" apply "$PATCH"
+echo "== applying $DCI_FIX"
+git -C "$OAI" apply "$DCI_FIX"
+echo "== applying $ACK_RNTI_FIX"
+git -C "$OAI" apply "$ACK_RNTI_FIX"
 git -C "$OAI" --no-pager diff --stat | tail -12
 
 for t in nr-uesoftmodem oai_zmqdevif zmq_radio_static; do
@@ -91,10 +96,27 @@ check() { # file, needle
 }
 check "$BIN" target_occupancy
 check "$BIN" msg4_wait
+check "$BIN" phase_ms
+check "$BIN" msg3_tx
+check "$BIN" msg4_ack
+check "$BIN" msg4_ack_withheld
+check "$BIN" msg4_ack_scheduled
+check "$BIN" msg5_submitted
+check "$BIN" probe_ues
+check "$BIN" probe_delay_ms
+check "$BIN" probe_ra_only
+check "$BIN" probe_interval_ms
+check "$BIN" rss_reject_reset_skipped
 check "$BIN" RSS_SHARE_LOCKSTEP
+check "$BIN" RSS_SHARE_NUE
 check "$DEVLIB" RSS_ZMQ_TX_WAIT_US
+secret_log=$(strings "$BIN" 2>/dev/null | grep -c 'UICC simulation: IMSI=' || true)
+printf '   %-26s %-26s %s\n' "$(basename "$BIN")" "subscriber-secret-log" "$secret_log"
+vector_log=$(strings "$BIN" 2>/dev/null | grep -c 'milenage output ik:' || true)
+printf '   %-26s %-26s %s\n' "$(basename "$BIN")" "auth-vector-log" "$vector_log"
+(( secret_log == 0 && vector_log == 0 )) || fail=1
 if (( fail )); then
-  echo "   !! a knob is missing from the built artifact. Do not trust runs from this build." >&2
+  echo "   !! a knob is missing or the binary can log subscriber/auth material. Do not trust this build." >&2
   exit 1
 fi
 echo "== done. The attack is OFF unless you pass -e 1."

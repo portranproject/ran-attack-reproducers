@@ -1,0 +1,184 @@
+#!/usr/bin/env bash
+# Retry only the known multi-UE startup race.  Every attempt remains a separate,
+# immutable rss-broker-witness run directory.
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONF="${RSS_CONF:-$HERE/conf/rss.conf}"
+if [[ -f $CONF ]]; then
+  # shellcheck source=/dev/null
+  . "$CONF" || { echo "cannot load $CONF" >&2; exit 2; }
+fi
+
+MODE=${1:-}
+[[ $MODE == control || $MODE == attack ]] || {
+  echo "usage: $0 control|attack -n BASE [-a ATTEMPTS] [-d SECONDS]" >&2
+  exit 2
+}
+shift
+
+BASE=""
+MAX_ATTEMPTS=${BROKER_RETRY_ATTEMPTS:-3}
+DURATION_S=${DURATION_S:-60}
+while getopts "n:a:d:h" opt; do case "$opt" in
+  n) BASE=$OPTARG;;
+  a) MAX_ATTEMPTS=$OPTARG;;
+  d) DURATION_S=$OPTARG;;
+  h) echo "usage: $0 control|attack -n BASE [-a ATTEMPTS] [-d SECONDS]"; exit 0;;
+  *) exit 2;;
+esac; done
+
+[[ $BASE =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]] \
+  || { echo "-n must use letters, digits, '.', '_' or '-'" >&2; exit 2; }
+[[ ${BASE:1:1} != O ]] \
+  || { echo "base id second character must not be O (OAI -O parser bug)" >&2; exit 2; }
+[[ $MAX_ATTEMPTS =~ ^[1-9][0-9]*$ ]] && (( MAX_ATTEMPTS <= 99 )) \
+  || { echo "-a must be 1..99" >&2; exit 2; }
+[[ $DURATION_S =~ ^[1-9][0-9]*$ ]] && (( DURATION_S <= 3600 )) \
+  || { echo "-d must be 1..3600" >&2; exit 2; }
+
+RUNNER=${BROKER_WITNESS_BIN:-$HERE/bin/rss-broker-witness}
+BROKER_LOGDIR=${BROKER_LOGDIR:-/root/rss-broker-runs}
+[[ -x $RUNNER ]] || { echo "missing broker witness runner: $RUNNER" >&2; exit 2; }
+command -v python3 >/dev/null || { echo "missing python3" >&2; exit 2; }
+
+attempt_id() {
+  printf '%s-try%02d' "$BASE" "$1"
+}
+
+# Refuse the whole campaign before running anything if any planned target is
+# already occupied.  Skipping an ID could mistake old evidence for this run.
+for ((attempt=1; attempt<=MAX_ATTEMPTS; attempt++)); do
+  id=$(attempt_id "$attempt")
+  path="$BROKER_LOGDIR/$id"
+  if [[ -e $path || -L $path ]]; then
+    echo "planned run path already exists: $path" >&2
+    exit 2
+  fi
+done
+
+trap 'exit 130' INT TERM
+for ((attempt=1; attempt<=MAX_ATTEMPTS; attempt++)); do
+  id=$(attempt_id "$attempt")
+  echo "== broker witness attempt $attempt/$MAX_ATTEMPTS: $id"
+  rc=0
+  "$RUNNER" "$MODE" -n "$id" -d "$DURATION_S" || rc=$?
+  result="$BROKER_LOGDIR/$id/result.json"
+  if [[ ! -f $result ]]; then
+    echo "runner produced no result: $result" >&2
+    exit 2
+  fi
+
+  decision=$(python3 - "$result" "$id" "$MODE" <<'PY'
+import json
+import sys
+
+path, expected_id, expected_mode = sys.argv[1:]
+try:
+    with open(path, encoding="utf-8") as stream:
+        data = json.load(stream)
+except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+    raise SystemExit(f"invalid result JSON: {exc}")
+
+if not isinstance(data, dict):
+    raise SystemExit("result root is not an object")
+if data.get("run_id") != expected_id or data.get("mode") != expected_mode:
+    raise SystemExit("result identity does not match the requested run")
+valid = data.get("valid")
+reason = data.get("reason")
+sync_ues = data.get("sync_ues")
+crash_markers = data.get("crash_markers")
+startup = data.get("startup")
+teardown = data.get("teardown")
+topology = data.get("topology", {"ue_processes": 5})
+if not isinstance(valid, bool) or not isinstance(reason, str):
+    raise SystemExit("result valid/reason type is invalid")
+if isinstance(sync_ues, bool) or not isinstance(sync_ues, int):
+    raise SystemExit("result sync_ues type is invalid")
+if isinstance(crash_markers, bool) or not isinstance(crash_markers, int):
+    raise SystemExit("result crash_markers type is invalid")
+if not isinstance(teardown, dict):
+    raise SystemExit("result teardown is missing")
+if not isinstance(topology, dict):
+    raise SystemExit("result topology is missing")
+ue_processes = topology.get("ue_processes")
+if (isinstance(ue_processes, bool) or not isinstance(ue_processes, int)
+        or not 2 <= ue_processes <= 17):
+    raise SystemExit("result topology process count is invalid")
+ue_process_starts = topology.get("ue_process_starts", ue_processes)
+if (isinstance(ue_process_starts, bool) or not isinstance(ue_process_starts, int)
+        or not ue_processes <= ue_process_starts <= ue_processes + 1):
+    raise SystemExit("result topology process start count is invalid")
+if not 0 <= sync_ues <= ue_processes:
+    raise SystemExit("result sync count exceeds topology")
+ue_sigsegv_count = teardown.get("ue_sigsegv_count")
+broker_sigsegv = teardown.get("broker_sigsegv")
+forced_kill_count = teardown.get("forced_kill_count")
+ue_exit_statuses = teardown.get("ue_exit_statuses")
+broker_exit_status = teardown.get("broker_exit_status")
+if isinstance(ue_sigsegv_count, bool) or not isinstance(ue_sigsegv_count, int):
+    raise SystemExit("result teardown UE status is invalid")
+if not isinstance(broker_sigsegv, bool):
+    raise SystemExit("result teardown broker status is invalid")
+if isinstance(forced_kill_count, bool) or not isinstance(forced_kill_count, int):
+    raise SystemExit("result teardown kill status is invalid")
+if (not isinstance(ue_exit_statuses, list) or len(ue_exit_statuses) != ue_process_starts
+        or any(isinstance(status, bool) or not isinstance(status, int)
+               for status in ue_exit_statuses)):
+    raise SystemExit("result teardown UE exit statuses are invalid")
+if isinstance(broker_exit_status, bool) or not isinstance(broker_exit_status, int):
+    raise SystemExit("result teardown broker exit status is invalid")
+
+clean_teardown = (ue_sigsegv_count == 0
+                  and broker_sigsegv is False
+                  and forced_kill_count == 0
+                  and all(status == 0 for status in ue_exit_statuses)
+                  and broker_exit_status == 0)
+
+if not clean_teardown:
+    print("teardown_anomaly")
+elif valid:
+    print("valid")
+elif (reason == "infrastructure_failure"
+      and sync_ues < ue_processes
+      and crash_markers == 0
+      and isinstance(startup, dict)
+      and startup.get("sync_ready") is False
+      and startup.get("sync_timeout") is True):
+    print("retry")
+else:
+    print("invalid")
+PY
+  ) || { echo "cannot trust result: $result" >&2; exit 2; }
+
+  case $decision in
+    valid)
+      (( rc == 0 )) || { echo "valid result but runner exited $rc" >&2; exit 2; }
+      echo "== accepted valid run: $id"
+      exit 0
+      ;;
+    retry)
+      (( rc != 0 )) || { echo "retry result but runner exited 0" >&2; exit 2; }
+      if (( attempt == MAX_ATTEMPTS )); then
+        echo "startup sync retry budget exhausted after $MAX_ATTEMPTS attempts" >&2
+        exit 1
+      fi
+      echo "== multi-UE sync timeout; preserving $id and retrying"
+      ;;
+    invalid)
+      (( rc != 0 )) || { echo "invalid result but runner exited 0" >&2; exit 2; }
+      echo "non-retryable result in $id" >&2
+      exit 1
+      ;;
+    teardown_anomaly)
+      echo "teardown anomaly in $id; not retrying" >&2
+      exit 1
+      ;;
+    *)
+      echo "unexpected result decision: $decision" >&2
+      exit 2
+      ;;
+  esac
+done
+
+exit 1

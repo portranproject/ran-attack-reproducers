@@ -16,14 +16,14 @@
 | 📄 | rss-landscape.md에 출처 위치(절·줄 번호)와 함께 기재돼 있으나 이번에 재확인하지 않았다. arXiv는 작업 환경에서 접속이 막혀 있었다 |
 | 🔍 | 추론 또는 미확인. 실험 전에는 사실로 쓰지 않는다 |
 
-**공통 한계**: 이 조사의 어떤 공격·탐지 도구도 **실행하지 않았다**. 모든 내용은 논문과 코드를 읽어서 얻은 것이다 ([rss-landscape.md](rss-landscape.md) §2.2, §2.4).
+**조사 범위의 한계**: 공개 도구를 비교한 초판 조사에서는 공격·탐지 도구를 **실행하지 않았고**, 기능 판단은 논문과 코드 판독에 근거했다 ([rss-landscape.md](rss-landscape.md) §2.2, §2.4). 이후 본 프로젝트의 OAI w38 RRCSetupRequest 후 중단형과 RRCSetup HARQ-ACK 억제형은 p5 ZMQ에서 별도로 실측했으며, 아래 표는 그 결과를 구분해 적는다.
 
 ---
 
 ## 1. 분류 기준: "공격 UE가 접속 절차의 어디서 멈추는가"
 
-### 이름은 팀 내부 라벨이다
-A·A-early·A-NAS·B·D 같은 이름은 **우리 실험 시나리오 이름**이며 문헌의 표준 용어가 아니다. 팀 밖에 설명할 때는 "Msg5 생략형", "인증 무응답형(BTS resource depletion)"처럼 동작으로 부른다.
+### 표준 메시지명에 기반한 설명형 이름을 쓴다
+이 문서의 이름은 3GPP 공식 공격 분류명이 아니다. 대신 처음 보는 사람도 중단 지점을 알 수 있도록 **RRCSetupComplete 미전송형**, **RRCSetupRequest 후 중단형**, **RRCSetup HARQ-ACK 억제형**, **NAS Authentication Response 미전송형**, **UE 재시작 반복형**, **RRCResume 반복형**, **PRACH 반복형**처럼 표준 메시지명과 반복 동작을 그대로 쓴다.
 
 ### 기준 자체는 문헌에 근거가 있다
 
@@ -40,7 +40,7 @@ A·A-early·A-NAS·B·D 같은 이름은 **우리 실험 시나리오 이름**�
 - **위장 신원**: 무작위 identity vs 피해 UE의 5G-S-TMSI(→ Blind DoS)
 - **접속 이유**: `establishmentCause`를 emergency 등으로 위조
 - **규모·분산**: UE 1대 vs 다수, 여러 DU로 분산(RAID)
-- **시작 상태**: RRC_INACTIVE에서 resume 반복(C형), 재수립 반복
+- **시작 상태**: RRC_INACTIVE에서 resume 반복(RRCResume 반복형), 재수립 반복
 
 ---
 
@@ -49,17 +49,20 @@ A·A-early·A-NAS·B·D 같은 이름은 **우리 실험 시나리오 이름**�
 ```
 Msg1 → Msg2 ─┬→ Msg3 ─┬→ Msg4(+HARQ ACK) ─┬→ Msg5 → 인증요청 ─┬→ 등록 완료 ─┬→ ...
              │        │                   │                    │              │
-            [D]   [A-early]              [A] ★우리 1차 목표  [A-NAS]          [B]
+      [PRACH 반복형] [RRCSetupRequest 후 중단형] [RRCSetupComplete 미전송형] [NAS Authentication Response 미전송형] [UE 재시작 반복형]
 ```
 
 | 변종 | 묶이는 자원 | 코어에 보이나 | UE 1대로 가능한가 | 공개 코드 |
 |---|---|---|---|---|
-| **D**: Msg3 전 중단 | DU의 RA 자원(프리앰블, TC-RNTI) | ❌ | 부분적 📄 | 없음 |
-| **A-early**: Msg3 직후 재시작 | OAI에서는 곧 해제돼 쌓이지 않음 ✅(KAUST). OCUDU는 다를 수 있음 🔍 | ❌ | ✅ 📄 | salam 포크 |
-| **A**: Msg5 생략 | DU·CU 컨텍스트가 CU 타임아웃까지 유지 | ❌ | ✅ ✅(KAUST OTA) | **5gattacks** |
-| **A-NAS**: 인증 무응답 | 기지국 컨텍스트 + 코어 인증 상태 | ✅ | ✅ 📄 | 5GSEC NR 브랜치 |
+| **PRACH 반복형**: Msg3 전 중단 | DU의 RA 자원(프리앰블, TC-RNTI) | ❌ | 부분적 📄 | 없음 |
+| **RRCSetupRequest 후 중단형**: Msg3 직후 재시작 | OCUDU p5에서 capacity 96 점유 확인. 기본 CSI-DTX RLF에서는 지속 거부 실패, 실험 전용 hold 프로필에서 probe 11/11 자원 거절 ✅ | ❌ | ✅ ✅ | salam 포크 + 본 프로젝트 OAI w38 |
+| **RRCSetup HARQ-ACK 억제형**: Msg4 ACK 억제 | Msg4 재전송·max-retx까지 DU 자원 사용. p5 ACK-on/off 비교 3회에서 ACK 0·max-retx 38~40 확인 ✅ | ❌ | ✅ ✅ | 본 프로젝트 OAI w38 |
+| **RRCSetupComplete 미전송형**: Msg5 생략 | DU·CU 컨텍스트가 CU 타임아웃까지 유지 | ❌ | ✅ ✅(KAUST OTA) | **5gattacks** |
+| **NAS Authentication Response 미전송형**: 인증 무응답 | 기지국 컨텍스트 + 코어 인증 상태 | ✅ | ✅ 📄 | 5GSEC NR 브랜치 |
 | **Blind DoS** | 피해 UE 한 대의 연결(표적형) | ✅ | 피해 UE의 TMSI가 필요 📄 | 5GSEC `--RRC-TMSI` |
-| **B**: 재부팅 반복 | 전체 절차(정상 접속과 같음) | ✅ | ❌ 다수 UE 필요 📄 | 공개 확인 못함 |
+| **UE 재시작 반복형**: 재부팅 반복 | 전체 절차(정상 접속과 같음) | ✅ | ❌ 다수 UE 필요 📄 | 공개 확인 못함 |
+
+현재 변종 구현 목표 가운데 RRCSetupRequest 후 중단형과 RRCSetup HARQ-ACK 억제형은 p5 ZMQ 실측까지 완료했다. RRCSetupRequest 후 중단형의 지속 거부 성공은 capacity를 바꾸지 않은 실험 전용 hold 프로필 결과이며, 기본 운영값이나 차폐 OTA 결과로 일반화하지 않는다.
 
 ---
 
@@ -70,7 +73,7 @@ Msg1 → Msg2 ─┬→ Msg3 ─┬→ Msg4(+HARQ ACK) ─┬→ Msg5 → 인증
 | | **5gattacks/5g-rrc-storm** | **salam-ai-learning/5g-rrc-storm-attack** | **5GSEC/OAI-5G** (`nr.attack.v2.1.0`) | **5GSEC/MobiDojo** |
 |---|---|---|---|---|
 | 저장소 실재 | ✅ (`main`) | ✅ (`storm_attack`) | ✅ (커밋 `b631b577`) | 📄 |
-| 중단 지점 | **A** ✅ | A-early 📄 | **A-NAS**, Blind DoS ✅ | 5GSEC 공격 재사용 📄 |
+| 중단 지점 | **RRCSetupComplete 미전송형** ✅ | RRCSetupRequest 후 중단형 📄 | **NAS Authentication Response 미전송형**, Blind DoS ✅ | 5GSEC 공격 재사용 📄 |
 | 기반 | OAI `92980ceb` ✅ | Firecell 계열 OAI로 추정 🔍 | OAI v2.1.0 📄 | OAI rfsim 📄 |
 | 재시도 방식 | `RRCSetup` 수신 후 `attack_rach_timer` **10 ms** 뒤 재요청 ✅ | Msg3 뒤 바로 프리앰블 생성 📄 | 인증 요청 수신 후 `usleep(bts_delay)` 뒤 RA 재시작 ✅ | 📄 |
 | 거절 처리 | `RRCReject`를 받아도 즉시 재요청, T302 처리 주석 처리 ✅ | 📄 | 📄 | 📄 |
@@ -78,7 +81,7 @@ Msg1 → Msg2 ─┬→ Msg3 ─┬→ Msg4(+HARQ ACK) ─┬→ Msg5 → 인증
 | 속도 노브 | ❌ 빌드 상수 ✅ | ❌ 빌드 상수 📄 | 실행 시작 인자 `--bts-attack`(레벨), `--bts-delay`(기본 188 ms) ✅ | ❌ 📄 |
 | **gNB도 변경** | ⚠️ UL failure 타이머 30000/10000 → 5000/1000 ms ✅ | ⚠️ UL failure 트리거 2 → 2700 ms 📄 | 확인 안 함 | — |
 | 라이선스 | **없음**. README가 private testbed 전용 명시 ✅ | OAI Public License 📄 | OAI Public License 📄 | Apache-2.0 📄 |
-| 우리에게 | **A형 직접 참고(UE 쪽만)** | A-early 참고 | CLI 노브 설계 참고, A-NAS 대조군 | 실행 환경 참고 |
+| 우리에게 | **RRCSetupComplete 미전송형 직접 참고(UE 쪽만)** | RRCSetupRequest 후 중단형 참고 | CLI 노브 설계 참고, NAS Authentication Response 미전송형 대조군 | 실행 환경 참고 |
 
 **짚어 둘 점**
 - **gNB 변경 동봉**: 5gattacks와 salam 패치는 피해자인 gNB의 타이머도 바꾼다. 논문 수치가 공격 효과인지 gNB 설정 효과인지 섞이므로, 우리는 **UE 쪽 변경만** 가져온다.
@@ -89,11 +92,11 @@ Msg1 → Msg2 ─┬→ Msg3 ─┬→ Msg4(+HARQ ACK) ─┬→ Msg5 → 인증
 
 ## 4. 5G 논문
 
-### ① A형 계열: Msg5 생략을 실험한 논문 (우리와 가장 가까움)
+### ① RRCSetupComplete 미전송형 계열: Msg5 생략을 실험한 논문 (우리와 가장 가까움)
 
 | | **KAUST** (arXiv 2608.16441, 2026) | **StormShield** (ACM WiSec 2026) | **Nguyen 등** (IEEE ISCC 2025) |
 |---|---|---|---|
-| 중단 지점 | A ✅ | A 📄 | A-early 📄 |
+| 중단 지점 | RRCSetupComplete 미전송형 ✅ | RRCSetupComplete 미전송형 📄 | RRCSetupRequest 후 중단형 📄 |
 | 환경 | OAI gNB+UE, **B210 2대 OTA**, 상용폰 Nothing Phone (3a) ✅ | OAI + NVIDIA Aerial, USRP X410·Foxconn RU OTA 📄 | OAI **rfsim**, VM 📄 |
 | 공격률 | 약 25 req/s ✅ | MUE당 45.7 Msg3/s 📄 | 132.07 Msg3/s (rfsim) 📄 |
 | 피해 | 16 UE 한도 0.65초, 90 UE 한도 3.61초에 포화. 대기 5초. 이후 `RRCReject`, 폰 접속 실패 ✅ | 📄 | 약 150 ms 만에 불가용 📄 |
@@ -104,7 +107,7 @@ Msg1 → Msg2 ─┬→ Msg3 ─┬→ Msg4(+HARQ ACK) ─┬→ Msg5 → 인증
 
 KAUST는 **"25 × T개의 컨텍스트를 점유"**라는 식을 본문에 직접 쓴다 ✅. 쌓이는 미완료 컨텍스트 수 ≈ 시도율 × 대기 시간(Little의 법칙)이며, 우리 재현기의 시도율 노브가 이 식의 λ에 해당한다.
 
-### ② 5G SA의 L3 공격 탐지 (A-NAS·Blind DoS 포함)
+### ② 5G SA의 L3 공격 탐지 (NAS Authentication Response 미전송형·Blind DoS 포함)
 
 | | **6G-XSec** (ACM HotNets 2024) | **Dayaratne 등** (arXiv 2025) |
 |---|---|---|
@@ -113,17 +116,17 @@ KAUST는 **"25 × T개의 컨텍스트를 점유"**라는 식을 본문에 직�
 | 탐지 | 오토인코더·LSTM + LLM 설명 📄 | 제로샷 LLM xApp 📄 |
 | 코드 | 5GSEC/MobiWatch 📄 | 🔍 |
 
-이 계열의 탐지 근거는 "Msg5와 등록 요청은 왔는데 인증 응답이 없다"이다. **A형은 Msg5가 오지 않으므로 이 규칙들의 대상이 아닐 것이다** 🔍. A형에는 Msg5/Msg4 비율 같은 별도 지표가 필요하다.
+이 계열의 탐지 근거는 "Msg5와 등록 요청은 왔는데 인증 응답이 없다"이다. **RRCSetupComplete 미전송형은 Msg5가 오지 않으므로 이 규칙들의 대상이 아닐 것이다** 🔍. RRCSetupComplete 미전송형에는 Msg5/Msg4 비율 같은 별도 지표가 필요하다.
 
 ### ③ 그 밖의 5G 논문
 
 | 논문 | 요약 | 우리와의 관계 | 신뢰 |
 |---|---|---|---|
-| **UCD 데모** (IFIP Networking 2026 Demo) | 동기화된 bash 스크립트로 srsUE 15개를 재부팅 반복(B형). XGBoost Radio IDS 99.43%, Network IDS 97.88%이며 이 값은 "prior experimental deployments"에서 나왔다고 명시 | B형 참고. 스크립트 URL은 찾지 못함 | ✅ (PDF) |
+| **UCD 데모** (IFIP Networking 2026 Demo) | 동기화된 bash 스크립트로 srsUE 15개를 재부팅 반복(UE 재시작 반복형). XGBoost Radio IDS 99.43%, Network IDS 97.88%이며 이 값은 "prior experimental deployments"에서 나왔다고 명시 | UE 재시작 반복형 참고. 스크립트 URL은 찾지 못함 | ✅ (PDF) |
 | **RAID** (arXiv 2511.14921) | Msg3를 초당 1만–5만 건 버스트. 여러 DU로 분산하면 DU에선 무해해 보이다가 F1에서 합쳐져 스톰이 된다 | UE 1대 속도로는 불가능한 규모라 범위 밖. **F1 관측 위치의 근거**로는 유용 | 📄 |
-| **Beyond Static Thresholds (EVT)** (ACM MSWiM 2025) | 실제 사업자 RRC 카운터에 공격을 합성해 적응 임계 학습 | 탐지팀 임계 설계 참고 | 📄 |
+| **Beyond Static Thresholds (EVT)** (ACM MSWiM 2025) | 실제 사업자 RRC 카운터에 공격을 합성해 적응 임계 학습 | 분석기 운영자 임계 설계 참고 | 📄 |
 | **Tabiban 등** (IEEE ComMag 2024) | RSS 개관. OAI 분리형이 패킷 약 2.5배, 15 UE 재부팅 시 정상 UE 재등록 지연 125초 | 배경 | 📄 |
-| **Bogucka 등** (IEEE ComMag 2025) | Amarisoft OTA, TA별 KPI profile xApp으로 reject 정책 | 저속 완료 접속이 대상이라 A형 차단 근거는 아님 🔍 | 📄 |
+| **Bogucka 등** (IEEE ComMag 2025) | Amarisoft OTA, TA별 KPI profile xApp으로 reject 정책 | 저속 완료 접속이 대상이라 RRCSetupComplete 미전송형 차단 근거는 아님 🔍 | 📄 |
 | **Hoffmann·Kryszkiewicz** (INFOCOM WS 2023) | IIoT 시뮬레이션, TA별 KPI profile 탐지 | 탐지 아이디어 참고 | 📄 |
 | **3GPP TR 33.861** (2020) | KI#5에서 반복 접속 위협을 다루지만 "no normative work is needed" 결론 | 대응이 구현에 맡겨졌다는 근거 | 📄 |
 
@@ -133,11 +136,11 @@ KAUST는 **"25 × T개의 컨텍스트를 점유"**라는 식을 본문에 직�
 
 | | 왜 남기나 | 주의 |
 |---|---|---|
-| **LTEFuzz** (IEEE S&P 2019) | "BTS resource depletion"이라는 이름과 A-NAS 공격을 처음 정의. 약 20/s 📄 | LTE, 상용 펨토셀 |
+| **LTEFuzz** (IEEE S&P 2019) | "BTS resource depletion"이라는 이름과 NAS Authentication Response 미전송형 공격을 처음 정의. 약 20/s 📄 | LTE, 상용 펨토셀 |
 | **5G-Spector** (NDSS 2024) | 탐지기(MobiFlow + MobieXpert P-BEST)와 공격 포크의 출처. 팀 3단계 "P-BEST"의 원류 | 논문 평가와 artifact VM은 **LTE**(OAI 2023.w23) ✅. 공격 포크에는 NR 브랜치도 있다(§3) ✅ |
-| **Buckler** (arXiv 2026) | eBPF로 vRAN에 핫픽스를 넣는 방식. 우리 eBPF 관측과 접근이 가깝다 | 실험은 **LTE 설정** 📄. 규칙이 `SetupComplete` 이후를 보므로 A형은 대상이 아님 🔍 |
+| **Buckler** (arXiv 2026) | eBPF로 vRAN에 핫픽스를 넣는 방식. 우리 eBPF 관측과 접근이 가깝다 | 실험은 **LTE 설정** 📄. 규칙이 `SetupComplete` 이후를 보므로 RRCSetupComplete 미전송형은 대상이 아님 🔍 |
 
-2026-10-16 재검색에서 3G/LTE 시그널링 DoS 논문(Qian NDSS 2012, Gorbil·Gelenbe SECRYPT 2015, Escudero-Andreu 2019)도 나왔지만, 5G 기준이 아니고 메커니즘(데이터 트래픽으로 RRC 상태 전환 유발)도 A형과 달라 넣지 않았다.
+2026-10-16 재검색에서 3G/LTE 시그널링 DoS 논문(Qian NDSS 2012, Gorbil·Gelenbe SECRYPT 2015, Escudero-Andreu 2019)도 나왔지만, 5G 기준이 아니고 메커니즘(데이터 트래픽으로 RRC 상태 전환 유발)도 RRCSetupComplete 미전송형과 달라 넣지 않았다.
 
 ---
 
@@ -158,14 +161,14 @@ rss-landscape.md는 초판 검색어를 기록하지 않았다고 스스로 밝�
 
 | 기존 연구·도구의 상태 | 우리 재현기의 위치 |
 |---|---|
-| A형 공개 코드는 5gattacks 하나이고, 재시도가 10 ms 빌드 상수다 ✅ | **시도율·완료율·identity 정책을 조절할 수 있는 A형 재현기** |
+| RRCSetupComplete 미전송형 공개 코드는 5gattacks 하나이고, 재시도가 10 ms 빌드 상수다 ✅ | **시도율·완료율·identity 정책을 조절할 수 있는 RRCSetupComplete 미전송형 재현기** |
 | 공개 공격 코드는 전부 OAI 대상이다 | **OCUDU 대상** 검증 (효과는 미확인 🔍) |
 | 공개 패치가 gNB 타이머도 함께 바꾼다 ✅ | **UE만 변조**, gNB 무수정 |
-| A형 탐지·대응 논문(KAUST ✅, StormShield 📄)은 gNB를 수정한다 | 무수정 gNB + eBPF 관측 (팀 전체 차별점) |
-| A-NAS 계열 탐지 규칙은 Msg5 이후를 본다 | A형 전용 지표 필요 → 계측팀의 "RRC 요청 지표 vs 완료 지표" |
+| RRCSetupComplete 미전송형 탐지·대응 논문(KAUST ✅, StormShield 📄)은 gNB를 수정한다 | 무수정 gNB + eBPF 관측 (팀 전체 차별점) |
+| NAS Authentication Response 미전송형 계열 탐지 규칙은 Msg5 이후를 본다 | RRCSetupComplete 미전송형 전용 지표 필요 → 계측팀의 "RRC 요청 지표 vs 완료 지표" |
 
 ### 아직 확인하지 않은 것 (우선순위순)
-1. OCUDU에서 A형이 실제로 컨텍스트를 쌓는지, 대기 시간 실제값 🔍
+1. OCUDU에서 RRCSetupComplete 미전송형이 실제로 컨텍스트를 쌓는지, 대기 시간 실제값 🔍
 2. StormShield·Nguyen 수치 (arXiv 접속 가능한 환경에서 재확인) 📄
 3. 5G-Spector VM의 `run_attack.sh`와 `--bts-attack 1`의 반복 방식 🔍
 4. 5gattacks 저작자의 재사용 허가 (라이선스 없음) ✅

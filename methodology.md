@@ -384,7 +384,7 @@ Abdelrahman과 Gelenbe의 3G 연구는 3G 표준인 UMTS(Universal Mobile Teleco
 
 [9] OCUDU source, commit 440cdbb, lib/rrc/ue/procedures/rrc_setup_procedure.cpp. https://gitlab.com/ocudu/ocudu/-/blob/440cdbbee077e97e824db285bf227c15c84bd0bb/lib/rrc/ue/procedures/rrc_setup_procedure.cpp#L41
 
-[10] A. Abou Hasna, A. El Falou, "Experimental Validation and Mitigation of RRC Storm Attacks in 5G Cellular Networks," arXiv:2608.16441v2, 2026. https://arxiv.org/html/2608.16441 (보관본: [sources/2608.16441_Experimental-Validation-RRC-Storm_OAI_KAUST.pdf](sources/2608.16441_Experimental-Validation-RRC-Storm_OAI_KAUST.pdf))
+[10] A. Abou Hasna, A. El Falou, "Experimental Validation and Mitigation of RRC Storm Attacks in 5G Cellular Networks," arXiv:2608.16441v2, 2026. https://arxiv.org/html/2608.16441
 
 [11] 3GPP TS 38.321 V16.18.0, "NR; Medium Access Control (MAC) protocol specification," ETSI, 2025. https://www.etsi.org/deliver/etsi_ts/138300_138399/138321/16.18.00_60/ts_138321v161800p.pdf
 
@@ -396,9 +396,9 @@ Abdelrahman과 Gelenbe의 3G 연구는 3G 표준인 UMTS(Universal Mobile Teleco
 
 [15] D. K. Nguyen, R. El Malki, F. Rebecchi, "RRC Signaling Storm Detection in O-RAN," arXiv:2504.15738v1, 2025. https://arxiv.org/html/2504.15738
 
-[16] F. Abed Zadeh, B. Siniarski, S. Wang, M. Liyanage, "Demo: Attack Execution and Multi-Layer xApp-based Intrusion Detection in an O-RAN Environment," IFIP Networking 2026 Demo, 2026. [sources/IFIP-Networking2026_Demo_UCD-NetsLab_srsRAN-ZMQ.pdf](sources/IFIP-Networking2026_Demo_UCD-NetsLab_srsRAN-ZMQ.pdf)
+[16] F. Abed Zadeh, B. Siniarski, S. Wang, M. Liyanage, "Demo: Attack Execution and Multi-Layer xApp-based Intrusion Detection in an O-RAN Environment," IFIP Networking 2026 Demo, 2026. https://doi.org/10.23919/IFIPNetworking70592.2026.11579259
 
-[17] 5gattacks, "5g-rrc-storm" (storm-attack.patch), accessed 2026-10-13. https://github.com/5gattacks/5g-rrc-storm (보관본: [sources/5gattacks_storm-attack.patch](sources/5gattacks_storm-attack.patch), 줄 번호는 보관본 기준)
+[17] 5gattacks, "storm-attack.patch," commit `0e71f7aee24999b66d44e10db4612f96b5219d98`, accessed 2026-10-13. https://github.com/5gattacks/5g-rrc-storm/blob/0e71f7aee24999b66d44e10db4612f96b5219d98/storm-attack.patch (줄 번호는 이 고정 커밋 기준)
 
 [18] 내부 문서, [tool-survey.md](tool-survey.md) — "정상 UE 연결 경로와 RRCSetupComplete 미전송형 공격 코드의 재사용 범위" (§3 정상 UE 기준, §4 5gattacks 재사용 범위).
 

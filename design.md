@@ -442,7 +442,7 @@ M1b의 (ii) 설정 프로필이 효과가 있는 이유는 다음과 같다. SIB
 
 <a id="ref8"></a>[8] 3GPP TS 38.300 V16.22.0, "NR; NR and NG-RAN Overall description; Stage-2," ETSI, 2026. https://www.etsi.org/deliver/etsi_ts/138300_138399/138300/16.22.00_60/ts_138300v162200p.pdf
 
-<a id="ref9"></a>[9] 5gattacks, "5g-rrc-storm," accessed 2026-10-13 (보관 공격 패치 [sources/5gattacks_storm-attack.patch](sources/5gattacks_storm-attack.patch): L124–L127 gNB UL failure 상수, L280 `attack_rach_timer` 설정). https://github.com/5gattacks/5g-rrc-storm
+<a id="ref9"></a>[9] 5gattacks, "5g-rrc-storm," commit `0e71f7aee24999b66d44e10db4612f96b5219d98`, accessed 2026-10-13 ([고정 패치 L124–L127](https://github.com/5gattacks/5g-rrc-storm/blob/0e71f7aee24999b66d44e10db4612f96b5219d98/storm-attack.patch#L124-L127) gNB UL failure 상수, [L280](https://github.com/5gattacks/5g-rrc-storm/blob/0e71f7aee24999b66d44e10db4612f96b5219d98/storm-attack.patch#L280) `attack_rach_timer` 설정).
 
 <a id="ref10"></a>[10] OCUDU source, commit 440cdbb, apps/units/o_cu_cp/cu_cp/cu_cp_unit_config.h#L530 (`inactivity_timer = 120`). https://gitlab.com/ocudu/ocudu/-/blob/440cdbbee077e97e824db285bf227c15c84bd0bb/apps/units/o_cu_cp/cu_cp/cu_cp_unit_config.h#L530
 

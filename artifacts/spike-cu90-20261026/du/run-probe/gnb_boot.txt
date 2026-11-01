@@ -1,7 +1,0 @@
-DU(odu) 기동…  (★CU AWS 가 먼저 start 돼 있어야 F1/E2 성공)
-   F1: 이 DU=172.31.5.11 → CU=172.31.5.10
-   odu: F1 + E2(KPM)→RIC OK
-
-⚠️  CU 먼저!  CU AWS 에서 './ctl.sh start' 가 끝나(코어+RIC+CU) 있어야 F1/E2 가 붙습니다.
-[로그] odu = /tmp/odu.log  (부팅 /tmp/odu.boot.log)   →  ./ctl.sh logs odu
->>> 다음:  ./ctl.sh ue        # 인증/등록/PDU

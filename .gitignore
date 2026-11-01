@@ -1,22 +1,69 @@
-# Local research records kept out of the tree
+# Local research and superseded history kept out of the published tree
 /findings/
+/HANDOFF.md
+/midterm-rss-draft.md
+/sources/
+/tool/
 
 # Linked worktrees
 .worktrees/
 
-# Local run output. Existing sealed evidence stays tracked; new raw evidence does not.
+# Local run and build output
 /logs/
-/tool/runs/
 /reproducers/*/runs/
+/reproducers/*/logs/
+/reproducers/*/build/
 
-# New artifact payloads are local by default. Publish only top-level summaries
-# and integrity metadata after review.
+# Artifact payloads stay local. Publish reviewed summaries and integrity metadata.
 /artifacts/*/**
 !/artifacts/*/*.md
 !/artifacts/*/SHA256SUMS*
 !/artifacts/*/MANIFEST.sha256
 !/artifacts/*/campaign.json
 
-# Local interpreter/editor output
+# Reviewed per-run verdicts cited by the aggregate rate-v2 report.
+!/artifacts/p5-default-cleanup-rate-v2-20261030/raw/
+!/artifacts/p5-default-cleanup-rate-v2-20261030/raw/D6C51-*/
+!/artifacts/p5-default-cleanup-rate-v2-20261030/raw/D6C51-*/SHA256SUMS
+!/artifacts/p5-default-cleanup-rate-v2-20261030/raw/D6C51-*/VERDICT*.md
+!/artifacts/p5-default-cleanup-rate-v2-20261030/raw/D6F25-*/
+!/artifacts/p5-default-cleanup-rate-v2-20261030/raw/D6F25-*/SHA256SUMS
+!/artifacts/p5-default-cleanup-rate-v2-20261030/raw/D6F25-*/VERDICT*.md
+!/artifacts/p5-default-cleanup-rate-v2-20261030/raw/D6F4[568]-*/
+!/artifacts/p5-default-cleanup-rate-v2-20261030/raw/D6F4[568]-*/SHA256SUMS
+!/artifacts/p5-default-cleanup-rate-v2-20261030/raw/D6F4[568]-*/VERDICT*.md
+!/artifacts/p5-default-cleanup-rate-v2-20261030/raw/D6F50-*/
+!/artifacts/p5-default-cleanup-rate-v2-20261030/raw/D6F50-*/SHA256SUMS
+!/artifacts/p5-default-cleanup-rate-v2-20261030/raw/D6F50-*/VERDICT*.md
+/artifacts/midterm/
+/artifacts/midterm-modeb/
+
+# Local tool state, interpreter caches, and editor output
+/.claude/
+/CLAUDE.md
 **/__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+*.py[cod]
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# OS metadata
 .DS_Store
+._*
+.AppleDouble
+.LSOverride
+Thumbs.db
+Desktop.ini

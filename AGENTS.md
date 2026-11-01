@@ -39,7 +39,7 @@
 - [artifacts/p5-default-cleanup-rate-v2-20261030/](artifacts/p5-default-cleanup-rate-v2-20261030/) — 기본 약 2초 cleanup의 R3/D3/D4와 D6 3회 on/off 원문·matched control·지속포화 한계
 - [artifacts/verify-20261021/](artifacts/verify-20261021/) — OCUDU 기본 설정 RRCSetupComplete 미전송형 120초 실측 원문과 해시
 - [artifacts/LEGACY-NAMES.ko.md](artifacts/LEGACY-NAMES.ko.md) — 봉인 증거의 과거 시나리오명과 현재 설명형 이름의 대응표
-- [sources/](sources/) — 1차 자료 원본(논문 PDF 2건, 5gattacks 공격 패치)
+- 외부 1차 자료는 문서의 arXiv·DOI·고정 커밋 URL로 참조하며 복사본은 Git에 두지 않는다.
 
 관련 배경 자료(팀 전체 설계·조사)는 사용자의 별도 반입 자료(`RAN/` zip: 설계분석·요약·공격표 57건·소스코드 레퍼런스)에 있으며 이 디렉토리에는 미포함.
 

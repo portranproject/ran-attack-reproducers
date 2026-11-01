@@ -46,7 +46,7 @@ RRC(Radio Resource Control, 무선 자원 제어)는 단말과 gNB 사이의 연
 
 ### 1.3 확인 방법
 
-공식 튜토리얼(OCUDU, srsRAN)과 리포지토리의 README·스크립트·패치 파일, 논문 본문을 직접 열어 읽었다. 5gattacks 리포는 복제(clone)해 커밋 `0e71f7a`(2026-06-09) 기준으로 읽었고, 공격 패치는 이 저장소에 [보관본](sources/5gattacks_storm-attack.patch)을 두었다 [4], [5]. 리포지토리의 라이선스 표시와 최근 활동 시각(마지막 push 시각)은 GitHub API가 제공하는 리포 메타데이터로 확인했고, 값은 §4.6에 적었다 [18]. 이전 판의 조사일은 2026-10-09이며, 이번 개정에서 공개 여부와 라이선스에 관한 결론을 2026-10-13에 다시 확인했다.
+공식 튜토리얼(OCUDU, srsRAN)과 리포지토리의 README·스크립트·패치 파일, 논문 본문을 직접 열어 읽었다. 5gattacks 리포는 복제(clone)해 커밋 `0e71f7aee24999b66d44e10db4612f96b5219d98`(2026-06-09) 기준으로 읽었고, 공격 패치는 같은 고정 커밋 URL로 인용한다 [4], [5]. 리포지토리의 라이선스 표시와 최근 활동 시각(마지막 push 시각)은 GitHub API가 제공하는 리포 메타데이터로 확인했고, 값은 §4.6에 적었다 [18]. 이전 판의 조사일은 2026-10-09이며, 이번 개정에서 공개 여부와 라이선스에 관한 결론을 2026-10-13에 다시 확인했다.
 
 어떤 도구도 실행하지 않았다. 팀 장비에서의 상호운용성, OCUDU를 대상으로 한 공격 효과, 공개 예제의 재현 여부는 모두 확인하지 않았다. 본문에서 우리 판단은 "(추론)"으로, 확인하지 못한 사항은 "(미확인)"으로 표시한다.
 
@@ -205,7 +205,7 @@ README는 공격과 완화가 모두 OAI 커밋 `92980ceb`에 기반한다고 �
 
 ### 4.3 패치가 실제로 바꾸는 것
 
-공격 패치는 UE 쪽 RRC·MAC 코드만이 아니라 gNB 쪽 PHY·MAC 코드와 설정 파일도 바꾼다 [5]. 따라서 패치 파일 전체가 UE 전용은 아니다. 표 2는 보관 패치의 변경을 파일별로 나누고, 최신 OAI로 옮길 때 주의할 점을 적는다. 왼쪽 열의 L 번호는 [보관 패치](sources/5gattacks_storm-attack.patch)의 줄 범위다.
+공격 패치는 UE 쪽 RRC·MAC 코드만이 아니라 gNB 쪽 PHY·MAC 코드와 설정 파일도 바꾼다 [5]. 따라서 패치 파일 전체가 UE 전용은 아니다. 표 2는 패치의 변경을 파일별로 나누고, 최신 OAI로 옮길 때 주의할 점을 적는다. 왼쪽 열의 L 번호는 [고정 커밋 패치](https://github.com/5gattacks/5g-rrc-storm/blob/0e71f7aee24999b66d44e10db4612f96b5219d98/storm-attack.patch)의 줄 범위다.
 
 표 2. 5gattacks 공격 패치의 파일별 변경과 이식 시 주의
 
@@ -280,7 +280,7 @@ RRCSetupComplete 미전송형 공격 코드 말고도 RSS를 다룬다고 알려
 
 | 자료 | 무엇인가 | 확인 결과 | 이 프로젝트에서의 위치 |
 |---|---|---|---|
-| [UCD IFIP 데모 PDF](sources/IFIP-Networking2026_Demo_UCD-NetsLab_srsRAN-ZMQ.pdf) | 소프트웨어만으로 만든 O-RAN 테스트베드에서 공격과 다층 IDS xApp(near-RT RIC 위에서 도는 응용)을 시연한 데모 논문 [8]. near-RT RIC(near-Real-Time RAN Intelligent Controller)는 기지국을 준실시간으로 관찰·제어하는 O-RAN 컨트롤러다 [8, Abstract], [11, §2.8] | srsRAN gNB와 srsUE 15개로 구성한 ZMQ 테스트베드에서 UE 재시작 반복(UE 재시작 반복형)을 시연한다. 공격 스크립트와 mux의 URL은 없다 [8]. 자세한 내용은 표 아래 'UCD 데모' 문단에 있다 | **UE 재시작 반복형 실험 구상**. RRCSetupComplete 미전송형 코드나 같은 라벨로 취급하지 않는다 |
+| [UCD IFIP 데모 논문](https://doi.org/10.23919/IFIPNetworking70592.2026.11579259) | 소프트웨어만으로 만든 O-RAN 테스트베드에서 공격과 다층 IDS xApp(near-RT RIC 위에서 도는 응용)을 시연한 데모 논문 [8]. near-RT RIC(near-Real-Time RAN Intelligent Controller)는 기지국을 준실시간으로 관찰·제어하는 O-RAN 컨트롤러다 [8, Abstract], [11, §2.8] | srsRAN gNB와 srsUE 15개로 구성한 ZMQ 테스트베드에서 UE 재시작 반복(UE 재시작 반복형)을 시연한다. 공격 스크립트와 mux의 URL은 없다 [8]. 자세한 내용은 표 아래 'UCD 데모' 문단에 있다 | **UE 재시작 반복형 실험 구상**. RRCSetupComplete 미전송형 코드나 같은 라벨로 취급하지 않는다 |
 | [NetsLab-Demo 5G-ORAN-IDD](https://github.com/NetsLab-Demo/NetsLab-Demo-Netslab-5G-ORAN-IDD) | 같은 연구실이 공개한 다층 침입 탐지 데이터 리포 [32] | 공개 트리에는 분석 노트북 2개, 데이터 파일, MIT LICENSE만 있고 데모 공격 스크립트와 mux는 없다 [32] | 탐지 데이터 참고. 공격 실행 도구가 아니다 |
 | [Kaggle RRC storm 데이터셋](https://www.kaggle.com/datasets/farahabedzadeh/rrc-signalling-storm-dataset-5g-o-ran-testbed) | 같은 저자의 별도 논문 *RadioShield*에 딸린 데이터셋 [10] | 설명상 **물리 5G O-RAN 테스트베드**에서 수집했고 UE reboot storm과 handover storm을 포함한다 [10]. 라이선스는 Unknown, 크기는 7.47 GB다 [10] | IFIP ZMQ 데모의 실행 기록이나 RRCSetupComplete 미전송형 정답(ground truth)으로 추정하지 않는다 |
 | [Nguyen et al., arXiv 2504.15738](https://arxiv.org/html/2504.15738) | OAI로 RSS를 구현하고 xApp 탐지를 제안한 IEEE ISCC 2025 논문 [29] | OAI UE를 고쳐 **Msg3를 보내면 Msg4를 기다리지 않고 새 RA 절차(RACH, Random Access Channel 절차)를 시작**하고 Msg4 수신과 T300 만료를 무시한다 [29, §V-A]. OAI UE와 gNB는 RF 시뮬레이션 무선 구간으로 연결됐다 [29, §III-C]. 이 방식으로 132.07 Msg3/s를 냈고, gNB 자원 16개와 대기 2.7초 조건에서 gNB를 약 95%의 시간 동안 사용 불가로 만들었다고 보고한다 [29, §V-B]. KAUST는 이 구현이 오픈소스로 공개되지 않았다고 적는다 [16, §I] | 초기접속 공격과 탐지 특징의 참고 자료다. 우리 RRCSetupComplete 미전송형의 Msg4 ACK 요구를 대체하지 않는다. KAUST 결과와의 차이는 표 아래에서 다룬다 |
@@ -329,10 +329,10 @@ KAUST는 이 실패를 OTA 환경으로 한정하지 않았다. 에뮬레이션�
 [2] OCUDU Documentation, "Building a 5G network with the OpenAirInterface UE," accessed 2026-10-13. https://docs.ocudu.org/tutorials/oaiue/  
 [3] OCUDU Documentation, "Deploying a CU/DU split over F1," accessed 2026-10-13. https://docs.ocudu.org/tutorials/cu_du_split/  
 [4] 5gattacks, "5g-rrc-storm" (README, scripts/), commit 0e71f7a (2026-06-09), accessed 2026-10-13. https://github.com/5gattacks/5g-rrc-storm  
-[5] 5gattacks, "storm-attack.patch," commit 0e71f7a. 보관본 [sources/5gattacks_storm-attack.patch](sources/5gattacks_storm-attack.patch) (줄 번호는 보관본 기준). https://github.com/5gattacks/5g-rrc-storm/blob/main/storm-attack.patch  
+[5] 5gattacks, "storm-attack.patch," commit `0e71f7aee24999b66d44e10db4612f96b5219d98` (줄 번호는 이 고정 커밋 기준). https://github.com/5gattacks/5g-rrc-storm/blob/0e71f7aee24999b66d44e10db4612f96b5219d98/storm-attack.patch
 [6] OpenAirInterface, commit 92980ceb725a94dbfe97c509d16f1313eee083e0, "Merge branch 'integration_2025_w46' into 'develop'," 2025-11-16, accessed 2026-10-13. https://github.com/duranta-project/openairinterface5g/commit/92980ceb725a94dbfe97c509d16f1313eee083e0  
 [7] 내부 문서, [rss-landscape.md](rss-landscape.md).  
-[8] F. Abed Zadeh, B. Siniarski, S. Wang, and M. Liyanage, "Demo: Attack Execution and Multi-Layer xApp-based Intrusion Detection in an O-RAN Environment," IFIP Networking 2026 (Demo), 2026. 보관본 [sources/IFIP-Networking2026_Demo_UCD-NetsLab_srsRAN-ZMQ.pdf](sources/IFIP-Networking2026_Demo_UCD-NetsLab_srsRAN-ZMQ.pdf)  
+[8] F. Abed Zadeh, B. Siniarski, S. Wang, and M. Liyanage, "Demo: Attack Execution and Multi-Layer xApp-based Intrusion Detection in an O-RAN Environment," IFIP Networking 2026 (Demo), 2026. https://doi.org/10.23919/IFIPNetworking70592.2026.11579259
 [9] NetsLab-Demo, GitHub 계정의 공개 리포 목록(NetsLab-Demo-Netslab-5G-ORAN-IDD, armor), accessed 2026-10-13. https://github.com/NetsLab-Demo  
 [10] F. Abed Zadeh, "RRC Signalling Storm Dataset (5G O-RAN Testbed)," Kaggle, accessed 2026-10-13. https://www.kaggle.com/datasets/farahabedzadeh/rrc-signalling-storm-dataset-5g-o-ran-testbed  
 [11] 내부 문서, [rss-theory.md](rss-theory.md).  
@@ -340,7 +340,7 @@ KAUST는 이 실패를 OTA 환경으로 한정하지 않았다. 에뮬레이션�
 [13] 3GPP TS 38.401 V19.3.0, "NG-RAN; Architecture description," ETSI, 2026. https://www.etsi.org/deliver/etsi_ts/138400_138499/138401/19.03.00_60/ts_138401v190300p.pdf  
 [14] 3GPP TS 38.331 V16.21.0, "NR; Radio Resource Control (RRC); Protocol specification," ETSI, 2025. https://www.etsi.org/deliver/etsi_ts/138300_138399/138331/16.21.00_60/ts_138331v162100p.pdf  
 [15] 3GPP TS 38.321 V16.18.0, "NR; Medium Access Control (MAC) protocol specification," ETSI, 2025. https://www.etsi.org/deliver/etsi_ts/138300_138399/138321/16.18.00_60/ts_138321v161800p.pdf  
-[16] A. Abou Hasna and A. El Falou, "Experimental Validation and Mitigation of RRC Storm Attacks in 5G Cellular Networks," arXiv:2608.16441v2, 2026. https://arxiv.org/html/2608.16441 (보관 PDF: [sources/2608.16441_Experimental-Validation-RRC-Storm_OAI_KAUST.pdf](sources/2608.16441_Experimental-Validation-RRC-Storm_OAI_KAUST.pdf))  
+[16] A. Abou Hasna and A. El Falou, "Experimental Validation and Mitigation of RRC Storm Attacks in 5G Cellular Networks," arXiv:2608.16441v2, 2026. https://arxiv.org/html/2608.16441
 [17] 내부 문서, [methodology.md](methodology.md).  
 [18] GitHub REST API, "Get a repository" 응답의 license·pushed_at 필드(5gattacks/5g-rrc-storm, salam-ai-learning/5g-rrc-storm-attack, 5GSEC/OAI-5G), accessed 2026-10-13. https://docs.github.com/en/rest/repos/repos#get-a-repository  
 [19] OpenAirInterface source, tag 2026.w40 (f8f7695), radio/zmq/README.md. https://gitlab.eurecom.fr/oai/openairinterface5g/-/blob/2026.w40/radio/zmq/README.md#L15-16  

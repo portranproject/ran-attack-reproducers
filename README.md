@@ -23,8 +23,6 @@ reproducers/
 ├── blind-dos/            # 기존 접근 반증, 재개 조건 정의 중
 └── upstream-dos/         # 공격 범위 정의 중
 artifacts/                  # 봉인된 RRC 증거와 게시용 요약
-sources/                    # 조사에 사용한 1차 자료 보관본
-tool/                       # RRC 초기 역사 구현
 rss-storm/                  # 과거 문서·명령용 호환 안내와 위임 스크립트
 ```
 
@@ -39,7 +37,6 @@ rss-storm/                  # 과거 문서·명령용 호환 안내와 위임 �
 
 | 문서 | 내용 |
 |---|---|
-| [HANDOFF.md](HANDOFF.md) | 2026-10-19 당시 구현 계획을 보존한 역사 기록. 현재 상태는 이 README와 `reproducers/rrc-signaling-storm/` 문서가 우선 |
 | [AGENTS.md](AGENTS.md) | 공통 저장소 원칙 + RRC 동결 컨텍스트 + 다음 공격 준비 상태 |
 | [reproducers/rrc-signaling-storm/README.md](reproducers/rrc-signaling-storm/README.md) | 현재 재현기: 빌드·실행·노브·안전장치·판정법·검증 범위 |
 | [reproducers/rrc-signaling-storm/docs/CURATED-VALIDATION-20261030.ko.md](reproducers/rrc-signaling-storm/docs/CURATED-VALIDATION-20261030.ko.md) | clean w38 curated 빌드, 정상 회귀, Msg4 ACK-on/off와 독립 broker witness 실측 |
@@ -67,7 +64,6 @@ rss-storm/                  # 과거 문서·명령용 호환 안내와 위임 �
 | [comparison-5g.md](comparison-5g.md) | 5G 기준 기존 연구·공격 도구 비교 요약판. 주장별 원본 대조 여부 표시, 독립 재검색 결과 |
 | [testbed-checklist.md](testbed-checklist.md) | 팀 테스트베드 체크리스트(AWS EC2 분리 CU/DU·ZMQ·n78 TDD 30 kHz 20 MHz·OCUDU 26.10·Open5GS·OAI UE) , OCUDU 설정에서 TDD/FDD 읽는 법, 베이스 UE 결정(OAI UE) |
 | [design.md](design.md) | RRCSetupComplete 미전송형 재현기 설계: 아키텍처, 상태 기계, 노브, 라벨 스키마, 단계별 계획 |
-| [sources/](sources/) | 1차 자료: 논문 PDF 2건 + 5gattacks 공격 패치 |
 
 상태(2026-11-02): RRC storm 구현·실측은 여기서 동결하고 분석기 평가용으로 사용한다. hold32 V4는 계속 진단 자료로만 둔다. 기본 cleanup/RLF·DU 96·CU 200의 D6F45·D6F46·D6F48 RRCSetupRequest 후 중단형에서는 공격 중 primary 서비스 실패와 stop 뒤 별도 UE 회복이 3/3 반복됐다. 가장 빠른 D6F48은 Msg3 77.408/s와 DU provisional 73.338/s가 cleanup 34.209/s를 완전한 5초 창 12/12에서 넘었고, 정확히 같은 8-endpoint attack-off control은 Registration·PDU·ping 303/303에 성공했다. 다만 초과분은 admission 전에 거절돼 실제 Setup 생성은 cleanup과 평형, 점유 피크는 95/96이었다. D6F50의 DU ACK 확인 RRCSetupComplete 미전송형은 exact DU ACK 149건·Msg5 0건으로 기전은 확인했지만 공격 중 정상 서비스가 성공했다. 따라서 **분석기 입력·정답 생성기로는 사용하되 30초 지속 포화·기지국 전체 마비 도구로 부르지 않는다**. 운영 절차는 [사용 가이드](reproducers/rrc-signaling-storm/docs/USAGE-GUIDE.ko.md)를 따른다.
 
@@ -80,7 +76,7 @@ rss-storm/                  # 과거 문서·명령용 호환 안내와 위임 �
 
 ## Git 게시 범위
 
-새 원시 실행물은 `artifacts/`, `tool/runs/`, `reproducers/*/runs/`에 로컬 보존하고 Git에
-추가하지 않는다. `artifacts/`에서는 검토한 최상위 README·판정문과 SHA-256·campaign
-메타데이터만 기본 게시 후보가 된다. 봉인된 기존 증거는 경로와 manifest를 보존하며,
-원시 자료를 포함하려고 `git add -f`를 사용하지 않는다.
+원시 실행물은 `artifacts/`, `reproducers/*/runs/`에 로컬 보존하고 Git에 추가하지 않는다.
+`artifacts/`에는 검토한 텍스트 판정·분석 자료와 SHA-256·campaign 메타데이터만 게시한다.
+원문은 해시로 식별하며, 원시 자료를 포함하려고 `git add -f`를 사용하지 않는다. 외부 논문과
+제3자 코드는 문서의 arXiv·DOI·고정 커밋 URL로 참조하고 저장소에 복사하지 않는다.

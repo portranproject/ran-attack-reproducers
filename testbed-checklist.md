@@ -164,7 +164,7 @@ UE와 DU는 같은 호스트에서 `tcp://127.0.0.1`로 통신하므로(런 로�
 ### 18.3 변경 전/후 비교 (단일 UE, gNB 설정 기본값 2000 ms/96, 환경 무변경)
 
 판정은 CU 로그(`/tmp/ocu.log`)에서 `"RRC Setup Procedure" started`와 그 종료를 ue id로 묶어
-동시 점유를 센 것이다 → `tool/box/cu_occupancy.py`.
+동시 점유를 센 것이다 → `reproducers/rrc-signaling-storm/analysis/cu_occupancy.py`.
 
 | | `=0` (원래) | `=100` (수정) |
 |---|---|---|
@@ -265,7 +265,7 @@ gap p50 29 ms  p90 39 ms  p99 60 ms  max 108 ms   → 200 ms 이상 공백 0건
 **죽은 시간은 없다.** 간격이 균일하므로 "버스트 사이에 멈춰 있다"는 가설은 기각된다.
 96을 지속적으로 넘기려면 48/s가 필요하고, 사이클을 29 ms → 21 ms로 줄여야 한다.
 
-### 19.1 사이클 분해 (`tool/box/attempt_phases.py`)
+### 19.1 사이클 분해 (`reproducers/rrc-signaling-storm/analysis/attempt_phases.py`)
 
 JSONL의 각 이벤트가 벽시계(`t_ns`)와 공중(`air_ms`)을 모두 들고 있어 직접 분해했다.
 

@@ -678,14 +678,14 @@ context 만료 뒤의 동작을 이 결과에 섞지 않도록 32초보다 긴 �
 ## 참고문헌
 
 [1] 내부 문서, [AGENTS.md](AGENTS.md) — 팀 프로젝트 개요, RRC signaling storm 공격 모듈, 확정 사항·열린 결정·리스크.
-[2] A. Abou Hasna, A. El Falou, "Experimental Validation and Mitigation of RRC Storm Attacks in 5G Cellular Networks," arXiv:2608.16441v2, 2026. https://arxiv.org/html/2608.16441 (보관 PDF: [sources/2608.16441_Experimental-Validation-RRC-Storm_OAI_KAUST.pdf](sources/2608.16441_Experimental-Validation-RRC-Storm_OAI_KAUST.pdf))  
+[2] A. Abou Hasna, A. El Falou, "Experimental Validation and Mitigation of RRC Storm Attacks in 5G Cellular Networks," arXiv:2608.16441v2, 2026. https://arxiv.org/html/2608.16441
 [3] D. K. Nguyen, R. El Malki, F. Rebecchi, "RRC Signaling Storm Detection in O-RAN," arXiv:2504.15738v1, 2025. https://arxiv.org/html/2504.15738  
 [4] 3GPP TS 38.321 V16.18.0, "NR; Medium Access Control (MAC) protocol specification," ETSI TS 138 321, 2025. https://www.etsi.org/deliver/etsi_ts/138300_138399/138321/16.18.00_60/ts_138321v161800p.pdf  
 [5] OCUDU source, commit 440cdbb, lib/mac/procedures.md. https://gitlab.com/ocudu/ocudu/-/blob/440cdbbee077e97e824db285bf227c15c84bd0bb/lib/mac/procedures.md#L55  
 [6] 3GPP TS 38.401 V19.3.0, "NG-RAN; Architecture description," ETSI TS 138 401, 2026. https://www.etsi.org/deliver/etsi_ts/138400_138499/138401/19.03.00_60/ts_138401v190300p.pdf  
 [7] OCUDU source, commit 440cdbb, lib/rrc/ue/procedures/rrc_setup_procedure.cpp. https://gitlab.com/ocudu/ocudu/-/blob/440cdbbee077e97e824db285bf227c15c84bd0bb/lib/rrc/ue/procedures/rrc_setup_procedure.cpp#L41  
 [8] A. Tabiban, H. A. Alameddine, M. A. Salahuddin, R. Boutaba, "Signaling Storm in O-RAN: Challenges and Research Opportunities," IEEE Communications Magazine, vol. 62, no. 6, 2024. https://rboutaba.cs.uwaterloo.ca/Papers/Journals/2023/TabibanCommMag23.pdf  
-[9] 5gattacks/5g-rrc-storm, "storm-attack.patch," accessed 2026-10-13. https://github.com/5gattacks/5g-rrc-storm (보관본: [sources/5gattacks_storm-attack.patch](sources/5gattacks_storm-attack.patch). 본문의 줄 번호는 보관본 기준)  
+[9] 5gattacks/5g-rrc-storm, "storm-attack.patch," commit `0e71f7aee24999b66d44e10db4612f96b5219d98`, accessed 2026-10-13. https://github.com/5gattacks/5g-rrc-storm/blob/0e71f7aee24999b66d44e10db4612f96b5219d98/storm-attack.patch (본문의 줄 번호는 이 고정 커밋 기준)
 [10] 내부 문서, [rss-landscape.md](rss-landscape.md) — RRC 시그널링 스톰 공개 지형: 변종·논문·도구.  
 [11] 내부 문서, [methodology.md](methodology.md) — RSS 재현 실험 방법론.  
 [12] 내부 문서, [tool-survey.md](tool-survey.md) — 정상 UE 연결 경로와 RRCSetupComplete 미전송형 공격 코드의 재사용 범위.

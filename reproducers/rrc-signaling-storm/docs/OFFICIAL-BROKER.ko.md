@@ -161,7 +161,7 @@ xvfb-run -a timeout 60 python3 ~/multi_ue_scenario.py
 - 공식 플로우그래프를 5 UE로 확장했다: UE4 2400/2401, UE5 2500/2501.
   `blocks.add_vcc(1)`는 2입력 전용이 아니라 다중 입력 연결을 받는다(초기 시도에서
   인자를 잘못 줘 실패했던 것). `add_vcc(1)`로 두고 연결만 추가하면 된다.
-- 확장 파일: `rss-storm/tools/multi_ue_5ue.py` (5 UE 스모크에서 5대 모두
+- 확장 파일: `reproducers/rrc-signaling-storm/tools/multi_ue_5ue.py` (5 UE 스모크에서 5대 모두
   동기·SIB1·RRCSetupComplete 확인).
 - 4공격+1증인 실패: 두 번의 시도 모두 동기 실패(브로커/DU 시작 경합). 5 UE로
   늘리면서 경합이 더 자주 발생하는 것으로 보인다. 재시도 횟수를 늘려 재측정 필요.
@@ -253,9 +253,9 @@ teardown했고 SIGSEGV는 0회였다. 유효 3회의 attach는 1~36초, ping 손
 시작 경합이나 control 품질 변동을 해결하지 않는다. 따라서 broker는 디버그·경로
 확인용이며 안정 서비스, 공격 효과 또는 정상 사용자 DoS의 증거로 사용하지 않는다.
 과거 control/attack 원문 해시는
-[`artifacts/broker-witness-20261030/`](../../artifacts/broker-witness-20261030/)에,
+[`artifacts/broker-witness-20261030/`](../../../artifacts/broker-witness-20261030/)에,
 종료 원인·수정·재시도 검증은
-[`artifacts/broker-stability-20261030/`](../../artifacts/broker-stability-20261030/)에,
+[`artifacts/broker-stability-20261030/`](../../../artifacts/broker-stability-20261030/)에,
 15회 고정 control 캠페인은
-[`artifacts/broker-sync-sampling-20261030/`](../../artifacts/broker-sync-sampling-20261030/)에
+[`artifacts/broker-sync-sampling-20261030/`](../../../artifacts/broker-sync-sampling-20261030/)에
 있다.

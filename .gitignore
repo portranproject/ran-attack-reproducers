@@ -7,9 +7,7 @@
 # Local run output. Existing sealed evidence stays tracked; new raw evidence does not.
 /logs/
 /tool/runs/
-/rss-storm/runs/
-/blind-dos/runs/
-/uplink-dos/runs/
+/reproducers/*/runs/
 
 # New artifact payloads are local by default. Publish only top-level summaries
 # and integrity metadata after review.

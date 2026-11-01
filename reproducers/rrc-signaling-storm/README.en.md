@@ -14,7 +14,7 @@ internal summaries from one OCUDU/ZMQ testbed. A separate-process ordinary UE
 was measured, but attack runs split between service failure and service success,
 so deterministic normal-user denial is not demonstrated. Sanitized D6 raw
 evidence, summaries, and checksums are preserved in the
-[default-cleanup evidence set](../artifacts/p5-default-cleanup-rate-v2-20261030/README.md).
+[default-cleanup evidence set](../../artifacts/p5-default-cleanup-rate-v2-20261030/README.md).
 
 The final clean-lineage build also passed the live label-v1 gate. The exporter
 failed closed when concurrent MAC/RRC writes interleaved the first ACK-on JSONL;
@@ -24,7 +24,7 @@ with `label_export=ok` and `valid=true`. A separate static
 each RLF and F1 Release Request/Command/Complete stage in a serial 20-attempt
 run, while the attack-off control passed 20/20 pings with zero RLFs. This is not
 a per-attempt ID join; it is cell-wide static hardening, not a detector-called
-actuator. See the [label/RLF20 evidence](../artifacts/label-v1-rlf20-20261030/README.md).
+actuator. See the [label/RLF20 evidence](../../artifacts/label-v1-rlf20-20261030/README.md).
 
 It is built as a **patch to the OpenAirInterface NR UE**. The base station is
 never modified and never patched.
@@ -238,7 +238,7 @@ attack-off control registered, created
 a PDU session, passed 20/20 pings, and recorded zero RLFs. The DU config was
 restored to its original SHA-256. Shielded OTA, long or poor-channel normal-UE
 safety, and an external detector-triggered actuator remain unverified. See the
-[aggregates and remote-source hashes](../artifacts/label-v1-rlf20-20261030/README.md).
+[aggregates and remote-source hashes](../../artifacts/label-v1-rlf20-20261030/README.md).
 
 **CU 200 hold32 diagnostic on p5, 2026-10-30 — not a success verdict.** Without changing the CU
 `max_nof_ues: 200` or per-cell DU capacities, three exact-ACK-confirmed RRCSetupComplete-omission cells
@@ -251,7 +251,7 @@ PDU setup, and TUN configuration. However, this profile extended the roughly
 2-second default cleanup to 32 seconds and stopped before the first expiry.
 It proves exact-ACK-confirmed RRCSetupComplete omission and CU-200 reachability, not that attack arrivals
 beat the default release rate. See the
-[CU200 diagnostic](../artifacts/p5-cu200-3cell-20261030/README.md).
+[CU200 diagnostic](../../artifacts/p5-cu200-3cell-20261030/README.md).
 
 **Default-cleanup D6 follow-up, 2026-10-30.** With the gNB cleanup/RLF values,
 DU capacity 96, and CU cap 200 unchanged, three 6-process-by-2-UE post-RRCSetupRequest abort runs
@@ -269,7 +269,7 @@ ordinary UE retained registration, PDU, and ping service during the attack.
 Thus post-RRCSetupRequest abort service-level off/on repeated 3/3 and the
 exact-ACK-confirmed omission mechanism is confirmed, but 30-second saturation and whole-gNB paralysis
 remain unproven. See the
-[default-cleanup evidence](../artifacts/p5-default-cleanup-rate-v2-20261030/README.md).
+[default-cleanup evidence](../../artifacts/p5-default-cleanup-rate-v2-20261030/README.md).
 
 ### Prerequisites
 
@@ -308,7 +308,8 @@ already running.
 ### At a glance
 
 ```bash
-git clone <this repo> rss-storm && cd rss-storm
+git clone https://github.com/portranproject/rrc-storm-reproducer.git
+cd rrc-storm-reproducer/reproducers/rrc-signaling-storm
 bin/rss-bootstrap                        # 1. fetch OAI and build it once
 cp conf/rss.conf.example conf/rss.conf   # 2. configure
 $EDITOR conf/rss.conf
@@ -708,11 +709,11 @@ bin/rss-broker-witness-retry attack  -n bw-attack-1030  -a 3 -d 60
 
 Fail-fast and bounded retries do not solve the `sync=0` race or control-ping
 variation. Live and regression evidence for the shutdown fix and retry policy
-is in [`artifacts/broker-stability-20261030/`](../artifacts/broker-stability-20261030/).
+is in [`artifacts/broker-stability-20261030/`](../../artifacts/broker-stability-20261030/).
 The valid c04/c07/c13 controls attached in 1/3/36 seconds and had ping loss of
 93.3333%/93.5484%/0.833333%, respectively. Raw-evidence hashes and
 classification are in
-[`artifacts/broker-sync-sampling-20261030/README.md`](../artifacts/broker-sync-sampling-20261030/README.md).
+[`artifacts/broker-sync-sampling-20261030/README.md`](../../artifacts/broker-sync-sampling-20261030/README.md).
 This sample does not support a stable denial or service-preservation claim.
 
 ---
@@ -918,7 +919,7 @@ extended (`max_consecutive_kos=2000`, `t300=2000`, CU guard 30000 ms), the G34
 control completed Registration/PDU/TUN. In G35, all 11 normal-probe TC-RNTIs
 reached the CU and were rejected with `DU is not able to serve`; no Msg4, Msg5,
 or connection occurred during the 10.13-second probe window. See the
-[capacity-96 artifact](../artifacts/p5-msg3-cap96-20261030/README.md) for the
+[capacity-96 artifact](../../artifacts/p5-msg3-cap96-20261030/README.md) for the
 profiles, failed intermediate runs, hashes, and limitations.
 
 ---
@@ -1062,7 +1063,7 @@ is not attempt count.
 
 ## Private GitHub publication scope
 
-The current reviewed **`rss-storm/` directory** is the source of truth; inspect
+The current reviewed **`reproducers/rrc-signaling-storm/` directory** is the source of truth; inspect
 its final file list before publication. The old `rss-publish` branch is stale
 and must be regenerated only after final changes are committed. Do not include
 parent-directory experiment logs, source materials or personal configuration.

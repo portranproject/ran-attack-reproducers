@@ -1,6 +1,6 @@
 # 핸드오프: 테스트베드 공격 도구의 초기 구현 계획(역사 기록)
 
-> 2026-10-19 작성, 2026-10-30 역사 문서로 전환. 아래의 "제안 구현 구조"와 "진행 순서"는 이미 수행된 초기 계획이므로 새 작업 지침으로 사용하지 않는다. RRC storm 서브태스크는 2026-11-02 분석기 평가용으로 동결했다. 현재 상태와 명령은 [AGENTS.md](AGENTS.md), [사용 가이드](rss-storm/docs/USAGE-GUIDE.ko.md), [rss-storm/README.md](rss-storm/README.md)를 우선한다. 표시 규칙(✅/📄/🔍)은 [comparison-5g.md](comparison-5g.md) §0과 같다.
+> 2026-10-19 작성, 2026-10-30 역사 문서로 전환. 아래의 "제안 구현 구조"와 "진행 순서"는 이미 수행된 초기 계획이므로 새 작업 지침으로 사용하지 않는다. RRC storm 서브태스크는 2026-11-02 분석기 평가용으로 동결했다. 현재 상태와 명령은 [AGENTS.md](AGENTS.md), [사용 가이드](reproducers/rrc-signaling-storm/docs/USAGE-GUIDE.ko.md), [reproducers/rrc-signaling-storm/README.md](reproducers/rrc-signaling-storm/README.md)를 우선한다. 표시 규칙(✅/📄/🔍)은 [comparison-5g.md](comparison-5g.md) §0과 같다.
 
 ## 2026-10-30 현재 위치
 
@@ -12,7 +12,7 @@
 > 정상 서비스가 성공했다. 30초 지속 포화·기지국 전체 마비 기준은 여전히 통과하지 못했다. 최신 상태는
 > [AGENTS.md](AGENTS.md)와 [기본 cleanup 실패 분석](artifacts/p5-default-cleanup-rate-v2-20261030/README.md)을 따른다.
 
-- 구현은 [`rss-storm/`](rss-storm/)에 있고, 기본 패치는 `patch/rss-ue-curated.patch`, 인공 hold32 CU200 진단 명령은 `bin/rss-cu200`이다.
+- 구현은 [`reproducers/rrc-signaling-storm/`](reproducers/rrc-signaling-storm/)에 있고, 기본 패치는 `patch/rss-ue-curated.patch`, 인공 hold32 CU200 진단 명령은 `bin/rss-cu200`이다.
 - hold32 V4 UE 바이너리 SHA-256은 `202934f7...`다. 공격 전 4셀 control은 모두
   `RRCSetupComplete`에 도달했고 C3는 Registration·PDU Session·TUN까지 성공했다.
 - V4의 세 공격 셀은 RRCSetupComplete 미전송형 exact DU ACK 조인 176건과 Msg5 0건을 만들었다.

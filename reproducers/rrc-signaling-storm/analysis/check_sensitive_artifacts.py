@@ -125,7 +125,11 @@ def scan_path(path):
 
 
 def repository_paths():
-    root = Path(__file__).resolve().parents[2]
+    root = Path(subprocess.check_output(
+        ["git", "-C", str(Path(__file__).resolve().parent),
+         "rev-parse", "--show-toplevel"],
+        text=True,
+    ).strip())
     output = subprocess.check_output(
         ["git", "-C", str(root), "ls-files", "-z", "--cached", "--others",
          "--exclude-standard"]

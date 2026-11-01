@@ -1,28 +1,34 @@
-# AGENTS.md — RRC Signaling Storm 재현 도구 (RAN 보안 테스트베드)
+# AGENTS.md — 기지국 공격 재현 도구 모음 (RAN 보안 테스트베드)
 
 > 이 디렉토리에서 작업하는 에이전트/팀원용 컨텍스트. 처음 들어오면 이 파일부터 읽을 것.
 > 최종 갱신 2026-11-02.
 
 ## 이 디렉토리는 무엇인가
 
-팀의 **O-RAN 기지국 침입 탐지·대응(IDS/IPS) 테스트베드** 프로젝트 중,
-**"외부자 UE(공격자) 측 — RRC signaling storm 재현 도구 제작"** 서브태스크의 조사·설계·구현·실측 기록.
-사용자(이 저장소 주인)가 맡은 역할이 바로 이 UE 공격 도구 부분이다.
+팀의 **O-RAN 기지국 침입 탐지·대응(IDS/IPS) 테스트베드**에서 사용할 기지국 공격
+재현 도구 모음이다. 각 공격은 `reproducers/<attack-name>/`의 독립 모듈이며 구현,
+설정, 라벨 계약, 실행 원문을 다른 공격과 섞지 않는다.
+
+- `reproducers/rrc-signaling-storm/`: 구현·실측 완료 후 2026-11-02 동결
+- `reproducers/blind-dos/`: 기존 5G-S-TMSI 방식 반증, 재개 조건 정의 중
+- `reproducers/upstream-dos/`: 공격 계층·대상 자원·성공 기준 정의 중
+
+아래 장문의 실측 기록은 첫 번째 모듈인 RRC signaling storm의 보존 컨텍스트다.
 
 - [tool-survey.md](tool-survey.md) — OCUDU 공식 UE 연결 경로와 공개 공격 코드·다중 UE 자료의 실제 범위
 - [methodology.md](methodology.md) — RSS 실험 시나리오·관측 경계·재현기 기록·OCUDU 검증 기준
 - [rss-theory.md](rss-theory.md) — RSS 원리: 단계별 자원 할당·조작 파라미터·고갈 동역학·OCUDU 대입
 - [rss-landscape.md](rss-landscape.md) — 변종 분류·논문·공개 도구 비교, 기존 문서와 다른 점
 - [design.md](design.md) — RRCSetupComplete 미전송형 재현기 설계: 아키텍처·상태 기계·노브·라벨 스키마·단계별 계획
-- [rss-storm/](rss-storm/) — 현재 OAI UE 패치·실행기·분석기·회귀 테스트·실험 기록
-- [blind-dos/](blind-dos/) — 기존 5G-S-TMSI 주입 방식의 반증을 출발점으로 한 Blind DoS 재검토 공간
-- [uplink-dos/](uplink-dos/) — 상향링크 DoS의 공격 계층·대상 자원·성공 기준을 확정할 준비 공간
-- [rss-storm/docs/CURATED-VALIDATION-20261030.ko.md](rss-storm/docs/CURATED-VALIDATION-20261030.ko.md) — clean curated 빌드·정상 회귀·Msg4 ACK·독립 broker witness 실측
-- [rss-storm/docs/LABEL-CONTRACT.ko.md](rss-storm/docs/LABEL-CONTRACT.ko.md) — UE 정답·탐지·대응·효과 판정·시간 동기 계약
-- [rss-storm/docs/USAGE-GUIDE.ko.md](rss-storm/docs/USAGE-GUIDE.ko.md) — 동결된 재현기의 실행·입력 격리·라벨·채점 가이드
-- [rss-storm/docs/P5-DU-ACK-JOIN.ko.md](rss-storm/docs/P5-DU-ACK-JOIN.ko.md) — 새 exact DU ACK join의 p5 승인·정상 대조·합격·원복 절차
-- [rss-storm/docs/RESPONSE-PATH-AUDIT.ko.md](rss-storm/docs/RESPONSE-PATH-AUDIT.ko.md) — 기존 E2/core 경로가 RRCSetupComplete 미전송형에 닿지 않는 이유와 CSI-DTX RLF hardening 실측
-- [rss-storm/docs/OTA-SMOKE.ko.md](rss-storm/docs/OTA-SMOKE.ko.md) — 실 SDR inventory·RF 안전·정상 UE 1→2대·matched control·attack-on 게이트
+- [reproducers/rrc-signaling-storm/](reproducers/rrc-signaling-storm/) — 현재 OAI UE 패치·실행기·분석기·회귀 테스트·실험 기록
+- [reproducers/blind-dos/](reproducers/blind-dos/) — 기존 5G-S-TMSI 주입 방식의 반증을 출발점으로 한 Blind DoS 재검토 공간
+- [reproducers/upstream-dos/](reproducers/upstream-dos/) — 상향링크 DoS의 공격 계층·대상 자원·성공 기준을 확정할 준비 공간
+- [reproducers/rrc-signaling-storm/docs/CURATED-VALIDATION-20261030.ko.md](reproducers/rrc-signaling-storm/docs/CURATED-VALIDATION-20261030.ko.md) — clean curated 빌드·정상 회귀·Msg4 ACK·독립 broker witness 실측
+- [reproducers/rrc-signaling-storm/docs/LABEL-CONTRACT.ko.md](reproducers/rrc-signaling-storm/docs/LABEL-CONTRACT.ko.md) — UE 정답·탐지·대응·효과 판정·시간 동기 계약
+- [reproducers/rrc-signaling-storm/docs/USAGE-GUIDE.ko.md](reproducers/rrc-signaling-storm/docs/USAGE-GUIDE.ko.md) — 동결된 재현기의 실행·입력 격리·라벨·채점 가이드
+- [reproducers/rrc-signaling-storm/docs/P5-DU-ACK-JOIN.ko.md](reproducers/rrc-signaling-storm/docs/P5-DU-ACK-JOIN.ko.md) — 새 exact DU ACK join의 p5 승인·정상 대조·합격·원복 절차
+- [reproducers/rrc-signaling-storm/docs/RESPONSE-PATH-AUDIT.ko.md](reproducers/rrc-signaling-storm/docs/RESPONSE-PATH-AUDIT.ko.md) — 기존 E2/core 경로가 RRCSetupComplete 미전송형에 닿지 않는 이유와 CSI-DTX RLF hardening 실측
+- [reproducers/rrc-signaling-storm/docs/OTA-SMOKE.ko.md](reproducers/rrc-signaling-storm/docs/OTA-SMOKE.ko.md) — 실 SDR inventory·RF 안전·정상 UE 1→2대·matched control·attack-on 게이트
 - [artifacts/broker-witness-20261030/](artifacts/broker-witness-20261030/) — 독립 일반 UE attack-on/off 요약과 원격 원문 SHA-256
 - [artifacts/broker-stability-20261030/](artifacts/broker-stability-20261030/) — 5 UE 시작 경합·종료 SIGSEGV 원인·2단계 종료·제한 재시도 검증
 - [artifacts/broker-sync-sampling-20261030/](artifacts/broker-sync-sampling-20261030/) — 사전 고정 15회 대조군의 sync 시작 분포·서비스 품질·종료 건전성
@@ -54,7 +60,7 @@
 
 ---
 
-## 내 서브태스크: RRC signaling storm 재현 도구
+## 공격 모듈: RRC signaling storm (동결)
 
 **목표**: RF 차폐 랩에서 팀 OCUDU gNB를 상대로, 팀 탐지·대응기를 **검증**할 수 있는 통제 가능한 스톰 재현기.
 → "강한 공격"이 아니라 **"파라미터가 통제되는 재현기"**가 설계 목표.
@@ -65,7 +71,7 @@
 - **공격 진입점은 표준 Uu(PRACH/RRC)**다. OAI w38 공격 UE↔OCUDU 26.10 분리형 CU/DU의 직접 ZMQ 경로와 GNU Radio 5 UE broker의 별도 프로세스 일반 witness 경로를 p5에서 실측했다. 후자는 동작하지만 시작 동기화와 서비스 결과가 불안정하다. 차폐 OTA 상호운용은 여전히 미검증이다.
 - **RRCSetupComplete 미전송형 코어 동작은 성립했다.** 보존된 2026-10-21 120초 런에서 시작 4,438건(37.0/s), `rrcSetupComplete=0`, `InitialUEMessage=0`, 피크 96/96을 gNB 로그로 확인했다. 단, 96의 최장 연속 점유는 0.45초이므로 "지속 포화" 증거가 아니다. → [검증 원문](artifacts/verify-20261021/README.md)
 - **기본 DU 정리 정책에서는 정상 UE 완전 거부가 아니었다.** 최고 수락률 43.0/s가 필요한 44.9/s보다 4.4% 낮아 평균 점유가 약 92에 머물렀다. 원인은 Msg3-only UE의 CSI-DTX 100회 뒤 `t310`으로 이어지는 약 2.86초 해제였다. capacity 96은 유지하고 RLF/guard만 관측창 뒤로 미룬 실험 프로필의 G35에서는 96개를 유지한 채 정상 probe 11/11이 CU까지 도달하고 모두 DU 자원 부족으로 거절됐다. 이는 10.13초 hold32 관측창 진단이며 기본 cleanup의 공격 성공이 아니다. → [capacity-96 진단](artifacts/p5-msg3-cap96-20261030/README.md)
-- **현재 기본 패치**는 `rss-storm/patch/rss-ue-curated.patch`(`90068853...`)이며, exact ACK RNTI 보정 패치(`62cdea20...`)까지 적용한 p5 v6 UE 바이너리는 `6b4f254f...`다. RRCSetupComplete 미전송형·지연 witness·Msg4 ACK·반복 RA 노브와 직렬화된 JSONL 정답 로거를 포함한다. `rss-run`은 증거를 봉인하고, `bin/rss-cu200`은 인공 hold32에서 4셀 control과 3공격셀+1 witness 실행을 같은 계약으로 묶는 진단 도구다. 과거 full/archive 패치는 기본 빌드에 쓰지 않는다. → [기본 cleanup 재검증](artifacts/p5-default-cleanup-rate-v2-20261030/README.md)
+- **현재 기본 패치**는 `reproducers/rrc-signaling-storm/patch/rss-ue-curated.patch`(`90068853...`)이며, exact ACK RNTI 보정 패치(`62cdea20...`)까지 적용한 p5 v6 UE 바이너리는 `6b4f254f...`다. RRCSetupComplete 미전송형·지연 witness·Msg4 ACK·반복 RA 노브와 직렬화된 JSONL 정답 로거를 포함한다. `rss-run`은 증거를 봉인하고, `bin/rss-cu200`은 인공 hold32에서 4셀 control과 3공격셀+1 witness 실행을 같은 계약으로 묶는 진단 도구다. 과거 full/archive 패치는 기본 빌드에 쓰지 않는다. → [기본 cleanup 재검증](artifacts/p5-default-cleanup-rate-v2-20261030/README.md)
 - **독립 일반 witness 경로는 기술적으로 성립했다.** 통제된 saturation profile(DU 상한 12, PRACH 64, CU cap 200)에서 대조군 r21은 attach 6초·Registration/PDU 성공, 공격군 r2는 서비스 실패, 공격군 r3은 공격 294회에도 attach 50초·Registration/PDU 성공이었다. 따라서 독립 witness 실행은 입증됐지만 정상 서비스 거부는 결정적으로 재현되지 않았다.
 - **15회 고정 대조군 표본에서도 broker는 안정 서비스 증거로 쓸 수 없었다.** 60초 sync·60초 관측에서 30초 이내 5/5 sync는 5회, 31~60초 sync는 0회, 0/5 clean timeout은 10회였다. 유효 대조군은 3회, load UE activity가 섞인 의미상 무효 런은 2회였고, 유효 런의 ping loss는 0.833333~93.5484%, attach는 1~36초였다. 15회 모두 clean teardown·kernel SIGSEGV 0이었다. 현재 표본은 fast-success/stuck-0/5 이봉형이므로 30초를 운영값으로 유지하되 percentile 보장은 하지 않는다. → [고정 표본 기록](artifacts/broker-sync-sampling-20261030/README.md)
 - **Msg4 ACK 억제는 단일 UE ZMQ 경로에서 3회 반복 성립했다.** 같은 1 UE·2초 간격·10회 시도에서 `MSG4_ACK=1`은 DU ACK 64~65건·DTX 18~20건·max-retx 0건, `MSG4_ACK=0`은 UE 억제 230~240건·DU ACK 0건·DTX 456~477건·max-retx 38~40건이었다. 모두 Msg5와 crash는 0건이었다. OCUDU의 `ConRes CE ACKed` 문자열은 모든 런에서 10건이어서 실제 ACK 증거로 쓰지 않는다.
@@ -75,8 +81,8 @@
 - **기본 cleanup의 DU ACK 확인 RRCSetupComplete 미전송형은 기전만 성립하고 denial에는 실패했다.** D6F50은 UE 후보 205건 중 current-run DU FAPI HARQ ACK와 exact join된 양성 149건, 공격자 Msg5 0건을 만들었다. Msg3 34.824/s와 DU provisional 32.071/s는 cleanup 28.362/s를 넘었지만 admitted Setup은 cleanup과 평형, 점유 피크는 84/96이었고 공격 중 정상 UE가 Registration·PDU·ping 194/195에 성공했다. 기전 증거와 서비스 영향 증거를 분리한다. → [D6F50 판정](artifacts/p5-default-cleanup-rate-v2-20261030/README.md)
 - **4셀 정상 대조와 원복을 확인했다.** 공격 전 최종 바이너리 control 네 셀 모두 `RRCSetupComplete`에 도달했고 C3는 Registration·PDU Session·TUN까지 성공했다. 실험 뒤 CU·DU 설정을 보존한 원본으로 복구하고 p5 CU·DU 인스턴스를 중지했다.
 - **새 runner는 run 전체 증거를 자동 봉인한다.** `run.json`에 UE full commit과 binary·RSS patch·runner/exporter/redactor/scanner hash를 남기고, 종료 시 `evidence_manifest.json`에 핵심 산출물의 크기·SHA-256을 기록한다. seal과 verifier는 실행 checkout의 현재 scanner로 run 디렉터리 전체를 다시 검사한다. G34·G35의 manifest verify도 통과했다.
-- **CSI-DTX RLF 정적 hardening은 p5 ZMQ에서 성립했다.** `pucch.max_consecutive_kos=20` 한 항목만 바꾼 단일 UE 직렬 RRCSetupComplete 미전송형 20회에서 RLF→F1 Release Request/Command/Complete 각 단계 집계가 20건씩 일치했고, 같은 설정의 약 60초 attack-off 회귀는 ping 20/20·RLF 0이었다. 설정은 원본 SHA-256으로 원복했다. 시도별 F1/CU ID 조인 증거는 아니며, 셀 전체 정적 설정의 실증이지 탐지기가 호출한 actuator나 near-RT RIC 폐루프가 아니다. → [대응 경로 감사](rss-storm/docs/RESPONSE-PATH-AUDIT.ko.md)
-- **2026-11-02에 RRC storm 서브태스크를 동결했다.** 현재 결과는 분석기 입력·정답 생성기로 사용한다. 기본 cleanup에서 30초 지속 포화, 같은 정상 UE의 30초 반복 거부→회복, 기지국 전체 마비는 미달 상태로 닫는다. 로컬 `BROKER_SAME_WITNESS_CYCLE`은 이 기준을 검사하는 단위 테스트까지 있으나 p5 미실측 초안이므로 운영 기능·성능 근거에서 제외한다. → [사용 가이드](rss-storm/docs/USAGE-GUIDE.ko.md)
+- **CSI-DTX RLF 정적 hardening은 p5 ZMQ에서 성립했다.** `pucch.max_consecutive_kos=20` 한 항목만 바꾼 단일 UE 직렬 RRCSetupComplete 미전송형 20회에서 RLF→F1 Release Request/Command/Complete 각 단계 집계가 20건씩 일치했고, 같은 설정의 약 60초 attack-off 회귀는 ping 20/20·RLF 0이었다. 설정은 원본 SHA-256으로 원복했다. 시도별 F1/CU ID 조인 증거는 아니며, 셀 전체 정적 설정의 실증이지 탐지기가 호출한 actuator나 near-RT RIC 폐루프가 아니다. → [대응 경로 감사](reproducers/rrc-signaling-storm/docs/RESPONSE-PATH-AUDIT.ko.md)
+- **2026-11-02에 RRC storm 서브태스크를 동결했다.** 현재 결과는 분석기 입력·정답 생성기로 사용한다. 기본 cleanup에서 30초 지속 포화, 같은 정상 UE의 30초 반복 거부→회복, 기지국 전체 마비는 미달 상태로 닫는다. 로컬 `BROKER_SAME_WITNESS_CYCLE`은 이 기준을 검사하는 단위 테스트까지 있으나 p5 미실측 초안이므로 운영 기능·성능 근거에서 제외한다. → [사용 가이드](reproducers/rrc-signaling-storm/docs/USAGE-GUIDE.ko.md)
 
 ### 동결 후 팀 결정(RRC storm 구현 범위 밖)
 1. 실제 빌드·기본 회귀·3회 Msg4 ACK-on/off를 확인한 w38을 데모 기준선으로 고정할지, 최신 OAI로 옮길지. 버전 이관은 별도 브랜치로 한다.
@@ -96,7 +102,7 @@
 - 5gattacks 라이선스 없음 → 포크 전 저자 허가/인용 확인.
 
 ### 마감 상태와 사용
-1. 사용자는 [사용 가이드](rss-storm/docs/USAGE-GUIDE.ko.md)에 따라 RRCSetupComplete 미전송형을 주 시나리오, RRCSetupRequest 후 중단형을 별도 가시성·부하 시나리오로 사용한다.
+1. 사용자는 [사용 가이드](reproducers/rrc-signaling-storm/docs/USAGE-GUIDE.ko.md)에 따라 RRCSetupComplete 미전송형을 주 시나리오, RRCSetupRequest 후 중단형을 별도 가시성·부하 시나리오로 사용한다.
 2. 보존 artifact와 manifest는 수정하지 않고, detector 출력이 봉인될 때까지 UE ground truth를 입력에서 분리한다.
 3. 다음 공격 재현 도구는 이 결과를 덮어쓰지 말고 별도 디렉터리·시나리오 이름·라벨 계약으로 시작한다.
 4. RRC storm을 다시 열 경우에만 30초 fresh-witness 반복 실패, 같은 witness 회복, 3회 반복, exact DU ACK를 재개 합격 기준으로 사용한다. hold32는 계속 금지한다.

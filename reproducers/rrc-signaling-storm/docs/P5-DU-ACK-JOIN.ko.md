@@ -7,7 +7,7 @@
 > 최종 binary `202934f7d34db2f81763b28d43f2d09f5cdac9175d4146a412d778174f3c4c2b`는
 > V4의 세 공격 sector에서 DU ACK 확인 RRCSetupComplete 미전송형 합계 176건을 통과했다.
 > 해당 버전의 4셀 정상 대조군도 성공했다. 근거와 해시는
-> [V4 hold32 진단](../../artifacts/p5-cu200-3cell-20261030/README.md)에 있다.
+> [V4 hold32 진단](../../../artifacts/p5-cu200-3cell-20261030/README.md)에 있다.
 
 아래 절차는 새 바이너리마다 run-scoped 조인이 실제 OCUDU FAPI 로그에서
 `canonical_a=true`를 만드는지 짧게 확인하는 독립 게이트다. 공격 범위를 넓히거나 서비스

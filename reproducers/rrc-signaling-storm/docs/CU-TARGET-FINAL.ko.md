@@ -6,7 +6,7 @@
 
 > **역사 문서:** 이 문서는 CU cap을 10/90으로 낮춘 과거 실험의 최종 기록이다.
 > `max_nof_ues`는 DU별 한도가 아니라 CU 전체 `ue_manager`가 공유하는 전역 상한이며,
-> 현재 결과는 [V4 hold32 진단](../../artifacts/p5-cu200-3cell-20261030/README.md)과
+> 현재 결과는 [V4 hold32 진단](../../../artifacts/p5-cu200-3cell-20261030/README.md)과
 > [`rss-cu200`](../bin/rss-cu200)을 본다. V4는 당시 계보 바이너리 `202934f7...`에서 exact
 > DU ACK 확인 RRCSetupComplete 미전송형 176건, 인공 hold 안의 CU 피크 200과 15.68초 점유 plateau, 별도 셀 정상 증인 17/17 거부
 > (16.31초, Msg4·완료 0)를 보였다. 4셀 정상 대조군은 성공했다. 이는 32초 컨텍스트

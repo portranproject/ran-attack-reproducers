@@ -677,7 +677,7 @@ context 만료 뒤의 동작을 이 결과에 섞지 않도록 32초보다 긴 �
 
 ## 참고문헌
 
-[1] 내부 문서, [AGENTS.md](AGENTS.md) — 팀 프로젝트 개요, 내 서브태스크, 확정 사항·열린 결정·리스크.  
+[1] 내부 문서, [AGENTS.md](AGENTS.md) — 팀 프로젝트 개요, RRC signaling storm 공격 모듈, 확정 사항·열린 결정·리스크.
 [2] A. Abou Hasna, A. El Falou, "Experimental Validation and Mitigation of RRC Storm Attacks in 5G Cellular Networks," arXiv:2608.16441v2, 2026. https://arxiv.org/html/2608.16441 (보관 PDF: [sources/2608.16441_Experimental-Validation-RRC-Storm_OAI_KAUST.pdf](sources/2608.16441_Experimental-Validation-RRC-Storm_OAI_KAUST.pdf))  
 [3] D. K. Nguyen, R. El Malki, F. Rebecchi, "RRC Signaling Storm Detection in O-RAN," arXiv:2504.15738v1, 2025. https://arxiv.org/html/2504.15738  
 [4] 3GPP TS 38.321 V16.18.0, "NR; Medium Access Control (MAC) protocol specification," ETSI TS 138 321, 2025. https://www.etsi.org/deliver/etsi_ts/138300_138399/138321/16.18.00_60/ts_138321v161800p.pdf  

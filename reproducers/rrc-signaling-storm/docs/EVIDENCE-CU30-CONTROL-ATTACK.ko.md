@@ -64,10 +64,10 @@ grep -c "UE admission limit reached" /tmp/ocu.log
 
 - 후속 GNU Radio broker는 별도 full-service witness 경로를 확보했지만 서비스 결과가
   불안정했고, rate-v2 D4도 공격 중 witness의 Registration·PDU 성공으로 끝났다.
-- 정상 UE 서비스 DoS는 [기본 cleanup 실패 분석](../../artifacts/p5-default-cleanup-rate-v2-20261030/README.md)의
+- 정상 UE 서비스 DoS는 [기본 cleanup 실패 분석](../../../artifacts/p5-default-cleanup-rate-v2-20261030/README.md)의
   합격 기준을 별도 경로에서 통과해야 한다.
 
 > **2026-10-30 후속 정정:** GNU Radio 5 UE broker로 별도 프로세스 일반 witness
 > 경로는 확보했다. 다만 사전 고정 control 15회 중 유효 런이 3회뿐이고 ping 손실도
 > 0.833333%~93.5484%여서, 안정적인 정상 UE 기준선이나 DoS 증거로는 쓰지 않는다.
-> 결과는 [`broker-sync-sampling-20261030`](../../artifacts/broker-sync-sampling-20261030/)에 있다.
+> 결과는 [`broker-sync-sampling-20261030`](../../../artifacts/broker-sync-sampling-20261030/)에 있다.

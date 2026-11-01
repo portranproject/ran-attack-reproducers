@@ -84,7 +84,7 @@ threshold 20의 단일 UE 직렬 런에서는 다음 전체 경로의 각 단계
 Msg5·InitialUEMessage는 0이었다. 같은 threshold 20의 정상 UE 회귀 한 번에서는
 Registration/PDU 성공, ping 20/20, unintended RLF 0이었다. DU 설정은 원본
 SHA-256으로 원복했다. 원문 해시와 집계는
-[실기 증거](../../artifacts/label-v1-rlf20-20261030/README.md)에 있다.
+[실기 증거](../../../artifacts/label-v1-rlf20-20261030/README.md)에 있다.
 
 ZMQ radio의 air time이 wall time보다 빠르므로 이 런의 wall-clock context 수명을
 OTA 수명으로 일반화하지 않는다. 정상 회귀도 한 번뿐이라 장기·열악 채널의 false

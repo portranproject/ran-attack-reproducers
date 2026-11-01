@@ -56,7 +56,7 @@ DU ACK 확인 RRCSetupComplete 미전송형 176건을 만들었고, CU 점유는
 연속 유지됐다. 별도 네 번째 셀의 정상 증인은 16.31초 동안 17/17 거부됐고 Msg4·완료는
 0이었다. 같은 4셀 정상 대조군은 성공했다. 다만 이 판정은 측정된 약 32초 컨텍스트
 수명 전의 한정 창이다. 이후에는 만료 슬롯 경쟁이 시작되므로 무기한 거부로 확대하지
-않는다. 진단 명령과 원문은 [V4 hold32 진단](../../artifacts/p5-cu200-3cell-20261030/README.md)과
+않는다. 진단 명령과 원문은 [V4 hold32 진단](../../../artifacts/p5-cu200-3cell-20261030/README.md)과
 [`rss-cu200`](../bin/rss-cu200)에 있다.
 
 ## 4. 같은 셀 증인 UE의 구조적 한계 (2026-10-27)
@@ -216,9 +216,9 @@ SIGSEGV는 0회였다. 유효 3회의 attach는 1~36초였지만 ping 손실은
 percentile이나 성공률을 보장하지 않는다. 이 broker는 안정 서비스 증거로 부적합하며,
 control-only 표본을 공격 효과나 DoS 주장에 사용하지 않는다. 다음 증거 게이트는
 장비·안전값을 확정한 차폐 OTA control/attack 반복이다. 종료 근거는
-[`artifacts/broker-stability-20261030/`](../../artifacts/broker-stability-20261030/)에,
+[`artifacts/broker-stability-20261030/`](../../../artifacts/broker-stability-20261030/)에,
 고정 캠페인 결과는
-[`artifacts/broker-sync-sampling-20261030/`](../../artifacts/broker-sync-sampling-20261030/)에
+[`artifacts/broker-sync-sampling-20261030/`](../../../artifacts/broker-sync-sampling-20261030/)에
 있다.
 
 ## 10. 기본 cleanup rate-v2도 sustained denial 실패 (2026-10-30)
@@ -240,4 +240,4 @@ cleanup/RLF 값은 유지했고, 실제 timeout은 median 1,999.517ms였다.
 거절된 요청을 제외한 **실제 admission률**이 모든 짧은 창에서 cleanup률보다 높아야 한다.
 현재 full OAI/ZMQ 경로는 이 조건을 만족하지 못한다. 여러 셀을 동시에 쓴 D3B2도 CU 200
 최장 점유가 1.70초였고 정상 witness가 공격 중 서비스에 성공했다. 원문과 해시는
-[rate-v2 실패 artifact](../../artifacts/p5-default-cleanup-rate-v2-20261030/README.md)에 있다.
+[rate-v2 실패 artifact](../../../artifacts/p5-default-cleanup-rate-v2-20261030/README.md)에 있다.

@@ -143,7 +143,7 @@ flowchart LR
 
 하단 조건: **gNB 소스 무수정 / 기본 설정 실험과 설정 변경 실험 구분 / 차폐 OTA 미검증**
 
-프로젝트 근거: [구현 문서](/Volumes/owc/Users/ideal/s-dev/ran-rrc-storm/rss-storm/README.md), [측정 기록](/Volumes/owc/Users/ideal/s-dev/ran-rrc-storm/rss-storm/docs/MEASUREMENTS.md).
+프로젝트 근거: [구현 문서](/Volumes/owc/Users/ideal/s-dev/ran-rrc-storm/reproducers/rrc-signaling-storm/README.md), [측정 기록](/Volumes/owc/Users/ideal/s-dev/ran-rrc-storm/reproducers/rrc-signaling-storm/docs/MEASUREMENTS.md).
 
 ### 발표자 설명
 
@@ -195,7 +195,7 @@ flowchart LR
 - 과거 실행 메타데이터와 실제 CU 로그의 타이머 값이 다른 기록도 있다. 수치 발표 전에는 실제 로드 설정을 확인한다.
 - 가상 무선의 진행 속도는 벽시계 시간과 일치하지 않을 수 있다. 가상 환경의 초당 수치를 실제 RF 성능으로 옮기지 않는다.
 
-근거: [초기 실험 CU 로그](/Volumes/owc/Users/ideal/s-dev/ran-rrc-storm/tool/runs/A-1019T211216Z/ocu-window.log), [별도 포화 실험 로그](/Volumes/owc/Users/ideal/s-dev/ran-rrc-storm/tool/runs/ocu-saturation-window.log), [측정 기록](/Volumes/owc/Users/ideal/s-dev/ran-rrc-storm/rss-storm/docs/MEASUREMENTS.md), [테스트베드 한계](/Volumes/owc/Users/ideal/s-dev/ran-rrc-storm/testbed-limitations.md).
+근거: [초기 실험 CU 로그](/Volumes/owc/Users/ideal/s-dev/ran-rrc-storm/tool/runs/A-1019T211216Z/ocu-window.log), [별도 포화 실험 로그](/Volumes/owc/Users/ideal/s-dev/ran-rrc-storm/tool/runs/ocu-saturation-window.log), [측정 기록](/Volumes/owc/Users/ideal/s-dev/ran-rrc-storm/reproducers/rrc-signaling-storm/docs/MEASUREMENTS.md), [테스트베드 한계](/Volumes/owc/Users/ideal/s-dev/ran-rrc-storm/testbed-limitations.md).
 
 ## 7. 4부 앞으로의 계획과 한계
 

@@ -94,7 +94,11 @@ def main(argv):
     if len(argv) > 1:
         print("usage: check_sensitive_history.py [REPOSITORY]", file=sys.stderr)
         return 2
-    root = Path(argv[0] if argv else Path(__file__).resolve().parents[2])
+    root = Path(argv[0]) if argv else Path(subprocess.check_output(
+        ["git", "-C", str(Path(__file__).resolve().parent),
+         "rev-parse", "--show-toplevel"],
+        text=True,
+    ).strip())
     try:
         subprocess.run(
             ["git", "-C", str(root), "rev-parse", "--git-dir"],

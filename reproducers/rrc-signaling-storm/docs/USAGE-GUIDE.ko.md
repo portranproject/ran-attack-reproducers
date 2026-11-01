@@ -29,7 +29,7 @@
 | `Mode B` / `모드 B` | 용량 12·보유 7초 진단 프로필 |
 
 과거 run ID·경로·JSON 필드와 체크섬으로 봉인된 판정문은 수정하지 않는다. 상세 예외는
-[과거 증거 명칭표](../../artifacts/LEGACY-NAMES.ko.md)에 정리했다.
+[과거 증거 명칭표](../../../artifacts/LEGACY-NAMES.ko.md)에 정리했다.
 
 ## 1. 이 도구로 할 수 있는 것
 
@@ -100,7 +100,7 @@ DoS는 입증하지 않았다. 인공적으로 정리시간을 늘린 hold32 결
   보존한다. 둘 중 하나라도 없으면 cross-host latency는 `null/unscorable`이다.
 
 ```bash
-cd /path/to/ran-rrc-storm/rss-storm
+cd /path/to/rrc-storm-reproducer/reproducers/rrc-signaling-storm
 cp -n conf/rss.conf.example conf/rss.conf
 $EDITOR conf/rss.conf
 bin/rss-doctor
@@ -287,5 +287,5 @@ latency는 동일 clock이거나 offset+uncertainty 증거가 있을 때만 계�
 
 라벨 필드의 정확한 의미는 [LABEL-CONTRACT.ko.md](LABEL-CONTRACT.ko.md), 실행기 옵션과
 산출물은 [../README.md](../README.md), 현재 성능 원문은
-[기본 cleanup D6 증거](../../artifacts/p5-default-cleanup-rate-v2-20261030/README.md)를
+[기본 cleanup D6 증거](../../../artifacts/p5-default-cleanup-rate-v2-20261030/README.md)를
 기준으로 한다.

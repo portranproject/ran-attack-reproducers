@@ -186,12 +186,12 @@ teardown·SIGSEGV 0이었다. 유효 3회의 attach는 1~36초, ping 손실은
 이 항목들 전에는 “정상 사용자 DoS”나 “탐지→대응 폐루프 성공”을 주장하지 않는다.
 
 빌드 해시와 원격 원문 파일의 SHA-256 목록은
-[`artifacts/curated-verify-20261030/`](../../artifacts/curated-verify-20261030/)에
+[`artifacts/curated-verify-20261030/`](../../../artifacts/curated-verify-20261030/)에
 별도로 남겼다. 식별자와 가입 절차 자료가 포함될 수 있는 원문 로그 자체는 저장소로
 복사하지 않았다. 독립 witness 요약과 원격 원문 해시는
-[`artifacts/broker-witness-20261030/`](../../artifacts/broker-witness-20261030/)에 있다.
+[`artifacts/broker-witness-20261030/`](../../../artifacts/broker-witness-20261030/)에 있다.
 종료 원인·2단계 종료·제한 재시도의 후속 검증은
-[`artifacts/broker-stability-20261030/`](../../artifacts/broker-stability-20261030/)에 있다.
+[`artifacts/broker-stability-20261030/`](../../../artifacts/broker-stability-20261030/)에 있다.
 15회 고정 control 캠페인의 결과·해시는
-[`artifacts/broker-sync-sampling-20261030/`](../../artifacts/broker-sync-sampling-20261030/)에
+[`artifacts/broker-sync-sampling-20261030/`](../../../artifacts/broker-sync-sampling-20261030/)에
 있다.

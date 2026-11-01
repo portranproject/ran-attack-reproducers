@@ -12,7 +12,7 @@ gNB의 미완료 UE 컨텍스트 점유와 거절 로그를 관측한다. 아래
 OCUDU·ZMQ 테스트베드의 내부 실험 요약이다. 별도 프로세스 일반 UE로 서비스 영향을
 측정했지만 성공/실패가 갈려 결정적인 정상 사용자 DoS는 입증되지 않았다.
 D6 기본-cleanup 원문·집계·SHA-256은
-[`artifacts/p5-default-cleanup-rate-v2-20261030/`](../artifacts/p5-default-cleanup-rate-v2-20261030/)에
+[`artifacts/p5-default-cleanup-rate-v2-20261030/`](../../artifacts/p5-default-cleanup-rate-v2-20261030/)에
 보존했으며, 그 범위를 넘어 OTA·상용망으로 일반화하지 않는다.
 
 2026-10-30에는 clean OAI `2026.w38`에서 curated 패치를 실제 빌드하고 attack-off
@@ -28,7 +28,7 @@ MAC/RRC 동시 JSONL 기록이 섞이는 결함을 exporter가 fail-closed로 �
 RLF→F1 Release Request/Command/Complete 각 단계 집계 20건과 일치했고, 같은 설정의
 attack-off 회귀는 ping 20/20·RLF 0이었다. 이는 시도별 ID 조인 증거가 아닌 셀 전체
 정적 hardening이지 탐지기가 호출한 actuator는
-아니다. 원문 해시와 주장 경계는 [label/RLF20 실측](../artifacts/label-v1-rlf20-20261030/README.md)에 있다.
+아니다. 원문 해시와 주장 경계는 [label/RLF20 실측](../../artifacts/label-v1-rlf20-20261030/README.md)에 있다.
 
 같은 날 GNU Radio 5 UE broker에서 별도 프로세스 일반 witness의
 attach→Registration→PDU→ping 경로를 확인했다. 공격군 r2는 서비스 실패, r3은
@@ -236,7 +236,7 @@ UE 직렬 RRCSetupComplete 미전송형 20회의 RLF와 F1 release 각 단계 �
 attack-off 기준선은
 Registration/PDU·ping 20/20, RLF 0이었다. DU 설정은 원본 SHA-256으로 원복했다.
 차폐 OTA, 장기·열악 채널 정상 UE 안전성, 외부 탐지기가 호출하는 동적 actuator는
-미검증이다. [원격 원문 SHA-256과 집계](../artifacts/label-v1-rlf20-20261030/README.md)를
+미검증이다. [원격 원문 SHA-256과 집계](../../artifacts/label-v1-rlf20-20261030/README.md)를
 같이 본다.
 
 **2026-10-30 CU 200 hold32 진단(성공 판정 아님).** CU의 `max_nof_ues: 200`과 셀별 DU capacity를
@@ -248,7 +248,7 @@ PDU·channel timeout은 모두 0이었다. 부하 전 4셀 control은 모두
 그러나 `bin/rss-cu200`은 기본 약 2초 정리시간을 32초로 늘리고 첫 context 만료 전에
 끝냈다. 이는 DU ACK 확인 RRCSetupComplete 미전송형·CU 200 도달과 그 인공 hold 안의 거부를 보여 줄 뿐,
 공격 유입률이 기본 해제율을 이긴 통제 가능한 서비스 거부 증거가 아니다. 설정·로그·
-해시는 [CU200 진단](../artifacts/p5-cu200-3cell-20261030/README.md)에 있다.
+해시는 [CU200 진단](../../artifacts/p5-cu200-3cell-20261030/README.md)에 있다.
 
 **2026-10-30 기본 cleanup rate-v2 재검증(실패).** rate-v2 패치 `4ef70618…`,
 바이너리 `c2761193…`로 한 공격 프로세스의 6 UE와 별도 full-service witness를
@@ -257,7 +257,7 @@ PDU·channel timeout은 모두 0이었다. 부하 전 4셀 control은 모두
 생성 40.026/s 대 정리 39.922/s로 평형이었다. 점유 96 최장 구간은 0.885초였고
 정상 witness는 첫 distinct 시도만 거절된 뒤 Registration·PDU와 ping 437/438에
 성공했다. 따라서 공격 처리율 개선은 확인했지만 sustained denial과 공격자 통제성은
-성립하지 않았다. [원문·계산·다중 셀 반증](../artifacts/p5-default-cleanup-rate-v2-20261030/README.md)을
+성립하지 않았다. [원문·계산·다중 셀 반증](../../artifacts/p5-default-cleanup-rate-v2-20261030/README.md)을
 같이 본다.
 
 **2026-10-30 기본 cleanup D6 후속 판정.** exact ACK RNTI 보정을 포함한 v6 UE
@@ -272,7 +272,7 @@ Msg5 0을 확인했지만 공격 중 정상 UE가 Registration·PDU·ping 194/19
 따라서 RRCSetupRequest 후 중단형의 좁은 서비스 on/off는 3/3 반복됐고 DU ACK 확인
 RRCSetupComplete 미전송 기전도 확인됐지만, 30초 지속 포화·기지국 전체 마비는
 입증되지 않았다. 원문과 제한은
-[기본 cleanup artifact](../artifacts/p5-default-cleanup-rate-v2-20261030/README.md)를 따른다.
+[기본 cleanup artifact](../../artifacts/p5-default-cleanup-rate-v2-20261030/README.md)를 따른다.
 
 **2026-10-30 RRCSetupRequest 후 중단형 p5 검증.** `G2-msg3-0140`은 MAC-confirmed Msg3 10개를
 current-run CU `RRCSetupRequest`와 TC-RNTI로 10/10 조인했다. 이후 확인 결과
@@ -295,7 +295,7 @@ Registration, PDU와 TUN까지 성공했고 CU도 RRC·PDU 성공을 기록했�
 hold32 진단 프로필에서 G34 정상 control이 Registration/PDU/TUN을 통과했다. 같은 설정의 G35는
 probe 11회가 모두 CU까지 도달한 뒤 `DU is not able to serve`로 거부됐고,
 10.13초 동안 Msg4·Msg5·연결이 0이었다. 상세 설정·반증 run·해시는
-[capacity-96 artifact](../artifacts/p5-msg3-cap96-20261030/README.md)에 있다.
+[capacity-96 artifact](../../artifacts/p5-msg3-cap96-20261030/README.md)에 있다.
 
 ### 전제 조건
 
@@ -331,7 +331,8 @@ probe 11회가 모두 CU까지 도달한 뒤 `DU is not able to serve`로 거부
 ### 한눈에
 
 ```bash
-git clone <this repo> rss-storm && cd rss-storm
+git clone https://github.com/portranproject/rrc-storm-reproducer.git
+cd rrc-storm-reproducer/reproducers/rrc-signaling-storm
 bin/rss-bootstrap                        # 1. OAI 받아서 최초 빌드 (한 번만)
 cp conf/rss.conf.example conf/rss.conf   # 2. 설정
 $EDITOR conf/rss.conf
@@ -709,10 +710,10 @@ bin/rss-broker-witness-retry attack  -n bw-attack-1030  -a 3 -d 60
 
 fail-fast와 제한 재시도는 `sync=0` 시작 경합 자체나 대조군 ping 품질 변동을 해결하지
 않는다. 종료 수정과 제한 재시도의 실기·회귀 근거는
-[`artifacts/broker-stability-20261030/`](../artifacts/broker-stability-20261030/)에 있다.
+[`artifacts/broker-stability-20261030/`](../../artifacts/broker-stability-20261030/)에 있다.
 15회 캠페인의 유효 c04/c07/c13은 각각 attach 1/3/36초, ping 손실
 93.3333%/93.5484%/0.833333%였다. 원문 해시와 분류는
-[`artifacts/broker-sync-sampling-20261030/README.md`](../artifacts/broker-sync-sampling-20261030/README.md)에
+[`artifacts/broker-sync-sampling-20261030/README.md`](../../artifacts/broker-sync-sampling-20261030/README.md)에
 있다. 이 표본으로 안정적인 DoS나 서비스 보존을 주장하지 않는다.
 
 ---
@@ -1016,7 +1017,7 @@ NOTICE.md            사용 제한·출처·라이선스 고지
 
 ## 비공개 GitHub 게시 범위
 
-현재 검수 대상은 `rss-storm/`의 코드·문서와 상위 디렉터리의 프로젝트 문서,
+현재 검수 대상은 `reproducers/rrc-signaling-storm/`의 코드·문서와 상위 디렉터리의 프로젝트 문서,
 검토한 artifact 최상위 README·SHA-256·campaign 메타데이터다. 이전
 `rss-publish` 브랜치는 오래된 상태이므로 최종 변경을 커밋한 뒤에만 다시 만든다.
 원시 실험 로그·압축본·개인 설정은 로컬에 보존하고 Git에는 올리지 않는다.

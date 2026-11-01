@@ -163,7 +163,7 @@ experiment cleanup window without changing capacity produced G35: 11 normal
 probe Msg3 transmissions, 11 exact CU requests, 11 DU-resource rejections, and
 zero Msg4/Msg5/connection over 10.13 seconds. The final profile and hashes are
 retained in the
-[capacity-96 artifact](../../artifacts/p5-msg3-cap96-20261030/README.md).
+[capacity-96 artifact](../../../artifacts/p5-msg3-cap96-20261030/README.md).
 
 G13/G14 use an ordinary probe in the **same OAI process and shared ZMQ radio**.
 They are controlled diagnostic evidence of admission denial and post-restart
@@ -171,7 +171,7 @@ service availability, not spontaneous recovery or an independent physical
 normal-UE DoS result. Independent service-impact claims
 still require a stable separate-process broker or shielded OTA witness. Selected
 JSON evidence, the G13 CU slice and hashes are retained in the
-[p5 post-RRCSetupRequest-abort artifact](../../artifacts/p5-msg3-only-20261030/README.md).
+[p5 post-RRCSetupRequest-abort artifact](../../../artifacts/p5-msg3-only-20261030/README.md).
 
 ---
 

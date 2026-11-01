@@ -25,7 +25,7 @@ reproducers/
 artifacts/                  # 봉인된 RRC 증거와 게시용 요약
 sources/                    # 조사에 사용한 1차 자료 보관본
 tool/                       # RRC 초기 역사 구현
-rss-storm -> reproducers/rrc-signaling-storm  # 과거 로컬 경로 호환 링크
+rss-storm/                  # 과거 문서·명령용 호환 안내와 위임 스크립트
 ```
 
 새 공격은 `reproducers/<attack-name>/`에 별도 모듈로 추가한다. 공통 실행 프레임워크는

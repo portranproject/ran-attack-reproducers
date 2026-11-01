@@ -331,8 +331,8 @@ probe 11회가 모두 CU까지 도달한 뒤 `DU is not able to serve`로 거부
 ### 한눈에
 
 ```bash
-git clone https://github.com/portranproject/rrc-storm-reproducer.git
-cd rrc-storm-reproducer/reproducers/rrc-signaling-storm
+git clone https://github.com/portranproject/ran-attack-reproducers.git
+cd ran-attack-reproducers/reproducers/rrc-signaling-storm
 bin/rss-bootstrap                        # 1. OAI 받아서 최초 빌드 (한 번만)
 cp conf/rss.conf.example conf/rss.conf   # 2. 설정
 $EDITOR conf/rss.conf

@@ -308,8 +308,8 @@ already running.
 ### At a glance
 
 ```bash
-git clone https://github.com/portranproject/rrc-storm-reproducer.git
-cd rrc-storm-reproducer/reproducers/rrc-signaling-storm
+git clone https://github.com/portranproject/ran-attack-reproducers.git
+cd ran-attack-reproducers/reproducers/rrc-signaling-storm
 bin/rss-bootstrap                        # 1. fetch OAI and build it once
 cp conf/rss.conf.example conf/rss.conf   # 2. configure
 $EDITOR conf/rss.conf

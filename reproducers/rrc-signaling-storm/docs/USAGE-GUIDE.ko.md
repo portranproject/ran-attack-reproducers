@@ -100,7 +100,7 @@ DoS는 입증하지 않았다. 인공적으로 정리시간을 늘린 hold32 결
   보존한다. 둘 중 하나라도 없으면 cross-host latency는 `null/unscorable`이다.
 
 ```bash
-cd /path/to/rrc-storm-reproducer/reproducers/rrc-signaling-storm
+cd /path/to/ran-attack-reproducers/reproducers/rrc-signaling-storm
 cp -n conf/rss.conf.example conf/rss.conf
 $EDITOR conf/rss.conf
 bin/rss-doctor

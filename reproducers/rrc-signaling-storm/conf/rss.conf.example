@@ -12,7 +12,7 @@ ENABLE=0                 # 0 = normal UE (regression baseline), 1 = attack.
 NUM_UES=2                # attacker UE instances sharing one radio.
                          #     Measured: 1 reaches 90/96, 2 reaches 96/96.
                          #     More than 2 does not raise the attempt rate and
-                         #     adds sample loss. See README.en.md "choosing NUM_UES".
+                         #     adds sample loss. See README.md "NUM_UES 선택".
 INTERVAL_MS=0            # extra delay between a skipped Msg5 and the next try.
                          #     0 = as fast as the radio allows.
 PHASE_MS=0               # per-retry stride: every attack retry adds UE id x this many ms.
@@ -80,7 +80,7 @@ RSS_ZMQ_TX_WAIT_US=-2    # how the ZMQ TX thread waits for local samples.
 RSS_SHARE_LOCKSTEP=1     # hold the per-UE downlink cursors together
 RSS_SHARE_NUE=           # leave unset: rss-run uses NUM_UES and rejects partial
                          #     batches because every PHY instance writes samples.
-RSS_SHARE_WR_MONOTONIC=0 # KEEP 0. See README.en.md "rejected optimisations".
+RSS_SHARE_WR_MONOTONIC=0 # KEEP 0. See README.md "기각된 최적화".
 
 # --------------------------------------------------------------- local paths
 OAI=/root/OAI

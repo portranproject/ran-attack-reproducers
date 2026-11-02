@@ -1,0 +1,47 @@
+{
+  "schema_version": "blind.lab-inventory.v1",
+  "captured_utc": "2026-11-02T00:00:05Z",
+  "scope": "team-owned p5 ZMQ testbed",
+  "invariants": {
+    "gnb_source_modified": false,
+    "core_source_modified": false,
+    "cu_du_timer_or_capacity_modified": false,
+    "victim_and_attacker_profiles_distinct": true
+  },
+  "ocudu": {
+    "commit": "e0db566aac6e6376ddd60e83c84f58698fcc4d70",
+    "cu_binary_sha256": "8a79e03600726c1a1accd008a01341c82d51d0b6e9f4c10cc877656a91e7246d",
+    "cu_config_sha256": "2ab32fc1f27e709b1dd80a4aaf72d61363c96638d064e413cdd539fe3abb15b0",
+    "du_binary_sha256": "416c74d99c7ef40495fbe1bea4888f4f393aa736337c48a965cc239439a5eded",
+    "du_config_sha256": "776320367d4c49b0eb0341dbef7bc71e411769a9a85d0ce538a6f84e5735f71d"
+  },
+  "open5gs": {
+    "commit": "d9d3abdd480be96fac3bc8a997e83446648763ca",
+    "image_digest": "sha256:09ac7334373d6e8d3ec4bb760dc345e8f3275cb687fa592af927460e94e4ae75",
+    "active_config_sha256": "e9fbb1cb3ea30a8bc26c2a47ee51686e3e30428e9be70c8a96d5e53164256a5a",
+    "context_behavior": "v2.7.6-style holding NG context path"
+  },
+  "oai_ue": {
+    "baseline_commit": "6d6782b48484efd935c14e834832032743f9b138",
+    "blind_patch_sha256": "e63237010d58cc94d76aadd77978380e4dfddde80683a0c746e6eedaaa286e0d",
+    "blind_binary_sha256": "ed9952ba1c5203a4645cf747fc5ae0e2eef643ce7dca3a39653554643aae78c0"
+  },
+  "reproducer": {
+    "runner_sha256": "f7fe75887bc793215104c7fcd52c03692d711c6f8e332d0009d1566a5827231d",
+    "campaign_sha256": "e0f323e92dd1d68373ec6f70e3532730f01ecdc060e7346b2c65b1f2c0a4fabc",
+    "phase_sha256": "d3bc7b70f953356c828ffeb0d0f0fdd9405fd83b780b2658fe272c2d78510f64",
+    "p5_hook_sha256": "244b3112e45987d3c77b8363b0e5c6a1d76bf276f9d461fc4fb145403f0311ac",
+    "verifier_sha256": "36d448a5467bcf6ad94e3485c5c80c72c043c9616659403504858713768f4fa3",
+    "manifest_tool_sha256": "497bb3a1b454266002672e14dac5ecdf2cec8c4ab749d521ed73b9661b6f34c1",
+    "broker_sha256": "715cd0145eed520c6ab068bd12fb1474d074177cb6cc7828ab6baee198b03864",
+    "p5_evidence_tool_sha256": "5d2a6a723ffd318f8833771fe7c54261dc03f407fbc1361352f2263bc4fba2ac",
+    "artifact_scanner_sha256": "c497470a5ac69843f0a272488a32e76e2b0679298f1c9a55f298e2bef0919e6a"
+  },
+  "profiles": {
+    "manifest_sha256": "aae0060df7142217ebdeac24aab0dbf2e6229b12d279156b514e62afd739fb98",
+    "victim_fingerprint": "784c1d7febd224de746b90f94a1b7958c060ba553c302ee304352e5dde5f4f01",
+    "attacker_fingerprint": "ab3c2ba0523c1a115deed2e74a2a34af376b62fa395c000dab9362ac0f2923a1",
+    "control_fingerprint": "a4761e0891100915740d28dbdcbed0db5e1dc67439de7d76ac7a51db1186d254"
+  },
+  "clock_evidence_sha256": "bcd028626f0c4b5de709a0f440630e1fa4114b202006cce9f993d82334e8652f"
+}

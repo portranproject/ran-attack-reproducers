@@ -29,7 +29,7 @@
 | `Mode B` / `모드 B` | 용량 12·보유 7초 진단 프로필 |
 
 과거 run ID·경로·JSON 필드와 체크섬으로 봉인된 판정문은 수정하지 않는다. 상세 예외는
-[과거 증거 명칭표](../../../artifacts/LEGACY-NAMES.ko.md)에 정리했다.
+[과거 증거 명칭표](../../../artifacts/LEGACY-NAMES.md)에 정리했다.
 
 ## 1. 이 도구로 할 수 있는 것
 
@@ -285,7 +285,7 @@ latency는 동일 clock이거나 offset+uncertainty 증거가 있을 때만 계�
 4. p5를 사용했다면 인스턴스 상태가 실제 `stopped`인지 확인했다.
 5. raw 정답과 분석기 입력의 접근 권한을 분리했다.
 
-라벨 필드의 정확한 의미는 [LABEL-CONTRACT.ko.md](LABEL-CONTRACT.ko.md), 실행기 옵션과
+라벨 필드의 정확한 의미는 [LABEL-CONTRACT.md](LABEL-CONTRACT.md), 실행기 옵션과
 산출물은 [../README.md](../README.md), 현재 성능 원문은
 [기본 cleanup D6 증거](../../../artifacts/p5-default-cleanup-rate-v2-20261030/README.md)를
 기준으로 한다.

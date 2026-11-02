@@ -1,0 +1,59 @@
+{
+  "schema_version": "blind.p5-summary.v1",
+  "campaign_id": "p5-current-tmsi-v3",
+  "testbed": "team-owned p5 ZMQ",
+  "requested_matched_sets": 3,
+  "completed_matched_sets": 0,
+  "status": "valid-failure",
+  "reason": "attack:attack_effect_contract_not_met",
+  "thresholds": {
+    "baseline_ping_count": 20,
+    "loss_consecutive_pings": 5,
+    "observation_s": 40,
+    "recovery_ping_count": 20,
+    "recovery_timeout_s": 30
+  },
+  "gates": {
+    "current_target_identity_reached": true,
+    "current_target_owner_state_effect": true,
+    "specificity_controls_complete": false,
+    "g5_single_shot_service_denial": false,
+    "g6_non_privileged_identity_acquisition": false,
+    "g7_sustained_denial": false
+  },
+  "control": {
+    "run_id": "set001-control-try02",
+    "classification": "passed",
+    "healthy_service_samples": 71,
+    "total_service_samples": 71,
+    "attacker_commits": 0,
+    "crashes": 0
+  },
+  "attack": {
+    "run_id": "set001-attack-try01",
+    "classification": "valid-failure",
+    "target_stable": true,
+    "exact_join": true,
+    "target_owner_state_effect": true,
+    "victim_service_before": true,
+    "victim_service_loss": true,
+    "victim_service_after": false,
+    "same_victim_recovery": false,
+    "before_healthy_samples": 20,
+    "before_total_samples": 20,
+    "during_healthy_samples": 0,
+    "during_total_samples": 33,
+    "after_healthy_samples": 0,
+    "after_total_samples": 1,
+    "crashes": 0
+  },
+  "evidence_sha256": {
+    "campaign_json": "d18418f61ad6d8110cc79a4a6b68d524af2e185e3268e38e4a6cfc319b100336",
+    "campaign_events_jsonl": "2c847e1f84c8a7e30833cb74b2bbeabb4bf2d783a2a2d8c9d886a4ec39c8c79d",
+    "campaign_result_json": "2a86249d33920371b7e442acac2344cc88642bade5b75a77ee467a20f0d00d88",
+    "control_evidence_manifest": "0b11b2a6ab09f781e02bde81ba528c2022085181d7cea503a7d4ebba1690c450",
+    "attack_evidence_manifest": "e42c2333410e710e523c97b7529b201d2a89b36e77e5caa72f6b672da9503ef6",
+    "lab_inventory": "fe8364bc01d361d190fb2df1bc815fb40dc21296882216d1c75408d610bd1596",
+    "clock_evidence": "bcd028626f0c4b5de709a0f440630e1fa4114b202006cce9f993d82334e8652f"
+  }
+}

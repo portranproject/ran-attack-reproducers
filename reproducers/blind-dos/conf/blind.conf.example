@@ -1,0 +1,65 @@
+# blind.conf — copy to conf/blind.conf and adapt the two required hooks.
+# Command-line values override this file. Keep ENABLE=0 so an accidental
+# invocation cannot transmit the attack path.
+
+ENABLE=0
+MATCHED_REPETITIONS=3       # bin/blind-campaign -R 10 requests exact 10/10.
+INFRA_RETRY_LIMIT=1         # only infrastructure-invalid runs are retried.
+
+# Fixed before the first matched set and sealed in campaign.json.
+OBSERVATION_S=40
+RECOVERY_TIMEOUT_S=30
+BASELINE_PING_COUNT=20
+LOSS_CONSECUTIVE_PINGS=5
+RECOVERY_PING_COUNT=20
+
+BLIND_RUN_ROOT=             # default: reproducers/blind-dos/runs
+BLIND_LOCK_FILE=/tmp/blind-dos.lock
+PHASE_TIMEOUT_S=180
+VERIFY_TIMEOUT_S=60
+
+# Required execution hook. It receives:
+#   BLIND_MODE=control|attack
+#   BLIND_RUN_ID, BLIND_RUN_DIR, BLIND_ATTACK_ENABLED
+#   BLIND_HOOK_RESULT=$BLIND_RUN_DIR/verdict.json
+# and the threshold variables above. It must collect these run-scoped files:
+#   attacker_events.jsonl  victim_service.jsonl
+#   target_snapshot_before.json  target_snapshot_after.json
+#   amf.log  cu.log  du.log  ngap.pcap  f1ap.pcap  ground_truth.jsonl
+# It must not write verdict.json. A missing command or artifact fails closed.
+PHASE_CMD=
+
+# Required independent verifier hook. It reads the raw artifacts and writes
+# BLIND_HOOK_RESULT with this exact contract. blind-run ignores any "passed"
+# field and computes the phase result itself.
+# {
+#   "schema_version":"blind.phase-verdict.v1",
+#   "run_id":"...", "mode":"control|attack",
+#   "infrastructure_valid":true,
+#   "victim_service_before":true,
+#   "victim_service_loss":false,
+#   "victim_service_after":true,
+#   "target_stable":true,
+#   "exact_join":false,
+#   "target_owner_state_effect":false,
+#   "same_victim_recovery":false,
+#   "crash_count":0, "forced_kill_count":0
+# }
+VERIFY_CMD=
+
+# Cross-host ordering cannot be scored without measured clock evidence.
+CLOCK_SYNC_METHOD=unmeasured
+CLOCK_OFFSET_NS=null
+CLOCK_UNCERTAINTY_NS=null
+MAX_CLOCK_UNCERTAINTY_NS=10000000
+CLOCK_EVIDENCE_SHA256=
+
+# Hash of the reviewed G0 inventory manifest and non-reversible subscriber
+# fingerprints. Empty or equal V/A values fail before any process starts.
+LAB_INVENTORY_SHA256=
+VICTIM_PROFILE_FINGERPRINT=
+ATTACKER_PROFILE_FINGERPRINT=
+
+# Generic credential scanner shared by this multi-attack repository.
+ARTIFACT_SCANNER=
+EVIDENCE_TOOL=               # default: analysis/evidence_manifest.py

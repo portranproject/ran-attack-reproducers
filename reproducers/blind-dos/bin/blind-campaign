@@ -1,0 +1,384 @@
+#!/usr/bin/env bash
+# blind-campaign — run exactly N matched control/attack Blind DoS sets.
+set -uo pipefail
+umask 077
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONF="${BLIND_CONF:-$HERE/conf/blind.conf}"
+if [[ -L $CONF ]]; then
+  echo "configuration must not be a symlink: $CONF" >&2
+  exit 2
+fi
+if [[ -f $CONF ]]; then
+  # shellcheck source=/dev/null
+  . "$CONF" || { echo "cannot load $CONF" >&2; exit 2; }
+fi
+
+ENABLE=${ENABLE:-0}
+CAMPAIGN_ID=${CAMPAIGN_ID:-}
+MATCHED_REPETITIONS=${MATCHED_REPETITIONS:-3}
+INFRA_RETRY_LIMIT=${INFRA_RETRY_LIMIT:-1}
+RUN_ROOT=${BLIND_RUN_ROOT:-$HERE/runs}
+RUN_BIN=${BLIND_RUN_BIN:-$HERE/bin/blind-run}
+LOCK_FILE=${BLIND_LOCK_FILE:-/tmp/blind-dos.lock}
+FLOCK_BIN=${FLOCK_BIN:-flock}
+PHASE_CMD=${PHASE_CMD:-}
+VERIFY_CMD=${VERIFY_CMD:-}
+PHASE_TIMEOUT_S=${PHASE_TIMEOUT_S:-180}
+VERIFY_TIMEOUT_S=${VERIFY_TIMEOUT_S:-60}
+OBSERVATION_S=${OBSERVATION_S:-40}
+RECOVERY_TIMEOUT_S=${RECOVERY_TIMEOUT_S:-30}
+BASELINE_PING_COUNT=${BASELINE_PING_COUNT:-20}
+LOSS_CONSECUTIVE_PINGS=${LOSS_CONSECUTIVE_PINGS:-5}
+RECOVERY_PING_COUNT=${RECOVERY_PING_COUNT:-20}
+CLOCK_SYNC_METHOD=${CLOCK_SYNC_METHOD:-unmeasured}
+CLOCK_OFFSET_NS=${CLOCK_OFFSET_NS:-null}
+CLOCK_UNCERTAINTY_NS=${CLOCK_UNCERTAINTY_NS:-null}
+MAX_CLOCK_UNCERTAINTY_NS=${MAX_CLOCK_UNCERTAINTY_NS:-10000000}
+CLOCK_EVIDENCE_SHA256=${CLOCK_EVIDENCE_SHA256:-}
+LAB_INVENTORY_SHA256=${LAB_INVENTORY_SHA256:-}
+VICTIM_PROFILE_FINGERPRINT=${VICTIM_PROFILE_FINGERPRINT:-}
+ATTACKER_PROFILE_FINGERPRINT=${ATTACKER_PROFILE_FINGERPRINT:-}
+ARTIFACT_SCANNER=${ARTIFACT_SCANNER:-$HERE/../rrc-signaling-storm/analysis/check_sensitive_artifacts.py}
+EVIDENCE_TOOL=${EVIDENCE_TOOL:-$HERE/analysis/evidence_manifest.py}
+
+usage() {
+  cat <<EOF
+usage: $0 -e 1 -n CAMPAIGN_ID [-R MATCHED_REPETITIONS]
+  MATCHED_REPETITIONS defaults to 3 and must be 3..100.
+EOF
+  exit "${1:-2}"
+}
+
+while getopts "e:n:R:h" opt; do
+  case $opt in
+    e) ENABLE=$OPTARG ;;
+    n) CAMPAIGN_ID=$OPTARG ;;
+    R) MATCHED_REPETITIONS=$OPTARG ;;
+    h) usage 0 ;;
+    *) usage ;;
+  esac
+done
+
+fail() { echo "$*" >&2; exit 2; }
+positive_int() { [[ $2 =~ ^[1-9][0-9]*$ ]] || fail "$1 must be a positive integer"; }
+nonnegative_int() { [[ $2 =~ ^(0|[1-9][0-9]*)$ ]] || fail "$1 must be a non-negative integer"; }
+[[ $ENABLE == 1 ]] || fail "matched campaign is attack-off by default; pass -e 1 explicitly"
+[[ $CAMPAIGN_ID =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]] \
+  || fail "campaign_id must start with a letter or digit and use only letters, digits, '.', '_' or '-'"
+[[ $MATCHED_REPETITIONS =~ ^[1-9][0-9]*$ ]] \
+  && (( MATCHED_REPETITIONS >= 3 && MATCHED_REPETITIONS <= 100 )) \
+  || fail "MATCHED_REPETITIONS must be 3..100"
+[[ $INFRA_RETRY_LIMIT =~ ^(0|[1-9][0-9]*)$ ]] && (( INFRA_RETRY_LIMIT <= 3 )) \
+  || fail "INFRA_RETRY_LIMIT must be 0..3"
+[[ -x $RUN_BIN && ! -L $RUN_BIN ]] || fail "blind-run must be an executable non-symlink file: $RUN_BIN"
+[[ -n $PHASE_CMD && -n $VERIFY_CMD ]] || fail "PHASE_CMD and VERIFY_CMD are required"
+for pair in \
+  "PHASE_TIMEOUT_S:$PHASE_TIMEOUT_S" "VERIFY_TIMEOUT_S:$VERIFY_TIMEOUT_S" \
+  "OBSERVATION_S:$OBSERVATION_S" "RECOVERY_TIMEOUT_S:$RECOVERY_TIMEOUT_S" \
+  "BASELINE_PING_COUNT:$BASELINE_PING_COUNT" \
+  "LOSS_CONSECUTIVE_PINGS:$LOSS_CONSECUTIVE_PINGS" \
+  "RECOVERY_PING_COUNT:$RECOVERY_PING_COUNT"; do
+  positive_int "${pair%%:*}" "${pair#*:}"
+done
+nonnegative_int MAX_CLOCK_UNCERTAINTY_NS "$MAX_CLOCK_UNCERTAINTY_NS"
+[[ $CLOCK_SYNC_METHOD != unmeasured && $CLOCK_SYNC_METHOD =~ ^[a-zA-Z0-9._-]+$ ]] \
+  || fail "measured CLOCK_SYNC_METHOD is required"
+[[ $CLOCK_OFFSET_NS =~ ^-?(0|[1-9][0-9]*)$ ]] || fail "CLOCK_OFFSET_NS must be an integer"
+nonnegative_int CLOCK_UNCERTAINTY_NS "$CLOCK_UNCERTAINTY_NS"
+(( CLOCK_UNCERTAINTY_NS <= MAX_CLOCK_UNCERTAINTY_NS )) \
+  || fail "CLOCK_UNCERTAINTY_NS exceeds MAX_CLOCK_UNCERTAINTY_NS"
+[[ $CLOCK_EVIDENCE_SHA256 =~ ^[0-9a-f]{64}$ ]] \
+  || fail "CLOCK_EVIDENCE_SHA256 must be a lowercase SHA-256"
+[[ $LAB_INVENTORY_SHA256 =~ ^[0-9a-f]{64}$ ]] \
+  || fail "LAB_INVENTORY_SHA256 must identify the sealed G0 inventory"
+[[ $VICTIM_PROFILE_FINGERPRINT =~ ^[0-9a-f]{64}$ \
+   && $ATTACKER_PROFILE_FINGERPRINT =~ ^[0-9a-f]{64}$ ]] \
+  || fail "VICTIM_PROFILE_FINGERPRINT and ATTACKER_PROFILE_FINGERPRINT must be lowercase SHA-256 values"
+[[ $VICTIM_PROFILE_FINGERPRINT != "$ATTACKER_PROFILE_FINGERPRINT" ]] \
+  || fail "victim and attacker subscriber profiles must be distinct"
+[[ -f $ARTIFACT_SCANNER && ! -L $ARTIFACT_SCANNER ]] \
+  || fail "artifact scanner must be a regular non-symlink file: $ARTIFACT_SCANNER"
+[[ -f $EVIDENCE_TOOL && ! -L $EVIDENCE_TOOL ]] \
+  || fail "evidence tool must be a regular non-symlink file: $EVIDENCE_TOOL"
+command -v python3 >/dev/null 2>&1 || fail "python3 is required"
+command -v "$FLOCK_BIN" >/dev/null 2>&1 || fail "missing flock command: $FLOCK_BIN"
+
+sha256_file() {
+  python3 - "$1" <<'PY'
+import hashlib
+import sys
+
+h = hashlib.sha256()
+with open(sys.argv[1], "rb") as source:
+    for chunk in iter(lambda: source.read(1024 * 1024), b""):
+        h.update(chunk)
+print(h.hexdigest())
+PY
+}
+
+hash_values() {
+  python3 - "$@" <<'PY'
+import hashlib
+import sys
+
+h = hashlib.sha256()
+for value in sys.argv[1:]:
+    h.update(value.encode())
+    h.update(b"\0")
+print(h.hexdigest())
+PY
+}
+
+config_sha256() {
+  if [[ -f $CONF ]]; then sha256_file "$CONF"; else hash_values absent-config; fi
+}
+
+policy_sha256() {
+  hash_values \
+    "$PHASE_CMD" "$VERIFY_CMD" "$PHASE_TIMEOUT_S" "$VERIFY_TIMEOUT_S" \
+    "$OBSERVATION_S" "$RECOVERY_TIMEOUT_S" "$BASELINE_PING_COUNT" \
+    "$LOSS_CONSECUTIVE_PINGS" "$RECOVERY_PING_COUNT" "$CLOCK_SYNC_METHOD" \
+    "$CLOCK_OFFSET_NS" "$CLOCK_UNCERTAINTY_NS" "$MAX_CLOCK_UNCERTAINTY_NS" \
+    "$CLOCK_EVIDENCE_SHA256" "$LAB_INVENTORY_SHA256" \
+    "$VICTIM_PROFILE_FINGERPRINT" "$ATTACKER_PROFILE_FINGERPRINT" \
+    "$ARTIFACT_SCANNER" "$EVIDENCE_TOOL"
+}
+
+CONFIG_SHA256=$(config_sha256)
+POLICY_SHA256=$(policy_sha256)
+RUN_BIN_SHA256=$(sha256_file "$RUN_BIN")
+CAMPAIGN_BIN_SHA256=$(sha256_file "$HERE/bin/blind-campaign")
+EVIDENCE_TOOL_SHA256=$(sha256_file "$EVIDENCE_TOOL")
+
+exec 9>"$LOCK_FILE"
+"$FLOCK_BIN" -n 9 || fail "another Blind DoS run is active"
+[[ ! -L $RUN_ROOT ]] || fail "run root must not be a symlink: $RUN_ROOT"
+if [[ ! -e $RUN_ROOT ]]; then
+  mkdir -m 700 -p -- "$RUN_ROOT" || fail "cannot create run root: $RUN_ROOT"
+fi
+[[ -d $RUN_ROOT && ! -L $RUN_ROOT ]] || fail "run root is not a real directory: $RUN_ROOT"
+OUT="$RUN_ROOT/$CAMPAIGN_ID"
+mkdir -m 700 -- "$OUT" \
+  || fail "cannot create $OUT — existing results are never overwritten"
+mkdir -m 700 -- "$OUT/children"
+
+export OUT CAMPAIGN_ID MATCHED_REPETITIONS INFRA_RETRY_LIMIT CONFIG_SHA256 POLICY_SHA256
+export RUN_BIN_SHA256 CAMPAIGN_BIN_SHA256 OBSERVATION_S RECOVERY_TIMEOUT_S
+export BASELINE_PING_COUNT LOSS_CONSECUTIVE_PINGS RECOVERY_PING_COUNT
+export CLOCK_SYNC_METHOD CLOCK_OFFSET_NS CLOCK_UNCERTAINTY_NS MAX_CLOCK_UNCERTAINTY_NS
+export CLOCK_EVIDENCE_SHA256
+export LAB_INVENTORY_SHA256 VICTIM_PROFILE_FINGERPRINT ATTACKER_PROFILE_FINGERPRINT
+python3 - <<'PY'
+import json
+import os
+from datetime import datetime, timezone
+from pathlib import Path
+
+value = {
+    "schema_version": "blind.campaign.v1",
+    "campaign_id": os.environ["CAMPAIGN_ID"],
+    "matched_repetitions": int(os.environ["MATCHED_REPETITIONS"]),
+    "infra_retry_limit": int(os.environ["INFRA_RETRY_LIMIT"]),
+    "configuration_sha256": os.environ["CONFIG_SHA256"],
+    "policy_sha256": os.environ["POLICY_SHA256"],
+    "software": {
+        "run_binary_sha256": os.environ["RUN_BIN_SHA256"],
+        "campaign_binary_sha256": os.environ["CAMPAIGN_BIN_SHA256"],
+    },
+    "thresholds": {
+        "observation_s": int(os.environ["OBSERVATION_S"]),
+        "recovery_timeout_s": int(os.environ["RECOVERY_TIMEOUT_S"]),
+        "baseline_ping_count": int(os.environ["BASELINE_PING_COUNT"]),
+        "loss_consecutive_pings": int(os.environ["LOSS_CONSECUTIVE_PINGS"]),
+        "recovery_ping_count": int(os.environ["RECOVERY_PING_COUNT"]),
+    },
+    "clock_sync": {
+        "method": os.environ["CLOCK_SYNC_METHOD"],
+        "offset_ns": os.environ["CLOCK_OFFSET_NS"],
+        "uncertainty_ns": os.environ["CLOCK_UNCERTAINTY_NS"],
+        "max_uncertainty_ns": os.environ["MAX_CLOCK_UNCERTAINTY_NS"],
+        "evidence_sha256": os.environ["CLOCK_EVIDENCE_SHA256"],
+    },
+    "lab_inventory_sha256": os.environ["LAB_INVENTORY_SHA256"],
+    "profiles": {
+        "victim_fingerprint": os.environ["VICTIM_PROFILE_FINGERPRINT"],
+        "attacker_fingerprint": os.environ["ATTACKER_PROFILE_FINGERPRINT"],
+        "distinct": os.environ["VICTIM_PROFILE_FINGERPRINT"]
+                    != os.environ["ATTACKER_PROFILE_FINGERPRINT"],
+    },
+    "set_order": ["control", "attack"],
+    "created_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+}
+path = Path(os.environ["OUT"]) / "campaign.json"
+with path.open("x") as output:
+    json.dump(value, output, sort_keys=True, separators=(",", ":"))
+    output.write("\n")
+PY
+chmod 400 "$OUT/campaign.json"
+CAMPAIGN_INPUT_SHA256=$(sha256_file "$OUT/campaign.json")
+EVENTS="$OUT/campaign_events.jsonl"
+: >"$EVENTS"
+
+append_event() {
+  local set_index=$1 mode=$2 try_index=$3 child_id=$4 classification=$5 reason=$6
+  python3 - "$EVENTS" "$set_index" "$mode" "$try_index" "$child_id" \
+    "$classification" "$reason" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "a") as output:
+    json.dump({
+        "set_index": int(sys.argv[2]),
+        "mode": sys.argv[3],
+        "try_index": int(sys.argv[4]),
+        "run_id": sys.argv[5],
+        "classification": sys.argv[6],
+        "reason": sys.argv[7],
+    }, output, sort_keys=True, separators=(",", ":"))
+    output.write("\n")
+PY
+}
+
+read_stop() {
+  if ! python3 "$EVIDENCE_TOOL" verify "$(dirname "$1")" >/dev/null 2>&1; then
+    printf '%s\n' $'infrastructure-invalid\tmissing_or_invalid_evidence_manifest'
+    return
+  fi
+  python3 - "$1" <<'PY'
+import json
+import sys
+
+try:
+    value = json.load(open(sys.argv[1]))
+    classification = value.get("classification")
+    reason = value.get("reason")
+    if classification not in {"passed", "valid-failure", "infrastructure-invalid"} \
+            or not isinstance(reason, str):
+        raise ValueError
+    print(classification + "\t" + reason.replace("\t", " ").replace("\n", " "))
+except (OSError, ValueError, json.JSONDecodeError):
+    print("infrastructure-invalid\tmissing_or_invalid_run_stop")
+PY
+}
+
+campaign_state_ok() {
+  [[ $(config_sha256) == "$CONFIG_SHA256" \
+     && $(policy_sha256) == "$POLICY_SHA256" \
+     && $(sha256_file "$RUN_BIN") == "$RUN_BIN_SHA256" \
+     && $(sha256_file "$HERE/bin/blind-campaign") == "$CAMPAIGN_BIN_SHA256" \
+     && $(sha256_file "$EVIDENCE_TOOL") == "$EVIDENCE_TOOL_SHA256" \
+     && $(sha256_file "$OUT/campaign.json") == "$CAMPAIGN_INPUT_SHA256" ]]
+}
+
+run_phase() {
+  local set_index=$1 mode=$2 try_index child_id child_dir rc row classification reason
+  for ((try_index=1; try_index<=INFRA_RETRY_LIMIT + 1; try_index++)); do
+    if ! campaign_state_ok; then
+      PHASE_CLASSIFICATION=infrastructure-invalid
+      PHASE_REASON=campaign_input_changed
+      return 20
+    fi
+    child_id=$(printf 'set%03d-%s-try%02d' "$set_index" "$mode" "$try_index")
+    child_dir="$OUT/children/$child_id"
+    rc=0
+    BLIND_CONF="$CONF" BLIND_INTERNAL_RUN_ROOT="$OUT/children" \
+      BLIND_INTERNAL_LOCK_INHERITED=1 \
+      BLIND_INTERNAL_EXPECT_CONFIG_SHA256="$CONFIG_SHA256" \
+      BLIND_INTERNAL_EXPECT_POLICY_SHA256="$POLICY_SHA256" \
+      BLIND_INTERNAL_CAMPAIGN_ID="$CAMPAIGN_ID" \
+      BLIND_INTERNAL_SET_INDEX="$set_index" BLIND_INTERNAL_TRY_INDEX="$try_index" \
+      "$RUN_BIN" "$mode" -e "$([[ $mode == attack ]] && echo 1 || echo 0)" -n "$child_id" \
+      >"$OUT/$child_id.stdout" 2>"$OUT/$child_id.stderr" || rc=$?
+    row=$(read_stop "$child_dir/run_stop.json")
+    classification=${row%%$'\t'*}
+    reason=${row#*$'\t'}
+    if [[ $rc != 0 && $classification == passed ]]; then
+      classification=infrastructure-invalid
+      reason=runner_exit_status_mismatch
+    fi
+    append_event "$set_index" "$mode" "$try_index" "$child_id" "$classification" "$reason"
+    case $classification in
+      passed)
+        PHASE_CLASSIFICATION=$classification
+        PHASE_REASON=$reason
+        return 0
+        ;;
+      valid-failure)
+        PHASE_CLASSIFICATION=$classification
+        PHASE_REASON=$reason
+        return 10
+        ;;
+      infrastructure-invalid)
+        if (( try_index > INFRA_RETRY_LIMIT )); then
+          PHASE_CLASSIFICATION=$classification
+          PHASE_REASON=$reason
+          return 20
+        fi
+        ;;
+    esac
+  done
+}
+
+STATUS=passed
+REASON=all_matched_sets_passed
+COMPLETED_SETS=0
+FAILED_SET=null
+for ((set_index=1; set_index<=MATCHED_REPETITIONS; set_index++)); do
+  phase_rc=0
+  run_phase "$set_index" control || phase_rc=$?
+  if (( phase_rc != 0 )); then
+    STATUS=$PHASE_CLASSIFICATION
+    REASON="control:$PHASE_REASON"
+    FAILED_SET=$set_index
+    break
+  fi
+  phase_rc=0
+  run_phase "$set_index" attack || phase_rc=$?
+  if (( phase_rc != 0 )); then
+    STATUS=$PHASE_CLASSIFICATION
+    REASON="attack:$PHASE_REASON"
+    FAILED_SET=$set_index
+    break
+  fi
+  COMPLETED_SETS=$set_index
+done
+if [[ $STATUS == passed ]] && ! campaign_state_ok; then
+  STATUS=infrastructure-invalid
+  REASON=campaign_input_changed
+  FAILED_SET=$COMPLETED_SETS
+fi
+
+export STATUS REASON COMPLETED_SETS FAILED_SET CAMPAIGN_INPUT_SHA256
+python3 - <<'PY'
+import json
+import os
+from datetime import datetime, timezone
+from pathlib import Path
+
+required = int(os.environ["MATCHED_REPETITIONS"])
+completed = int(os.environ["COMPLETED_SETS"])
+status = os.environ["STATUS"]
+value = {
+    "schema_version": "blind.campaign-result.v1",
+    "campaign_id": os.environ["CAMPAIGN_ID"],
+    "status": status,
+    "passed": status == "passed" and completed == required,
+    "reason": os.environ["REASON"],
+    "required_sets": required,
+    "completed_sets": completed,
+    "passed_sets": completed,
+    "failed_set": None if os.environ["FAILED_SET"] == "null" else int(os.environ["FAILED_SET"]),
+    "campaign_input_sha256": os.environ["CAMPAIGN_INPUT_SHA256"],
+    "t_stop_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+}
+with (Path(os.environ["OUT"]) / "campaign_result.json").open("x") as output:
+    json.dump(value, output, sort_keys=True, separators=(",", ":"))
+    output.write("\n")
+PY
+cat "$OUT/campaign_result.json"
+case $STATUS in
+  passed) exit 0 ;;
+  valid-failure) exit 10 ;;
+  *) exit 20 ;;
+esac

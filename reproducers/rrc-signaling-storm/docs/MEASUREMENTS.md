@@ -1,289 +1,274 @@
-# Internal measurement summary
+# 내부 측정 요약
 
-Reference testbed: OCUDU 26.10 (srsRAN-derived) with CU and DU on separate
-hosts, F1 over IP, attacker UE on the DU host over a ZMQ virtual radio
-(`tcp://127.0.0.1`). Cell: n78, 30 kHz SCS, 51 PRB. OAI UE at
-`1c2f4d3c2e68181cdef9f426d161163147ad4b77` (`2026.w38`).
+기준 테스트베드는 OCUDU 26.10(srsRAN 계열)이며 CU와 DU를 서로 다른 호스트에 두고,
+F1은 IP로 연결했다. 공격 UE는 DU 호스트에서 ZMQ 가상 무선
+(`tcp://127.0.0.1`)을 사용했다. 셀은 n78, SCS 30 kHz, 51 PRB이고 OAI UE는
+`1c2f4d3c2e68181cdef9f426d161163147ad4b77`(`2026.w38`)이다.
 
-Unless a section names a retained artifact, these are historical internal notes
-attributed to gNB logs and UE instrumentation. **The raw logs, run manifests,
-exact window boundaries and analysis versions are not included for the
-historical sections.** Preserve this distinction when citing them; this file is
-a summary, not a regression fixture for the current parsers. Section 5 records
-the newer p5 evidence retained under `artifacts/p5-msg3-only-20261030/`.
+별도로 보존된 artifact를 명시한 절이 아니면, 아래 내용은 gNB 로그와 UE 계측에 근거한
+과거 내부 기록이다. **과거 절의 원시 로그, run manifest, 정확한 관측창 경계와 분석
+버전은 포함돼 있지 않다.** 인용할 때 이 구분을 유지해야 한다. 이 파일은 요약이지 현재
+parser의 회귀 fixture가 아니다. §5는
+`artifacts/p5-msg3-only-20261030/`에 보존된 최신 p5 증거를 기록한다.
 
-Counts of matching log lines are **not unique messages or UEs**. Duplicate
-logging and incomplete coverage may affect them. Zero matches do not prove
-that an event never occurred. The historical sections did not measure
-normal-user attachment failure; section 5 adds only a same-process ZMQ probe,
-not an independent UE.
-The current offline parsers use explicit start-inclusive, end-exclusive windows
-and cautious observational labels; historical outputs below predate those checks.
+일치하는 로그 행 수는 **고유 메시지 수나 UE 수가 아니다**. 중복 기록과 불완전한
+관측 범위가 집계에 영향을 줄 수 있다. 일치 행이 0개라는 사실만으로 해당 이벤트가 전혀
+없었다고 입증할 수 없다. 과거 절은 정상 사용자의 접속 실패를 측정하지 않았다. §5에서
+추가한 것도 같은 프로세스의 ZMQ probe일 뿐 독립 UE가 아니다.
+현재 오프라인 parser는 시작 시각 포함·종료 시각 제외의 명시적 관측창과 보수적인 관측
+라벨을 사용한다. 아래 과거 출력은 이러한 검사를 도입하기 전의 결과다.
 
 ---
 
-## 1. The single change that mattered most
+## 1. 가장 큰 영향을 준 단일 변경
 
-Upstream's ZMQ TX poll thread can only be woken by a socket event. When a
-sample request has arrived but the local TX queue is still empty, the peer is
-blocked waiting for the reply and sends nothing more, so `zmq_poll` can only
-return on its own 10 ms timeout.
+upstream ZMQ TX poll thread는 socket 이벤트가 있어야만 깨어날 수 있다. sample 요청이
+도착했지만 로컬 TX queue가 아직 비어 있으면 peer는 응답을 기다리며 막히고 추가 데이터를
+보내지 않는다. 따라서 `zmq_poll`은 자체 10 ms timeout이 끝나야 반환할 수 있다.
 
-Instrumented, single UE, 60 s:
+계측한 단일 UE, 60초:
 
 ```
 TX antenna 0: 4250 REQs starved / 36203 served,
               42555 ms waiting for the local TX queue
 ```
 
-42555 / 4250 = **10.01 ms per starved request** — the poll timeout exactly.
-The original notes also claimed 85% of process lifetime, but the denominator
-is not documented and conflicts with the stated 60 s run. No lifetime
-percentage is retained as a result.
+42555 / 4250 = **starved 요청당 10.01 ms**로 poll timeout과 정확히 같다.
+초기 기록에는 process lifetime의 85%라는 주장도 있었지만 분모가 기록돼 있지 않고
+명시된 60초 run과도 충돌한다. 따라서 lifetime 비율은 결과로 보존하지 않는다.
 
-| | `RSS_ZMQ_TX_WAIT_US=0` (upstream) | `=-2` (default) |
+| | `RSS_ZMQ_TX_WAIT_US=0` (upstream) | `=-2` (기본값) |
 |---|---:|---:|
-| radio time per wall second | 0.46 – 0.54 | 2.39 – 2.46 |
-| cost per starved request | 10.01 ms | 0.185 ms |
-| requests served | 36,203 | 219,597 |
-| attempts/s (wall) | 6.7 | 19.5 – 33.8 |
-| peak occupancy | 20 / 96 | 90 – 96 / 96 |
+| wall 1초당 radio time | 0.46 – 0.54 | 2.39 – 2.46 |
+| starved 요청당 비용 | 10.01 ms | 0.185 ms |
+| 처리한 요청 수 | 36,203 | 219,597 |
+| 시도/s (wall) | 6.7 | 19.5 – 33.8 |
+| 최대 점유 | 20 / 96 | 90 – 96 / 96 |
 
-UE and DU are on one host over loopback, where a round trip is tens of
-microseconds according to the notes. The attribution of this wait to the
-timeout is an interpretation; raw timing evidence is absent.
+UE와 DU는 같은 호스트에서 loopback으로 연결돼 있으며, 기록에 따르면 왕복 시간은 수십
+microseconds다. 이 대기를 timeout 탓으로 해석한 것은 추론이며 원시 timing 증거는 없다.
 
 ---
 
-## 2. Attempt cost
+## 2. 시도 비용
 
-From `analysis/attempt_phases.py`, which reads both clocks out of
-`attempts.jsonl`. Single UE, default gNB config:
+`attempts.jsonl`의 두 시계를 읽는 `analysis/attempt_phases.py` 결과다.
+단일 UE, gNB 기본 설정:
 
-| phase | wall | radio | share of wall |
+| 단계 | wall | radio | wall 비중 |
 |---|---:|---:|---:|
-| Msg3 to Msg4 | 22.8 ms | 30 ms | **79%** |
-| Msg4 to retrigger | 3.6 ms | 10 ms | 13% |
-| retrigger to next Msg3 | 1.2 ms | 0 ms | 4% |
-| **cycle** | **28.9 ms** | **40 ms** | 100% |
+| Msg3에서 Msg4까지 | 22.8 ms | 30 ms | **79%** |
+| Msg4에서 재시작까지 | 3.6 ms | 10 ms | 13% |
+| 재시작에서 다음 Msg3까지 | 1.2 ms | 0 ms | 4% |
+| **주기** | **28.9 ms** | **40 ms** | 100% |
 
-The 30 ms radio time for Msg3 to Msg4 was identical in two sessions whose wall
-times differed by 6x (100–113 ms at radio/wall 0.29, 22.8 ms at 1.41). A
-quantity was interpreted as schedule-related in those sessions. These records
-do not rule out host bottlenecks or establish a universal rate ceiling. A gNB
-log-level comparison was not performed.
+Msg3에서 Msg4까지의 radio time 30 ms는 wall time이 6배 차이 난 두 session
+(radio/wall 0.29에서 100–113 ms, 1.41에서 22.8 ms)에서 같았다. 당시에는 한 수치를
+schedule 관련 값으로 해석했다. 이 기록만으로 host 병목을 배제하거나 보편적인 rate
+상한을 정할 수 없다. gNB log level 비교는 하지 않았다.
 
 ---
 
-## 3. UE count
+## 3. UE 수
 
-60 s runs, default gNB config (capacity 96, hold 2000 ms):
+60초 run, gNB 기본 설정(capacity 96, hold 2000 ms):
 
-| UE | attempts/s | peak occupancy | `RRCReject` | sample loss | gaps >= 200 ms |
+| UE | 시도/s | 최대 점유 | `RRCReject` | sample loss | 200 ms 이상 공백 |
 |---:|---:|---:|---:|---:|---:|
 | 1 | 33.8 | 90 / 96 | 0 | 0 | 0 |
 | 2 | 38.6 | 96 / 96 | 33 | 5,136 | 3 (5%) |
 | 3 | 36.2 | 96 / 96 | 198 | 14,718 | 22 (39%) |
 | 4 | 37.4 | 96 / 96 | 312 | 39,765 | 25 (45%) |
 
-A 120 s run at 2 UE: 3904 attempts (32.5/s), peak 96, hold median 1896 ms,
-only 4 gaps >= 200 ms (1% of the run), occupancy >= 48 for **99% of the run with
-a 55.41 s continuous plateau**.
+2 UE로 실행한 120초 run은 3904회 시도(32.5/s), 최대 점유 96, hold 중앙값
+1896 ms였고 200 ms 이상 공백은 4개(run의 1%)뿐이었다. 점유 48 이상은
+**run의 99%였고 최장 연속 plateau는 55.41초**였다.
 
-The attempt rate stops growing after 2 UE. All instances share one radio and
-one DU MAC. What grows instead is sample loss, and loss appears as
-second-long stalls that drain occupancy.
+UE가 2개를 넘으면 시도율이 더 늘지 않는다. 모든 instance가 하나의 radio와 하나의
+DU MAC을 공유한다. 대신 sample loss가 늘고, 그 손실이 점유를 비우는 수초짜리 정지로
+나타난다.
 
 ---
 
-## 4. Occupancy and recurring rejection logs
+## 4. 점유와 반복되는 거절 로그
 
-Internal notes report capacity 96, a hold near 2 s, and attempt rates of
-33–38/s under the default configuration. The recorded peak was 96, but the
-longest full-capacity plateau was only 0.93 s. A separate reduced-capacity
-configuration used capacity 12 and a measured hold near 1.6 s. These figures
-do not by themselves establish sustained capacity or user-service denial.
+내부 기록은 기본 설정에서 capacity 96, 약 2초의 hold, 33–38/s의 시도율을 보고한다.
+기록된 최대 점유는 96이지만 full-capacity 최장 plateau는 0.93초뿐이었다. 별도의
+축소 capacity 설정은 capacity 12와 약 1.6초로 측정된 hold를 사용했다. 이 수치만으로는
+지속적인 capacity 점유나 사용자 서비스 거부가 성립하지 않는다.
 
-Two UE, capacity 12. The `HONOR_REJECT=0` column is a 200 s window out of a
-420 s run (`ZWfinal-064626Z`); the `=1` column is a 102 s window
-(`ZWsat-063645Z`). The rejection-count rows instead use a reported 123.2 s
-window for `=0`; the exact boundaries and relationship between windows are
-unverifiable from this package:
+2 UE, capacity 12. `HONOR_REJECT=0` 열은 420초 run(`ZWfinal-064626Z`) 중
+200초 관측창이고, `=1` 열은 102초 관측창(`ZWsat-063645Z`)이다. 반면 거절 집계 행은
+`=0`에 대해 보고된 123.2초 관측창을 사용한다. 정확한 경계와 관측창 사이 관계는 이
+package만으로 검증할 수 없다.
 
 | | `HONOR_REJECT=1` | `HONOR_REJECT=0` |
 |---|---:|---:|
-| internally recorded attempts/s (definition/window unverified) | 5.6 | 6.5 |
-| peak occupancy | 12 / 12 | 12 / 12 |
-| hold median | 1457 ms | 1610 ms |
-| log lines containing `RRCReject` | 388 | **7,551 (reported 123.2 s window)** |
-| log lines containing `DU is not able to serve` | 130 | **2,517 (reported 123.2 s window)** |
-| occupancy >= 6 | — | **rounded to 100%, 199.8 s continuous** |
-| occupancy >= 9 | — | 94%, 15.2 s continuous |
-| occupancy >= 12 | — | 33%, 0.87 s continuous |
-| log lines containing `rrcSetupComplete` | 0 | **0** |
-| log lines containing NGAP `InitialUEMessage` | 0 | **0** |
+| 내부 기록 시도/s (정의·관측창 미검증) | 5.6 | 6.5 |
+| 최대 점유 | 12 / 12 | 12 / 12 |
+| hold 중앙값 | 1457 ms | 1610 ms |
+| `RRCReject` 포함 로그 행 | 388 | **7,551 (보고된 123.2초 관측창)** |
+| `DU is not able to serve` 포함 로그 행 | 130 | **2,517 (보고된 123.2초 관측창)** |
+| 점유 6 이상 | — | **반올림 100%, 199.8초 연속** |
+| 점유 9 이상 | — | 94%, 15.2초 연속 |
+| 점유 12 이상 | — | 33%, 0.87초 연속 |
+| `rrcSetupComplete` 포함 로그 행 | 0 | **0** |
+| NGAP `InitialUEMessage` 포함 로그 행 | 0 | **0** |
 
-The notes describe `HONOR_REJECT=1` as idle for 95% of its window. This is an
-unverified summary, not a controlled proof that one setting sustains denial.
+기록은 `HONOR_REJECT=1`이 해당 관측창의 95% 동안 idle이었다고 설명한다. 이는 검증하지
+못한 요약이며 특정 설정 하나가 거부를 지속한다는 통제된 증거가 아니다.
 
-The historical counter output recorded a 123.2 s window, a 0.02 s delay to
-the first rejection log, and a 123.17 s span after that first occurrence.
-Reported gaps were p50 0 ms, p99 177 ms and maximum 454 ms (rounded to 0.45 s
-in the table). These describe **log cadence**, not service availability.
-They also cannot be combined with occupancy figures from the 200 s window.
+과거 counter 출력에는 123.2초 관측창, 최초 거절 로그까지 0.02초, 첫 발생 뒤
+123.17초 span이 기록돼 있다. 보고된 공백은 p50 0 ms, p99 177 ms, 최대 454 ms
+(표에서는 0.45초로 반올림)였다. 이는 서비스 가용성이 아니라 **로그 발생 간격**을
+설명한다. 또한 200초 관측창의 점유 수치와 합쳐 해석할 수 없다.
 
 ---
 
-## 5. MAC-confirmed post-RRCSetupRequest abort on p5 (2026-10-30)
+## 5. p5에서 MAC으로 확인한 RRCSetupRequest 후 중단형 (2026-10-30)
 
-The initial `MSG4_WAIT=0` experiment reset random access before the queued Msg3
-reached PHY, so the UE counter ran while the gNB created only one context. The
-current post-RRCSetupRequest abort implementation moves the decision after the MAC scheduler's
-actual Msg3 handoff, bridges that confirmation to RRC, then performs the
-camped-idle reset. It is a separate variant, not RRCSetupComplete-omission.
+초기 `MSG4_WAIT=0` 실험은 queue에 있던 Msg3가 PHY에 도달하기 전에 random access를
+reset했다. 그 결과 UE counter는 증가했지만 gNB는 context 하나만 생성했다. 현재의
+RRCSetupRequest 후 중단 구현은 MAC scheduler가 실제로 Msg3를 넘긴 다음으로 결정
+시점을 옮기고, 그 확인을 RRC로 전달한 뒤 camped-idle reset을 수행한다. 이는
+RRCSetupComplete 미전송형과 다른 별도 변종이다.
 
-| run | observed result |
+| run | 관측 결과 |
 |---|---|
-| `G2-msg3-0140` | 10 UE `msg3_tx`, zero attacker Msg4, and 10/10 unique TC-RNTIs joined to current-run CU `Rx ... rrcSetupRequest` |
-| `G4-u1-i0-clean` | capacity-12 profile (`nof_cell_sr_res: 1`): 661 MAC-confirmed Msg3 and 661 CU requests; 55 RRC procedure starts, 606 `DU is not able to serve` rejections, reconstructed peak 12 |
-| `G13-pair-attack-valid` | same capacity-12 profile: marker-authenticated duration SIGKILL; 1,029 total Msg3, zero attacker/probe Msg4; CU 921 requests, 84 starts, 837 resource rejections, zero `InitialUEMessage` and PDU success |
-| `G14-pair-recovery-control` | capacity-12 post-restart control; probe attached on its first attempt and completed Registration/PDU/TUN |
-| `G34-control-cap96-hold32-valid` | corrected capacity-96 profile; attack-off Registration/PDU/TUN succeeded |
-| `G35-msg3-cap96-hold32-probe` | corrected capacity-96 profile; 11/11 probe TC-RNTIs reached the CU and were resource-rejected; Msg4/Msg5/connection zero for 10.13 s |
+| `G2-msg3-0140` | UE `msg3_tx` 10건, 공격자 Msg4 0건, 고유 TC-RNTI 10/10이 current-run CU `Rx ... rrcSetupRequest`와 join |
+| `G4-u1-i0-clean` | capacity-12 profile(`nof_cell_sr_res: 1`): MAC 확인 Msg3 661건과 CU 요청 661건, RRC procedure 시작 55건, `DU is not able to serve` 거절 606건, 복원 최대 점유 12 |
+| `G13-pair-attack-valid` | 같은 capacity-12 profile: marker 인증 duration SIGKILL, 전체 Msg3 1,029건, 공격자/probe Msg4 0건, CU 요청 921건, 시작 84건, 자원 거절 837건, `InitialUEMessage` 및 PDU 성공 0건 |
+| `G14-pair-recovery-control` | capacity-12 재시작 후 대조군, probe가 첫 시도에 접속해 Registration/PDU/TUN 완료 |
+| `G34-control-cap96-hold32-valid` | 수정한 capacity-96 profile, attack-off Registration/PDU/TUN 성공 |
+| `G35-msg3-cap96-hold32-probe` | 수정한 capacity-96 profile, probe TC-RNTI 11/11이 CU에 도달해 자원 거절, 10.13초 동안 Msg4/Msg5/연결 0건 |
 
-All ten G13 probe TC-RNTIs matched exactly one CU request and one
-`DU is not able to serve` rejection. Thus the probe reached the gNB rather than
-disappearing in the UE's shared-radio path. The G4 peak of 12 came from the
-explicit SR-resource override and is not evidence of a second hidden pool.
+G13 probe TC-RNTI 10개 모두 정확히 하나의 CU 요청과 하나의
+`DU is not able to serve` 거절에 일치했다. 따라서 probe는 UE의 공유 radio 경로에서
+사라진 것이 아니라 gNB에 도달했다. G4 최대 점유 12는 명시적인 SR resource override가
+만든 것으로, 숨은 두 번째 pool의 증거가 아니다.
 
-The corrected capacity-96 campaign first falsified sustained denial: G21 and
-G32 both allowed the normal probe to connect. G26 then isolated the cause as
-100 consecutive undecoded CSI reports followed by `t310=1000ms`. Extending the
-experiment cleanup window without changing capacity produced G35: 11 normal
-probe Msg3 transmissions, 11 exact CU requests, 11 DU-resource rejections, and
-zero Msg4/Msg5/connection over 10.13 seconds. The final profile and hashes are
-retained in the
-[capacity-96 artifact](../../../artifacts/p5-msg3-cap96-20261030/README.md).
+수정한 capacity-96 campaign은 먼저 지속 거부 가설을 반증했다. G21과 G32에서 모두
+정상 probe가 연결됐다. G26은 원인을 연속 100회의 decode되지 않은 CSI report 뒤
+`t310=1000ms`가 이어지는 것으로 분리했다. capacity를 바꾸지 않고 실험 cleanup
+관측창을 늘려 G35를 만들었다. 그 결과 10.13초 동안 정상 probe Msg3 송신 11건,
+정확한 CU 요청 11건, DU 자원 거절 11건, Msg4/Msg5/연결 0건이 관측됐다. 최종 profile과
+hash는 [capacity-96 artifact](../../../artifacts/p5-msg3-cap96-20261030/README.md)에
+보존돼 있다.
 
-G13/G14 use an ordinary probe in the **same OAI process and shared ZMQ radio**.
-They are controlled diagnostic evidence of admission denial and post-restart
-service availability, not spontaneous recovery or an independent physical
-normal-UE DoS result. Independent service-impact claims
-still require a stable separate-process broker or shielded OTA witness. Selected
-JSON evidence, the G13 CU slice and hashes are retained in the
-[p5 post-RRCSetupRequest-abort artifact](../../../artifacts/p5-msg3-only-20261030/README.md).
+G13/G14는 **같은 OAI process와 공유 ZMQ radio**의 일반 probe를 사용한다. 이는 admission
+거부와 재시작 뒤 서비스 가용성에 대한 통제된 진단 증거이지, 자연 회복이나 독립적인 실제
+정상 UE DoS 결과가 아니다. 독립 서비스 영향 주장은 여전히 안정적인 별도 process
+broker 또는 차폐 OTA witness가 필요하다. 선별한 JSON 증거, G13 CU slice와 hash는
+[p5 RRCSetupRequest 후 중단형 artifact](../../../artifacts/p5-msg3-only-20261030/README.md)에
+보존돼 있다.
 
 ---
 
-## 6. Rejected ideas
+## 6. 기각한 아이디어
 
-| Idea | Measured result |
+| 아이디어 | 측정 결과 |
 |---|---|
-| raise `TRANSMIT_TS_ALIGN_TIMEOUT` from 0 ms | no effect by construction: `align()` returns "timestamp passed" from its first branch, before the timeout is read |
-| `sched_yield` spin (`=-1`) | starved wait 28.5 s to 0.117 s, but radio time 2.15 to 1.26 and attempts fell. It starves the producer it waits on |
-| condition variable vs usleep | 237 us vs 240 us per starved request. The residual is the producer's real latency, not the wait mechanism |
-| old pre-PHY `MSG4_WAIT=0` hook | UE logged 10,878 attempts while the gNB created **1** context because the reset erased queued Msg3 before PHY transmission. Superseded by the MAC-confirmed post-RRCSetupRequest-abort path in section 5 |
-| `RSS_SHARE_WR_MONOTONIC=1` | sample loss 21,178 to 0 but attempts 2,387 to **32**. The clamp advances once per flush and there are more flushes than slots, so it ran into the future |
-| `RSS_SHARE_LOCKSTEP=1` | partial: out-of-order batches 9.19% to 7.70%, loss 33,144 to 27,139, radio time 1.12 to 1.26. Kept on |
-| core pinning | worse: 33.8 to 24.2 attempts/s, peak 90 to 51 |
-| `ACK_GATE=0` | no change (34.1 vs 33.8 attempts/s) |
+| `TRANSMIT_TS_ALIGN_TIMEOUT`을 0 ms보다 크게 설정 | 구조상 효과 없음. `align()`은 timeout을 읽기 전 첫 분기에서 "timestamp passed"를 반환한다 |
+| `sched_yield` spin(`=-1`) | starved wait는 28.5초에서 0.117초로 줄었지만 radio time도 2.15에서 1.26으로 줄고 시도 수도 감소했다. 기다리는 producer를 굶긴다 |
+| condition variable과 usleep 비교 | starved 요청당 237 us와 240 us. 남은 시간은 wait 기법이 아니라 producer의 실제 latency다 |
+| 과거 pre-PHY `MSG4_WAIT=0` hook | reset이 PHY 송신 전에 queue의 Msg3를 지워 UE가 10,878회 시도를 기록하는 동안 gNB는 context **1개**만 생성했다. §5의 MAC 확인 RRCSetupRequest 후 중단 경로로 대체됐다 |
+| `RSS_SHARE_WR_MONOTONIC=1` | sample loss가 21,178에서 0으로 줄었지만 시도 수도 2,387에서 **32**로 줄었다. flush마다 clamp가 한 번 전진하고 slot보다 flush가 많아 미래로 달렸다 |
+| `RSS_SHARE_LOCKSTEP=1` | 부분 효과: out-of-order batch 9.19%에서 7.70%, loss 33,144에서 27,139, radio time 1.12에서 1.26. 유지함 |
+| core pinning | 악화: 33.8에서 24.2 attempts/s, 최대 점유 90에서 51 |
+| `ACK_GATE=0` | 변화 없음(34.1과 33.8 attempts/s) |
 
 ---
 
-## 7. Variance
+## 7. 변동성
 
-Three 4-UE runs in different sessions: attempts 2202–2387, sample loss
-21k–40k, radio time 0.87–1.63. Attempt counts are stable; loss and radio time
-are not. **Compare loss and timing only within one session.**
-
----
-
-## 8. Tool bugs found while measuring
-
-Recorded so they are not reintroduced.
-
-- Building only the `nr-uesoftmodem` target left the old `liboai_zmqdevif.so`
-  in place, so edits under `radio/zmq/` reached the source tree but never the
-  run. `bin/rss-build` now builds all three targets and greps each artifact
-  for the knobs it must carry.
-- A window filter of `$0 >= "HH:MM:SS"` compares the whole log line. Every line
-  starts with `2026-...`, which sorts above any clock time, so the filter passed
-  the entire log and whole-log totals were read as one run's totals.
-- Counting only `timed out` as a procedure end missed `cancelled`, which is
-  how most procedures actually end when the DU releases first. Occupancy came
-  out as 591 against a capacity of 96 — an impossible number that exposed it.
-- Earlier reports treated the interval before the first rejection as a lapse
-  in denial. Both that interpretation and claims of continuous denial were
-  unsupported; the current report describes only observed rejection cadence.
-- Occupancy was tracked twice: once as a set of live UE ids (for the peak) and
-  once as a +1/-1 event timeline (for the plateaus). They disagreed, because an
-  end whose start fell before the window still pushed a -1 into the timeline,
-  and because a plain tuple sort applies an end before a start at the same
-  timestamp. The report said "peak 12" next to "0.0 s above 9". Occupancy now
-  comes from one source: `len(live)` is sampled after every change.
-- A run id whose second character is `O` kills the UE at startup: OAI's `-O`
-  scan tests `argv[i][1] == 'O'` without checking for a leading `-`.
-  `bin/rss-run` rejects such ids.
+서로 다른 session의 4-UE run 3개에서 시도 수는 2202–2387, sample loss는
+21k–40k, radio time은 0.87–1.63이었다. 시도 수는 안정적이지만 loss와 radio time은
+그렇지 않다. **loss와 timing은 같은 session 안에서만 비교한다.**
 
 ---
 
-## 9. Historical longer run of the packaged tool
+## 8. 측정 중 발견한 도구 결함
 
-Run `ZWperm`, 2026-10-20. The **packaged** `rss-storm` deployed to the DU host
-and driven entirely through `bin/rss-run` — not the development scripts — then
-read back through the packaged `analysis/` on the CU host. reduced-capacity diagnostic profile
-applied (`nof_cell_sr_res 1`, `t300 2000`, capacity 12). Command:
+재도입을 막기 위해 기록한다.
+
+- `nr-uesoftmodem` target만 빌드하면 과거 `liboai_zmqdevif.so`가 남았다.
+  따라서 `radio/zmq/` 수정이 source tree에는 반영돼도 실행에는 들어가지 않았다.
+  이제 `bin/rss-build`는 세 target을 모두 빌드하고 각 artifact에 필요한 knob가
+  포함됐는지 grep한다.
+- `$0 >= "HH:MM:SS"` 형태의 관측창 filter는 전체 로그 행을 비교한다. 모든 행이
+  `2026-...`으로 시작해 어떤 시각보다도 정렬상 뒤에 있으므로 filter가 전체 로그를
+  통과시켰고, whole-log 합계를 단일 run 합계로 읽었다.
+- procedure 종료를 `timed out`만 세면 DU가 먼저 release할 때 대부분 발생하는
+  `cancelled`를 놓친다. 그 결과 capacity 96인데 점유가 591로 계산됐다. 이 불가능한
+  수치로 결함을 발견했다.
+- 과거 report는 최초 거절 이전 구간을 denial 중단으로 해석했다. 그 해석과 연속 denial
+  주장은 모두 근거가 없었다. 현재 report는 관측된 거절 간격만 설명한다.
+- 점유를 두 번 추적했다. 최대값은 live UE id set으로, plateau는 +1/-1 event timeline으로
+  계산했다. 관측창 전에 시작한 context의 종료가 timeline에 -1을 넣고, 일반 tuple
+  정렬은 같은 timestamp에서 start보다 end를 먼저 적용해 두 결과가 달랐다. report에는
+  "최대 점유 12" 옆에 "9 이상 0.0초"가 표시됐다. 이제 점유는 하나의 원천만 사용하며,
+  모든 변경 뒤 `len(live)`를 sample한다.
+- 두 번째 문자가 `O`인 run id는 UE를 시작할 때 종료시킨다. OAI의 `-O` scan이 선행
+  `-` 유무를 확인하지 않고 `argv[i][1] == 'O'`를 검사하기 때문이다. `bin/rss-run`은
+  이런 id를 거부한다.
+
+---
+
+## 9. 배포 도구의 과거 장시간 run
+
+run `ZWperm`, 2026-10-20. 개발 script가 아니라 DU host에 배포한 **packaged**
+`rss-storm`을 전부 `bin/rss-run`으로 구동하고, CU host에서 packaged `analysis/`로
+다시 읽었다. 축소 capacity 진단 profile(`nof_cell_sr_res 1`, `t300 2000`,
+capacity 12)을 적용했다. 명령:
 
 ```
 bin/rss-run -e 1 -u 2 -r 0 -H 1500 -d 0 -n ZWperm
 ```
 
-The notes report a run of about **2191 s (36.5 min)**. Exact analysis windows
-cannot be reconciled without the original logs: occupancy was labeled 2191 s,
-while rejection counts/rates and the separate 25.2 s ramp-up imply different
-denominators. Do not treat these as one verified common window.
+기록은 약 **2191초(36.5분)** run을 보고한다. 원시 로그 없이는 정확한 분석 관측창을
+조정할 수 없다. 점유는 2191초로 표시됐지만 거절 수·rate와 별도의 25.2초 ramp-up은
+서로 다른 분모를 가리킨다. 이를 하나의 검증된 공통 관측창으로 취급하면 안 된다.
 
-Historical `analysis/cu_occupancy.py` summary (capacity 12, reported window 2191 s):
+과거 `analysis/cu_occupancy.py` 요약(capacity 12, 보고된 관측창 2191초):
 
-| level | share of window | longest continuous plateau |
+| 수준 | 관측창 비중 | 최장 연속 plateau |
 |---|---:|---:|
-| occupancy >= 3 | **100%** | **428.4 s** |
-| occupancy >= 6 | 98% | **426.1 s** |
-| occupancy >= 9 | 89% | 50.1 s |
-| occupancy >= 12 (full cap) | 36% | 1.8 s |
+| 점유 3 이상 | **100%** | **428.4초** |
+| 점유 6 이상 | 98% | **426.1초** |
+| 점유 9 이상 | 89% | 50.1초 |
+| 점유 12 이상(full cap) | 36% | 1.8초 |
 
-peak occupancy 12/12; end reasons `cancelled` 12,339, `timed out` 1; hold
-median 1846 ms.
+최대 점유 12/12, 종료 사유 `cancelled` 12,339건, `timed out` 1건,
+hold 중앙값 1846 ms.
 
-Historical `analysis/cu_count.py` summary (exact window unverified):
+과거 `analysis/cu_count.py` 요약(정확한 관측창 미검증):
 
-| matching log pattern | occurrences |
+| 일치 로그 pattern | 발생 수 |
 |---|---:|
 | `rrcReject` | 85,797 |
 | `DU is not able to serve` | 28,599 |
 | `rrcSetupComplete` | **0** |
 | NGAP `InitialUEMessage` | **0** |
 
-Previously reported rates used an inconsistent denominator and are omitted.
-Do not reinterpret occurrence counts as unique over-the-air messages.
+이전에 보고한 rate는 일관되지 않은 분모를 사용했으므로 제외한다. 발생 수를 고유
+over-the-air 메시지 수로 다시 해석하면 안 된다.
 
-Historical cadence notes: first rejection after 25.2 s, gaps p50 0 ms / p99
-256 ms, **maximum gap 2.53 s** (reported once). The separate claim of a full
-2191 s after ramp-up conflicts with the stated overall window and is withdrawn.
+과거 발생 간격 기록은 최초 거절까지 25.2초, 공백 p50 0 ms / p99 256 ms,
+**최대 공백 2.53초**(한 번 보고됨)다. ramp-up 뒤 2191초 전체라는 별도 주장은 명시된
+전체 관측창과 충돌하므로 철회한다.
 
-UE side (`attempts.jsonl`): 40,253 attempts, 13,420 `msg4_rx`, 27,597
-`rrc_reject`, sample loss 1.40 M.
+UE 측(`attempts.jsonl`): 시도 40,253건, `msg4_rx` 13,420건,
+`rrc_reject` 27,597건, sample loss 1.40 M.
 
-Interpretation limits:
+해석 한계:
 
-- The recorded share at or above half capacity is **98%, not the entire run**;
-  the longest continuous interval is 426.1 s. The displayed 100% at quarter
-  capacity is rounded and does not prove uninterrupted occupancy.
-- Full capacity was recorded for 36%, with a longest interval of 1.8 s.
-  Recurring rejection logs do not establish continuous denial, especially with
-  the recorded 2.53 s gap and unresolved analysis-window boundaries.
-- Zero matching completion/core-message lines is consistent with RRCSetupComplete-omission under
-  adequate logging, but coverage cannot be rechecked here.
-- Normal-user service impact and stability beyond this run were not tested.
-- The notes report no issue with `--rss.gate_timeout_ms` (default 500) during
-  this run; this is not a general reliability guarantee.
+- 절반 capacity 이상으로 기록된 비율은 **98%이지 전체 run이 아니다**. 최장 연속 구간은
+  426.1초다. 1/4 capacity에서 표시된 100%는 반올림 값이며 중단 없는 점유를 입증하지
+  않는다.
+- full capacity는 36%로 기록됐고 최장 구간은 1.8초다. 반복 거절 로그는 연속 denial을
+  입증하지 않는다. 특히 기록된 2.53초 공백과 미해결 분석 관측창 경계를 고려해야 한다.
+- completion/core-message 일치 행이 0개인 것은 충분한 logging 아래에서는
+  RRCSetupComplete 미전송형과 일치하지만, 여기서는 관측 범위를 다시 검사할 수 없다.
+- 정상 사용자 서비스 영향과 이 run보다 긴 안정성은 시험하지 않았다.
+- 기록상 이 run에서 `--rss.gate_timeout_ms`(기본값 500) 문제는 없었다. 일반적인
+  신뢰성 보장은 아니다.

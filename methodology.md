@@ -249,7 +249,7 @@ TeleRAN은 eBPF 필터와 사용자 공간의 ASN.1(Abstract Syntax Notation One
 
 따라서 Nguyen 논문의 100 ms 미만 탐지 시간 [15, §VII-B]을 우리 시스템에 적용하지 않는다. KPM 기반 탐지는 이 1초 하한에 묶이고, F1 탭 기반 탐지라 해도 그 수치는 OAI RF 시뮬레이터와 모의 카운터 조건에서 나온 것이기 때문이다(아래 'Nguyen 비율 특징의 의미').
 
-**정답과 탐지 입력의 분리.** CU의 F1-C 탭은 PRACH와 HARQ ACK의 정답이 될 수 없다(§3). OCUDU는 계층별 로그와 MAC·RLC 계층, 그리고 NGAP·N3·E1AP·F1AP·E2AP 인터페이스의 패킷 캡처(PCAP)를 출력할 수 있다 [28, 'Logs', 'PCAPs']. 여기서 N3 캡처는 OCUDU 설정상 NG-U(GTP-U) 캡처이며 [29, L206–L207], NG-U는 gNB와 코어의 UPF 사이 사용자평면 인터페이스다 [5, §4.3.1.1]. E1AP는 CU-CP와 CU-UP 사이 E1 인터페이스 [6, §6.1.2]의 응용 프로토콜이고, E2AP는 E2 인터페이스의 응용 프로토콜이다. 본 프로젝트는 이 출력을 **검증용 정답으로만** 사용하고 탐지기 입력과 분리한다. 구현된 [라벨 계약 v1](reproducers/rrc-signaling-storm/docs/LABEL-CONTRACT.ko.md)은 UE raw event를 시도별로 묶되, DU ACK가 시도별로 조인되기 전에는 최종 `canonical_a`를 `null`로 남긴다. 또 OCUDU에서는 RRCSetupComplete 미전송형과 RRCSetupRequest 후 중단형의 CU F1-C 시퀀스가 같을 수 있으므로 [4, §8], 두 시나리오를 F1-C 탭만으로 구별할 수 있다고 가정하지 않고 UE 쪽 정답으로 후보 라벨을 붙인다(추론).
+**정답과 탐지 입력의 분리.** CU의 F1-C 탭은 PRACH와 HARQ ACK의 정답이 될 수 없다(§3). OCUDU는 계층별 로그와 MAC·RLC 계층, 그리고 NGAP·N3·E1AP·F1AP·E2AP 인터페이스의 패킷 캡처(PCAP)를 출력할 수 있다 [28, 'Logs', 'PCAPs']. 여기서 N3 캡처는 OCUDU 설정상 NG-U(GTP-U) 캡처이며 [29, L206–L207], NG-U는 gNB와 코어의 UPF 사이 사용자평면 인터페이스다 [5, §4.3.1.1]. E1AP는 CU-CP와 CU-UP 사이 E1 인터페이스 [6, §6.1.2]의 응용 프로토콜이고, E2AP는 E2 인터페이스의 응용 프로토콜이다. 본 프로젝트는 이 출력을 **검증용 정답으로만** 사용하고 탐지기 입력과 분리한다. 구현된 [라벨 계약 v1](reproducers/rrc-signaling-storm/docs/LABEL-CONTRACT.md)은 UE raw event를 시도별로 묶되, DU ACK가 시도별로 조인되기 전에는 최종 `canonical_a`를 `null`로 남긴다. 또 OCUDU에서는 RRCSetupComplete 미전송형과 RRCSetupRequest 후 중단형의 CU F1-C 시퀀스가 같을 수 있으므로 [4, §8], 두 시나리오를 F1-C 탭만으로 구별할 수 있다고 가정하지 않고 UE 쪽 정답으로 후보 라벨을 붙인다(추론).
 
 **Nguyen 비율 특징의 의미.** Nguyen 등의 탐지 특징 R1 = N_5 / N_3과 R2 = N_5 / N_4는 각각 Msg5 수를 Msg3 수로, Msg5 수를 Msg4 수로 나눈 비율이다 [15, §VI]. 여기서 N_k는 한 슬라이딩 창 안에서 관측한 Msgk의 개수이며 [15, §VII-B], 앞 문단의 N3 인터페이스와는 무관한 표기다. Nguyen은 R1을 완료된(또는 미완료된) RRC 설정 절차의 비율로 설명하지만 [15, §VI], 실제 계산은 한 창 안의 메시지 수 비율이므로 [15, §VII-B] 시도별 완료율과 같지 않다(추론). Nguyen 스스로 Msg4와 Msg5 사이에 자연스러운 지연이 있다고 적었으므로 [15, §VII-B], 우리가 같은 특징을 쓰려면 Msg4→Msg5 지연, 창 경계, 분모가 0인 창을 처리하는 규칙을 정해야 한다(추론). 논문의 임계값 0.5 [15, §VI], 625 ms 창 [15, §VII-A], 약 90 ms 탐지 [15, §VII-B]는 OAI gNB·UE를 RF 시뮬레이션으로 연결하고 [15, §III-C] 정상 부하를 절단 포아송(truncated Poisson) 분포로 모사한 조건의 결과다 [15, §VII-A].
 
@@ -262,7 +262,7 @@ TeleRAN은 eBPF 필터와 사용자 공간의 ASN.1(Abstract Syntax Notation One
 
 **첫 구현에 필요한 제어.** 노브(knob)는 실험자가 조절하는 입력 파라미터다. 본 문서는 첫 구현의 제어를 다음으로 제한한다: 시나리오, 시작·종료, 시도 간격(설정값과 실제 Msg3/s를 분리해 기록), 안전한 최대 지속시간, 정상 UE 기준선. 버스트, 완료 비율, 초기 UE identity 정책은 RRCSetupComplete 미전송형이 성립한 뒤에만 추가한다. 이 순서는 재현기 설계의 1차/후속 노브 구분과 같다 [22, §5]. 노브의 형태는 프로세스를 띄울 때 주는 "실행 시작 인자"와 실행 도중 바꾸는 "실행 중 변경"으로 구분한다 [22, §5]. 공개된 5gattacks 공격 패치의 재시도 간격은 둘 중 어느 것도 아닌 **빌드 시 상수**다. 패치는 재시도 타이머를 `nr_timer_setup(&tac->attack_rach_timer, 10, 10)`으로 소스에 고정해 두므로, 간격을 바꾸려면 다시 빌드해야 한다 [17, L280]. 두 인자는 목표값(target) 10과 tick당 증가량(step) 10이므로, 이 타이머는 첫 tick에 만료된다 [4, §5]. KAUST가 추정한 공격 시도율은 약 25회/초(시도당 40 ms)였다 [10, §VI-B]. 런타임 요청률·완료율·identity 노브도 없다 [18, §4].
 
-표 3은 실행마다 남겨야 할 값과 그 목적이다. 각 행은 서로 다른 오류 원인을 가려내기 위한 것이며, 레코드 형식은 [design.md](design.md) §8과 구현된 [라벨 계약 v1](reproducers/rrc-signaling-storm/docs/LABEL-CONTRACT.ko.md)에서 정한다 [22, §8].
+표 3은 실행마다 남겨야 할 값과 그 목적이다. 각 행은 서로 다른 오류 원인을 가려내기 위한 것이며, 레코드 형식은 [design.md](design.md) §8과 구현된 [라벨 계약 v1](reproducers/rrc-signaling-storm/docs/LABEL-CONTRACT.md)에서 정한다 [22, §8].
 
 표 3. 실행마다 기록할 값
 

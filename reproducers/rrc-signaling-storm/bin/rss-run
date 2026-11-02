@@ -7,7 +7,7 @@
 #
 # Everything is configurable. Precedence: command line > conf/rss.conf >
 # environment > built-in default (the conf file is sourced first, so a key set
-# there wins over an exported variable). See README.en.md.
+# there wins over an exported variable). See README.md.
 set -euo pipefail
 umask 077
 
@@ -106,7 +106,7 @@ usage: $0 [options]
   -h       this help
   PHASE_MS per-retry non-probe UE stride, 0..5000 ms (now $PHASE_MS; env/conf only)
 Every option has an environment variable of the same name; conf/rss.conf sets
-defaults. See README.en.md for the full list including radio knobs.
+defaults. See README.md for the full list including radio knobs.
 EOF
   exit "${1:-1}"
 }

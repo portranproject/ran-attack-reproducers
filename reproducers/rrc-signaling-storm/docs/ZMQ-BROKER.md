@@ -13,7 +13,7 @@ DU  RX: REQ connect 4557  UE TX: REP bind 4557
 
 그래서 UE 프로세스 하나가 4557을 독점하고, 여러 UE는 한 프로세스 안에서 상향을 합쳐
 쓰는 방식이었다. 이 방식에서는 정상 UE(증인)를 같은 셀에 독립적으로 둘 수 없다
-(배치 포함 시 공격률 붕괴, 제외 시 증인 UL 미전달 — `docs/KNOWN-ISSUES.ko.md` §4).
+(배치 포함 시 공격률 붕괴, 제외 시 증인 UL 미전달 — `docs/KNOWN-ISSUES.md` §4).
 
 브로커는 DU와 UE 사이에 들어가 DU에는 UE 하나처럼 보이고, 뒤에서 N개의 UE를
 독립 프로세스로 연결한다. OAI 소스는 수정하지 않는다. UE는 CLI의 ZMQ 주소만

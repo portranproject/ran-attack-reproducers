@@ -1,0 +1,484 @@
+#!/usr/bin/env bash
+# blind-run — seal and judge one Blind DoS control or attack phase.
+#
+# The radio/core-specific work is delegated to two explicit hooks.  The phase
+# hook may only collect raw evidence; the verifier hook derives the verdict.
+# Missing hooks, evidence, clock proof, or a malformed verdict fail closed.
+set -uo pipefail
+umask 077
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONF="${BLIND_CONF:-$HERE/conf/blind.conf}"
+if [[ -L $CONF ]]; then
+  echo "configuration must not be a symlink: $CONF" >&2
+  exit 2
+fi
+if [[ -f $CONF ]]; then
+  # shellcheck source=/dev/null
+  . "$CONF" || { echo "cannot load $CONF" >&2; exit 2; }
+fi
+
+MODE=control
+if [[ ${1:-} == control || ${1:-} == attack ]]; then
+  MODE=$1
+  shift
+fi
+
+ENABLE=${ENABLE:-0}
+RUN_ID=${RUN_ID:-}
+RUN_ROOT=${BLIND_INTERNAL_RUN_ROOT:-${BLIND_RUN_ROOT:-$HERE/runs}}
+LOCK_FILE=${BLIND_LOCK_FILE:-/tmp/blind-dos.lock}
+FLOCK_BIN=${FLOCK_BIN:-flock}
+TIMEOUT_BIN=${TIMEOUT_BIN:-timeout}
+PHASE_CMD=${PHASE_CMD:-}
+VERIFY_CMD=${VERIFY_CMD:-}
+PHASE_TIMEOUT_S=${PHASE_TIMEOUT_S:-180}
+VERIFY_TIMEOUT_S=${VERIFY_TIMEOUT_S:-60}
+OBSERVATION_S=${OBSERVATION_S:-40}
+RECOVERY_TIMEOUT_S=${RECOVERY_TIMEOUT_S:-30}
+BASELINE_PING_COUNT=${BASELINE_PING_COUNT:-20}
+LOSS_CONSECUTIVE_PINGS=${LOSS_CONSECUTIVE_PINGS:-5}
+RECOVERY_PING_COUNT=${RECOVERY_PING_COUNT:-20}
+CLOCK_SYNC_METHOD=${CLOCK_SYNC_METHOD:-unmeasured}
+CLOCK_OFFSET_NS=${CLOCK_OFFSET_NS:-null}
+CLOCK_UNCERTAINTY_NS=${CLOCK_UNCERTAINTY_NS:-null}
+MAX_CLOCK_UNCERTAINTY_NS=${MAX_CLOCK_UNCERTAINTY_NS:-10000000}
+CLOCK_EVIDENCE_SHA256=${CLOCK_EVIDENCE_SHA256:-}
+LAB_INVENTORY_SHA256=${LAB_INVENTORY_SHA256:-}
+VICTIM_PROFILE_FINGERPRINT=${VICTIM_PROFILE_FINGERPRINT:-}
+ATTACKER_PROFILE_FINGERPRINT=${ATTACKER_PROFILE_FINGERPRINT:-}
+ARTIFACT_SCANNER=${ARTIFACT_SCANNER:-$HERE/../rrc-signaling-storm/analysis/check_sensitive_artifacts.py}
+EVIDENCE_TOOL=${EVIDENCE_TOOL:-$HERE/analysis/evidence_manifest.py}
+LOCK_INHERITED=${BLIND_INTERNAL_LOCK_INHERITED:-0}
+EXPECTED_CONFIG_SHA256=${BLIND_INTERNAL_EXPECT_CONFIG_SHA256:-}
+EXPECTED_POLICY_SHA256=${BLIND_INTERNAL_EXPECT_POLICY_SHA256:-}
+
+usage() {
+  cat <<EOF
+usage: $0 [control|attack] -n RUN_ID [-e 0|1]
+  control is the default and requires -e 0.
+  attack requires an explicit -e 1.
+EOF
+  exit "${1:-2}"
+}
+
+while getopts "e:n:h" opt; do
+  case $opt in
+    e) ENABLE=$OPTARG ;;
+    n) RUN_ID=$OPTARG ;;
+    h) usage 0 ;;
+    *) usage ;;
+  esac
+done
+
+fail() { echo "$*" >&2; exit 2; }
+positive_int() { [[ $2 =~ ^[1-9][0-9]*$ ]] || fail "$1 must be a positive integer"; }
+nonnegative_int() { [[ $2 =~ ^(0|[1-9][0-9]*)$ ]] || fail "$1 must be a non-negative integer"; }
+
+[[ $MODE == control || $MODE == attack ]] || fail "mode must be control or attack"
+[[ $ENABLE == 0 || $ENABLE == 1 ]] || fail "-e must be 0 or 1"
+[[ $MODE == control && $ENABLE == 0 || $MODE == attack && $ENABLE == 1 ]] \
+  || fail "control requires -e 0; attack requires an explicit -e 1"
+[[ $RUN_ID =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]] \
+  || fail "run_id must start with a letter or digit and use only letters, digits, '.', '_' or '-'"
+[[ -n $PHASE_CMD ]] || fail "PHASE_CMD is required and must collect raw evidence"
+[[ -n $VERIFY_CMD ]] || fail "VERIFY_CMD is required and must write the independent verdict"
+for pair in \
+  "PHASE_TIMEOUT_S:$PHASE_TIMEOUT_S" "VERIFY_TIMEOUT_S:$VERIFY_TIMEOUT_S" \
+  "OBSERVATION_S:$OBSERVATION_S" "RECOVERY_TIMEOUT_S:$RECOVERY_TIMEOUT_S" \
+  "BASELINE_PING_COUNT:$BASELINE_PING_COUNT" \
+  "LOSS_CONSECUTIVE_PINGS:$LOSS_CONSECUTIVE_PINGS" \
+  "RECOVERY_PING_COUNT:$RECOVERY_PING_COUNT"; do
+  positive_int "${pair%%:*}" "${pair#*:}"
+done
+nonnegative_int MAX_CLOCK_UNCERTAINTY_NS "$MAX_CLOCK_UNCERTAINTY_NS"
+[[ $CLOCK_SYNC_METHOD != unmeasured && $CLOCK_SYNC_METHOD =~ ^[a-zA-Z0-9._-]+$ ]] \
+  || fail "measured CLOCK_SYNC_METHOD is required"
+[[ $CLOCK_OFFSET_NS =~ ^-?(0|[1-9][0-9]*)$ ]] || fail "CLOCK_OFFSET_NS must be an integer"
+nonnegative_int CLOCK_UNCERTAINTY_NS "$CLOCK_UNCERTAINTY_NS"
+(( CLOCK_UNCERTAINTY_NS <= MAX_CLOCK_UNCERTAINTY_NS )) \
+  || fail "CLOCK_UNCERTAINTY_NS exceeds MAX_CLOCK_UNCERTAINTY_NS"
+[[ $CLOCK_EVIDENCE_SHA256 =~ ^[0-9a-f]{64}$ ]] \
+  || fail "CLOCK_EVIDENCE_SHA256 must be a lowercase SHA-256"
+[[ $LAB_INVENTORY_SHA256 =~ ^[0-9a-f]{64}$ ]] \
+  || fail "LAB_INVENTORY_SHA256 must identify the sealed G0 inventory"
+[[ $VICTIM_PROFILE_FINGERPRINT =~ ^[0-9a-f]{64}$ \
+   && $ATTACKER_PROFILE_FINGERPRINT =~ ^[0-9a-f]{64}$ ]] \
+  || fail "VICTIM_PROFILE_FINGERPRINT and ATTACKER_PROFILE_FINGERPRINT must be lowercase SHA-256 values"
+[[ $VICTIM_PROFILE_FINGERPRINT != "$ATTACKER_PROFILE_FINGERPRINT" ]] \
+  || fail "victim and attacker subscriber profiles must be distinct"
+command -v python3 >/dev/null 2>&1 || fail "python3 is required"
+command -v "$FLOCK_BIN" >/dev/null 2>&1 || fail "missing flock command: $FLOCK_BIN"
+command -v "$TIMEOUT_BIN" >/dev/null 2>&1 || fail "missing timeout command: $TIMEOUT_BIN"
+[[ -f $ARTIFACT_SCANNER && ! -L $ARTIFACT_SCANNER ]] \
+  || fail "artifact scanner must be a regular non-symlink file: $ARTIFACT_SCANNER"
+[[ -f $EVIDENCE_TOOL && ! -L $EVIDENCE_TOOL ]] \
+  || fail "evidence tool must be a regular non-symlink file: $EVIDENCE_TOOL"
+
+sha256_file() {
+  python3 - "$1" <<'PY'
+import hashlib
+import sys
+
+h = hashlib.sha256()
+with open(sys.argv[1], "rb") as source:
+    for chunk in iter(lambda: source.read(1024 * 1024), b""):
+        h.update(chunk)
+print(h.hexdigest())
+PY
+}
+
+hash_values() {
+  python3 - "$@" <<'PY'
+import hashlib
+import sys
+
+h = hashlib.sha256()
+for value in sys.argv[1:]:
+    h.update(value.encode())
+    h.update(b"\0")
+print(h.hexdigest())
+PY
+}
+
+config_sha256() {
+  if [[ -f $CONF ]]; then sha256_file "$CONF"; else hash_values absent-config; fi
+}
+
+policy_sha256() {
+  hash_values \
+    "$PHASE_CMD" "$VERIFY_CMD" "$PHASE_TIMEOUT_S" "$VERIFY_TIMEOUT_S" \
+    "$OBSERVATION_S" "$RECOVERY_TIMEOUT_S" "$BASELINE_PING_COUNT" \
+    "$LOSS_CONSECUTIVE_PINGS" "$RECOVERY_PING_COUNT" "$CLOCK_SYNC_METHOD" \
+    "$CLOCK_OFFSET_NS" "$CLOCK_UNCERTAINTY_NS" "$MAX_CLOCK_UNCERTAINTY_NS" \
+    "$CLOCK_EVIDENCE_SHA256" "$LAB_INVENTORY_SHA256" \
+    "$VICTIM_PROFILE_FINGERPRINT" "$ATTACKER_PROFILE_FINGERPRINT" \
+    "$ARTIFACT_SCANNER" "$EVIDENCE_TOOL"
+}
+
+CONFIG_SHA256=$(config_sha256)
+POLICY_SHA256=$(policy_sha256)
+[[ -z $EXPECTED_CONFIG_SHA256 || $CONFIG_SHA256 == "$EXPECTED_CONFIG_SHA256" ]] \
+  || fail "configuration changed after the campaign was sealed"
+[[ -z $EXPECTED_POLICY_SHA256 || $POLICY_SHA256 == "$EXPECTED_POLICY_SHA256" ]] \
+  || fail "effective threshold/hook policy changed after the campaign was sealed"
+
+if (( LOCK_INHERITED )); then
+  if ! { true >&9; } 2>/dev/null || ! "$FLOCK_BIN" -n 9; then
+    fail "campaign lock was not inherited"
+  fi
+else
+  exec 9>"$LOCK_FILE"
+  "$FLOCK_BIN" -n 9 || fail "another Blind DoS run is active"
+fi
+
+[[ ! -L $RUN_ROOT ]] || fail "run root must not be a symlink: $RUN_ROOT"
+if [[ ! -e $RUN_ROOT ]]; then
+  mkdir -m 700 -p -- "$RUN_ROOT" || fail "cannot create run root: $RUN_ROOT"
+fi
+[[ -d $RUN_ROOT && ! -L $RUN_ROOT ]] || fail "run root is not a real directory: $RUN_ROOT"
+OUT="$RUN_ROOT/$RUN_ID"
+mkdir -m 700 -- "$OUT" \
+  || fail "cannot create $OUT — existing results are never overwritten"
+
+RUNNER_SHA256=$(sha256_file "$HERE/bin/blind-run")
+SCANNER_SHA256=$(sha256_file "$ARTIFACT_SCANNER")
+EVIDENCE_TOOL_SHA256=$(sha256_file "$EVIDENCE_TOOL")
+PHASE_CMD_SHA256=$(hash_values "$PHASE_CMD")
+VERIFY_CMD_SHA256=$(hash_values "$VERIFY_CMD")
+T_START_UTC=$(date -u +%FT%TZ)
+T_START_NS=$(python3 -c 'import time; print(time.time_ns())')
+
+export OUT RUN_ID MODE ENABLE CONFIG_SHA256 POLICY_SHA256 RUNNER_SHA256 SCANNER_SHA256
+export EVIDENCE_TOOL_SHA256
+export PHASE_CMD_SHA256 VERIFY_CMD_SHA256 T_START_UTC T_START_NS
+export OBSERVATION_S RECOVERY_TIMEOUT_S BASELINE_PING_COUNT LOSS_CONSECUTIVE_PINGS
+export RECOVERY_PING_COUNT CLOCK_SYNC_METHOD CLOCK_OFFSET_NS CLOCK_UNCERTAINTY_NS
+export MAX_CLOCK_UNCERTAINTY_NS CLOCK_EVIDENCE_SHA256
+export LAB_INVENTORY_SHA256 VICTIM_PROFILE_FINGERPRINT ATTACKER_PROFILE_FINGERPRINT
+python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+
+value = {
+    "schema_version": "blind.run.v1",
+    "run_id": os.environ["RUN_ID"],
+    "mode": os.environ["MODE"],
+    "attack_enabled": os.environ["ENABLE"] == "1",
+    "campaign_id": os.environ.get("BLIND_INTERNAL_CAMPAIGN_ID") or None,
+    "set_index": int(os.environ.get("BLIND_INTERNAL_SET_INDEX", "0")) or None,
+    "try_index": int(os.environ.get("BLIND_INTERNAL_TRY_INDEX", "0")) or None,
+    "configuration_sha256": os.environ["CONFIG_SHA256"],
+    "policy_sha256": os.environ["POLICY_SHA256"],
+    "software": {
+        "runner_sha256": os.environ["RUNNER_SHA256"],
+        "artifact_scanner_sha256": os.environ["SCANNER_SHA256"],
+        "evidence_tool_sha256": os.environ["EVIDENCE_TOOL_SHA256"],
+        "phase_cmd_sha256": os.environ["PHASE_CMD_SHA256"],
+        "verify_cmd_sha256": os.environ["VERIFY_CMD_SHA256"],
+    },
+    "thresholds": {
+        "observation_s": int(os.environ["OBSERVATION_S"]),
+        "recovery_timeout_s": int(os.environ["RECOVERY_TIMEOUT_S"]),
+        "baseline_ping_count": int(os.environ["BASELINE_PING_COUNT"]),
+        "loss_consecutive_pings": int(os.environ["LOSS_CONSECUTIVE_PINGS"]),
+        "recovery_ping_count": int(os.environ["RECOVERY_PING_COUNT"]),
+    },
+    "clock_sync": {
+        "method": os.environ["CLOCK_SYNC_METHOD"],
+        "offset_ns": int(os.environ["CLOCK_OFFSET_NS"]),
+        "uncertainty_ns": int(os.environ["CLOCK_UNCERTAINTY_NS"]),
+        "max_uncertainty_ns": int(os.environ["MAX_CLOCK_UNCERTAINTY_NS"]),
+        "evidence_sha256": os.environ["CLOCK_EVIDENCE_SHA256"],
+    },
+    "lab_inventory_sha256": os.environ["LAB_INVENTORY_SHA256"],
+    "profiles": {
+        "victim_fingerprint": os.environ["VICTIM_PROFILE_FINGERPRINT"],
+        "attacker_fingerprint": os.environ["ATTACKER_PROFILE_FINGERPRINT"],
+        "distinct": os.environ["VICTIM_PROFILE_FINGERPRINT"]
+                    != os.environ["ATTACKER_PROFILE_FINGERPRINT"],
+    },
+    "t_start_utc": os.environ["T_START_UTC"],
+    "t_start_ns": int(os.environ["T_START_NS"]),
+}
+path = Path(os.environ["OUT"]) / "run.json"
+with path.open("x") as output:
+    json.dump(value, output, sort_keys=True, separators=(",", ":"))
+    output.write("\n")
+PY
+RUN_JSON_SHA256=$(sha256_file "$OUT/run.json")
+
+export BLIND_MODE=$MODE BLIND_RUN_ID=$RUN_ID BLIND_RUN_DIR=$OUT
+export BLIND_ATTACK_ENABLED=$ENABLE BLIND_HOOK_RESULT=$OUT/verdict.json
+phase_rc=0
+# blind-p5-phase bounds emergency child cleanup and collector stop hooks to
+# under 15 seconds; keep the outer timeout from killing it mid-cleanup.
+"$TIMEOUT_BIN" --signal=TERM --kill-after=15 "${PHASE_TIMEOUT_S}s" \
+  bash -c "$PHASE_CMD" 9>&- >"$OUT/phase.stdout" 2>"$OUT/phase.stderr" </dev/null \
+  || phase_rc=$?
+
+REQUIRED_ARTIFACTS=(
+  attacker_events.jsonl victim_service.jsonl
+  target_snapshot_before.json target_snapshot_after.json
+  amf.log cu.log du.log ngap.pcap f1ap.pcap ground_truth.jsonl
+)
+evidence_ok=1
+for name in "${REQUIRED_ARTIFACTS[@]}"; do
+  path="$OUT/$name"
+  if [[ -L $path || ! -f $path ]]; then
+    evidence_ok=0
+    break
+  fi
+  if [[ $MODE == attack || $name != attacker_events.jsonl ]]; then
+    [[ -s $path ]] || { evidence_ok=0; break; }
+  fi
+done
+
+raw_digest() {
+  python3 - "$OUT" "${REQUIRED_ARTIFACTS[@]}" <<'PY'
+import hashlib
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+h = hashlib.sha256()
+for name in sys.argv[2:]:
+    path = root / name
+    if path.is_symlink() or not path.is_file():
+        print("missing")
+        raise SystemExit(0)
+    h.update(name.encode())
+    h.update(b"\0")
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            h.update(chunk)
+print(h.hexdigest())
+PY
+}
+
+RAW_SHA256_BEFORE=missing
+RAW_SHA256_AFTER=missing
+verify_rc=125
+if (( phase_rc == 0 && evidence_ok )); then
+  RAW_SHA256_BEFORE=$(raw_digest)
+  verify_rc=0
+  "$TIMEOUT_BIN" --signal=TERM --kill-after=1 "${VERIFY_TIMEOUT_S}s" \
+    bash -c "$VERIFY_CMD" 9>&- >"$OUT/verify.stdout" 2>"$OUT/verify.stderr" </dev/null \
+    || verify_rc=$?
+  RAW_SHA256_AFTER=$(raw_digest)
+fi
+
+config_unchanged=1
+[[ $(config_sha256) == "$CONFIG_SHA256" && $(policy_sha256) == "$POLICY_SHA256" ]] \
+  || config_unchanged=0
+software_unchanged=1
+[[ $(sha256_file "$HERE/bin/blind-run") == "$RUNNER_SHA256" \
+   && $(sha256_file "$ARTIFACT_SCANNER") == "$SCANNER_SHA256" \
+   && $(sha256_file "$EVIDENCE_TOOL") == "$EVIDENCE_TOOL_SHA256" ]] \
+  || software_unchanged=0
+run_json_unchanged=1
+[[ $(sha256_file "$OUT/run.json") == "$RUN_JSON_SHA256" ]] || run_json_unchanged=0
+raw_unchanged=1
+[[ $RAW_SHA256_BEFORE != missing && $RAW_SHA256_BEFORE == "$RAW_SHA256_AFTER" ]] \
+  || raw_unchanged=0
+
+scan_rc=0
+if (( software_unchanged )); then
+  python3 "$ARTIFACT_SCANNER" "$OUT" \
+    >"$OUT/sensitive_artifact_check.txt" 2>"$OUT/sensitive_artifact_check.err" \
+    || scan_rc=$?
+else
+  scan_rc=99
+  : >"$OUT/sensitive_artifact_check.txt"
+  echo "artifact scanner or runner changed during the run" >"$OUT/sensitive_artifact_check.err"
+fi
+
+export phase_rc verify_rc evidence_ok config_unchanged software_unchanged
+export run_json_unchanged raw_unchanged scan_rc
+T_STOP_UTC=$(date -u +%FT%TZ)
+T_STOP_NS=$(python3 -c 'import time; print(time.time_ns())')
+export T_STOP_UTC T_STOP_NS
+classification=$(python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+
+out = Path(os.environ["OUT"])
+mode = os.environ["MODE"]
+run_id = os.environ["RUN_ID"]
+infra_reason = None
+checks = {
+    "phase_exit_status": int(os.environ["phase_rc"]),
+    "verify_exit_status": int(os.environ["verify_rc"]),
+    "evidence_complete": os.environ["evidence_ok"] == "1",
+    "configuration_unchanged": os.environ["config_unchanged"] == "1",
+    "software_unchanged": os.environ["software_unchanged"] == "1",
+    "run_metadata_unchanged": os.environ["run_json_unchanged"] == "1",
+    "raw_evidence_unchanged_by_verifier": os.environ["raw_unchanged"] == "1",
+    "sensitive_artifact_scan": "ok" if os.environ["scan_rc"] == "0" else "failed",
+}
+if checks["phase_exit_status"] != 0:
+    infra_reason = "phase_hook_failed"
+elif not checks["evidence_complete"]:
+    infra_reason = "required_evidence_missing"
+elif checks["verify_exit_status"] != 0:
+    infra_reason = "verifier_failed"
+elif not checks["configuration_unchanged"]:
+    infra_reason = "configuration_changed"
+elif not checks["software_unchanged"]:
+    infra_reason = "runner_or_scanner_changed"
+elif not checks["run_metadata_unchanged"]:
+    infra_reason = "run_metadata_changed"
+elif not checks["raw_evidence_unchanged_by_verifier"]:
+    infra_reason = "verifier_modified_raw_evidence"
+elif checks["sensitive_artifact_scan"] != "ok":
+    infra_reason = "sensitive_artifact_scan_failed"
+
+verdict = None
+if infra_reason is None:
+    path = out / "verdict.json"
+    if path.is_symlink() or not path.is_file():
+        infra_reason = "verdict_missing"
+    else:
+        try:
+            verdict = json.loads(path.read_text())
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            infra_reason = "verdict_malformed"
+
+required_bools = (
+    "infrastructure_valid", "victim_service_before", "victim_service_loss",
+    "victim_service_after", "target_stable", "exact_join",
+    "target_owner_state_effect", "same_victim_recovery",
+)
+normalized_verdict = None
+if infra_reason is None:
+    if not isinstance(verdict, dict) \
+            or verdict.get("schema_version") != "blind.phase-verdict.v1" \
+            or verdict.get("run_id") != run_id or verdict.get("mode") != mode:
+        infra_reason = "verdict_contract_mismatch"
+    elif any(type(verdict.get(key)) is not bool for key in required_bools):
+        infra_reason = "verdict_boolean_missing"
+    elif type(verdict.get("crash_count")) is not int or verdict["crash_count"] < 0 \
+            or type(verdict.get("forced_kill_count")) is not int \
+            or verdict["forced_kill_count"] < 0:
+        infra_reason = "verdict_count_invalid"
+    elif not verdict["infrastructure_valid"] or verdict["crash_count"] \
+            or verdict["forced_kill_count"]:
+        infra_reason = "hook_reported_infrastructure_invalid"
+    elif not verdict["target_stable"]:
+        infra_reason = "target_identity_changed"
+    if infra_reason is None or (
+            isinstance(verdict, dict)
+            and verdict.get("schema_version") == "blind.phase-verdict.v1"
+            and verdict.get("run_id") == run_id and verdict.get("mode") == mode
+            and all(type(verdict.get(key)) is bool for key in required_bools)
+            and type(verdict.get("crash_count")) is int
+            and type(verdict.get("forced_kill_count")) is int):
+        normalized_verdict = {
+            "schema_version": verdict["schema_version"],
+            "run_id": verdict["run_id"],
+            "mode": verdict["mode"],
+            **{key: verdict[key] for key in required_bools},
+            "crash_count": verdict["crash_count"],
+            "forced_kill_count": verdict["forced_kill_count"],
+        }
+
+passed = False
+if infra_reason is None and mode == "control":
+    passed = (
+        verdict["victim_service_before"] and verdict["victim_service_after"]
+        and not verdict["victim_service_loss"]
+        and not verdict["target_owner_state_effect"]
+    )
+elif infra_reason is None:
+    passed = (
+        verdict["victim_service_before"] and verdict["victim_service_loss"]
+        and verdict["victim_service_after"] and verdict["target_stable"]
+        and verdict["exact_join"] and verdict["target_owner_state_effect"]
+        and verdict["same_victim_recovery"]
+    )
+
+if infra_reason is not None:
+    classification = "infrastructure-invalid"
+    reason = infra_reason
+elif passed:
+    classification = "passed"
+    reason = "matched_phase_contract_met"
+else:
+    classification = "valid-failure"
+    reason = f"{mode}_effect_contract_not_met"
+
+value = {
+    "schema_version": "blind.run-stop.v1",
+    "run_id": run_id,
+    "mode": mode,
+    "classification": classification,
+    "passed": classification == "passed",
+    "valid": classification != "infrastructure-invalid",
+    "reason": reason,
+    "checks": checks,
+    "verdict": normalized_verdict,
+    "t_stop_utc": os.environ["T_STOP_UTC"],
+    "t_stop_ns": int(os.environ["T_STOP_NS"]),
+}
+with (out / "run_stop.json").open("x") as output:
+    json.dump(value, output, sort_keys=True, separators=(",", ":"))
+    output.write("\n")
+print(classification)
+PY
+)
+
+cat "$OUT/run_stop.json"
+manifest_rc=0
+python3 "$EVIDENCE_TOOL" seal "$OUT" >&2 || manifest_rc=$?
+if (( manifest_rc == 0 )); then
+  python3 "$EVIDENCE_TOOL" verify "$OUT" >&2 || manifest_rc=$?
+fi
+(( manifest_rc == 0 )) || exit 20
+case $classification in
+  passed) exit 0 ;;
+  valid-failure) exit 10 ;;
+  infrastructure-invalid) exit 20 ;;
+  *) exit 20 ;;
+esac

@@ -47,7 +47,7 @@
 - PRACH 설정(`total_nof_ra_preambles 64`, `nof_ssb_per_ro 1`, `nof_cb_preambles_per_ssb 64`)으로 다중 UE RA 안정화.
 - `slow_down_ratio=1`로 스로틀 제거.
 - 증인/공격을 **별도 UE 프로세스**로 운영하는 측정 구조.
-- 산출물: `tools/multi_ue_5ue.py`, `docs/OFFICIAL-BROKER.ko.md`.
+- 산출물: `tools/multi_ue_5ue.py`, `docs/OFFICIAL-BROKER.md`.
 
 ## 당시 교훈 (낮춘 CU cap 실험 범위)
 

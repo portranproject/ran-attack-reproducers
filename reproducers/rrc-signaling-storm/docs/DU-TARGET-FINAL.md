@@ -55,6 +55,6 @@
 
 ## 자산
 
-- `docs/DU-TARGET-NOTES.ko.md` — 라운드별 실험 기록.
-- `docs/OFFICIAL-BROKER.ko.md`, `tools/multi_ue_5ue.py`, `tools/multi_ue_10ue.py` — 브로커 자산.
-- CU 결과: `docs/CU-TARGET-FINAL.ko.md`.
+- `docs/DU-TARGET-NOTES.md` — 라운드별 실험 기록.
+- `docs/OFFICIAL-BROKER.md`, `tools/multi_ue_5ue.py`, `tools/multi_ue_10ue.py` — 브로커 자산.
+- CU 결과: `docs/CU-TARGET-FINAL.md`.

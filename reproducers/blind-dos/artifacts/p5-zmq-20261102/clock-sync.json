@@ -1,0 +1,29 @@
+{
+  "schema_version": "blind.clock-evidence.v1",
+  "captured_utc": "2026-11-02T00:00:05Z",
+  "method": "chrony-aws-time-sync",
+  "reference": "169.254.169.123",
+  "relative_offset_ns": 796,
+  "selected_uncertainty_ns": 1000000,
+  "cu": {
+    "ntp_synchronized": true,
+    "stratum": 4,
+    "system_time_offset_ns": 271,
+    "last_offset_ns": 148,
+    "rms_offset_ns": 269,
+    "root_delay_ns": 202915,
+    "root_dispersion_ns": 177494,
+    "leap_status": "Normal"
+  },
+  "du": {
+    "ntp_synchronized": true,
+    "stratum": 4,
+    "system_time_offset_ns": -525,
+    "last_offset_ns": -872,
+    "rms_offset_ns": 789,
+    "root_delay_ns": 192236,
+    "root_dispersion_ns": 276953,
+    "leap_status": "Normal"
+  },
+  "note": "두 호스트의 chrony가 같은 AWS Time Sync 기준을 사용했다. 1 ms 불확실성은 두 root dispersion의 합보다 크게 고정했다."
+}

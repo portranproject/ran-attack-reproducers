@@ -31,7 +31,7 @@ Up to 160 UE contexts can be created in the cell, the extra ones being used to R
 ```
 
 `min(SR 96, CSI 96, 1984) = 96`이고, 거절용 64를 더한 160이 셀의 단말 객체 상한이다.
-`docs/MECHANISM.ko.md` §5.1의 용량 식이 기동 로그로 확인된 것이다.
+`docs/MECHANISM.md` §5.1의 용량 식이 기동 로그로 확인된 것이다.
 
 ## 판정 — 공격 본체 구간 (01:13:41 ~ 01:15:41, 120.0 s)
 

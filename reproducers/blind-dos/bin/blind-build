@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Apply the UE-only Blind DoS patch to a dedicated clean OAI worktree and build it.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONF="${BLIND_CONF:-$ROOT/conf/blind.conf}"
+if [[ -f $CONF ]]; then
+  # shellcheck source=/dev/null
+  . "$CONF" || { echo "cannot load $CONF" >&2; exit 1; }
+fi
+
+OAI=${OAI:-/root/OAI-blind-dos-w38}
+EXPECT_COMMIT=${EXPECT_COMMIT:-6d6782b48484efd935c14e834832032743f9b138}
+PATCH=${PATCH:-$ROOT/patch/blind-ue-w38.patch}
+BUILD="$OAI/cmake_targets/ran_build/build"
+BIN="$BUILD/nr-uesoftmodem"
+DEVLIB="$BUILD/liboai_zmqdevif.so"
+
+git -C "$OAI" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+  || { echo "not an OAI git tree: $OAI" >&2; exit 1; }
+[[ -f $PATCH ]] || { echo "patch not found: $PATCH" >&2; exit 1; }
+HEAD=$(git -C "$OAI" rev-parse HEAD)
+[[ $HEAD == "$EXPECT_COMMIT" ]] \
+  || { echo "OAI HEAD $HEAD does not match required $EXPECT_COMMIT" >&2; exit 1; }
+STATE=$(git -C "$OAI" status --porcelain --untracked-files=all --ignore-submodules=none) \
+  || { echo "cannot inspect OAI worktree" >&2; exit 1; }
+[[ -z $STATE ]] || { echo "OAI worktree is not clean; nothing changed" >&2; exit 1; }
+
+git -C "$OAI" apply --check "$PATCH"
+git -C "$OAI" apply "$PATCH"
+
+NINJA=()
+command -v ninja >/dev/null 2>&1 && NINJA=(--ninja)
+(
+  cd "$OAI/cmake_targets"
+  ./build_oai --nrUE -w ZMQ "${NINJA[@]}"
+)
+
+[[ -x $BIN && -f $DEVLIB ]] || { echo "Blind UE build is incomplete" >&2; exit 1; }
+for needle in tun_suffix target_5g_s_tmsi target_file target_gate_opened \
+  target_msg3_committed authentication_request_withheld retry_blocked; do
+  grep -Faq "$needle" "$BIN" || { echo "built UE lacks $needle" >&2; exit 1; }
+done
+for secret in 'UICC simulation: IMSI=' 'milenage output ik:'; do
+  if grep -Faq "$secret" "$BIN"; then
+    echo "built UE can log subscriber/authentication material: $secret" >&2
+    exit 1
+  fi
+done
+
+printf 'blind-build: ok\n'
+printf 'source_commit=%s\n' "$HEAD"
+printf 'patch_sha256=%s\n' "$(sha256sum "$PATCH" | awk '{print $1}')"
+printf 'binary_sha256=%s\n' "$(sha256sum "$BIN" | awk '{print $1}')"
+printf 'device_sha256=%s\n' "$(sha256sum "$DEVLIB" | awk '{print $1}')"
+printf 'attack_default=off\n'

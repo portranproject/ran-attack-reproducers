@@ -1,0 +1,12 @@
+{
+  "campaign_id": "blind-g5-final-20261102",
+  "runs": [
+    {"run_id":"set001-control-try01","mode":"control","before_ping":"20/20","during_ping":"10/10","after_ping":"20/20","registration_count":"1->1","pdu_session_count":"1->1","passed":true},
+    {"run_id":"set001-attack-try01","mode":"attack","before_ping":"20/20","during_ping":"1/6","consecutive_loss":5,"after_ping":"20/20","registration_count":"1->2","pdu_session_count":"1->2","same_victim_pid":true,"exact_join":true,"passed":true},
+    {"run_id":"set002-control-try01","mode":"control","before_ping":"20/20","during_ping":"10/10","after_ping":"20/20","registration_count":"1->1","pdu_session_count":"1->1","passed":true},
+    {"run_id":"set002-attack-try01","mode":"attack","before_ping":"20/20","during_ping":"0/5","consecutive_loss":5,"after_ping":"20/20","registration_count":"1->2","pdu_session_count":"1->2","same_victim_pid":true,"exact_join":true,"passed":true},
+    {"run_id":"set003-control-try01","mode":"control","before_ping":"20/20","during_ping":"10/10","after_ping":"20/20","registration_count":"1->1","pdu_session_count":"1->1","passed":true},
+    {"run_id":"set003-attack-try01","mode":"attack","before_ping":"20/20","during_ping":"0/5","consecutive_loss":5,"after_ping":"20/20","registration_count":"1->2","pdu_session_count":"1->2","same_victim_pid":true,"exact_join":true,"passed":true}
+  ],
+  "summary": {"required_sets":3,"passed_sets":3,"infrastructure_retries":0,"crash_count":0,"forced_kill_count":0,"g5_passed":true}
+}

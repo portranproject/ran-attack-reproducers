@@ -1,0 +1,6 @@
+{"classification":"passed","mode":"control","reason":"matched_phase_contract_met","run_id":"set001-control-try01","set_index":1,"try_index":1}
+{"classification":"passed","mode":"attack","reason":"matched_phase_contract_met","run_id":"set001-attack-try01","set_index":1,"try_index":1}
+{"classification":"passed","mode":"control","reason":"matched_phase_contract_met","run_id":"set002-control-try01","set_index":2,"try_index":1}
+{"classification":"passed","mode":"attack","reason":"matched_phase_contract_met","run_id":"set002-attack-try01","set_index":2,"try_index":1}
+{"classification":"passed","mode":"control","reason":"matched_phase_contract_met","run_id":"set003-control-try01","set_index":3,"try_index":1}
+{"classification":"passed","mode":"attack","reason":"matched_phase_contract_met","run_id":"set003-attack-try01","set_index":3,"try_index":1}

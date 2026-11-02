@@ -64,7 +64,7 @@ class P5EvidenceTests(unittest.TestCase):
             "snapshot", "--victim-log", self.victim, "--amf-raw", self.amf,
             "--victim-config", self.victim_config,
             "--output", output, "--phase", "before", "--run-id", RUN_ID,
-            "--victim-id", VICTIM,
+            "--victim-id", VICTIM, "--amf-region-id", "2",
         )
         return output, json.loads(output.read_text())
 
@@ -85,6 +85,7 @@ class P5EvidenceTests(unittest.TestCase):
             (snapshot["part2"] << 39) | snapshot["part1"], int(TARGET, 16)
         )
         self.assertRegex(snapshot["source_sha256"], r"^[0-9a-f]{64}$")
+        self.assertEqual(snapshot["amf_region_id"], 2)
 
     def test_before_snapshot_rejects_ambiguous_initial_mappings(self):
         with self.amf.open("a") as output:
@@ -98,7 +99,8 @@ class P5EvidenceTests(unittest.TestCase):
             "snapshot", "--victim-log", self.victim, "--amf-raw", self.amf,
             "--victim-config", self.victim_config,
             "--output", self.root / "snapshot.json", "--phase", "before",
-            "--run-id", RUN_ID, "--victim-id", VICTIM, ok=False,
+            "--run-id", RUN_ID, "--victim-id", VICTIM,
+            "--amf-region-id", "2", ok=False,
         )
         self.assertIn("exactly one", result.stderr)
 
@@ -113,7 +115,7 @@ class P5EvidenceTests(unittest.TestCase):
             "--victim-config", self.victim_config,
             "--output", self.root / "after.json", "--phase", "after",
             "--before", before, "--run-id", RUN_ID, "--victim-id", VICTIM,
-            ok=False,
+            "--amf-region-id", "2", ok=False,
         )
         self.assertIn("changed", result.stderr)
 

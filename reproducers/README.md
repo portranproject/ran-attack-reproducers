@@ -5,7 +5,7 @@
 | 모듈 | 상태 |
 |---|---|
 | [rrc-signaling-storm](rrc-signaling-storm/) | 동결·사용 가능. 검증 범위와 한계는 모듈 README 참고 |
-| [blind-dos](blind-dos/) | 현재 유효 5G-S-TMSI one-shot 구현·p5 ZMQ 실측 완료. exact binding 변화와 ping 손실은 확인했지만 30초 안 회복이 없어 G5 미달 |
+| [blind-dos](blind-dos/) | 현재 유효 5G-GUTI one-shot 구현 완료. p5 direct 2-cell ZMQ matched control→attack G5 3/3 통과 |
 | [upstream-dos](upstream-dos/) | 작업명. 공격 계층과 대상 자원 정의 중 |
 
 새 모듈은 최소한 README, 독립 라벨 계약, 정상 대조군, 유한 실행시간, `runs/`

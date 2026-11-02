@@ -24,10 +24,9 @@ BLIND_RUN_ID=$RUN_ID_INPUT
 OAI_BLIND_BIN=${OAI_BLIND_BIN:-}
 VICTIM_UE_CFG=${VICTIM_UE_CFG:-}
 ATTACKER_UE_CFG=${ATTACKER_UE_CFG:-}
-CONTROL_UE_CFG=${CONTROL_UE_CFG:-}
 UECAP=${UECAP:-}
-BLIND_BROKER_PY=${BLIND_BROKER_PY:-}
 VICTIM_ID=${VICTIM_ID:-}
+AMF_REGION_ID=${AMF_REGION_ID:-}
 BAND=${BAND:-}
 DL_FREQ=${DL_FREQ:-}
 NUMEROLOGY=${NUMEROLOGY:-}
@@ -44,7 +43,6 @@ DU_RESTART_CMD=${DU_RESTART_CMD:-}
 DU_READY_CMD=${DU_READY_CMD:-}
 VICTIM_ENDPOINT_READY_CMD=${VICTIM_ENDPOINT_READY_CMD:-}
 ATTACKER_ENDPOINT_READY_CMD=${ATTACKER_ENDPOINT_READY_CMD:-}
-BROKER_READY_CMD=${BROKER_READY_CMD:-}
 VICTIM_REGISTRATION_CMD=${VICTIM_REGISTRATION_CMD:-}
 VICTIM_TUN_CMD=${VICTIM_TUN_CMD:-}
 VICTIM_PING_CMD=${VICTIM_PING_CMD:-}
@@ -56,18 +54,16 @@ CU_CAPTURE_STOP_CMD=${CU_CAPTURE_STOP_CMD:-}
 CU_NETWORK_EVENTS_CMD=${CU_NETWORK_EVENTS_CMD:-}
 
 PYTHON_BIN=${PYTHON_BIN:-python3}
-BROKER_PYTHON=${BROKER_PYTHON:-python3}
 USE_SETSID=${USE_SETSID:-1}
 SETSID_BIN=${SETSID_BIN:-setsid}
 DU_SETTLE_S=${DU_SETTLE_S:-4}
 DU_READY_TIMEOUT_S=${DU_READY_TIMEOUT_S:-30}
 ENDPOINT_READY_TIMEOUT_S=${ENDPOINT_READY_TIMEOUT_S:-20}
-BROKER_READY_TIMEOUT_S=${BROKER_READY_TIMEOUT_S:-20}
 SERVICE_READY_TIMEOUT_S=${SERVICE_READY_TIMEOUT_S:-60}
-UE_BEFORE_BROKER_S=${UE_BEFORE_BROKER_S:-2}
 OBSERVATION_S=${OBSERVATION_S:-40}
 OBSERVATION_POLL_S=${OBSERVATION_POLL_S:-1}
 RECOVERY_TIMEOUT_S=${RECOVERY_TIMEOUT_S:-30}
+LOSS_CONSECUTIVE_PINGS=${LOSS_CONSECUTIVE_PINGS:-5}
 BASELINE_PING_COUNT=${BASELINE_PING_COUNT:-20}
 RECOVERY_PING_COUNT=${RECOVERY_PING_COUNT:-20}
 TEARDOWN_GRACE_S=${TEARDOWN_GRACE_S:-5}
@@ -101,16 +97,15 @@ RUN_DIR=$(cd "$BLIND_RUN_DIR" && pwd -P) || fail "cannot resolve BLIND_RUN_DIR"
 [[ $RUN_DIR == /* ]] || fail "BLIND_RUN_DIR must resolve to an absolute path"
 [[ $VICTIM_ID =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$ ]] || fail "VICTIM_ID must be a safe alias"
 
-for pair in \
-  "DU_SETTLE_S:$DU_SETTLE_S" "UE_BEFORE_BROKER_S:$UE_BEFORE_BROKER_S"; do
+for pair in "DU_SETTLE_S:$DU_SETTLE_S"; do
   nonnegative_int "${pair%%:*}" "${pair#*:}"
 done
 for pair in \
   "DU_READY_TIMEOUT_S:$DU_READY_TIMEOUT_S" \
   "ENDPOINT_READY_TIMEOUT_S:$ENDPOINT_READY_TIMEOUT_S" \
-  "BROKER_READY_TIMEOUT_S:$BROKER_READY_TIMEOUT_S" \
   "SERVICE_READY_TIMEOUT_S:$SERVICE_READY_TIMEOUT_S" \
   "OBSERVATION_S:$OBSERVATION_S" "RECOVERY_TIMEOUT_S:$RECOVERY_TIMEOUT_S" \
+  "LOSS_CONSECUTIVE_PINGS:$LOSS_CONSECUTIVE_PINGS" \
   "BASELINE_PING_COUNT:$BASELINE_PING_COUNT" \
   "RECOVERY_PING_COUNT:$RECOVERY_PING_COUNT" \
   "TEARDOWN_GRACE_S:$TEARDOWN_GRACE_S" "HOOK_TIMEOUT_S:$HOOK_TIMEOUT_S" \
@@ -120,7 +115,7 @@ done
 positive_decimal OBSERVATION_POLL_S "$OBSERVATION_POLL_S"
 [[ $USE_SETSID == 0 || $USE_SETSID == 1 ]] || fail "USE_SETSID must be 0 or 1"
 
-for name in OAI_BLIND_BIN VICTIM_UE_CFG ATTACKER_UE_CFG UECAP BLIND_BROKER_PY; do
+for name in OAI_BLIND_BIN VICTIM_UE_CFG ATTACKER_UE_CFG UECAP; do
   value=${!name}
   [[ -n $value && -f $value && ! -L $value ]] || fail "$name must be a regular non-symlink file"
 done
@@ -129,15 +124,16 @@ for name in BAND DL_FREQ NUMEROLOGY PRB DEVICE \
   VICTIM_TX_ENDPOINT VICTIM_RX_ENDPOINT ATTACKER_TX_ENDPOINT ATTACKER_RX_ENDPOINT; do
   [[ -n ${!name} ]] || fail "$name is required"
 done
+[[ $AMF_REGION_ID =~ ^(0|[1-9][0-9]{0,2})$ ]] && (( AMF_REGION_ID <= 255 )) \
+  || fail "AMF_REGION_ID must be an integer from 0 to 255"
 for name in PROCESS_CLEAR_CMD DU_STOP_CMD DU_RESTART_CMD DU_READY_CMD \
-  VICTIM_ENDPOINT_READY_CMD ATTACKER_ENDPOINT_READY_CMD BROKER_READY_CMD \
+  VICTIM_ENDPOINT_READY_CMD ATTACKER_ENDPOINT_READY_CMD \
   VICTIM_REGISTRATION_CMD VICTIM_TUN_CMD VICTIM_PING_CMD \
   CU_TARGET_SNAPSHOT_CMD CU_LOG_SLICE_START_CMD CU_LOG_SLICE_STOP_CMD \
   CU_CAPTURE_START_CMD CU_CAPTURE_STOP_CMD CU_NETWORK_EVENTS_CMD; do
   [[ -n ${!name} ]] || fail "$name is required"
 done
 command -v "$PYTHON_BIN" >/dev/null 2>&1 || fail "missing PYTHON_BIN"
-command -v "$BROKER_PYTHON" >/dev/null 2>&1 || fail "missing BROKER_PYTHON"
 if (( USE_SETSID )); then
   command -v "$SETSID_BIN" >/dev/null 2>&1 || fail "missing SETSID_BIN"
 fi
@@ -190,15 +186,19 @@ exclusive_empty() {
 }
 
 append_service() {
-  "$PYTHON_BIN" - "$VICTIM_SERVICE" "$BLIND_RUN_ID" "$VICTIM_ID" "$1" "$2" "$3" "$4" "$(now_ns)" <<'PY'
+  "$PYTHON_BIN" - "$VICTIM_SERVICE" "$BLIND_RUN_ID" "$VICTIM_ID" \
+    "$1" "$2" "$3" "$4" "$BLIND_VICTIM_PID" \
+    "$PROBE_REG_COUNT" "$PROBE_PDU_COUNT" "$(now_ns)" <<'PY'
 import json
 import sys
-path, run_id, victim_id, phase, registration, pdu, ping, timestamp = sys.argv[1:]
+path, run_id, victim_id, phase, registration, pdu, ping, victim_pid, registration_count, pdu_count, timestamp = sys.argv[1:]
 row = {
     "schema": "blind.victim-service.v1", "run_id": run_id,
     "victim_id": victim_id, "phase": phase,
     "registration": registration == "1", "pdu_session": pdu == "1",
-    "ping_ok": ping == "1", "realtime_ns": int(timestamp),
+    "ping_ok": ping == "1", "victim_pid": int(victim_pid),
+    "registration_count": int(registration_count),
+    "pdu_session_count": int(pdu_count), "realtime_ns": int(timestamp),
 }
 with open(path, "a", encoding="utf-8") as output:
     output.write(json.dumps(row, sort_keys=True, separators=(",", ":")) + "\n")
@@ -323,10 +323,10 @@ reap_unexpected() {
 }
 
 require_alive() {
-  local index=$1
+  local index=$1 status=0
   if ! child_alive "$index"; then
-    reap_unexpected "$index" || true
-    fail "${ROLES[$index]} exited before planned teardown"
+    reap_unexpected "$index" || status=$?
+    fail "${ROLES[$index]} exited before planned teardown (status=$status)"
   fi
 }
 
@@ -452,7 +452,7 @@ run_hook process-clear "$PROCESS_CLEAR_CMD" \
 exclusive_empty "$VICTIM_SERVICE"
 exclusive_empty "$GROUND_TRUTH"
 
-export BLIND_RUN_DIR=$RUN_DIR BLIND_RUN_ID BLIND_MODE BLIND_ATTACK_ENABLED VICTIM_ID
+export BLIND_RUN_DIR=$RUN_DIR BLIND_RUN_ID BLIND_MODE BLIND_ATTACK_ENABLED VICTIM_ID AMF_REGION_ID
 export VICTIM_UE_CFG
 export BLIND_AMF_LOG_PATH=$AMF_LOG BLIND_CU_LOG_PATH=$CU_LOG BLIND_DU_LOG_PATH=$DU_LOG
 export BLIND_NGAP_PCAP_PATH=$NGAP_PCAP BLIND_F1AP_PCAP_PATH=$F1AP_PCAP
@@ -482,11 +482,11 @@ start_ue() {
     '--zmq.[0].tx_channels' "$tx" '--zmq.[0].rx_channels' "$rx" "$@"
 }
 
-# A stays on the fixed second broker input for the whole phase. Its RRC task
+# Victim and attacker use separate cells of the same two-cell DU. The attacker
 # waits on a private target gate, so control and attack differ only by opening
 # that gate after the current victim snapshot.
 start_ue victim "$VICTIM_UE_CFG" "$VICTIM_TX_ENDPOINT" "$VICTIM_RX_ENDPOINT" \
-  "$WORK/victim.log" --blind.enable 0
+  "$WORK/victim.log" --blind.enable 0 --blind.recovery_mode 1
 VICTIM_INDEX=$LAST_CHILD_INDEX
 export BLIND_VICTIM_PID=$LAST_CHILD_PID
 export BLIND_VICTIM_LOG_PATH=$WORK/victim.log
@@ -497,9 +497,9 @@ require_alive "$VICTIM_INDEX"
 
 TARGET_GATE=$WORK/target_5g_s_tmsi
 start_ue attacker "$ATTACKER_UE_CFG" "$ATTACKER_TX_ENDPOINT" "$ATTACKER_RX_ENDPOINT" \
-  "$WORK/attacker.log" --blind.enable 1 --blind.target_file "$TARGET_GATE" \
-  --blind.target_wait_s "$ATTACKER_GATE_TIMEOUT_S" --blind.run_id "$BLIND_RUN_ID" \
-  --blind.log_file "$ATTACKER_EVENTS"
+  "$WORK/attacker.log" --blind.enable 1 --blind.amf_region_id "$AMF_REGION_ID" \
+  --blind.target_file "$TARGET_GATE" --blind.target_wait_s "$ATTACKER_GATE_TIMEOUT_S" \
+  --blind.run_id "$BLIND_RUN_ID" --blind.log_file "$ATTACKER_EVENTS"
 ATTACKER_INDEX=$LAST_CHILD_INDEX
 export BLIND_ATTACKER_PID=$LAST_CHILD_PID
 export BLIND_ENDPOINT_ROLE=attacker BLIND_CHILD_PID=$LAST_CHILD_PID
@@ -507,34 +507,27 @@ wait_hook attacker-endpoint "$ATTACKER_ENDPOINT_READY_CMD" "$ENDPOINT_READY_TIME
   || fail "attacker endpoint readiness timed out"
 require_alive "$ATTACKER_INDEX"
 
-(( UE_BEFORE_BROKER_S == 0 )) || sleep "$UE_BEFORE_BROKER_S"
-start_child baseline-broker 0 "$WORK/baseline-broker.log" \
-  "$BROKER_PYTHON" "$BLIND_BROKER_PY" --ues 2
-BASELINE_BROKER_INDEX=$LAST_CHILD_INDEX
-export BLIND_BROKER_GENERATION=baseline BLIND_CHILD_PID=$LAST_CHILD_PID
-export BLIND_BROKER_LOG_PATH=$WORK/baseline-broker.log
-wait_hook baseline-broker-ready "$BROKER_READY_CMD" "$BROKER_READY_TIMEOUT_S" \
-  || fail "baseline broker readiness timed out"
-require_alive "$BASELINE_BROKER_INDEX"
-require_alive "$VICTIM_INDEX"
-
 service_probe() {
   PROBE_REG=0 PROBE_PDU=0 PROBE_PING=0
   run_hook victim-registration "$VICTIM_REGISTRATION_CMD" && PROBE_REG=1
   run_hook victim-tun "$VICTIM_TUN_CMD" && PROBE_PDU=1
   run_hook victim-ping "$VICTIM_PING_CMD" && PROBE_PING=1
+  PROBE_REG_COUNT=$(grep -c 'Received Registration Accept' "$WORK/victim.log" || true)
+  PROBE_PDU_COUNT=$(grep -c 'PDU Session Establishment Accept' "$WORK/victim.log" || true)
 }
 
 export BLIND_SERVICE_PHASE=baseline
 ready_started=$SECONDS
 while :; do
   require_alive "$VICTIM_INDEX"
-  require_alive "$BASELINE_BROKER_INDEX"
+  require_alive "$ATTACKER_INDEX"
   service_probe
   (( PROBE_REG && PROBE_PDU && PROBE_PING )) && break
   (( SECONDS - ready_started < SERVICE_READY_TIMEOUT_S )) || fail "victim baseline service timed out"
   sleep "$OBSERVATION_POLL_S"
 done
+BASELINE_REG_COUNT=$PROBE_REG_COUNT
+BASELINE_PDU_COUNT=$PROBE_PDU_COUNT
 for ((i=0; i<BASELINE_PING_COUNT; i++)); do
   service_probe
   append_service before "$PROBE_REG" "$PROBE_PDU" "$PROBE_PING" \
@@ -584,21 +577,27 @@ finally:
     temporary.unlink(missing_ok=True)
 PY
 fi
-OBSERVATION_BROKER_INDEX=$BASELINE_BROKER_INDEX
-require_alive "$OBSERVATION_BROKER_INDEX"
 require_alive "$VICTIM_INDEX"
 require_alive "$ATTACKER_INDEX"
 
 export BLIND_SERVICE_PHASE=during
 observation_started=$(monotonic_ns)
 observation_budget_ns=$((OBSERVATION_S * 1000000000))
+loss_streak=0
 while :; do
   require_alive "$VICTIM_INDEX"
   require_alive "$ATTACKER_INDEX"
-  require_alive "$OBSERVATION_BROKER_INDEX"
   service_probe
   append_service during "$PROBE_REG" "$PROBE_PDU" "$PROBE_PING" \
     || fail "cannot append observation victim service evidence"
+  if (( PROBE_REG && PROBE_PDU && PROBE_PING )); then
+    loss_streak=0
+  else
+    loss_streak=$((loss_streak + 1))
+  fi
+  if [[ $BLIND_MODE == attack ]] && (( loss_streak >= LOSS_CONSECUTIVE_PINGS )); then
+    break
+  fi
   observation_now=$(monotonic_ns)
   (( observation_now - observation_started >= observation_budget_ns )) && break
   sleep "$OBSERVATION_POLL_S"
@@ -608,11 +607,21 @@ export BLIND_SNAPSHOT_PHASE=after BLIND_SNAPSHOT_PATH=$SNAPSHOT_AFTER
 run_hook snapshot-after "$CU_TARGET_SNAPSHOT_CMD" || fail "after-snapshot hook failed"
 [[ -f $SNAPSHOT_AFTER && ! -L $SNAPSHOT_AFTER ]] || fail "after snapshot was not created safely"
 
-# The one-shot is already complete. Keep A alive until recovery sampling ends;
-# removing a live input would stall the fixed two-input GNU Radio graph.
-require_alive "$ATTACKER_INDEX"
-require_alive "$VICTIM_INDEX"
-require_alive "$OBSERVATION_BROKER_INDEX"
+# The attack is one-shot. Keep its idle ZMQ endpoint alive because stopping one
+# cell freezes the p5 two-cell ZMQ clock; no additional attack event is allowed.
+ATTACK_EVENT_COUNT=0
+if [[ $BLIND_MODE == attack ]]; then
+  event_started=$SECONDS
+  until grep -q '"event":"authentication_request_withheld"' "$ATTACKER_EVENTS" 2>/dev/null; do
+    require_alive "$ATTACKER_INDEX"
+    (( SECONDS - event_started < SERVICE_READY_TIMEOUT_S )) \
+      || fail "one-shot attack did not reach its terminal event"
+    sleep "$OBSERVATION_POLL_S"
+  done
+  ATTACK_EVENT_COUNT=$(wc -l <"$ATTACKER_EVENTS")
+  kill -USR1 -- "${PIDS[$VICTIM_INDEX]}" \
+    || fail "cannot signal victim recovery"
+fi
 
 export BLIND_SERVICE_PHASE=recovery
 recovery_started_ns=$(monotonic_ns)
@@ -624,16 +633,22 @@ LAST_FAILED_PING=0
 while :; do
   recovery_now_ns=$(monotonic_ns)
   (( recovery_now_ns < recovery_deadline_ns )) || break
+  require_alive "$VICTIM_INDEX"
   require_alive "$ATTACKER_INDEX"
   service_probe
   recovery_probe_done_ns=$(monotonic_ns)
-  if (( PROBE_REG && PROBE_PDU && PROBE_PING \
+  append_service recovery "$PROBE_REG" "$PROBE_PDU" "$PROBE_PING" \
+    || fail "cannot append recovery-wait victim service evidence"
+  counts_ok=1
+  if [[ $BLIND_MODE == attack ]] \
+      && (( PROBE_REG_COUNT <= BASELINE_REG_COUNT || PROBE_PDU_COUNT <= BASELINE_PDU_COUNT )); then
+    counts_ok=0
+  fi
+  if (( PROBE_REG && PROBE_PDU && PROBE_PING && counts_ok \
         && recovery_probe_done_ns <= recovery_deadline_ns )); then
     recovery_ok=1
     break
   fi
-  append_service during "$PROBE_REG" "$PROBE_PDU" "$PROBE_PING" \
-    || fail "cannot append recovery-wait victim service evidence"
   if (( !PROBE_REG || !PROBE_PDU || !PROBE_PING )); then
     LAST_FAILED_REG=$PROBE_REG
     LAST_FAILED_PDU=$PROBE_PDU
@@ -668,8 +683,11 @@ else
     || fail "cannot append failed-recovery victim service evidence"
 fi
 
+if [[ $BLIND_MODE == attack ]]; then
+  [[ $(wc -l <"$ATTACKER_EVENTS") -eq $ATTACK_EVENT_COUNT ]] \
+    || fail "attacker emitted another event after the one-shot ended"
+fi
 stop_child "$ATTACKER_INDEX"
-stop_child "$OBSERVATION_BROKER_INDEX"
 stop_child "$VICTIM_INDEX"
 finish_collection || fail "capture or log-slice stop hook failed"
 run_hook network-events "$CU_NETWORK_EVENTS_CMD" || fail "network-event extraction hook failed"

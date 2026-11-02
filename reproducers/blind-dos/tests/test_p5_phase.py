@@ -35,7 +35,6 @@ class BlindP5PhaseTests(unittest.TestCase):
         self.root = Path(self.tmp.name)
         self.trace = self.root / "trace.jsonl"
         self.counter = self.root / "attacker.counter"
-        self.broker_counter = self.root / "broker.counter"
         self.absent_conf = self.root / "absent.conf"
         self.victim_cfg = self.root / "victim.conf"
         self.attacker_cfg = self.root / "attacker.conf"
@@ -92,6 +91,12 @@ class BlindP5PhaseTests(unittest.TestCase):
                     os._exit(int(os.environ.get("FAKE_UE_CLEAN_EXIT", "0")))
 
             signal.signal(signal.SIGINT, stop)
+            def recover(_signum, _frame):
+                emit("victim_recovery")
+                print("Received Registration Accept", flush=True)
+                print("Received PDU Session Establishment Accept", flush=True)
+            if base_role == "victim":
+                signal.signal(signal.SIGUSR1, recover)
             enable = option("--blind.enable", "0")
             target = option("--blind.target_5g_s_tmsi")
             target_file = option("--blind.target_file")
@@ -99,10 +104,14 @@ class BlindP5PhaseTests(unittest.TestCase):
             log_file = option("--blind.log_file")
             emit("ue_start", enable=enable, target=target, run_id=run_id,
                  target_file=target_file, log_file=log_file,
+                 recovery_mode=option("--blind.recovery_mode", "0"),
                  tun_suffix=option("--blind.tun_suffix"),
                  tx=option("--zmq.[0].tx_channels"),
                  rx=option("--zmq.[0].rx_channels"))
             print(os.environ["FAKE_CREDENTIAL_SENTINEL"], flush=True)
+            if base_role == "victim":
+                print("Received Registration Accept", flush=True)
+                print("Received PDU Session Establishment Accept", flush=True)
 
             if enable == "1":
                 with open(log_file, "x"):
@@ -112,17 +121,25 @@ class BlindP5PhaseTests(unittest.TestCase):
                 target = Path(target_file).read_text().strip()
                 emit("target_gate_opened", target=target)
                 full = int(target[2:], 16)
-                row = {
-                    "schema": "blind.attacker-event.v1", "run_id": run_id,
-                    "seq": 1, "ue": 0, "realtime_ns": time.time_ns(),
-                    "monotonic_ns": time.monotonic_ns(),
-                    "event": "target_msg3_committed",
-                    "target_5g_s_tmsi": target,
-                    "part1": full & ((1 << 39) - 1), "part2": full >> 39,
-                    "claim": "payload_committed_not_air_confirmed",
-                }
+                common = {"schema": "blind.attacker-event.v1", "run_id": run_id,
+                          "ue": 0, "target_5g_s_tmsi": target}
+                rows = [
+                    {**common, "event": "target_gate_opened"},
+                    {**common, "event": "target_msg3_committed",
+                     "part1": full & ((1 << 39) - 1), "part2": full >> 39,
+                     "claim": "payload_committed_not_air_confirmed"},
+                    {**common, "event": "nas_guti_selected", "amf_region_id": 2,
+                     "amf_set_id": (full >> 38) & 0x3ff,
+                     "amf_pointer": (full >> 32) & 0x3f, "tmsi": full & 0xffffffff},
+                    {**common, "event": "rrc_setup_complete_submitted"},
+                    {**common, "event": "authentication_request_withheld",
+                     "response_submitted": False},
+                ]
                 with open(log_file, "a") as output:
-                    output.write(json.dumps(row) + "\n")
+                    for seq, row in enumerate(rows, 1):
+                        row.update(seq=seq, realtime_ns=time.time_ns(),
+                                   monotonic_ns=time.monotonic_ns())
+                        output.write(json.dumps(row, separators=(",", ":")) + "\n")
 
             if os.environ.get("FAKE_EARLY_EXIT_ROLE") == role:
                 raise SystemExit(7)
@@ -130,38 +147,6 @@ class BlindP5PhaseTests(unittest.TestCase):
                 time.sleep(0.05)
         ''').lstrip())
         self.ue.chmod(0o755)
-
-        self.broker = self.root / "fake-broker.py"
-        self.broker.write_text(textwrap.dedent(r'''
-            import fcntl
-            import json
-            import os
-            from pathlib import Path
-            import signal
-            import time
-
-            counter = Path(os.environ["FAKE_BROKER_COUNTER"])
-            with counter.open("a+") as handle:
-                fcntl.flock(handle, fcntl.LOCK_EX)
-                handle.seek(0)
-                value = int(handle.read() or "0") + 1
-                handle.seek(0)
-                handle.truncate()
-                handle.write(str(value))
-            role = f"broker-{value}"
-            trace = Path(os.environ["BLIND_TEST_TRACE"])
-            def emit(event):
-                with trace.open("a") as output:
-                    output.write(json.dumps({"event": event, "role": role,
-                                             "pid": os.getpid()}) + "\n")
-            def stop(_signum, _frame):
-                emit("broker_int")
-                raise SystemExit(0)
-            signal.signal(signal.SIGINT, stop)
-            emit("broker_start")
-            while True:
-                time.sleep(0.05)
-        ''').lstrip())
 
         self.hook = self.root / "hook.py"
         self.hook.write_text(textwrap.dedent(r'''
@@ -201,14 +186,6 @@ class BlindP5PhaseTests(unittest.TestCase):
                            for row in rows):
                     raise SystemExit(1)
                 emit("endpoint-ready", role=os.environ["BLIND_ENDPOINT_ROLE"], pid=pid)
-            elif kind == "broker-ready":
-                pid = int(os.environ["BLIND_CHILD_PID"])
-                os.kill(pid, 0)
-                rows = [json.loads(line) for line in trace.read_text().splitlines()]
-                if not any(row.get("event") == "broker_start" and row.get("pid") == pid
-                           for row in rows):
-                    raise SystemExit(1)
-                emit("broker-ready", generation=os.environ["BLIND_BROKER_GENERATION"], pid=pid)
             elif kind in {"registration", "tun", "ping"}:
                 emit(kind, phase=os.environ["BLIND_SERVICE_PHASE"],
                      victim_pid=int(os.environ["BLIND_VICTIM_PID"]))
@@ -225,6 +202,7 @@ class BlindP5PhaseTests(unittest.TestCase):
                     "run_id": os.environ["BLIND_RUN_ID"],
                     "owner_role": "target_owner_existing",
                     "owner_id": os.environ["VICTIM_ID"],
+                    "amf_region_id": int(os.environ["AMF_REGION_ID"]),
                     "target_5g_s_tmsi": "0x0123456789ab",
                     "part1": int("0123456789ab", 16) & ((1 << 39) - 1),
                     "part2": int("0123456789ab", 16) >> 39,
@@ -273,9 +251,8 @@ class BlindP5PhaseTests(unittest.TestCase):
             ATTACKER_UE_CFG=str(self.attacker_cfg),
             CONTROL_UE_CFG=str(self.control_cfg),
             UECAP=str(self.uecap),
-            BLIND_BROKER_PY=str(self.broker),
-            BROKER_PYTHON=sys.executable,
             VICTIM_ID="victim-fixture",
+            AMF_REGION_ID="2",
             BAND="78", DL_FREQ="3489420000", NUMEROLOGY="1", PRB="51",
             DEVICE="fixture-zmq",
             VICTIM_TX_ENDPOINT="tcp://fixture:2101",
@@ -288,7 +265,6 @@ class BlindP5PhaseTests(unittest.TestCase):
             DU_READY_CMD=command("du-ready"),
             VICTIM_ENDPOINT_READY_CMD=command("endpoint"),
             ATTACKER_ENDPOINT_READY_CMD=command("endpoint"),
-            BROKER_READY_CMD=command("broker-ready"),
             VICTIM_REGISTRATION_CMD=command("registration"),
             VICTIM_TUN_CMD=command("tun"),
             VICTIM_PING_CMD=command("ping"),
@@ -299,22 +275,21 @@ class BlindP5PhaseTests(unittest.TestCase):
             CU_CAPTURE_STOP_CMD=command("capture-stop"),
             CU_NETWORK_EVENTS_CMD=command("network"),
             USE_SETSID="0",
-            DU_SETTLE_S="0", UE_BEFORE_BROKER_S="0",
+            DU_SETTLE_S="0",
             DU_READY_TIMEOUT_S="2", ENDPOINT_READY_TIMEOUT_S="2",
-            BROKER_READY_TIMEOUT_S="2", SERVICE_READY_TIMEOUT_S="2",
+            SERVICE_READY_TIMEOUT_S="2",
             OBSERVATION_S="1", OBSERVATION_POLL_S="0.05",
-            RECOVERY_TIMEOUT_S="2", BASELINE_PING_COUNT="1",
+            RECOVERY_TIMEOUT_S="2", LOSS_CONSECUTIVE_PINGS="1", BASELINE_PING_COUNT="1",
             RECOVERY_PING_COUNT="1", TEARDOWN_GRACE_S="1", HOOK_TIMEOUT_S="3",
             BLIND_TEST_TRACE=str(self.trace),
             FAKE_ATTACKER_COUNTER=str(self.counter),
-            FAKE_BROKER_COUNTER=str(self.broker_counter),
             FAKE_CREDENTIAL_SENTINEL="SUPI-AND-KEY-MUST-NOT-ESCAPE",
         )
 
     def execute(self, name="run", **overrides):
         run_dir = self.root / name
         run_dir.mkdir()
-        for path in (self.trace, self.counter, self.broker_counter):
+        for path in (self.trace, self.counter):
             path.unlink(missing_ok=True)
         env = dict(self.env, BLIND_RUN_DIR=str(run_dir))
         env.update({key: str(value) for key, value in overrides.items()})
@@ -345,34 +320,39 @@ class BlindP5PhaseTests(unittest.TestCase):
         self.assertNotIn(self.env["FAKE_CREDENTIAL_SENTINEL"], result.stdout + result.stderr)
 
         events = self.events()
-        victim_start = self.first(events, "ue_start", "victim")
+        victim_starts = [index for index, row in enumerate(events)
+                         if row.get("event") == "ue_start" and row.get("role") == "victim"]
+        self.assertEqual(len(victim_starts), 1)
+        victim_start = victim_starts[0]
         attacker_start = self.first(events, "ue_start", "attacker-1", enable="1")
-        broker_one = self.first(events, "broker_start", "broker-1")
         baseline_ping = self.first(events, "ping", phase="baseline")
         snapshot_before = self.first(events, "snapshot", phase="before")
         self.assertEqual(events[snapshot_before]["victim_log"], "victim.log")
         recovery_ping = self.first(events, "ping", phase="recovery")
         attacker_stop = self.first(events, "ue_int", "attacker-1")
-        self.assertLess(victim_start, attacker_start)
-        self.assertLess(attacker_start, broker_one)
-        self.assertLess(broker_one, baseline_ping)
         self.assertLess(baseline_ping, snapshot_before)
+        self.assertLess(attacker_start, snapshot_before)
         self.assertLess(snapshot_before, recovery_ping)
         self.assertLess(recovery_ping, attacker_stop)
-        self.assertEqual(len([row for row in events if row["event"] == "broker_start"]), 1)
+        self.assertFalse(any(row["event"] == "broker_start" for row in events))
 
         victim_pid = events[victim_start]["pid"]
         ue_starts = [row for row in events if row["event"] == "ue_start"]
         self.assertEqual([row["tun_suffix"] for row in ue_starts], ["1", "1"])
-        service_pids = {row["victim_pid"] for row in events if row["event"] in
-                        {"registration", "tun", "ping"}}
-        self.assertEqual(service_pids, {victim_pid})
+        self.assertEqual([row["recovery_mode"] for row in ue_starts], ["1", "0"])
+        baseline_pids = {row["victim_pid"] for row in events if row["event"] in
+                         {"registration", "tun", "ping"}
+                         and row["phase"] == "baseline"}
+        recovery_pids = {row["victim_pid"] for row in events if row["event"] in
+                         {"registration", "tun", "ping"}
+                         and row["phase"] == "recovery"}
+        self.assertEqual(baseline_pids, {victim_pid})
+        self.assertEqual(recovery_pids, {victim_pid})
         self.assertEqual(len([row for row in events if row["event"] == "ue_int"
                               and row["role"] == "victim"]), 2)
         self.assertEqual(len([row for row in events if row["event"] == "ue_int"
                               and row["role"].startswith("attacker-")]), 2)
         self.assertFalse(any(row["event"] == "target_gate_opened" for row in events))
-        self.assertEqual(len([row for row in events if row["event"] == "broker_int"]), 1)
         truth = [json.loads(line) for line in
                  (run_dir / "ground_truth.jsonl").read_text().splitlines()]
         self.assertFalse(any(row["event"] in {"process_crash", "forced_kill"}
@@ -397,7 +377,17 @@ class BlindP5PhaseTests(unittest.TestCase):
         self.assertEqual(gate["target"], "0x0123456789ab")
         rows = [json.loads(line) for line in
                 (run_dir / "attacker_events.jsonl").read_text().splitlines()]
-        self.assertEqual([row["event"] for row in rows], ["target_msg3_committed"])
+        self.assertEqual([row["event"] for row in rows], [
+            "target_gate_opened", "target_msg3_committed", "nas_guti_selected",
+            "rrc_setup_complete_submitted", "authentication_request_withheld",
+        ])
+        recovery = [row for row in self.events() if row["event"] == "victim_recovery"]
+        self.assertEqual(len(recovery), 1)
+
+    def test_recovery_signal_targets_only_the_victim_main_process(self):
+        source = PHASE.read_text()
+        self.assertIn('kill -USR1 -- "${PIDS[$VICTIM_INDEX]}"', source)
+        self.assertNotIn('signal_child "$VICTIM_INDEX" USR1', source)
 
     def test_attack_is_fail_closed_without_explicit_enable(self):
         result, run_dir = self.execute("disabled-attack", BLIND_MODE="attack")
@@ -495,8 +485,7 @@ class BlindP5PhaseTests(unittest.TestCase):
             SERVICE_READY_TIMEOUT_S="1",
         )
         self.assertNotEqual(result.returncode, 0)
-        starts = [row for row in self.events()
-                  if row["event"] in {"ue_start", "broker_start"}]
+        starts = [row for row in self.events() if row["event"] == "ue_start"]
         self.assertTrue(starts)
         for row in starts:
             with self.assertRaises(ProcessLookupError):
@@ -529,8 +518,7 @@ class BlindP5PhaseTests(unittest.TestCase):
         stdout, stderr = process.communicate(timeout=12)
         self.assertNotEqual(process.returncode, 0, stdout + stderr)
         events = self.events()
-        starts = [row for row in events
-                  if row["event"] in {"ue_start", "broker_start"}]
+        starts = [row for row in events if row["event"] == "ue_start"]
         for row in starts:
             with self.assertRaises(ProcessLookupError):
                 os.kill(row["pid"], 0)

@@ -225,6 +225,7 @@ value = {
         "loss_consecutive_pings": int(os.environ["LOSS_CONSECUTIVE_PINGS"]),
         "recovery_ping_count": int(os.environ["RECOVERY_PING_COUNT"]),
     },
+    "recovery_method": "same_victim_process_after_one_shot_end",
     "clock_sync": {
         "method": os.environ["CLOCK_SYNC_METHOD"],
         "offset_ns": int(os.environ["CLOCK_OFFSET_NS"]),

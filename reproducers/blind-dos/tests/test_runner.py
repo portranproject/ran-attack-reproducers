@@ -61,6 +61,7 @@ class BlindRunnerTests(unittest.TestCase):
             snapshot = {
                 "schema": "blind.target-snapshot.v1", "run_id": run_id,
                 "owner_role": "target_owner_existing", "owner_id": "victim",
+                "amf_region_id": 2,
                 "target_5g_s_tmsi": target, "part1": full & ((1 << 39) - 1),
                 "part2": full >> 39, "ran_ue_ngap_id": 11,
                 "amf_ue_ngap_id": 22, "fiveg_guti": "fixture-guti",
@@ -79,17 +80,30 @@ class BlindRunnerTests(unittest.TestCase):
                 service.append({"schema": "blind.victim-service.v1", "run_id": run_id,
                                 "victim_id": "victim", "phase": "before",
                                 "registration": True, "pdu_session": True,
-                                "ping_ok": True, "realtime_ns": timestamp})
+                                "ping_ok": True, "victim_pid": 4242,
+                                "registration_count": 1, "pdu_session_count": 1,
+                                "realtime_ns": timestamp})
             for index in range(5):
                 service.append({"schema": "blind.victim-service.v1", "run_id": run_id,
                                 "victim_id": "victim", "phase": "during",
                                 "registration": not attack_ok, "pdu_session": not attack_ok,
-                                "ping_ok": not attack_ok, "realtime_ns": t0 + 30 + index})
+                                "ping_ok": not attack_ok, "victim_pid": 4242,
+                                "registration_count": 1, "pdu_session_count": 1,
+                                "realtime_ns": t0 + 30 + index})
+            service.append({"schema": "blind.victim-service.v1", "run_id": run_id,
+                            "victim_id": "victim", "phase": "recovery",
+                            "registration": not attack_ok, "pdu_session": not attack_ok,
+                            "ping_ok": not attack_ok, "victim_pid": 4242,
+                            "registration_count": 1, "pdu_session_count": 1,
+                            "realtime_ns": t0 + 80})
             for timestamp in (t0 + 100, t0 + 110):
                 service.append({"schema": "blind.victim-service.v1", "run_id": run_id,
                                 "victim_id": "victim", "phase": "after",
                                 "registration": True, "pdu_session": True,
-                                "ping_ok": True, "realtime_ns": timestamp})
+                                "ping_ok": True, "victim_pid": 4242,
+                                "registration_count": 2 if attack_ok else 1,
+                                "pdu_session_count": 2 if attack_ok else 1,
+                                "realtime_ns": timestamp})
 
             attacker = []
             if mode == "attack":
@@ -100,6 +114,19 @@ class BlindRunnerTests(unittest.TestCase):
                     "target_5g_s_tmsi": target,
                     "part1": full & ((1 << 39) - 1), "part2": full >> 39,
                     "claim": "payload_committed_not_air_confirmed",
+                })
+                attacker.append({
+                    "schema": "blind.attacker-event.v1", "run_id": run_id,
+                    "seq": 2, "ue": 0, "realtime_ns": t0 + 11,
+                    "monotonic_ns": 11, "event": "nas_guti_selected",
+                    "amf_region_id": 2, "amf_set_id": (full >> 38) & 0x3ff,
+                    "amf_pointer": (full >> 32) & 0x3f, "tmsi": full & 0xffffffff,
+                })
+                attacker.append({
+                    "schema": "blind.attacker-event.v1", "run_id": run_id,
+                    "seq": 3, "ue": 0, "realtime_ns": t0 + 12,
+                    "monotonic_ns": 12, "event": "authentication_request_withheld",
+                    "response_submitted": False,
                 })
 
             set_index = int(os.environ.get("BLIND_INTERNAL_SET_INDEX", "0"))

@@ -10,7 +10,7 @@
 설정, 라벨 계약, 실행 원문을 다른 공격과 섞지 않는다.
 
 - `reproducers/rrc-signaling-storm/`: 구현·실측 완료 후 2026-11-02 동결
-- `reproducers/blind-dos/`: 현재 유효 5G-S-TMSI one-shot 구현·p5 ZMQ 실측 완료. AMF 도달·기존 binding 변화·ping 손실은 확인했지만 30초 안 회복이 없어 G5 미달
+- `reproducers/blind-dos/`: 현재 유효 5G-GUTI 재사용형 구현 완료. p5 direct 2-cell ZMQ의 matched control→attack G5 3/3 통과
 - `reproducers/upstream-dos/`: 공격 계층·대상 자원·성공 기준 정의 중
 
 아래 장문의 실측 기록은 첫 번째 모듈인 RRC signaling storm의 보존 컨텍스트다.
@@ -21,7 +21,8 @@
 - [rss-landscape.md](rss-landscape.md) — 변종 분류·논문·공개 도구 비교, 기존 문서와 다른 점
 - [design.md](design.md) — RRCSetupComplete 미전송형 재현기 설계: 아키텍처·상태 기계·노브·라벨 스키마·단계별 계획
 - [reproducers/rrc-signaling-storm/](reproducers/rrc-signaling-storm/) — 현재 OAI UE 패치·실행기·분석기·회귀 테스트·실험 기록
-- [reproducers/blind-dos/](reproducers/blind-dos/) — 표적형 DoS의 위협 모델·one-shot 구현·사용법·합격 기준·p5 결과
+- [reproducers/blind-dos/](reproducers/blind-dos/) — 현재 유효 5G-GUTI 재사용형의 one-shot 구현·사용법·G5 합격 기준·p5 결과
+- [reproducers/blind-dos/artifacts/p5-zmq-nas-guti-g5-20261102/](reproducers/blind-dos/artifacts/p5-zmq-nas-guti-g5-20261102/) — matched control→attack 3/3 판정·child manifest·원격 원문 SHA-256
 - [reproducers/upstream-dos/](reproducers/upstream-dos/) — 상향링크 DoS의 공격 계층·대상 자원·성공 기준을 확정할 준비 공간
 - [reproducers/rrc-signaling-storm/docs/CURATED-VALIDATION-20261030.md](reproducers/rrc-signaling-storm/docs/CURATED-VALIDATION-20261030.md) — clean curated 빌드·정상 회귀·Msg4 ACK·독립 broker witness 실측
 - [reproducers/rrc-signaling-storm/docs/LABEL-CONTRACT.md](reproducers/rrc-signaling-storm/docs/LABEL-CONTRACT.md) — UE 정답·탐지·대응·효과 판정·시간 동기 계약
@@ -57,6 +58,28 @@
 - **MobiFlow는 탐지기가 아님** — 텔레메트리 구조화 프레임워크. 탐지는 MobieXpert(규칙)/MobiWatch(DL).
 - [OCUDU E2SM-KPM](https://docs.ocudu.org/knowledge_base/e2sm_kpm_metrics/)에는 `RRC.ConnEstabAtt/Succ` 등 **노드 단위 카운터**가 있다. [KPM 최소 보고 주기는 1초](https://docs.ocudu.org/tutorials/near-rt-ric/)이며, RRCSetupComplete 미전송형의 UE별 메시지 순서·미완료 수명 검증에는 F1 메시지 수준 텔레메트리가 더 필요하다. [TeleRAN](https://www.csl.sri.com/users/gehani/papers/FutureG-2026.eBPF.pdf)은 무수정 CU 관측의 근거지만 RSS 탐지→대응 폐루프를 실증한 자료는 아니다.
 - **대응은 별도 성립 조건**: 현 OCUDU 소스의 E2 제어는 [DU slice PRB quota](https://gitlab.com/ocudu/ocudu/-/blob/main/lib/e2/e2sm/e2sm_rc/e2sm_rc_control_action_du_executor.cpp)와 [CU handover](https://gitlab.com/ocudu/ocudu/-/blob/main/lib/e2/common/e2_cu_cp_factory.cpp)를 포함하지만 이 변종의 미완료 UE 차단은 입증되지 않았다. RRCSetupComplete 미전송형은 `RRCSetupComplete` 전이라 [NGAP InitialUEMessage도 전송되지 않으므로](https://gitlab.com/ocudu/ocudu/-/blob/main/lib/rrc/ue/procedures/rrc_setup_procedure.cpp) 코어의 직접 대응 대상이 아니다. 벤더 관리 API도 실제 인터페이스·효과 확인 전에는 가설이다.
+
+---
+
+## 공격 모듈: Blind DoS (G5 완료)
+
+- 설명형 이름은 **현재 유효 5G-GUTI 재사용형**이다. RRC Msg3/Msg5에 피해자의
+  48-bit 5G-S-TMSI를 넣고, plain NAS Registration Request에는 PLMN·AMF Region·
+  AMF Set·AMF Pointer·5G-TMSI로 구성한 피해자의 전체 5G-GUTI를 넣는다.
+- 공격자는 피해 SUPI·인증 키를 쓰지 않는 별도 가입자 OAI UE다. gNB·코어 소스와
+  timer/capacity는 수정하지 않는다. Open5GS 상태 전이의 1차 근거는
+  [issue #4577](https://github.com/open5gs/open5gs/issues/4577)이다.
+- 최종 경로는 broker가 아닌 p5 direct 2-cell ZMQ다. 피해 UE는 cell 0, 공격 UE는
+  cell 1의 별도 endpoint·프로세스를 쓴다.
+- 2026-11-02 `blind-g5-final-20261102`에서 control→attack 3세트를 모두 첫 시도에
+  통과했다. 세 attack 모두 exact join된 기존 피해 context 효과, 5회 연속 ping 손실,
+  같은 victim PID의 Registration/PDU `1→2`, 회복 ping 20/20, crash/forced kill 0이었다.
+  세 control은 공격 이벤트·ping 손실 0이었다.
+- 회복은 자연 회복 측정이 아니라 one-shot 종료 뒤 테스트 오케스트레이터가 같은 victim
+  PID에 재등록을 요청한 것이다. `SIGUSR1`은 메인 PID에만 보내며 process group에 보내면
+  OAI TUN 보조 프로세스까지 종료된다.
+- 현재 허용 주장은 **p5 ZMQ의 oracle 보조 단발 Blind DoS G5 성공**이다. 비특권
+  식별자 획득(G6), 지속 차단(G7), 실 SDR OTA와 상용망 일반화는 미검증이다.
 
 ---
 

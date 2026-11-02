@@ -64,7 +64,6 @@ stop_capture() {
 case $ACTION in
   process-clear)
     ! pgrep -x nr-uesoftmodem >/dev/null || fail "an OAI UE is already running"
-    ! pgrep -f '[z]mq_broker.py.*--ues' >/dev/null || fail "a Blind broker is already running"
     ;;
   du-stop)
     if [[ -f $P5_DU_PID_FILE && ! -L $P5_DU_PID_FILE ]]; then
@@ -104,12 +103,6 @@ case $ACTION in
       && kill -0 "$BLIND_CHILD_PID" 2>/dev/null || fail "UE process is not alive"
     ss -ltnp | grep -F "pid=$BLIND_CHILD_PID," >/dev/null \
       || fail "UE ZMQ endpoint is not listening yet"
-    ;;
-  broker-ready)
-    [[ ${BLIND_CHILD_PID:-} =~ ^[1-9][0-9]*$ ]] \
-      && kill -0 "$BLIND_CHILD_PID" 2>/dev/null || fail "broker is not alive"
-    ss -tnp | grep -F "pid=$BLIND_CHILD_PID," | grep -qE ':(2000|2001|2100|2101|2200|2201)\b' \
-      || fail "broker ZMQ sockets are not connected yet"
     ;;
   registration)
     need_file "victim log" "${BLIND_VICTIM_LOG_PATH:-}"
@@ -174,6 +167,6 @@ case $ACTION in
       --before "$BLIND_RUN_DIR/target_snapshot_before.json"
     ;;
   *)
-    fail "usage: $0 {process-clear|du-stop|du-restart|du-ready|endpoint-ready|broker-ready|registration|tun|ping|log-start|snapshot|log-stop|capture-start|capture-stop|network-events}"
+    fail "usage: $0 {process-clear|du-stop|du-restart|du-ready|endpoint-ready|registration|tun|ping|log-start|snapshot|log-stop|capture-start|capture-stop|network-events}"
     ;;
 esac

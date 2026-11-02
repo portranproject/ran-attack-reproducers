@@ -42,6 +42,7 @@ class EvidenceTests(unittest.TestCase):
             "owner_role": "target_owner_existing",
             "owner_id": OWNER,
             "fiveg_guti": "fixture-guti",
+            "amf_region_id": 2,
             "target_5g_s_tmsi": TARGET,
             "part1": PART1,
             "part2": PART2,
@@ -51,7 +52,11 @@ class EvidenceTests(unittest.TestCase):
             "source_sha256": "a" * 64,
         }
 
-    def service(self, phase, when, healthy):
+    def service(self, phase, when, healthy, registration_count=None, pdu_count=None):
+        registration_count = (2 if phase == "after" else 1) \
+            if registration_count is None else registration_count
+        pdu_count = (2 if phase == "after" else 1) \
+            if pdu_count is None else pdu_count
         return {
             "schema": "blind.victim-service.v1",
             "run_id": RUN_ID,
@@ -60,6 +65,9 @@ class EvidenceTests(unittest.TestCase):
             "registration": healthy,
             "pdu_session": healthy,
             "ping_ok": healthy,
+            "victim_pid": 4242,
+            "registration_count": registration_count,
+            "pdu_session_count": pdu_count,
             "realtime_ns": when,
         }
 
@@ -96,10 +104,12 @@ class EvidenceTests(unittest.TestCase):
             "run_id": RUN_ID,
             "mode": "attack",
             "attack_enabled": True,
+            "recovery_method": "same_victim_process_after_one_shot_end",
             "thresholds": {"loss_consecutive_pings": 1},
         })
         self.write_json("target_snapshot_before.json", self.snapshot(100))
         self.write_json("target_snapshot_after.json", self.snapshot(600))
+        target_value = int(TARGET, 16)
         self.write_jsonl("attacker_events.jsonl", [{
             "schema": "blind.attacker-event.v1",
             "run_id": RUN_ID,
@@ -112,10 +122,23 @@ class EvidenceTests(unittest.TestCase):
             "part1": PART1,
             "part2": PART2,
             "claim": "payload_committed_not_air_confirmed",
+        }, {
+            "schema": "blind.attacker-event.v1", "run_id": RUN_ID,
+            "seq": 2, "ue": 0, "realtime_ns": 210, "monotonic_ns": 21,
+            "event": "nas_guti_selected", "amf_region_id": 2,
+            "amf_set_id": (target_value >> 38) & 0x3ff,
+            "amf_pointer": (target_value >> 32) & 0x3f,
+            "tmsi": target_value & 0xffffffff,
+        }, {
+            "schema": "blind.attacker-event.v1", "run_id": RUN_ID,
+            "seq": 3, "ue": 0, "realtime_ns": 220, "monotonic_ns": 22,
+            "event": "authentication_request_withheld",
+            "response_submitted": False,
         }])
         self.write_jsonl("victim_service.jsonl", [
             self.service("before", 150, True),
             self.service("during", 400, False),
+            self.service("recovery", 500, False),
             self.service("after", 550, True),
         ])
         self.write_jsonl("ground_truth.jsonl", [self.identity_reached(), self.network()])
@@ -150,6 +173,27 @@ class EvidenceTests(unittest.TestCase):
         self.assertTrue(verdict["same_victim_recovery"])
         self.assertTrue(export_labels._phase_passed(verdict))
 
+    def test_recovery_without_sealed_same_process_method_does_not_pass(self):
+        run = json.loads((self.run / "run.json").read_text())
+        del run["recovery_method"]
+        self.write_json("run.json", run)
+        verdict = export_labels.evaluate_run(self.run)
+        self.assertFalse(verdict["same_victim_recovery"])
+        self.assertFalse(export_labels._phase_passed(verdict))
+
+    def test_recovery_requires_same_pid_and_new_registration_and_session(self):
+        rows = [json.loads(line) for line in
+                (self.run / "victim_service.jsonl").read_text().splitlines()]
+        rows[-1]["victim_pid"] = 9999
+        self.write_jsonl("victim_service.jsonl", rows)
+        self.assertFalse(export_labels.evaluate_run(self.run)["same_victim_recovery"])
+
+        rows[-1]["victim_pid"] = 4242
+        rows[-1]["registration_count"] = 1
+        rows[-1]["pdu_session_count"] = 1
+        self.write_jsonl("victim_service.jsonl", rows)
+        self.assertFalse(export_labels.evaluate_run(self.run)["same_victim_recovery"])
+
     def test_attacker_own_context_release_is_never_a_target_effect(self):
         self.write_jsonl("ground_truth.jsonl", [
             self.identity_reached(),
@@ -171,6 +215,7 @@ class EvidenceTests(unittest.TestCase):
             self.service("during", 350, False),
             self.service("during", 400, False),
             self.service("during", 450, True),
+            self.service("recovery", 500, False),
             self.service("after", 550, True),
         ])
         self.assertFalse(export_labels.evaluate_run(self.run)["victim_service_loss"])
@@ -180,6 +225,7 @@ class EvidenceTests(unittest.TestCase):
             self.service("during", 350, False),
             self.service("during", 400, False),
             self.service("during", 450, False),
+            self.service("recovery", 500, False),
             self.service("after", 550, True),
         ])
         self.assertTrue(export_labels.evaluate_run(self.run)["victim_service_loss"])
@@ -218,7 +264,9 @@ class EvidenceTests(unittest.TestCase):
     def test_cross_file_run_id_mismatch_is_rejected(self):
         rows = [self.service("before", 150, True)]
         rows[0]["run_id"] = "other-run"
-        rows.extend((self.service("during", 400, False), self.service("after", 550, True)))
+        rows.extend((self.service("during", 400, False),
+                     self.service("recovery", 500, False),
+                     self.service("after", 550, True)))
         self.write_jsonl("victim_service.jsonl", rows)
         with self.assertRaisesRegex(ValueError, "wrong run_id"):
             export_labels.evaluate_run(self.run)
@@ -231,6 +279,7 @@ class EvidenceTests(unittest.TestCase):
         self.write_jsonl("victim_service.jsonl", [
             self.service("before", 150, True),
             self.service("during", 400, True),
+            self.service("recovery", 500, True),
             self.service("after", 550, True),
         ])
         neutral = self.network(event="observation")

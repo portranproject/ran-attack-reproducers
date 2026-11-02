@@ -21,7 +21,7 @@ NETWORK_SCHEMA = "blind.network-event.v1"
 RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,95}")
 SHA256 = re.compile(r"[0-9a-f]{64}")
 EFFECTS = {"binding_changed", "pdu_session_deactivated", "ue_context_released"}
-SERVICE_PHASES = {"before", "during", "after"}
+SERVICE_PHASES = {"before", "during", "recovery", "after"}
 ROLES = {"target_owner_existing", "attacker_new", "infrastructure"}
 NETWORK_EVENTS = EFFECTS | {"identity_reached", "observation", "process_crash", "forced_kill"}
 VERDICT_BOOLS = (
@@ -109,6 +109,9 @@ def validate_run(path):
     loss_consecutive = thresholds.get("loss_consecutive_pings")
     if type(loss_consecutive) is not int or loss_consecutive < 1:
         fail("run.json loss_consecutive_pings must be a positive integer")
+    recovery_method = run.get("recovery_method")
+    if recovery_method not in {None, "same_victim_process_after_one_shot_end"}:
+        fail("run.json has an invalid recovery_method")
     return run, run_id, mode, loss_consecutive
 
 
@@ -131,6 +134,9 @@ def validate_snapshot(path, run_id, label):
     nonnegative_integer(value.get("ran_ue_ngap_id"), f"{label} ran_ue_ngap_id")
     nonnegative_integer(value.get("amf_ue_ngap_id"), f"{label} amf_ue_ngap_id")
     nonnegative_integer(value.get("captured_realtime_ns"), f"{label} captured_realtime_ns")
+    region = nonnegative_integer(value.get("amf_region_id"), f"{label} amf_region_id")
+    if region > 0xFF:
+        fail(f"{label} amf_region_id is out of range")
     if not isinstance(value.get("fiveg_guti"), str) or not value["fiveg_guti"]:
         fail(f"{label} must contain fiveg_guti")
     if not isinstance(value.get("source_sha256"), str) \
@@ -144,6 +150,8 @@ def validate_attacker_events(path, run_id, mode, target):
     if mode == "control" and rows:
         fail("control run must not contain attacker events")
     commits = []
+    selected_gutis = []
+    terminal_events = []
     previous_seq = 0
     previous_monotonic = -1
     for number, row in enumerate(rows, 1):
@@ -172,9 +180,27 @@ def validate_attacker_events(path, run_id, mode, target):
             if row.get("claim") != "payload_committed_not_air_confirmed":
                 fail(f"{label} has an unexpected transmission claim")
             commits.append(row)
+        elif row["event"] == "nas_guti_selected":
+            selected_gutis.append(row)
+        elif row["event"] == "authentication_request_withheld":
+            if row.get("response_submitted") is not False:
+                fail(f"{label} did not withhold the authentication response")
+            terminal_events.append(row)
     if mode == "attack" and len(commits) != 1:
         fail("attack run must contain exactly one target_msg3_committed event")
-    return commits[0] if commits else None
+    if mode == "attack":
+        if len(selected_gutis) != 1 or len(terminal_events) != 1:
+            fail("attack run must contain one NAS GUTI selection and one terminal event")
+        target_value = int(target, 16)
+        expected = {
+            "amf_set_id": (target_value >> 38) & 0x3FF,
+            "amf_pointer": (target_value >> 32) & 0x3F,
+            "tmsi": target_value & 0xFFFFFFFF,
+        }
+        for field in ("amf_set_id", "amf_pointer", "tmsi"):
+            if selected_gutis[0].get(field) != expected[field]:
+                fail(f"nas_guti_selected {field} does not match the target")
+    return commits[0] if commits else None, selected_gutis[0] if selected_gutis else None
 
 
 def validate_service_events(path, run_id, owner_id, loss_consecutive):
@@ -190,12 +216,17 @@ def validate_service_events(path, run_id, owner_id, loss_consecutive):
             if type(row.get(field)) is not bool:
                 fail(f"{label} {field} must be boolean")
         nonnegative_integer(row.get("realtime_ns"), f"{label} realtime_ns")
+        pid = nonnegative_integer(row.get("victim_pid"), f"{label} victim_pid")
+        if pid == 0:
+            fail(f"{label} victim_pid must be positive")
+        nonnegative_integer(row.get("registration_count"), f"{label} registration_count")
+        nonnegative_integer(row.get("pdu_session_count"), f"{label} pdu_session_count")
         if row["victim_id"] == owner_id:
             selected.append(row)
     phases = {phase: [row for row in selected if row["phase"] == phase]
               for phase in SERVICE_PHASES}
     if any(not phases[phase] for phase in SERVICE_PHASES):
-        fail("victim_service.jsonl lacks before/during/after rows for the target owner")
+        fail("victim_service.jsonl lacks before/during/recovery/after rows for the target owner")
     for phase, phase_rows in phases.items():
         timestamps = [row["realtime_ns"] for row in phase_rows]
         if any(left >= right for left, right in zip(timestamps, timestamps[1:])):
@@ -204,8 +235,11 @@ def validate_service_events(path, run_id, owner_id, loss_consecutive):
             >= min(row["realtime_ns"] for row in phases["during"]):
         fail("victim service before/during phases overlap or move backwards")
     if max(row["realtime_ns"] for row in phases["during"]) \
+            >= min(row["realtime_ns"] for row in phases["recovery"]):
+        fail("victim service during/recovery phases overlap or move backwards")
+    if max(row["realtime_ns"] for row in phases["recovery"]) \
             >= min(row["realtime_ns"] for row in phases["after"]):
-        fail("victim service during/after phases overlap or move backwards")
+        fail("victim service recovery/after phases overlap or move backwards")
     healthy = lambda row: row["registration"] and row["pdu_session"] and row["ping_ok"]
     before = all(healthy(row) for row in phases["before"])
     streak = 0
@@ -219,12 +253,20 @@ def validate_service_events(path, run_id, owner_id, loss_consecutive):
     loss = first_loss_ns is not None
     recovery = loss and after and min(row["realtime_ns"] for row in phases["after"]) \
         > first_loss_ns
+    victim_pids = {row["victim_pid"] for row in selected}
+    baseline_registration = max(row["registration_count"] for row in phases["before"])
+    baseline_pdu = max(row["pdu_session_count"] for row in phases["before"])
+    recovery_registration = min(row["registration_count"] for row in phases["after"])
+    recovery_pdu = min(row["pdu_session_count"] for row in phases["after"])
     return {
         "before": before,
         "loss": loss,
         "after": after,
         "recovery": recovery,
         "first_loss_ns": first_loss_ns,
+        "same_pid": len(victim_pids) == 1,
+        "counts_advanced": recovery_registration > baseline_registration
+                           and recovery_pdu > baseline_pdu,
     }
 
 
@@ -287,9 +329,13 @@ def evaluate_run(run_dir):
                               "target_snapshot_after.json")
     target_stable = all(before[field] == after[field] for field in (
         "owner_role", "owner_id", "target_5g_s_tmsi", "part1", "part2",
+        "amf_region_id",
     )) and before["captured_realtime_ns"] < after["captured_realtime_ns"]
-    commit = validate_attacker_events(
+    commit, selected_guti = validate_attacker_events(
         run_dir / "attacker_events.jsonl", run_id, mode, before["target_5g_s_tmsi"])
+    if selected_guti is not None \
+            and selected_guti.get("amf_region_id") != before["amf_region_id"]:
+        fail("nas_guti_selected amf_region_id does not match the target snapshot")
     if commit is not None:
         target_stable = target_stable \
             and before["captured_realtime_ns"] <= commit["realtime_ns"] \
@@ -312,7 +358,10 @@ def evaluate_run(run_dir):
         "target_stable": target_stable,
         "exact_join": target_effect,
         "target_owner_state_effect": target_effect,
-        "same_victim_recovery": service["recovery"],
+        "same_victim_recovery": service["recovery"] and service["same_pid"]
+                                and service["counts_advanced"]
+                                and run.get("recovery_method")
+                                == "same_victim_process_after_one_shot_end",
         "crash_count": crash_count,
         "forced_kill_count": forced_kill_count,
     }

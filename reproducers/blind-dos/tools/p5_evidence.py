@@ -273,6 +273,8 @@ def snapshot(args):
     if len(imsi_matches) != 1:
         fail("victim config must contain exactly one IMSI")
     victim_imsi = imsi_matches[0].group("imsi")
+    if not 0 <= args.amf_region_id <= 0xFF:
+        fail("AMF region ID is out of range")
     amf_text = regular_text(args.amf_raw, "AMF raw slice")
     target, amf_set, pointer, m_tmsi, source_line = parse_victim_guti(victim_text)
 
@@ -308,8 +310,10 @@ def snapshot(args):
         "owner_role": "target_owner_existing",
         "owner_id": victim_id,
         "fiveg_guti": (
-            f"amf-set={amf_set};amf-pointer={pointer};5g-tmsi=0x{m_tmsi:08x}"
+            f"amf-region={args.amf_region_id};amf-set={amf_set};"
+            f"amf-pointer={pointer};5g-tmsi=0x{m_tmsi:08x}"
         ),
+        "amf_region_id": args.amf_region_id,
         "target_5g_s_tmsi": target,
         "part1": part1,
         "part2": part2,
@@ -472,6 +476,7 @@ def parser():
     snap.add_argument("--before", default=None)
     snap.add_argument("--run-id", default=env("BLIND_RUN_ID"), required=not env("BLIND_RUN_ID"))
     snap.add_argument("--victim-id", default=env("VICTIM_ID"), required=not env("VICTIM_ID"))
+    snap.add_argument("--amf-region-id", type=int, default=env("AMF_REGION_ID"), required=not env("AMF_REGION_ID"))
     snap.set_defaults(function=snapshot)
 
     norm = commands.add_parser("normalize")

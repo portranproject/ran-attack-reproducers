@@ -1,117 +1,262 @@
-# Blind DoS 재현 도구 사용 가이드
+# Blind DoS 사용 가이드
 
-이 도구는 팀 소유 ZMQ 테스트베드 또는 RF 차폐 환경에서 **현재 유효 48-bit
-5G-S-TMSI 재사용형**을 한 번 실행하고, 피해 UE의 실제 서비스 손실까지 독립적으로
-판정한다. 외부 망, 전체 식별자 공간 탐색, 다중 표적에는 사용하지 않는다.
+이 가이드는 팀 소유 p5형 ZMQ 테스트베드에서 **현재 유효 5G-GUTI 재사용형**을 실행하고
+G5 판정을 읽는 절차다. 외부 망이나 비차폐 RF에서는 실행하지 않는다.
 
-## 판정부터 이해하기
+## 1. 실행 결과가 의미하는 것
 
-`passed`는 공격 메시지가 전송됐다는 뜻이 아니다. 다음 조건이 모두 맞아야 한다.
+정상 attack 결과는 다음 순서를 한 번 재현한다.
 
-1. 공격 전 같은 피해 UE의 Registration·PDU session·ping이 정상이다.
-2. 공격자 commit 뒤 AMF `InitialUEMessage`에서 표적 5G-S-TMSI와 유효 NGAP ID가 조인된다.
-3. 그 identity reach 뒤 기존 피해자의 같은 RAN/AMF UE ID에 상태 변화가 생긴다.
-4. 사전에 정한 연속 측정 횟수만큼 같은 피해 UE의 서비스가 실패한다.
-5. one-shot 종료 뒤 같은 피해 UE가 제한시간 안에 회복한다.
-6. matched control에는 표적 commit·상태 변화·서비스 손실이 없다.
+1. 피해 UE가 Registration·PDU session·ping 서비스 중이다.
+2. 공격 UE가 피해자의 현재 5G-GUTI를 RRC와 NAS Registration Request에 사용한다.
+3. 공격 commit과 피해자의 기존 AMF context 변화가 exact join된다.
+4. 피해 UE ping이 사전 고정한 횟수만큼 연속 실패한다.
+5. one-shot 공격이 끝난 뒤 같은 victim PID가 새 Registration·PDU를 만들고 ping을 회복한다.
 
-현재 자동 조인은 공격자 JSONL commit, AMF `InitialUEMessage`, 48-bit 표적값,
-기존 피해자의 RAN/AMF UE ID와 시각을 사용한다. F1/NGAP pcap도 원문으로 봉인하지만
-ASN.1 메시지별 자동 조인에는 아직 사용하지 않는다.
+단일 attack 통과만으로 캠페인 성공은 아니다. 같은 설정의 control→attack을 사전 고정한
+N세트 모두 통과해야 G5다. 기본 N은 3이다.
 
-결과 분류는 세 가지다.
+현재 검증 범위는 p5 direct 2-cell ZMQ와 랩 oracle 입력이다. 식별자 획득, 지속 차단,
+OTA 성능은 검증하지 않는다.
 
-| 분류 | 의미 | 자동 재시도 |
+## 2. 준비물
+
+- OCUDU 26.10 CU/DU와 Open5GS가 동작하는 격리 테스트베드
+- clean OAI worktree, commit
+  `6d6782b48484efd935c14e834832032743f9b138`
+- 피해자·공격자용 서로 다른 팀 가입자 프로필
+- DU host에서 CU host로 비대화형 SSH가 가능한 전용 key와 known_hosts
+- 측정된 host clock offset·uncertainty와 그 증거 SHA-256
+- 검토한 G0 inventory hash
+
+가입자 프로필과 SSH key는 Git 밖 권한 0600 경로에 둔다. 같은 가입자 fingerprint를 넣으면
+runner가 실행 전 실패한다.
+
+## 3. OAI UE 빌드
+
+전용 clean worktree에서 실행한다.
+
+```bash
+cd /path/to/ran-attack-reproducers
+OAI=/root/OAI-blind-dos-w38 \
+  reproducers/blind-dos/bin/blind-build
+```
+
+빌드기는 다음을 검사한다.
+
+- OAI HEAD가 고정 commit인지
+- worktree가 clean인지
+- 패치가 `git apply --check`를 통과하는지
+- `nr-uesoftmodem`과 ZMQ device library가 생성됐는지
+- one-shot 옵션·이벤트 문자열이 binary에 있는지
+- 가입자·인증 재료를 출력하던 OAI 문자열이 제거됐는지
+
+공격 기본값은 off다. 출력된 source commit, patch hash, binary hash를 실험 기록에 보존한다.
+
+## 4. direct 2-cell 구성
+
+DU 설정 예제를 테스트베드 전용 경로로 복사해 주소·주파수·cell 값을 검토한다.
+
+```bash
+cp reproducers/blind-dos/conf/p5-du-2cell-zmq.yaml.example \
+  /안전한/경로/du-2cell-zmq.yaml
+```
+
+기본 endpoint 배치는 다음과 같다.
+
+| 역할 | DU TX / UE RX | DU RX / UE TX |
 |---|---|---|
-| `passed` | 해당 control 또는 attack 계약을 모두 만족 | 안 함 |
-| `valid-failure` | 실험은 유효하지만 서비스 손실·회복 등 공격 효과 계약이 미달 | 안 함 |
-| `infrastructure-invalid` | sync·hook·capture·clock·crash·증거 계약 문제 | 설정한 제한 안에서만 |
+| 피해 UE, cell 0 | `4556` | `4557` |
+| 공격 UE, cell 1 | `4558` | `4559` |
 
-`valid-failure`를 반복 실행하거나 N을 줄여 성공으로 바꾸면 안 된다.
+GNU Radio broker/relay는 사용하지 않는다. 피해 UE와 공격 UE는 별도 프로세스·별도 cell을
+쓴다. 한 endpoint만 먼저 종료하면 2-cell ZMQ clock이 멈출 수 있으므로 수동으로 프로세스를
+중간 종료하지 않는다.
 
-## 준비
+## 5. 실행 설정
 
-1. `conf/p5-zmq.conf.example`을 Git 밖의 권한 `0600` 파일로 복사한다.
-2. OAI binary·UE profile·broker·CU SSH·DU/CU 설정 경로를 실제 p5 경로로 바꾼다.
-3. `CLOCK_*`, `LAB_INVENTORY_SHA256`, 피해자·공격자 profile fingerprint를 채운다.
-4. 피해자와 공격자는 서로 다른 팀 가입자이며, CU·DU·Open5GS 타이머·용량·소스가
-   기본 inventory와 같은지 확인한다.
-5. `ENABLE=0`을 유지한다. 공격은 명령행 `-e 1`이 있을 때만 실행된다.
+예제를 Git 밖으로 복사한다.
 
-고정 2-UE 그래프에서는 피해자와 공격자 프로세스를 처음부터 끝까지 유지한다. control도
-공격 UE를 `blind.enable=1`로 준비하지만 private 표적 파일을 만들지 않아 Msg3 commit이
-0건이다. attack은 피해자 snapshot 뒤 그 파일을 원자적으로 만들어 같은 프로세스의
-one-shot만 시작한다. 따라서 프로세스 교체나 broker 재연결이 on/off 차이에 섞이지 않는다.
+```bash
+cp reproducers/blind-dos/conf/p5-zmq.conf.example \
+  /안전한/경로/blind.conf
+chmod 600 /안전한/경로/blind.conf
+```
 
-## 한 phase 실행
+최소한 다음 값을 실제 환경에 맞춘다.
 
-먼저 control을 실행한다.
+- `OAI_BLIND_BIN`, `VICTIM_UE_CFG`, `ATTACKER_UE_CFG`, `UECAP`
+- `P5_CU_HOST`, `P5_SSH_KEY`, `P5_KNOWN_HOSTS`
+- `P5_DU_BIN`, `P5_DU_CFG`, `P5_CU_LOG`, core container 이름
+- 피해 TUN과 ping target
+- `AMF_REGION_ID`
+- `CLOCK_*`, `LAB_INVENTORY_SHA256`
+- 서로 다른 `VICTIM_PROFILE_FINGERPRINT`, `ATTACKER_PROFILE_FINGERPRINT`
+
+실행 전에 고정할 threshold는 다음이다.
+
+```bash
+OBSERVATION_S=12
+RECOVERY_TIMEOUT_S=30
+BASELINE_PING_COUNT=20
+LOSS_CONSECUTIVE_PINGS=5
+RECOVERY_PING_COUNT=20
+MATCHED_REPETITIONS=3
+INFRA_RETRY_LIMIT=1
+```
+
+값은 캠페인 도중 바꾸면 안 된다. runner가 설정·정책·실행기 hash 변화를 감지하면
+`infrastructure-invalid`로 중단한다.
+
+## 6. control 먼저 실행
 
 ```bash
 BLIND_CONF=/안전한/경로/blind.conf \
   reproducers/blind-dos/bin/blind-run control -n control-001
 ```
 
-현재 피해 UE 값의 one-shot attack은 두 개의 명시적 스위치가 필요하다.
+control에서도 공격 UE endpoint는 같은 binary와 cell에서 표적 게이트를 기다린다. 게이트를
+열지 않으므로 공격 이벤트는 0이어야 한다. 피해 UE는 baseline·관측·after service를 모두
+통과해야 한다.
+
+`run_stop.json`의 필수 결과:
+
+```json
+{
+  "classification": "passed",
+  "mode": "control",
+  "verdict": {
+    "victim_service_before": true,
+    "victim_service_loss": false,
+    "victim_service_after": true,
+    "target_owner_state_effect": false,
+    "crash_count": 0,
+    "forced_kill_count": 0
+  }
+}
+```
+
+control이 실패하면 attack을 실행하지 않고 ZMQ endpoint, 가입자 상태, TUN, clock과 hook을
+먼저 고친다.
+
+## 7. 단일 attack 실행
+
+공격은 명시적 `-e 1` 없이는 시작되지 않는다.
 
 ```bash
 BLIND_CONF=/안전한/경로/blind.conf \
   reproducers/blind-dos/bin/blind-run attack -e 1 -n attack-001
 ```
 
-각 run은 `run_stop.json`과 `verdict.json`을 읽고, 마지막으로 다음 명령으로 봉인을
-재검증한다.
+runner는 피해 snapshot 뒤에만 표적 파일을 생성한다. 공격 UE는 아래 terminal chain을
+정확히 한 번 기록해야 한다.
+
+```text
+target_gate_opened
+target_msg3_committed
+nas_guti_selected
+rrc_setup_complete_submitted
+authentication_request_withheld
+```
+
+attack 통과의 핵심 verdict:
+
+```json
+{
+  "classification": "passed",
+  "mode": "attack",
+  "verdict": {
+    "exact_join": true,
+    "target_owner_state_effect": true,
+    "victim_service_loss": true,
+    "same_victim_recovery": true,
+    "victim_service_after": true,
+    "crash_count": 0,
+    "forced_kill_count": 0
+  }
+}
+```
+
+`same_victim_recovery`는 before/after `victim_pid`가 같고 Registration·PDU count가 모두
+증가해야 참이다. 새 프로세스를 시작해 회복한 것은 통과로 세지 않는다.
+
+## 8. G5 matched campaign
+
+기본 3세트:
+
+```bash
+BLIND_CONF=/안전한/경로/blind.conf \
+  reproducers/blind-dos/bin/blind-campaign \
+  -e 1 -n blind-g5-$(date +%Y%m%d) -R 3
+```
+
+10세트를 사전 고정하려면 `-R 10`을 쓴다. 허용 범위는 3~100이다. 각 세트는 반드시
+control→attack 순서다.
+
+성공한 `campaign_result.json` 예:
+
+```json
+{
+  "status": "passed",
+  "passed": true,
+  "required_sets": 3,
+  "completed_sets": 3,
+  "reason": "all_matched_sets_passed"
+}
+```
+
+`campaign_events.jsonl`에서 모든 control/attack이 `try01`에 통과했는지, 인프라 무효
+재시도가 있었는지도 확인한다. 유효한 공격 실패는 재시도하거나 다른 결과로 대체하지 않는다.
+
+## 9. 증거 검증
+
+각 child run은 개별 manifest를 가진다.
 
 ```bash
 python3 reproducers/blind-dos/analysis/evidence_manifest.py verify \
-  /run/root/attack-001
+  /run/root/campaign/children/set001-attack-try01
 ```
 
-## matched campaign과 `-R N`
+필수 확인 항목:
 
-기본값은 control→attack 세 쌍이다.
+- `evidence_manifest.py verify` 성공
+- `sensitive_artifact_check.txt`가 `ok`
+- `raw_evidence_unchanged_by_verifier=true`
+- `configuration_unchanged=true`, `software_unchanged=true`
+- attack은 exact join·state effect·loss·same PID recovery가 모두 참
+- control은 공격 이벤트·state effect·loss가 모두 거짓
+- crash/forced kill 0
 
-```bash
-BLIND_CONF=/안전한/경로/blind.conf \
-  reproducers/blind-dos/bin/blind-campaign -e 1 -n campaign-3 -R 3
-```
+raw log와 pcap은 Git에 올리지 않는다. Git에는 campaign/result, child verdict·run_stop·
+manifest, 전체 원문 SHA-256 목록만 둔다.
 
-10/10을 요구하려면 실행 전에 `-R 10`으로 고정한다.
+## 10. 결과 해석
 
-```bash
-BLIND_CONF=/안전한/경로/blind.conf \
-  reproducers/blind-dos/bin/blind-campaign -e 1 -n campaign-10 -R 10
-```
+| 결과 | 의미 | 조치 |
+|---|---|---|
+| `passed` control | 대조 서비스 정상 | 같은 설정의 attack 진행 가능 |
+| `passed` attack | 단일 G5 phase 통과 | 사전 고정 N/N 여부 확인 |
+| `valid-failure` | 인프라는 정상이나 공격 효과 부족 | 실패로 보존, 자동 재시도 금지 |
+| `infrastructure-invalid` | 증거·프로세스·clock·설정 문제 | 원인 수정 후 새 run ID로 제한 재시도 |
 
-허용 범위는 3~100이다. `-R 10`은 성공한 세트 열 개를 모을 때까지 무한 재시도한다는
-뜻이 아니다. control 또는 attack의 **유효 실패가 하나라도 나오면 즉시 campaign 실패**다.
-`INFRA_RETRY_LIMIT`은 인프라 무효 run에만 적용되며 N에 포함되지 않는다. N/N control과
-attack이 모두 통과한 경우에만 `campaign_result.json`이 `passed`가 된다.
+G5를 통과해도 “식별자를 무선에서 훔쳤다”, “지속적으로 차단한다”, “OTA에서도 같다”,
+“기지국 전체가 마비됐다”라고 쓰지 않는다. 정확한 표현은 **oracle 보조 단발 Blind DoS가
+p5 direct 2-cell ZMQ에서 3/3 재현됐다**이다.
 
-## 증거 사용
+## 11. 자주 보는 실패
 
-각 run의 핵심 파일은 다음과 같다.
+- `target_gate` timeout: CU snapshot 또는 target file 경로 확인
+- baseline timeout: 피해 Registration/PDU/TUN/ping과 cell 0 endpoint 확인
+- attack terminal event 없음: NAS 5G-GUTI 구성, AMF Region ID, attacker cell 확인
+- victim이 회복 중 종료: `blind.recovery_mode=1`과 최종 OAI patch 확인
+- victim status 141/0: `SIGUSR1`을 process group에 보내는 구버전 runner인지 확인
+- cell clock 정지: attack terminal 직후 공격 endpoint를 수동 종료하지 않았는지 확인
+- exact join 거짓: current-run CU/AMF log slice와 before NGAP IDs 확인
+- manifest verify 실패: 봉인 뒤 파일이 추가·삭제·변경됐는지 확인
 
-- `run.json`: 고정 threshold·clock·inventory·profile fingerprint
-- `attacker_events.jsonl`: 표적 게이트·Msg3 commit·Msg5·NAS 중단 정답
-- `victim_service.jsonl`: 공격 전·중·후 Registration·PDU·ping
-- `target_snapshot_before.json`, `target_snapshot_after.json`: 표적과 기존 NGAP ID
-- `amf.log`, `cu.log`, `du.log`, `ngap.pcap`, `f1ap.pcap`: current-run slice
-- `ground_truth.jsonl`: identity reach·기존 피해 컨텍스트 변화·인프라 이벤트
-- `verdict.json`, `run_stop.json`, `evidence_manifest.json`: 독립 판정·종료·무결성
+## 12. 종료와 원복
 
-탐지기에는 `attacker_events.jsonl`, oracle 표적값, `ground_truth.jsonl`을 입력하지 않는다.
-탐지 결과를 먼저 봉인한 뒤 정답과 합쳐 채점한다. 원시 run은 Git에 올리지 않고
-정제된 판정·SHA-256·inventory만 `artifacts/`에 게시한다.
-
-## 주장 경계
-
-- `identity_reached`만 있으면 G3 전달 경로 확인이다.
-- 기존 피해 binding 변화만 있으면 망 상태 변화이며 서비스 DoS 성공이 아니다.
-- matched N/N의 실제 서비스 손실·같은 UE 회복까지 있어야 oracle 보조 단발 G5다.
-- 내부 로그 없이 Uu에서 현재값을 획득하지 않았으면 현실적 입력 경로 G6가 아니다.
-- 재접속마다 새 값을 얻어 관측창 동안 차단하지 않았으면 지속 Blind DoS G7이 아니다.
-
-무작위 값·만료 값·다른 UE의 현재값은 표적 특이성을 확인하는 대조 입력이다. oracle,
-Uu 관측, 추측은 식별자 확보 방식이다. 둘 다 RRC 재수립형·RRC 재개형 같은 별도 절차
-변형과 혼동하지 않는다.
+runner의 정상 종료가 UE 두 개, DU, capture와 log slice를 정리한다. 중단 시에는 동일
+hook으로 잔여 PID를 확인하고, 테스트용 core/subscriber 변경을 원본 compose·DB 상태로
+돌린 뒤 인스턴스를 중지한다. 넓은 `pkill`이나 패널 전체 stop 대신 run이 사용한 정확한
+프로세스와 인스턴스만 대상으로 한다.

@@ -6,7 +6,7 @@
 |---|---|
 | [rrc-signaling-storm](rrc-signaling-storm/) | 동결·사용 가능. 검증 범위와 한계는 모듈 README 참고 |
 | [blind-dos](blind-dos/) | 현재 유효 5G-GUTI one-shot 구현 완료. p5 direct 2-cell ZMQ matched control→attack G5 3/3 통과 |
-| [upstream-dos](upstream-dos/) | 작업명. 공격 계층과 대상 자원 정의 중 |
+| [uplink-dos](uplink-dos/) | NAS Service Request MAC 단발 변조형 프로토콜 영향 에뮬레이터. p5 ZMQ matched control→emulation 3/3 통과 |
 
 새 모듈은 최소한 README, 독립 라벨 계약, 정상 대조군, 유한 실행시간, `runs/`
 로컬 보존 정책을 먼저 정한다. 실제 파일이 생기기 전에는 빈 `src/`, `tests/`,

@@ -1,0 +1,58 @@
+{
+  "campaign_id": "p5-uplink-final-v5-20261105",
+  "matched_repetitions": 3,
+  "passed": true,
+  "rf_overshadowing_observed": false,
+  "schema": "uplink-dos.campaign-public.v1",
+  "set_order": [
+    "control",
+    "emulation"
+  ],
+  "sets": [
+    {
+      "control": {
+        "impact_ping_successes": 5,
+        "max_consecutive_ping_failures": 0,
+        "service_request_substitution_count": 0,
+        "verdict_sha256": "5cff7d84f18379ed18fdeb38df718e425e69d8764b58d43ebb4563ae0fb85c20"
+      },
+      "emulation": {
+        "impact_ping_successes": 0,
+        "max_consecutive_ping_failures": 5,
+        "service_request_substitution_count": 1,
+        "verdict_sha256": "c838af7c32071089807ffcf4d1107fccd03f7b1a4088f933b969c4d65070ee66"
+      },
+      "set_index": 1
+    },
+    {
+      "control": {
+        "impact_ping_successes": 4,
+        "max_consecutive_ping_failures": 1,
+        "service_request_substitution_count": 0,
+        "verdict_sha256": "7ddbd446ce858301c2a2ad218aedc2269a007fb5b8378a674a330dc3cda8b066"
+      },
+      "emulation": {
+        "impact_ping_successes": 0,
+        "max_consecutive_ping_failures": 5,
+        "service_request_substitution_count": 1,
+        "verdict_sha256": "6f749547e36bf4643534e181226d1ec93ee2c28ff3577be4c8d50089e15e754c"
+      },
+      "set_index": 2
+    },
+    {
+      "control": {
+        "impact_ping_successes": 3,
+        "max_consecutive_ping_failures": 2,
+        "service_request_substitution_count": 0,
+        "verdict_sha256": "cc06b5dcbcffc0b9961f2b505584c76183d91847d0e65629d0293b0a3a87d0e0"
+      },
+      "emulation": {
+        "impact_ping_successes": 0,
+        "max_consecutive_ping_failures": 5,
+        "service_request_substitution_count": 1,
+        "verdict_sha256": "ec4b77502b248ade681ea41458f850d9c8b0867cba76442344848aae441e6da0"
+      },
+      "set_index": 3
+    }
+  ]
+}

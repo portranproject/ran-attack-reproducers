@@ -1,0 +1,25 @@
+# p5 DU 호스트에서 bin/uplink-run이 읽는 예시다. 실제 값은 Git 밖 uplink.conf에 둔다.
+UPLINK_RUN_ROOT=/root/uplink-dos-runs
+OAI_BIN=/root/OAI-uplink-dos-w38/cmake_targets/ran_build/build/nr-uesoftmodem
+UE_CFG=/root/oai_nrue.conf
+UECAP=/root/OAI-uplink-dos-w38/targets/PROJECTS/GENERIC-NR-5GC/CONF/uecap_ports1.xml
+DU_CTL=/root/workspace/ctl.sh
+
+CU_HOST=ubuntu@172.31.5.10
+CU_CTL=/root/workspace/ctl.sh
+CU_CFG=/root/OCUDU/configs/cu.yaml
+CU_LOG=/tmp/ocu.log
+CORE_CONTAINER=open5gs_5gc
+SSH_KEY=/root/blind-dos-secrets-v2/p5-key.pem
+KNOWN_HOSTS=/root/blind-dos-secrets-v2/known_hosts
+
+TUN=oaitun_ue1
+GATEWAY=10.45.1.1
+VICTIM_IP=10.45.1.2
+ATTACH_TIMEOUT_S=75
+CU_READY_TIMEOUT_S=75
+SESSION_READY_TIMEOUT_S=15
+SESSION_SETTLE_S=4
+IDLE_RELEASE_TIMEOUT_S=12
+PING_COUNT=5
+RECOVERY_MAX_PINGS=10

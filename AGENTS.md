@@ -1,7 +1,7 @@
 # AGENTS.md — 기지국 공격 재현 도구 모음 (RAN 보안 테스트베드)
 
 > 이 디렉토리에서 작업하는 에이전트/팀원용 컨텍스트. 처음 들어오면 이 파일부터 읽을 것.
-> 최종 갱신 2026-11-02.
+> 최종 갱신 2026-11-05.
 
 ## 이 디렉토리는 무엇인가
 
@@ -11,7 +11,7 @@
 
 - `reproducers/rrc-signaling-storm/`: 구현·실측 완료 후 2026-11-02 동결
 - `reproducers/blind-dos/`: 현재 유효 5G-GUTI 재사용형 구현 완료. p5 direct 2-cell ZMQ의 matched control→attack G5 3/3 통과
-- `reproducers/upstream-dos/`: 공격 계층·대상 자원·성공 기준 정의 중
+- `reproducers/uplink-dos/`: NAS Service Request MAC 단발 변조형 프로토콜 영향 에뮬레이터. p5 ZMQ matched control→emulation 3/3 통과
 
 아래 장문의 실측 기록은 첫 번째 모듈인 RRC signaling storm의 보존 컨텍스트다.
 
@@ -23,7 +23,7 @@
 - [reproducers/rrc-signaling-storm/](reproducers/rrc-signaling-storm/) — 현재 OAI UE 패치·실행기·분석기·회귀 테스트·실험 기록
 - [reproducers/blind-dos/](reproducers/blind-dos/) — 현재 유효 5G-GUTI 재사용형의 one-shot 구현·사용법·G5 합격 기준·p5 결과
 - [reproducers/blind-dos/artifacts/p5-zmq-nas-guti-g5-20261102/](reproducers/blind-dos/artifacts/p5-zmq-nas-guti-g5-20261102/) — matched control→attack 3/3 판정·child manifest·원격 원문 SHA-256
-- [reproducers/upstream-dos/](reproducers/upstream-dos/) — 상향링크 DoS의 공격 계층·대상 자원·성공 기준을 확정할 준비 공간
+- [reproducers/uplink-dos/](reproducers/uplink-dos/) — uplink DoS 이후 NAS 인증 실패·서비스 손실을 실제 망 경로로 재현하는 에뮬레이터와 사용 가이드
 - [reproducers/rrc-signaling-storm/docs/CURATED-VALIDATION-20261030.md](reproducers/rrc-signaling-storm/docs/CURATED-VALIDATION-20261030.md) — clean curated 빌드·정상 회귀·Msg4 ACK·독립 broker witness 실측
 - [reproducers/rrc-signaling-storm/docs/LABEL-CONTRACT.md](reproducers/rrc-signaling-storm/docs/LABEL-CONTRACT.md) — UE 정답·탐지·대응·효과 판정·시간 동기 계약
 - [reproducers/rrc-signaling-storm/docs/USAGE-GUIDE.md](reproducers/rrc-signaling-storm/docs/USAGE-GUIDE.md) — 동결된 재현기의 실행·입력 격리·라벨·채점 가이드
@@ -80,6 +80,26 @@
   OAI TUN 보조 프로세스까지 종료된다.
 - 현재 허용 주장은 **p5 ZMQ의 oracle 보조 단발 Blind DoS G5 성공**이다. 비특권
   식별자 획득(G6), 지속 차단(G7), 실 SDR OTA와 상용망 일반화는 미검증이다.
+
+---
+
+## 공격 모듈: Uplink DoS 프로토콜 영향 에뮬레이터 (완료)
+
+- 실제 RF overshadowing 대신 그 이후의 NAS·서비스 결과를 실제 프로토콜 경로에서
+  재현한다. 모든 판정에 `rf_overshadowing_observed=false`를 고정한다.
+- OAI UE가 등록 후 idle에서 보내는 최초 `Service Request`의 계산 완료 MAC 한 비트를
+  정확히 한 번 뒤집는다. OCUDU DU/CU와 Open5GS 소스는 수정하지 않는다.
+- `p5-uplink-final-v5-20261105` matched control→emulation 3세트가 모두 통과했다. 세
+  emulation은 변조 각 1회, Open5GS MAC 검증 실패, ping 5/5 손실, 같은 PID 회복 5회
+  연속, crash/forced kill 0이었다. control impact 성공은 5/5·4/5·3/5였다.
+- 실행기는 PDU Session Resource Setup 완료와 CU context `Removed`를 확인한 뒤 다음
+  단계로 간다. 이 게이트 없이 PDU setup과 release가 경합한 개발 run은 성능 근거에서
+  제외한다.
+- 현재 허용 주장은 **p5 ZMQ에서 uplink DoS의 프로토콜·서비스 영향을 에뮬레이션했다**는
+  것이다. RF 송신 우위, 실 SDR OTA, 상용망 일반화와 RF 원인 식별은 미검증이다.
+- 사용법과 판정 기준은 [README](reproducers/uplink-dos/README.md), 원복을 포함한 운영
+  절차는 [사용 가이드](reproducers/uplink-dos/USAGE-GUIDE.md), 실측 해시는
+  [p5 결과](reproducers/uplink-dos/artifacts/p5-zmq-protocol-impact-20261105/)를 따른다.
 
 ---
 

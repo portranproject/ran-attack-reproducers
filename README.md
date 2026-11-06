@@ -18,7 +18,7 @@ Markdown 문서는 한국어를 기본으로 하며 파일명에 언어 접미�
 |---|---|
 | [RRC signaling storm](reproducers/rrc-signaling-storm/) | 2026-11-02 동결. 분석기 입력·정답 생성기로 사용 |
 | [Blind DoS](reproducers/blind-dos/) | 현재 유효 5G-GUTI 재사용형 구현 완료. p5 direct 2-cell ZMQ에서 matched control→attack G5 3/3 통과 |
-| [Upstream DoS](reproducers/upstream-dos/) | 범위 정의 단계. 공격 계층·대상 자원·성공 기준 확정 전에는 구현하지 않음 |
+| [Uplink DoS](reproducers/uplink-dos/) | 프로토콜 영향 에뮬레이터 구현 완료. p5 ZMQ matched control→emulation 3/3 통과, RF overshadowing 미검증 |
 
 각 도구는 구현·설정·라벨 계약·실험 출력을 서로 섞지 않는다.
 
@@ -26,7 +26,7 @@ Markdown 문서는 한국어를 기본으로 하며 파일명에 언어 접미�
 reproducers/
 ├── rrc-signaling-storm/   # 동결된 구현·분석기·문서·테스트
 ├── blind-dos/            # 5G-GUTI one-shot 구현·판정기·사용 가이드·G5 결과
-└── upstream-dos/         # 공격 범위 정의 중
+└── uplink-dos/           # Service Request MAC 단발 변조·판정기·3세트 캠페인
 artifacts/                  # 봉인된 RRC 증거와 게시용 요약
 rss-storm/                  # 과거 문서·명령용 호환 안내와 위임 스크립트
 ```

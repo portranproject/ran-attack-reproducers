@@ -1,0 +1,264 @@
+#!/usr/bin/env bash
+# p5 direct ZMQ에서 control 또는 단발 uplink DoS 프로토콜 영향 에뮬레이션을 수집한다.
+set -euo pipefail
+umask 077
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONF=${UPLINK_CONF:-$ROOT/conf/uplink.conf}
+[[ ! -L $CONF ]] || { echo "설정 파일은 심볼릭 링크일 수 없습니다: $CONF" >&2; exit 2; }
+[[ ! -f $CONF ]] || . "$CONF"
+
+MODE=control
+[[ ${1:-} != control && ${1:-} != emulation ]] || { MODE=$1; shift; }
+ENABLE=0
+RUN_ID=
+while getopts "e:n:h" option; do
+  case $option in
+    e) ENABLE=$OPTARG ;;
+    n) RUN_ID=$OPTARG ;;
+    h) echo "사용법: $0 [control|emulation] -n RUN_ID [-e 0|1]"; exit 0 ;;
+    *) exit 2 ;;
+  esac
+done
+
+RUN_ROOT=${UPLINK_RUN_ROOT:-$ROOT/runs}
+LOCK_FILE=${UPLINK_LOCK_FILE:-/tmp/uplink-dos.lock}
+OAI_BIN=${OAI_BIN:-}
+UE_CFG=${UE_CFG:-}
+UECAP=${UECAP:-}
+DU_CTL=${DU_CTL:-/root/workspace/ctl.sh}
+CU_HOST=${CU_HOST:-}
+CU_CTL=${CU_CTL:-/root/workspace/ctl.sh}
+CU_CFG=${CU_CFG:-/root/OCUDU/configs/cu.yaml}
+CU_LOG=${CU_LOG:-/tmp/ocu.log}
+CORE_CONTAINER=${CORE_CONTAINER:-open5gs_5gc}
+SSH_KEY=${SSH_KEY:-}
+KNOWN_HOSTS=${KNOWN_HOSTS:-}
+TUN=${TUN:-oaitun_ue1}
+GATEWAY=${GATEWAY:-10.45.1.1}
+VICTIM_IP=${VICTIM_IP:-10.45.1.2}
+IDLE_RELEASE_TIMEOUT_S=${IDLE_RELEASE_TIMEOUT_S:-12}
+ATTACH_TIMEOUT_S=${ATTACH_TIMEOUT_S:-75}
+CU_READY_TIMEOUT_S=${CU_READY_TIMEOUT_S:-75}
+SESSION_READY_TIMEOUT_S=${SESSION_READY_TIMEOUT_S:-15}
+SESSION_SETTLE_S=${SESSION_SETTLE_S:-4}
+PING_COUNT=${PING_COUNT:-5}
+RECOVERY_MAX_PINGS=${RECOVERY_MAX_PINGS:-10}
+
+fail() { echo "uplink-run: $*" >&2; exit 2; }
+[[ $MODE == control || $MODE == emulation ]] || fail "mode는 control 또는 emulation이어야 합니다"
+[[ $ENABLE == 0 || $ENABLE == 1 ]] || fail "-e는 0 또는 1이어야 합니다"
+[[ $MODE == control && $ENABLE == 0 || $MODE == emulation && $ENABLE == 1 ]] \
+  || fail "control은 -e 0, emulation은 명시적 -e 1이 필요합니다"
+[[ $RUN_ID =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$ ]] || fail "안전한 RUN_ID가 필요합니다"
+for value in "$ATTACH_TIMEOUT_S" "$IDLE_RELEASE_TIMEOUT_S" "$CU_READY_TIMEOUT_S" "$SESSION_READY_TIMEOUT_S" "$SESSION_SETTLE_S" "$PING_COUNT" "$RECOVERY_MAX_PINGS"; do
+  [[ $value =~ ^[1-9][0-9]*$ ]] || fail "시간·횟수 값은 양의 정수여야 합니다"
+done
+(( PING_COUNT >= 5 && RECOVERY_MAX_PINGS >= 5 )) || fail "ping 표본은 5개 이상이어야 합니다"
+for file in "$OAI_BIN" "$UE_CFG" "$UECAP" "$DU_CTL" "$SSH_KEY"; do
+  [[ -f $file && ! -L $file ]] || fail "필수 파일이 없거나 심볼릭 링크입니다: $file"
+done
+[[ -x $OAI_BIN && -x $DU_CTL ]] || fail "OAI_BIN과 DU_CTL은 실행 가능해야 합니다"
+[[ -n $CU_HOST ]] || fail "CU_HOST가 필요합니다"
+command -v flock >/dev/null || fail "flock이 필요합니다"
+command -v ssh >/dev/null || fail "ssh가 필요합니다"
+command -v python3 >/dev/null || fail "python3가 필요합니다"
+
+exec 9>"$LOCK_FILE"
+flock -n 9 || fail "다른 uplink DoS 실행이 진행 중입니다"
+[[ ! -L $RUN_ROOT ]] || fail "run root는 심볼릭 링크일 수 없습니다"
+mkdir -p -m 700 "$RUN_ROOT"
+OUT=$RUN_ROOT/$RUN_ID
+mkdir -m 700 "$OUT" || fail "기존 실행 결과는 덮어쓰지 않습니다: $OUT"
+SERVICE=$OUT/service.jsonl
+: >"$SERVICE"
+
+ssh_args=(-o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=yes -i "$SSH_KEY")
+[[ -z $KNOWN_HOSTS ]] || ssh_args+=(-o "UserKnownHostsFile=$KNOWN_HOSTS")
+cu() {
+  local quoted
+  printf -v quoted '%q' "$1"
+  ssh "${ssh_args[@]}" "$CU_HOST" "sudo bash -lc $quoted"
+}
+
+UE_PID=
+DU_STARTED=0
+FORCED_KILL=0
+UNEXPECTED_EXIT=0
+CU_OFFSET=
+CU_START_UTC=
+FINISHED=0
+KEEPALIVE_PID=
+
+write_process() {
+  [[ -n $UE_PID ]] || return 0
+  printf '{"schema":"uplink-dos.process.v1","victim_pid":%s,"crash_count":%s,"forced_kill_count":%s}\n' \
+    "$UE_PID" "$UNEXPECTED_EXIT" "$FORCED_KILL" >"$OUT/process.json"
+}
+
+stop_ue() {
+  [[ -n $UE_PID ]] || return 0
+  if ! kill -0 "$UE_PID" 2>/dev/null; then
+    UNEXPECTED_EXIT=1
+    wait "$UE_PID" 2>/dev/null || true
+    return 0
+  fi
+  kill -INT "$UE_PID" 2>/dev/null || true
+  sleep .2
+  kill -INT "$UE_PID" 2>/dev/null || true
+  for _ in $(seq 1 50); do kill -0 "$UE_PID" 2>/dev/null || break; sleep .1; done
+  if kill -0 "$UE_PID" 2>/dev/null; then
+    FORCED_KILL=1
+    kill -KILL "$UE_PID" 2>/dev/null || true
+  fi
+  wait "$UE_PID" 2>/dev/null || true
+}
+
+stop_keepalive() {
+  [[ -n $KEEPALIVE_PID ]] || return 0
+  kill -INT "$KEEPALIVE_PID" 2>/dev/null || true
+  wait "$KEEPALIVE_PID" 2>/dev/null || true
+  KEEPALIVE_PID=
+}
+
+collect_network_logs() {
+  [[ -n $CU_OFFSET ]] || return 0
+  cu "tail -c +$((CU_OFFSET + 1)) '$CU_LOG'" >"$OUT/cu.log" 2>/dev/null || : >"$OUT/cu.log"
+  cu "docker logs --timestamps --since '$CU_START_UTC' '$CORE_CONTAINER' 2>&1" >"$OUT/amf.log" 2>/dev/null || : >"$OUT/amf.log"
+  [[ ! -f /tmp/odu.log ]] || cp /tmp/odu.log "$OUT/du.log"
+}
+
+cleanup() {
+  local status=$?
+  set +e
+  stop_keepalive
+  (( FINISHED )) || stop_ue
+  (( DU_STARTED == 0 )) || "$DU_CTL" stop >/dev/null 2>&1
+  collect_network_logs
+  write_process
+  exit "$status"
+}
+trap cleanup EXIT INT TERM
+
+append_service() {
+  local phase=$1 ok=$2 now
+  now=$(date +%s%N)
+  printf '{"schema":"uplink-dos.service.v1","phase":"%s","ping_ok":%s,"victim_pid":%s,"realtime_ns":%s}\n' \
+    "$phase" "$ok" "$UE_PID" "$now" >>"$SERVICE"
+}
+
+local_ping() { ping -I "$TUN" -c 1 -W 1 "$GATEWAY" >/dev/null 2>&1; }
+core_ping() { cu "docker exec '$CORE_CONTAINER' ping -c 1 -W 1 '$VICTIM_IP' >/dev/null 2>&1"; }
+require_alive() { kill -0 "$UE_PID" 2>/dev/null || fail "피해 UE가 예정보다 일찍 종료됐습니다"; }
+wait_release() {
+  local target=$1 started=$SECONDS count
+  while (( SECONDS - started < IDLE_RELEASE_TIMEOUT_S )); do
+    require_alive
+    count=$(grep -c 'Received RRCRelease' "$OUT/ue.log" || true)
+    (( count >= target )) && return 0
+    sleep .1
+  done
+  fail "RRC idle 해제를 기다리다 시간 초과했습니다"
+}
+
+wait_network_release() {
+  local target=$1 started=$SECONDS count
+  while (( SECONDS - started < IDLE_RELEASE_TIMEOUT_S )); do
+    require_alive
+    count=$(cu "tail -c +$((CU_OFFSET + 1)) '$CU_LOG' | grep -Fc ': Removed'" || true)
+    [[ $count =~ ^[0-9]+$ ]] || fail "CU release 완료 횟수를 읽지 못했습니다"
+    (( count >= target )) && return 0
+    sleep .2
+  done
+  fail "네트워크 UE context release 완료를 기다리다 시간 초과했습니다"
+}
+
+CU_START_UTC=$(cu 'date -u +%Y-%m-%dT%H:%M:%S.%NZ') || fail "CU 시각을 읽을 수 없습니다"
+cu "test \"\$(grep -c 'inactivity_timer: 2' '$CU_CFG')\" = 1" || fail "CU inactivity_timer가 2가 아닙니다"
+cu "rm -f /tmp/uplink-dos-cu-start.log; nohup setsid '$CU_CTL' start >/tmp/uplink-dos-cu-start.log 2>&1 </dev/null &" \
+  || fail "CU/core 초기화를 시작하지 못했습니다"
+started=$SECONDS
+until cu "grep -Fq '=== ✅ CU 준비 완료 ===' /tmp/uplink-dos-cu-start.log"; do
+  (( SECONDS - started < CU_READY_TIMEOUT_S )) || fail "CU/core 초기화가 시간 초과했습니다"
+  sleep 1
+done
+cu 'cat /tmp/uplink-dos-cu-start.log' >"$OUT/cu-start.log" || fail "CU 시작 로그를 수집하지 못했습니다"
+cu "pgrep -x ocu >/dev/null && test \"\$(docker inspect -f '{{.State.Health.Status}}' '$CORE_CONTAINER')\" = healthy" \
+  || fail "CU 또는 코어가 준비되지 않았습니다"
+CU_OFFSET=$(cu "stat -c %s '$CU_LOG'") || fail "CU 로그 오프셋을 읽을 수 없습니다"
+[[ $CU_OFFSET =~ ^[0-9]+$ ]] || fail "CU 로그 오프셋이 잘못됐습니다"
+
+pgrep -x nr-uesoftmodem >/dev/null && fail "기존 OAI UE가 실행 중입니다"
+"$DU_CTL" start >"$OUT/du-start.log" 2>&1 || fail "DU 시작에 실패했습니다"
+DU_STARTED=1
+
+bin_dir=$(dirname "$OAI_BIN")
+(
+  cd "$bin_dir"
+  OAI_UPLINK_DOS_EMULATE=$ENABLE exec setsid stdbuf -oL -eL "$OAI_BIN" \
+    -O "$UE_CFG" --band 78 -C 3489420000 --numerology 1 -r 51 -E --ue-scan-carrier \
+    --uecap_file "$UECAP" --device.name oai_zmqdevif --num-ues 1 \
+    '--zmq.[0].tx_channels' tcp://127.0.0.1:4557 \
+    '--zmq.[0].rx_channels' tcp://127.0.0.1:4556
+) >"$OUT/ue.log" 2>&1 </dev/null &
+UE_PID=$!
+printf '{"schema":"uplink-dos.run.v1","run_id":"%s","mode":"%s","emulation_enabled":%s,"victim_pid":%s,"rf_overshadowing_observed":false}\n' \
+  "$RUN_ID" "$MODE" "$([[ $ENABLE == 1 ]] && echo true || echo false)" "$UE_PID" >"$OUT/run.json"
+
+started=$SECONDS
+until ip -4 -o addr show "$TUN" >/dev/null 2>&1; do
+  require_alive
+  (( SECONDS - started < ATTACH_TIMEOUT_S )) || fail "피해 UE attach/PDU가 시간 초과했습니다"
+  sleep .05
+done
+ping -I "$TUN" -i .2 "$GATEWAY" >"$OUT/session-keepalive.log" 2>&1 &
+KEEPALIVE_PID=$!
+started=$SECONDS
+until cu "tail -c +$((CU_OFFSET + 1)) '$CU_LOG' | grep -Fq '\"PDU Session Resource Setup Procedure\" finished successfully'"; do
+  require_alive
+  kill -0 "$KEEPALIVE_PID" 2>/dev/null || fail "PDU 세션 준비 keepalive가 종료됐습니다"
+  (( SECONDS - started < SESSION_READY_TIMEOUT_S )) || fail "PDU Session Resource Setup이 시간 초과했습니다"
+  sleep .2
+done
+sleep "$SESSION_SETTLE_S"
+require_alive
+kill -0 "$KEEPALIVE_PID" 2>/dev/null || fail "PDU 세션 안정화 keepalive가 종료됐습니다"
+stop_keepalive
+for _ in $(seq 1 "$PING_COUNT"); do
+  if local_ping; then append_service baseline true; else append_service baseline false; fi
+  sleep .05
+done
+wait_release 1
+wait_network_release 1
+
+for _ in $(seq 1 "$PING_COUNT"); do
+  if core_ping; then append_service impact true; else append_service impact false; fi
+done
+wait_release 2
+wait_network_release 2
+
+streak=0
+for _ in $(seq 1 "$RECOVERY_MAX_PINGS"); do
+  if core_ping; then
+    append_service recovery true
+    streak=$((streak + 1))
+  else
+    append_service recovery false
+    streak=0
+  fi
+  (( streak >= 5 )) && break
+  sleep .3
+done
+require_alive
+cu "pgrep -x ocu >/dev/null && test \"\$(docker inspect -f '{{.State.Health.Status}}' '$CORE_CONTAINER')\" = healthy" \
+  || fail "실행 중 CU 또는 코어가 종료됐습니다"
+pgrep -x odu >/dev/null || fail "실행 중 DU가 종료됐습니다"
+
+stop_ue
+"$DU_CTL" stop >/dev/null 2>&1
+DU_STARTED=0
+collect_network_logs
+write_process
+FINISHED=1
+trap - EXIT INT TERM
+exec python3 "$ROOT/analysis/export_labels.py" "$OUT"

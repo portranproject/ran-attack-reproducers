@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# CU 호스트에서 짧은 inactivity 실험 프로필을 적용하거나 원복한다.
+set -euo pipefail
+
+ACTION=${1:-}
+CFG=${2:-/root/OCUDU/configs/cu.yaml}
+BACKUP=$CFG.uplink-dos-original
+HASH=$BACKUP.sha256
+fail() { echo "uplink-profile: $*" >&2; exit 2; }
+[[ -f $CFG && ! -L $CFG ]] || fail "CU 설정이 일반 파일이 아닙니다: $CFG"
+
+case $ACTION in
+  apply)
+    [[ ! -e $BACKUP && ! -e $HASH ]] || fail "기존 백업이 있습니다. 먼저 상태를 확인하거나 restore 하세요"
+    [[ $(grep -c 'inactivity_timer: 7200' "$CFG") == 1 ]] || fail "예상한 inactivity_timer 7200 한 줄이 아닙니다"
+    cp -a -- "$CFG" "$BACKUP"
+    sha256sum "$BACKUP" | awk '{print $1}' >"$HASH"
+    sed -i 's/inactivity_timer: 7200/inactivity_timer: 2/' "$CFG"
+    [[ $(grep -c 'inactivity_timer: 2' "$CFG") == 1 ]] || fail "프로필 적용 검증에 실패했습니다"
+    ;;
+  restore)
+    [[ -f $BACKUP && ! -L $BACKUP && -f $HASH && ! -L $HASH ]] || fail "원복 백업 또는 해시가 없습니다"
+    [[ $(sha256sum "$BACKUP" | awk '{print $1}') == $(cat "$HASH") ]] || fail "백업 해시가 일치하지 않습니다"
+    [[ $(grep -c 'inactivity_timer: 2' "$CFG") == 1 ]] || fail "현재 설정이 실험 프로필이 아닙니다"
+    cp -a -- "$BACKUP" "$CFG"
+    [[ $(sha256sum "$CFG" | awk '{print $1}') == $(cat "$HASH") ]] || fail "원복 검증에 실패했습니다"
+    rm -- "$BACKUP" "$HASH"
+    ;;
+  *) fail "사용법: $0 {apply|restore} [cu.yaml]" ;;
+esac
+grep -n 'inactivity_timer' "$CFG"

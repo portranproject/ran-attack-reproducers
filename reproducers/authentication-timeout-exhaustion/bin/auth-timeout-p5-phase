@@ -1,0 +1,378 @@
+#!/usr/bin/env bash
+# p5 direct multi-cell ZMQ에서 공격자 N개와 같은 witness 프로세스를 운용한다.
+set -euo pipefail
+umask 077
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONF=${AUTH_TIMEOUT_CONF:-$ROOT/conf/auth-timeout.conf}
+[[ -f $CONF && ! -L $CONF ]] || { echo "안전한 AUTH_TIMEOUT_CONF가 필요합니다" >&2; exit 2; }
+. "$CONF"
+
+OUT=${AUTH_TIMEOUT_RUN_DIR:-}
+MODE=${AUTH_TIMEOUT_MODE:-}
+WITHHOLD=${AUTH_TIMEOUT_WITHHOLD:-}
+ATTACKER_COUNT=${AUTH_TIMEOUT_ATTACKER_COUNT:-}
+ATTACKER_PROCESS_COUNT=${AUTH_TIMEOUT_ATTACKER_PROCESS_COUNT:-}
+START_INTERVAL_MS=${AUTH_TIMEOUT_START_INTERVAL_MS:-}
+LIMIT_MS=${AUTH_TIMEOUT_REGISTRATION_LIMIT_MS:-}
+OAI_BIN=${AUTH_TIMEOUT_OAI_BIN:-}
+PROFILES=${AUTH_TIMEOUT_PROFILES_MANIFEST:-}
+
+P5_HOOK=${P5_HOOK:-$ROOT/bin/auth-timeout-p5-hook}
+SERVICE_PROBE=${SERVICE_PROBE:-$ROOT/bin/auth-timeout-service-probe}
+ATTACKER_CONFIGS_FILE=${ATTACKER_CONFIGS_FILE:-}
+WITNESS_UE_CFG=${WITNESS_UE_CFG:-}
+UECAP=${UECAP:-}
+UE_ENDPOINTS_FILE=${UE_ENDPOINTS_FILE:-}
+BAND=${BAND:-78}
+DL_FREQ=${DL_FREQ:-3489420000}
+NUMEROLOGY=${NUMEROLOGY:-1}
+PRB=${PRB:-51}
+DEVICE=${DEVICE:-oai_zmqdevif}
+WITNESS_TUN=${WITNESS_TUN:-oaitun_ue1}
+PING_TARGET=${PING_TARGET:-10.45.1.1}
+READY_TIMEOUT_S=${READY_TIMEOUT_S:-60}
+RECOVERY_SETTLE_S=${RECOVERY_SETTLE_S:-10}
+HOOK_TIMEOUT_S=${HOOK_TIMEOUT_S:-45}
+USE_SETSID=${USE_SETSID:-1}
+
+fail() { echo "auth-timeout-p5-phase: $*" >&2; exit 2; }
+regular() { [[ -f $1 && ! -L $1 ]] || fail "필수 일반 파일이 없습니다: $1"; }
+positive() { [[ $2 =~ ^[1-9][0-9]*$ ]] || fail "$1은 양의 정수여야 합니다"; }
+[[ -d $OUT && ! -L $OUT ]] || fail "안전한 run 디렉터리가 필요합니다"
+[[ $MODE == control || $MODE == attack ]] || fail "mode가 잘못됐습니다"
+[[ $WITHHOLD == 0 || $WITHHOLD == 1 ]] || fail "withhold 값이 잘못됐습니다"
+[[ $MODE == control && $WITHHOLD == 0 || $MODE == attack && $WITHHOLD == 1 ]] || fail "mode와 withhold가 다릅니다"
+for pair in "ATTACKER_COUNT:$ATTACKER_COUNT" "ATTACKER_PROCESS_COUNT:$ATTACKER_PROCESS_COUNT" "START_INTERVAL_MS:$START_INTERVAL_MS" \
+  "LIMIT_MS:$LIMIT_MS" "READY_TIMEOUT_S:$READY_TIMEOUT_S" "HOOK_TIMEOUT_S:$HOOK_TIMEOUT_S"; do
+  positive "${pair%%:*}" "${pair#*:}"
+done
+[[ $RECOVERY_SETTLE_S =~ ^[0-9]+$ ]] || fail "settle 값이 잘못됐습니다"
+(( LIMIT_MS >= 10000 )) || fail "등록 제한은 10초 이상이어야 합니다"
+[[ $DEVICE == oai_zmqdevif ]] || fail "p5 phase는 oai_zmqdevif 전용입니다"
+[[ $USE_SETSID == 0 || $USE_SETSID == 1 ]] || fail "USE_SETSID는 0 또는 1이어야 합니다"
+for file in "$P5_HOOK" "$SERVICE_PROBE" "$ATTACKER_CONFIGS_FILE" "$WITNESS_UE_CFG" "$UECAP" "$UE_ENDPOINTS_FILE" "$OAI_BIN" "$PROFILES"; do regular "$file"; done
+[[ -x $P5_HOOK && -x $SERVICE_PROBE && -x $OAI_BIN ]] || fail "hook, probe, OAI binary가 실행 가능해야 합니다"
+for command in python3 timeout flock grep head tail stat; do command -v "$command" >/dev/null || fail "$command가 필요합니다"; done
+(( USE_SETSID == 0 )) || command -v setsid >/dev/null || fail "setsid가 필요합니다"
+export P5_CU_HOST P5_SSH_KEY P5_KNOWN_HOSTS P5_DU_BIN P5_DU_CFG P5_DU_LOG
+export P5_DU_BOOT_LOG P5_DU_PID_FILE P5_CU_LOG P5_CORE_CONTAINER
+
+mapfile -t ATTACKER_CFGS < <(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$ATTACKER_CONFIGS_FILE")
+(( ${#ATTACKER_CFGS[@]} == ATTACKER_PROCESS_COUNT )) || fail "공격자 설정 수가 profile manifest의 프로세스 수와 다릅니다"
+for file in "${ATTACKER_CFGS[@]}"; do regular "$file"; done
+mapfile -t UE_ENDPOINTS < <(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$UE_ENDPOINTS_FILE")
+(( ${#UE_ENDPOINTS[@]} == ATTACKER_PROCESS_COUNT + 1 )) || fail "direct ZMQ endpoint 수가 UE 프로세스 수와 다릅니다"
+for endpoint in "${UE_ENDPOINTS[@]}"; do
+  [[ $endpoint =~ ^tcp://127\.0\.0\.1:[0-9]+[[:space:]]+tcp://127\.0\.0\.1:[0-9]+$ ]] \
+    || fail "direct ZMQ endpoint 형식이 잘못됐습니다"
+done
+
+PHASE_INPUTS=$OUT/phase_inputs.json
+python3 - "$PROFILES" "$WITNESS_UE_CFG" "$UECAP" "$UE_ENDPOINTS_FILE" "$P5_HOOK" "$SERVICE_PROBE" "$PHASE_INPUTS" "${ATTACKER_CFGS[@]}" <<'PY'
+import hashlib, json, pathlib, sys
+profiles, witness, uecap, endpoints, hook, probe = map(pathlib.Path, sys.argv[1:7])
+output, *attacker_names = map(pathlib.Path, sys.argv[7:])
+attackers = list(map(pathlib.Path, attacker_names))
+data = json.loads(profiles.read_text())
+rows = data.get("profiles", [])
+expected_attackers = [row for row in rows if row.get("role") == "attacker"]
+expected_witness = [row for row in rows if row.get("role") == "witness"]
+def sha(path):
+    if path.is_symlink() or not path.is_file(): raise SystemExit(f"unsafe phase input: {path}")
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+process_count = data.get("attacker_process_count", data.get("attacker_count"))
+groups = [[] for _ in range(process_count)] if isinstance(process_count, int) and process_count > 0 else []
+for fallback, row in enumerate(expected_attackers):
+    process_index = row.get("process_index", fallback)
+    if not isinstance(process_index, int) or not 0 <= process_index < len(groups):
+        raise SystemExit("invalid attacker process index")
+    groups[process_index].append(row)
+if len(attackers) != len(groups) or len(expected_witness) != 1 or any(not group for group in groups):
+    raise SystemExit("phase input/profile count mismatch")
+if any([row.get("ue_id", index) for index, row in enumerate(group)] != list(range(len(group))) for group in groups):
+    raise SystemExit("attacker ue ids must be contiguous from zero")
+if [sha(path) for path in attackers] != [group[0].get("config_sha256") for group in groups] or any(
+    len({row.get("config_sha256") for row in group}) != 1 for group in groups
+):
+    raise SystemExit("attacker config order/hash mismatch")
+if sha(witness) != expected_witness[0].get("config_sha256"):
+    raise SystemExit("witness config hash mismatch")
+files = {"uecap":sha(uecap), "ue_endpoints":sha(endpoints), "p5_hook":sha(hook), "service_probe":sha(probe)}
+value = {"schema":"auth-timeout.phase-inputs.v1", "files":files}
+with output.open("x", encoding="utf-8") as stream:
+    json.dump(value, stream, sort_keys=True, separators=(",", ":")); stream.write("\n")
+PY
+
+mapfile -t ATTACKER_NUM_UES < <(python3 - "$PROFILES" <<'PY'
+import json, sys
+data = json.load(open(sys.argv[1]))
+count = data.get("attacker_process_count", data["attacker_count"])
+groups = [0] * count
+for fallback, row in enumerate(row for row in data["profiles"] if row.get("role") == "attacker"):
+    groups[row.get("process_index", fallback)] += 1
+print("\n".join(map(str, groups)))
+PY
+)
+(( ${#ATTACKER_NUM_UES[@]} == ATTACKER_PROCESS_COUNT )) || fail "공격자 UE 배치를 읽지 못했습니다"
+TOTAL_ATTACKER_UES=0
+for count in "${ATTACKER_NUM_UES[@]}"; do TOTAL_ATTACKER_UES=$((TOTAL_ATTACKER_UES + count)); done
+(( TOTAL_ATTACKER_UES == ATTACKER_COUNT )) || fail "논리 공격자 수가 manifest와 다릅니다"
+
+WITNESS_FP=$(python3 - "$PROFILES" <<'PY'
+import json, sys
+rows = [row for row in json.load(open(sys.argv[1]))["profiles"] if row.get("role") == "witness"]
+if len(rows) != 1: raise SystemExit("one witness required")
+print(rows[0]["subscriber_fingerprint"])
+PY
+)
+
+SERVICE=$OUT/service.jsonl
+WITNESS_LOG=$OUT/witness.log
+ARM_FILE=$OUT/attack.arm
+LOG_STATE=$OUT/log-state
+mkdir -m 700 "$LOG_STATE"
+: >"$SERVICE"
+: >"$WITNESS_LOG"
+
+PIDS=(); ROLES=(); LOGS=(); STOPPED=(); FORCED_KILL=0; DU_STARTED=0
+is_running() {
+  local state
+  kill -0 "$1" 2>/dev/null || return 1
+  state=$(ps -o stat= -p "$1" 2>/dev/null | tr -d ' ')
+  [[ -n $state && $state != Z* ]]
+}
+target_running() {
+  if (( USE_SETSID )); then kill -0 -- "-$1" 2>/dev/null; else is_running "$1"; fi
+}
+start_child() {
+  local role=$1 log=$2; shift 2
+  if (( USE_SETSID )); then setsid "$@" >>"$log" 2>&1 </dev/null 9>&- & else "$@" >>"$log" 2>&1 </dev/null 9>&- & fi
+  PIDS+=("$!"); ROLES+=("$role"); LOGS+=("$log"); STOPPED+=(0)
+  LAST_INDEX=$((${#PIDS[@]} - 1))
+}
+stop_child() {
+  local index double pid target status
+  index=$1
+  double=${2:-0}
+  pid=${PIDS[$index]}
+  (( STOPPED[index] == 0 )) || return 0
+  target=$pid; (( USE_SETSID )) && target="-$pid"
+  kill -INT -- "$target" 2>/dev/null || true
+  if (( double )); then sleep 0.2; is_running "$pid" && kill -INT -- "$target" 2>/dev/null || true; fi
+  for _ in $(seq 1 50); do target_running "$pid" || break; sleep 0.1; done
+  if target_running "$pid"; then
+    FORCED_KILL=$((FORCED_KILL + 1))
+    kill -KILL -- "$target" 2>/dev/null || true
+    for _ in $(seq 1 20); do target_running "$pid" || break; sleep 0.1; done
+  fi
+  if wait "$pid" 2>/dev/null; then status=0; else status=$?; fi
+  STOPPED[index]=1
+}
+run_hook() { timeout --signal=TERM --kill-after=2 "${HOOK_TIMEOUT_S}s" "$P5_HOOK" "$1"; }
+cleanup() {
+  local i
+  unlink "$ARM_FILE" 2>/dev/null || true
+  for ((i=${#PIDS[@]}-1; i>=0; i--)); do stop_child "$i" 1; done
+  (( DU_STARTED == 0 )) || run_hook du-stop >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+run_hook process-clear
+run_hook du-stop
+run_hook du-restart
+DU_STARTED=1
+ready_started=$SECONDS
+until run_hook du-ready >/dev/null 2>&1; do
+  (( SECONDS - ready_started < READY_TIMEOUT_S )) || fail "DU readiness timeout"
+  sleep 1
+done
+
+COMMON=(-O _CONFIG_ --band "$BAND" -C "$DL_FREQ" --numerology "$NUMEROLOGY" -r "$PRB" -E
+  --ue-scan-carrier --uecap_file "$UECAP" --device.name "$DEVICE")
+ATTACKER_INDEXES=()
+launch_attacker() {
+  local i=$1 tx rx cfg
+  read -r tx rx <<<"${UE_ENDPOINTS[$((i - 1))]}"
+  cfg=${ATTACKER_CFGS[$((i - 1))]}
+  args=("${COMMON[@]}"); args[1]=$cfg
+  start_child attacker "$OUT/attacker-$i.raw.log" env OAI_AUTH_TIMEOUT_TRACE=1 \
+    RSS_SHARE_NUE="${ATTACKER_NUM_UES[$((i - 1))]}" \
+    OAI_AUTH_TIMEOUT_ARM_FILE="$ARM_FILE" \
+    "$OAI_BIN" "${args[@]}" --num-ues "${ATTACKER_NUM_UES[$((i - 1))]}" '--zmq.[0].tx_channels' "$tx" \
+    '--zmq.[0].rx_channels' "$rx"
+}
+
+count_log() { grep -c -- "$1" "$2" 2>/dev/null || true; }
+count_log_after() { local offset=$3; tail -c +$((offset + 1)) "$2" | grep -c -- "$1" 2>/dev/null || true; }
+wait_attacker_baseline() {
+  local index=$1 process=$2 started=$SECONDS ue ready
+  while true; do
+    ready=1
+    for ((ue=0; ue<ATTACKER_NUM_UES[process]; ue++)); do
+      (( $(count_log "authentication_response_submitted ue=$ue " "${LOGS[$index]}") >= 1 )) || ready=0
+    done
+    (( ready )) && return 0
+    is_running "${PIDS[$index]}" || fail "공격자 UE가 조기 종료됐습니다"
+    (( SECONDS - started < READY_TIMEOUT_S )) || fail "공격자 정상 baseline 인증 timeout"
+    sleep 1
+  done
+}
+for ((i=1; i<=ATTACKER_PROCESS_COUNT; i++)); do
+  launch_attacker "$i"
+  ATTACKER_INDEXES+=("$LAST_INDEX")
+  python3 -c 'import sys,time; time.sleep(int(sys.argv[1])/1000)' "$START_INTERVAL_MS"
+done
+
+WITNESS_ENDPOINT=$((ATTACKER_PROCESS_COUNT + 1))
+WITNESS_INDEX=-1
+launch_witness() {
+  local tx rx
+  WITNESS_REG_BEFORE=$(count_log 'Received Registration Accept' "$WITNESS_LOG")
+  WITNESS_PDU_BEFORE=$(count_log 'PDU Session Establishment Accept' "$WITNESS_LOG")
+  read -r tx rx <<<"${UE_ENDPOINTS[$((WITNESS_ENDPOINT - 1))]}"
+  args=("${COMMON[@]}"); args[1]=$WITNESS_UE_CFG
+  start_child witness "$WITNESS_LOG" "$OAI_BIN" "${args[@]}" \
+    '--zmq.[0].tx_channels' "$tx" '--zmq.[0].rx_channels' "$rx"
+  WITNESS_INDEX=$LAST_INDEX
+}
+launch_witness
+for ((i=0; i<ATTACKER_PROCESS_COUNT; i++)); do wait_attacker_baseline "${ATTACKER_INDEXES[$i]}" "$i"; done
+require_radio_alive() {
+  is_running "${PIDS[$WITNESS_INDEX]}" || fail "witness UE가 조기 종료됐습니다"
+  local index
+  for index in "${ATTACKER_INDEXES[@]}"; do is_running "${PIDS[$index]}" || fail "공격자 UE가 조기 종료됐습니다"; done
+}
+service_attempt() {
+  local phase=$1 attempt=$2 row
+  require_radio_alive
+  row=$(AUTH_TIMEOUT_SERVICE_PHASE="$phase" AUTH_TIMEOUT_SERVICE_ATTEMPT="$attempt" \
+    AUTH_TIMEOUT_WITNESS_LOG="$WITNESS_LOG" AUTH_TIMEOUT_WITNESS_PID="${PIDS[$WITNESS_INDEX]}" \
+    AUTH_TIMEOUT_WITNESS_TUN="$WITNESS_TUN" AUTH_TIMEOUT_PING_TARGET="$PING_TARGET" \
+    AUTH_TIMEOUT_REGISTRATION_LIMIT_MS="$LIMIT_MS" AUTH_TIMEOUT_REG_BEFORE="$WITNESS_REG_BEFORE" \
+    AUTH_TIMEOUT_PDU_BEFORE="$WITNESS_PDU_BEFORE" "$SERVICE_PROBE") || fail "witness 서비스 probe 실패"
+  python3 - "$SERVICE" "$phase" "$attempt" "$WITNESS_FP" "$row" <<'PY'
+import json, sys
+path, phase, attempt, fingerprint, raw = sys.argv[1:]
+row = json.loads(raw)
+if set(row) != {"registration_ok","pdu_session_ok","ping_ok","elapsed_ms","realtime_ns"}:
+    raise SystemExit("invalid service probe keys")
+if any(type(row[k]) is not bool for k in ("registration_ok","pdu_session_ok","ping_ok")):
+    raise SystemExit("invalid service booleans")
+if type(row["elapsed_ms"]) is not int or type(row["realtime_ns"]) is not int:
+    raise SystemExit("invalid service timing")
+row.update(schema="auth-timeout.service.v1", phase=phase, attempt=int(attempt), witness_fingerprint=fingerprint)
+with open(path, "a", encoding="utf-8") as output:
+    output.write(json.dumps(row, sort_keys=True, separators=(",", ":")) + "\n")
+PY
+}
+
+service_attempt baseline 1
+
+ATTACKER_OFFSETS=()
+for index in "${ATTACKER_INDEXES[@]}"; do ATTACKER_OFFSETS+=("$(stat -c %s "${LOGS[$index]}")"); done
+export AUTH_TIMEOUT_LOG_STATE_DIR="$LOG_STATE"
+run_hook log-start
+[[ $MODE != attack ]] || ( set -o noclobber; : >"$ARM_FILE" )
+
+stop_current_ues() {
+  local index
+  (( WITNESS_INDEX < 0 )) || stop_child "$WITNESS_INDEX" 1
+  for index in "${ATTACKER_INDEXES[@]}"; do stop_child "$index" 1; done
+  ATTACKER_INDEXES=()
+  WITNESS_INDEX=-1
+}
+
+restart_du() {
+  local started
+  run_hook du-stop
+  run_hook du-restart
+  started=$SECONDS
+  until run_hook du-ready >/dev/null 2>&1; do
+    (( SECONDS - started < READY_TIMEOUT_S )) || fail "DU restart readiness timeout"
+    sleep 1
+  done
+}
+
+launch_impact_set() {
+  local marker i index started before ue ready
+  marker=$1
+  ATTACKER_INDEXES=()
+  ATTACKER_LAUNCH_OFFSETS=()
+  for ((i=1; i<=ATTACKER_PROCESS_COUNT; i++)); do
+    before=$(stat -c %s "$OUT/attacker-$i.raw.log")
+    launch_attacker "$i"
+    ATTACKER_INDEXES+=("$LAST_INDEX")
+    ATTACKER_LAUNCH_OFFSETS+=("$before")
+    python3 -c 'import sys,time; time.sleep(int(sys.argv[1])/1000)' "$START_INTERVAL_MS"
+  done
+  launch_witness
+  for ((i=0; i<ATTACKER_PROCESS_COUNT; i++)); do
+    index=${ATTACKER_INDEXES[$i]}
+    started=$SECONDS
+    while true; do
+      ready=1
+      for ((ue=0; ue<ATTACKER_NUM_UES[i]; ue++)); do
+        (( $(count_log_after "$marker ue=$ue " "${LOGS[$index]}" "${ATTACKER_LAUNCH_OFFSETS[$i]}") > 0 )) || ready=0
+      done
+      (( ready )) && break
+      require_radio_alive
+      (( SECONDS - started < READY_TIMEOUT_S )) || fail "공격자 인증 phase timeout"
+      sleep 1
+    done
+  done
+}
+
+for attempt in 1 2 3 4 5; do
+  stop_current_ues
+  restart_du
+  marker=authentication_response_submitted; [[ $MODE != attack ]] || marker=authentication_request_withheld
+  launch_impact_set "$marker"
+  service_attempt impact "$attempt"
+done
+ATTACKER_END_OFFSETS=()
+for index in "${ATTACKER_INDEXES[@]}"; do ATTACKER_END_OFFSETS+=("$(stat -c %s "${LOGS[$index]}")"); done
+
+unlink "$ARM_FILE" 2>/dev/null || true
+(( RECOVERY_SETTLE_S == 0 )) || sleep "$RECOVERY_SETTLE_S"
+for attempt in 1 2 3 4 5; do
+  stop_current_ues
+  restart_du
+  launch_impact_set authentication_response_submitted
+  service_attempt recovery "$attempt"
+done
+
+export AUTH_TIMEOUT_CU_LOG="$OUT/cu.log" AUTH_TIMEOUT_AMF_LOG="$OUT/amf.log"
+stop_current_ues
+run_hook du-stop
+DU_STARTED=0
+sleep 5
+run_hook log-stop
+
+for ((i=1; i<=ATTACKER_PROCESS_COUNT; i++)); do
+  raw=$OUT/attacker-$i.raw.log; slice=$OUT/attacker-$i.log
+  offset=${ATTACKER_OFFSETS[$((i - 1))]}; end=${ATTACKER_END_OFFSETS[$((i - 1))]}
+  head -c "$end" "$raw" | tail -c +$((offset + 1)) >"$slice"
+done
+cat "$OUT"/attacker-*.raw.log "$WITNESS_LOG" >"$OUT/ue.log"
+
+normalize=(python3 "$ROOT/analysis/normalize_p5.py" "$OUT")
+for ((i=1; i<=ATTACKER_PROCESS_COUNT; i++)); do normalize+=(--attacker-log "$OUT/attacker-$i.log"); done
+"${normalize[@]}"
+
+CRASH_COUNT=0
+for log in "$OUT"/attacker-*.raw.log "$WITNESS_LOG"; do
+  count=$(grep -Ec 'Segmentation fault|Assertion.*failed|Backtrace' "$log" 2>/dev/null || true)
+  CRASH_COUNT=$((CRASH_COUNT + count))
+done
+python3 - "$OUT/process.json" "$CRASH_COUNT" "$FORCED_KILL" <<'PY'
+import json, sys
+path, crash, forced = sys.argv[1:]
+with open(path, "x", encoding="utf-8") as output:
+    json.dump({"schema":"auth-timeout.process.v1", "crash_count":int(crash), "forced_kill_count":int(forced)}, output, sort_keys=True, separators=(",", ":")); output.write("\n")
+PY
+
+trap - EXIT INT TERM
+exit 0

@@ -1,0 +1,533 @@
+diff --git a/executables/nr-ue-ru.c b/executables/nr-ue-ru.c
+index 95346ae..9cba51a 100644
+--- a/executables/nr-ue-ru.c
++++ b/executables/nr-ue-ru.c
+@@ -91,6 +91,437 @@ static nrUE_RU_params_t *nrue_rus;
+ openair0_config_t openair0_cfg_g[MAX_CARDS] = {};
+ static openair0_device_t openair0_dev[MAX_CARDS] = {};
+ 
++/* ---------------------------------------------------------------------------
++ * RU sharing between UE instances (RRC signaling storm reproducer, UE only).
++ *
++ * Upstream refuses this in nr-uesoftmodem.c: "cells map 1:1 to RUs and RU
++ * sharing is not implemented". The testbed DU exposes exactly one ZMQ port
++ * pair, so putting several attacker UEs on the same cell needs that rule
++ * relaxed.
++ *
++ * An external ZMQ broker was rejected: it would copy 23.04 MS/s * 8 B per
++ * direction a second time on a path that already runs about 6x slower than
++ * real time (see docs/MEASUREMENTS.md). Sharing inside the process keeps
++ * the number of ZMQ round trips per slot unchanged: one UE fetches each slot
++ * and the others receive a copy, and the uplink of all UEs is summed into a
++ * single device write. The gNB is never modified.
++ * -------------------------------------------------------------------------*/
++#define RSS_SHARE_MAX_ANT 4
++#define RSS_SHARE_WAIT_MS 100
++
++typedef struct {
++  bool active;
++  int n_ue;
++  pthread_mutex_t mtx;
++  pthread_cond_t cv;
++  /* downlink: one reader fills a ring, every UE has its own cursor.
++     A round-based copy was wrong: UEs do not always ask for the same chunk
++     size (syncInFrame() asks for its own unit), and handing back another UE's
++     sample count tripped "unitTransfer == res" in nr-ue.c:714 on the box
++     2026-10-20. Per-UE cursors give each UE exactly what it asked for, in
++     stream order. */
++  bool rd_fetching;
++  uint64_t rd_prod;                       /* absolute samples produced */
++  uint64_t rd_cons[MAX_NUM_NR_UE_INST];   /* absolute samples consumed per UE */
++  bool rd_joined[MAX_NUM_NR_UE_INST];     /* UE has taken part at least once */
++  openair0_timestamp_t rd_ts0;            /* device ts of absolute sample 0 */
++  bool rd_ts0_set;
++  c16_t *rd_ring[RSS_SHARE_MAX_ANT];
++  uint64_t rd_ring_sz;                    /* power of two */
++  /* uplink: accumulate every UE, then one device write */
++  uint64_t wr_round;
++  int wr_joined;
++  openair0_timestamp_t wr_ts;
++  int wr_nsamps;
++  int wr_nant;
++  int wr_flags;
++  int32_t *wr_acc[RSS_SHARE_MAX_ANT];
++  c16_t *wr_out[RSS_SHARE_MAX_ANT];
++  int wr_cap;
++  /* The device keeps one sample_count_ for the shared stream and discards any
++     write whose timestamp it has already passed. Per-UE read cursors let the
++     UEs drift, so a lagging UE submits a timestamp from the past and its
++     samples are dropped. These keep the emitted stream monotonic. */
++  openair0_timestamp_t wr_dev_ts;
++  bool wr_dev_ts_set;
++  uint64_t wr_flushes;
++  uint64_t wr_clamped;
++  openair0_timestamp_t wr_spread_max;
++  /* Observation only, always counted: does the shared stream ever submit a
++     batch timestamp older than the previous one? That is what
++     zmq_tx_channel::align() drops, so comparing wr_back against the
++     "Error, channel timeout" count tells us whether out-of-order batches are
++     the cause or whether the drops come from somewhere else. */
++  openair0_timestamp_t wr_prev_ts;
++  bool wr_prev_ts_set;
++  uint64_t wr_back;
++  openair0_timestamp_t wr_back_max;
++  uint64_t rd_lockstep_waits;
++  uint64_t rd_lockstep_bail;
++} rss_ru_share_t;
++
++static rss_ru_share_t rss_share = {.mtx = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER};
++
++bool nrue_ru_sharing_enabled(void)
++{
++  return NB_UE_INST > 1;
++}
++
++void nrue_ru_sharing_init(void)
++{
++  if (!nrue_ru_sharing_enabled())
++    return;
++  rss_share.active = true;
++  rss_share.n_ue = NB_UE_INST;
++  const char *share_nue = getenv("RSS_SHARE_NUE");
++  if (share_nue) {
++    const int n = atoi(share_nue);
++    if (n >= 1 && n <= NB_UE_INST)
++      rss_share.n_ue = n;
++  }
++  /* cursors start lazily: each UE joins the stream at the current head */
++  LOG_W(HW, "[RSS] RU sharing enabled: %d UE instances on one radio\n", rss_share.n_ue);
++}
++
++/* Bounded wait: a UE that stops producing must degrade the run, not hang it. */
++static void rss_share_wait(void)
++{
++  struct timespec ts;
++  clock_gettime(CLOCK_REALTIME, &ts);
++  ts.tv_nsec += RSS_SHARE_WAIT_MS * 1000000L;
++  if (ts.tv_nsec >= 1000000000L) {
++    ts.tv_sec += 1;
++    ts.tv_nsec -= 1000000000L;
++  }
++  pthread_cond_timedwait(&rss_share.cv, &rss_share.mtx, &ts);
++}
++
++/* Short bounded wait for the lockstep gate below. Caller holds the mutex. */
++static void rss_share_wait_us(long us)
++{
++  struct timespec ts;
++  clock_gettime(CLOCK_REALTIME, &ts);
++  ts.tv_nsec += us * 1000L;
++  while (ts.tv_nsec >= 1000000000L) {
++    ts.tv_sec += 1;
++    ts.tv_nsec -= 1000000000L;
++  }
++  pthread_cond_timedwait(&rss_share.cv, &rss_share.mtx, &ts);
++}
++
++/* 1 = hold the per-UE downlink cursors together (default).
++ *
++ * Why: the device keeps one sample_count_ for the shared uplink stream and
++ * discards any write whose timestamp it has already passed. Free-running
++ * cursors leave the UEs at different stream positions, so each UE stamps its
++ * uplink with its own timestamp, the batch key (timestamp, nsamps, nant) stops
++ * matching, and the device sees timestamps going backwards. Box-measured
++ * 2026-10-20, 4 UE, 60 s: 8.06% of batches out of order (worst 34560 samples
++ * back) and 23322 "Error, channel timeout", i.e. about 17% of writes discarded.
++ *
++ * With the gate a UE only proceeds while no other UE is behind it, so all of
++ * them ask for the same window, the batch merges into one ordered write per
++ * slot, and nothing is dropped. RSS_SHARE_LOCKSTEP=0 restores free-running
++ * cursors for comparison in the same binary. */
++static bool rss_share_lockstep(void)
++{
++  static int cached = -1;
++  if (cached < 0) {
++    const char *env = getenv("RSS_SHARE_LOCKSTEP");
++    cached = env ? (atoi(env) != 0) : 1;
++  }
++  return cached != 0;
++}
++
++/* Upper bound on one lockstep wait, so a stalled instance cannot freeze the
++ * others. 50 x 200 us = 10 ms, one radio frame. */
++#define RSS_LOCKSTEP_SLICE_US 200
++#define RSS_LOCKSTEP_GUARD 50
++
++#define RSS_RING_SAMPLES (1u << 21) /* ~2M samples/antenna, 8 MB as c16_t */
++
++/* Lowest cursor among UEs that have started consuming. Caller holds the mutex. */
++static uint64_t rss_min_cons(const rss_ru_share_t *s)
++{
++  uint64_t m = s->rd_prod;
++  bool any = false;
++  for (int i = 0; i < MAX_NUM_NR_UE_INST; i++) {
++    if (!s->rd_joined[i])
++      continue;
++    any = true;
++    if (s->rd_cons[i] < m)
++      m = s->rd_cons[i];
++  }
++  return any ? m : s->rd_prod;
++}
++
++/* Lowest cursor among the OTHER joined UEs, or UINT64_MAX if there are none.
++ * Caller holds the mutex. */
++static uint64_t rss_min_cons_other(const rss_ru_share_t *s, int self)
++{
++  uint64_t m = UINT64_MAX;
++  for (int i = 0; i < MAX_NUM_NR_UE_INST; i++) {
++    if (i == self || !s->rd_joined[i])
++      continue;
++    if (s->rd_cons[i] < m)
++      m = s->rd_cons[i];
++  }
++  return m;
++}
++
++static int rss_joined_count(const rss_ru_share_t *s)
++{
++  int n = 0;
++  for (int i = 0; i < MAX_NUM_NR_UE_INST; i++)
++    if (s->rd_joined[i])
++      n++;
++  return n;
++}
++
++static int rss_shared_read(PHY_VARS_NR_UE *UE, openair0_timestamp_t *ptimestamp, void **buff, int nsamps, int nant)
++{
++  rss_ru_share_t *s = &rss_share;
++  const int id = UE->Mod_id;
++  AssertFatal(nant <= RSS_SHARE_MAX_ANT, "RU sharing supports at most %d antennas\n", RSS_SHARE_MAX_ANT);
++  AssertFatal(id >= 0 && id < MAX_NUM_NR_UE_INST, "bad UE instance %d\n", id);
++  AssertFatal((uint64_t)nsamps < RSS_RING_SAMPLES / 2, "read of %d samples exceeds the shared ring\n", nsamps);
++
++  pthread_mutex_lock(&s->mtx);
++  if (s->rd_ring_sz == 0) {
++    for (int a = 0; a < RSS_SHARE_MAX_ANT; a++)
++      s->rd_ring[a] = calloc_or_fail(RSS_RING_SAMPLES, sizeof(c16_t));
++    s->rd_ring_sz = RSS_RING_SAMPLES;
++  }
++  if (!s->rd_joined[id]) {
++    /* join at the current head so a late UE does not replay history */
++    s->rd_cons[id] = s->rd_prod;
++    s->rd_joined[id] = true;
++    /* Once every instance has joined, snap them all to the same position.
++       Each UE joins at whatever head existed when it finished cell search, so
++       without this they keep a constant offset for the rest of the run and
++       every slot produces one uplink batch per UE instead of one merged
++       batch. */
++    if (rss_share_lockstep() && rss_joined_count(s) == s->n_ue) {
++      for (int i = 0; i < MAX_NUM_NR_UE_INST; i++)
++        if (s->rd_joined[i])
++          s->rd_cons[i] = s->rd_prod;
++      LOG_I(HW, "[RSS] shared RX: %d UE joined, cursors aligned at %lu\n", s->n_ue, (unsigned long)s->rd_prod);
++    }
++  }
++
++  /* Lockstep gate: proceed only while no other UE is behind us. */
++  if (rss_share_lockstep() && s->n_ue > 1) {
++    int guard = 0;
++    for (;;) {
++      uint64_t other = rss_min_cons_other(s, id);
++      if (other == UINT64_MAX || s->rd_cons[id] <= other)
++        break;
++      if (guard++ >= RSS_LOCKSTEP_GUARD) {
++        s->rd_lockstep_bail++;
++        break;
++      }
++      s->rd_lockstep_waits++;
++      rss_share_wait_us(RSS_LOCKSTEP_SLICE_US);
++    }
++  }
++
++  while (s->rd_prod - s->rd_cons[id] < (uint64_t)nsamps) {
++    /* room is bounded by the slowest consumer, so nobody loses samples */
++    uint64_t room = s->rd_ring_sz - (s->rd_prod - rss_min_cons(s));
++    if (!s->rd_fetching && room >= (uint64_t)nsamps) {
++      s->rd_fetching = true;
++      uint64_t head = s->rd_prod;
++      int want = nsamps;
++      /* never wrap inside one device read */
++      uint64_t off = head & (s->rd_ring_sz - 1);
++      if (off + (uint64_t)want > s->rd_ring_sz)
++        want = (int)(s->rd_ring_sz - off);
++      void *tgt[RSS_SHARE_MAX_ANT];
++      for (int a = 0; a < nant; a++)
++        tgt[a] = s->rd_ring[a] + off;
++      pthread_mutex_unlock(&s->mtx);
++      openair0_device_t *dev = &openair0_dev[UE->rf_map.card];
++      openair0_timestamp_t tmp = 0;
++      int got = dev->trx_read_func(dev, &tmp, tgt, want, nant);
++      pthread_mutex_lock(&s->mtx);
++      if (!dev->firstTS_initialized) {
++        dev->firstTS = tmp;
++        dev->firstTS_initialized = true;
++      }
++      if (!s->rd_ts0_set) {
++        s->rd_ts0 = tmp - dev->firstTS; /* ts of absolute sample 0 */
++        s->rd_ts0_set = true;
++      }
++      if (got > 0)
++        s->rd_prod += (uint64_t)got;
++      s->rd_fetching = false;
++      pthread_cond_broadcast(&s->cv);
++    } else {
++      rss_share_wait();
++    }
++  }
++
++  uint64_t off = s->rd_cons[id] & (s->rd_ring_sz - 1);
++  int first = (int)((off + (uint64_t)nsamps > s->rd_ring_sz) ? (s->rd_ring_sz - off) : (uint64_t)nsamps);
++  for (int a = 0; a < nant; a++) {
++    c16_t *dst = (c16_t *)buff[a];
++    memcpy(dst, s->rd_ring[a] + off, (size_t)first * sizeof(c16_t));
++    if (first < nsamps)
++      memcpy(dst + first, s->rd_ring[a], (size_t)(nsamps - first) * sizeof(c16_t));
++  }
++  *ptimestamp = s->rd_ts0 + (openair0_timestamp_t)s->rd_cons[id];
++  s->rd_cons[id] += (uint64_t)nsamps;
++  pthread_cond_broadcast(&s->cv);
++  pthread_mutex_unlock(&s->mtx);
++  return nsamps;
++}
++
++/* Clamp a late shared-uplink batch forward instead of letting the device drop
++ * it. DEFAULT OFF: box-measured 2026-10-20, 4 UE, 60 s.
++ *
++ *   off: 2387 attempts, 21178 "Error, channel timeout", 140000 flushes
++ *   on :   32 attempts,     0 "Error, channel timeout", 180000 flushes,
++ *          179997 clamped (100%), worst lag 1403212303 samples
++ *
++ * The clamp advances its own counter by nsamps per flush, which assumes one
++ * flush per slot. There are more (140k-180k flushes in 60 s against ~120k
++ * slots), so the counter ran away from the real stream and every write landed
++ * in the far future. Kept as a documented negative result, not a fix. */
++static bool rss_share_wr_monotonic(void)
++{
++  static int cached = -1;
++  if (cached < 0) {
++    const char *env = getenv("RSS_SHARE_WR_MONOTONIC");
++    cached = env ? (atoi(env) != 0) : 0;
++  }
++  return cached != 0;
++}
++
++/* Push the open uplink batch to the radio. Caller holds the mutex. */
++static void rss_flush_locked(PHY_VARS_NR_UE *UE)
++{
++  rss_ru_share_t *s = &rss_share;
++  if (s->wr_joined == 0)
++    return;
++  for (int a = 0; a < s->wr_nant; a++) {
++    const int32_t *acc = s->wr_acc[a];
++    c16_t *out = s->wr_out[a];
++    for (int i = 0; i < s->wr_nsamps; i++) {
++      int32_t re = acc[2 * i];
++      int32_t im = acc[2 * i + 1];
++      out[i].r = re > INT16_MAX ? INT16_MAX : (re < INT16_MIN ? INT16_MIN : (int16_t)re);
++      out[i].i = im > INT16_MAX ? INT16_MAX : (im < INT16_MIN ? INT16_MIN : (int16_t)im);
++    }
++  }
++  openair0_device_t *dev = &openair0_dev[UE->rf_map.card];
++  void *tgt[RSS_SHARE_MAX_ANT];
++  for (int a = 0; a < s->wr_nant; a++)
++    tgt[a] = s->wr_out[a];
++
++  /* Keep the emitted timestamps monotonic.
++   *
++   * zmq_tx_channel::align() returns "timestamp passed" from its very first
++   * branch (sample_count_ > timestamp), before its timeout argument is ever
++   * used, and zmq_tx_stream::transmit() then logs "Error, channel timeout" and
++   * returns without sending. So the upstream TRANSMIT_TS_ALIGN_TIMEOUT is not
++   * the knob for this: a backwards timestamp is dropped no matter how long the
++   * timeout is. Box-measured drops before this change, 60 s runs:
++   * 0 / 5,136 / 14,718 / 39,765 at 1 / 2 / 3 / 4 UE.
++   *
++   * Clamping a late batch forward puts those samples in the current slot
++   * instead of discarding them. RSS_SHARE_WR_MONOTONIC=0 restores the old
++   * behaviour for comparison in the same binary. */
++  if (s->wr_prev_ts_set && s->wr_ts < s->wr_prev_ts) {
++    s->wr_back++;
++    if (s->wr_prev_ts - s->wr_ts > s->wr_back_max)
++      s->wr_back_max = s->wr_prev_ts - s->wr_ts;
++  }
++  s->wr_prev_ts = s->wr_ts;
++  s->wr_prev_ts_set = true;
++
++  openair0_timestamp_t ts = s->wr_ts;
++  if (rss_share_wr_monotonic()) {
++    if (s->wr_dev_ts_set && ts < s->wr_dev_ts) {
++      if (s->wr_dev_ts - ts > s->wr_spread_max)
++        s->wr_spread_max = s->wr_dev_ts - ts;
++      ts = s->wr_dev_ts;
++      s->wr_clamped++;
++    }
++    s->wr_dev_ts_set = true;
++    s->wr_dev_ts = ts + s->wr_nsamps;
++  }
++  dev->trx_write_func(dev, ts + dev->firstTS, tgt, s->wr_nsamps, s->wr_nant, s->wr_flags);
++  if ((++s->wr_flushes % 20000) == 0)
++    LOG_I(HW,
++          "[RSS] shared TX: %lu flushes, %lu out of order (%.2f%%, worst %ld samples back), "
++          "%lu clamped, lockstep %lu waits / %lu bail, %d UE\n",
++          (unsigned long)s->wr_flushes,
++          (unsigned long)s->wr_back,
++          100.0 * (double)s->wr_back / (double)s->wr_flushes,
++          (long)s->wr_back_max,
++          (unsigned long)s->wr_clamped,
++          (unsigned long)s->rd_lockstep_waits,
++          (unsigned long)s->rd_lockstep_bail,
++          s->n_ue);
++  s->wr_joined = 0;
++  s->wr_round++;
++  pthread_cond_broadcast(&s->cv);
++}
++
++/* Sum the uplink of every sharing UE into one device write.
++ *
++ * A batch is keyed by (timestamp, nsamps, nant); without that key the batches
++ * mixed across slots as soon as more than two UEs ran. The function always
++ * returns nsamps because the device write is aggregated, so the per-caller
++ * contract is "your samples were accepted". */
++static int rss_shared_write(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **buff, int nsamps, int nant, int flags)
++{
++  rss_ru_share_t *s = &rss_share;
++  AssertFatal(nant <= RSS_SHARE_MAX_ANT, "RU sharing supports at most %d antennas\n", RSS_SHARE_MAX_ANT);
++
++  pthread_mutex_lock(&s->mtx);
++  if (s->wr_cap < nsamps) {
++    rss_flush_locked(UE); /* old buffers are about to go away */
++    for (int a = 0; a < RSS_SHARE_MAX_ANT; a++) {
++      free(s->wr_acc[a]);
++      free(s->wr_out[a]);
++      s->wr_acc[a] = calloc_or_fail(2 * nsamps, sizeof(int32_t));
++      s->wr_out[a] = calloc_or_fail(nsamps, sizeof(c16_t));
++    }
++    s->wr_cap = nsamps;
++  }
++
++  /* a write that does not belong to the open batch closes it first */
++  if (s->wr_joined > 0 && (s->wr_ts != timestamp || s->wr_nsamps != nsamps || s->wr_nant != nant))
++    rss_flush_locked(UE);
++
++  if (s->wr_joined == 0) {
++    for (int a = 0; a < nant; a++)
++      memset(s->wr_acc[a], 0, 2 * (size_t)nsamps * sizeof(int32_t));
++    s->wr_ts = timestamp;
++    s->wr_nsamps = nsamps;
++    s->wr_nant = nant;
++    s->wr_flags = flags;
++  }
++
++  for (int a = 0; a < nant; a++) {
++    const c16_t *src = (const c16_t *)buff[a];
++    int32_t *acc = s->wr_acc[a];
++    for (int i = 0; i < nsamps; i++) {
++      acc[2 * i] += src[i].r;
++      acc[2 * i + 1] += src[i].i;
++    }
++  }
++  s->wr_joined++;
++
++  if (s->wr_joined >= s->n_ue)
++    rss_flush_locked(UE);
++
++  pthread_mutex_unlock(&s->mtx);
++  return nsamps;
++}
++
++
+ int nrue_get_cell_count(void)
+ {
+   return nrue_cell_count;
+@@ -368,6 +799,15 @@ void nrue_ru_end(void)
+ 
+ void nrue_ru_set_freq(PHY_VARS_NR_UE *UE, uint64_t ul_carrier, uint64_t dl_carrier, int freq_offset)
+ {
++  if (rss_share.active) {
++    /* All shared UEs stay on the same radio; do not migrate or re-own cells. */
++    openair0_config_t *scfg = &openair0_cfg_g[UE->rf_map.card];
++    openair0_device_t *sdev = &openair0_dev[UE->rf_map.card];
++    nr_rf_card_config_freq(scfg, ul_carrier, dl_carrier, freq_offset);
++    if (UE->Mod_id == 0)
++      sdev->trx_set_freq_func(sdev, scfg);
++    return;
++  }
+   int current_cell_id = nrue_rus[UE->rf_map.card].used_by_cell;
+   NR_DL_FRAME_PARMS *fp0 = &nrue_cell_fp[current_cell_id];
+   uint64_t dl_carrier_distance =
+@@ -430,6 +870,8 @@ int nrue_ru_adjust_rx_gain(PHY_VARS_NR_UE *UE, int gain_change)
+ 
+ int nrue_ru_read(PHY_VARS_NR_UE *UE, openair0_timestamp_t *ptimestamp, void **buff, int nsamps, int num_antennas)
+ {
++  if (rss_share.active)
++    return rss_shared_read(UE, ptimestamp, buff, nsamps, num_antennas);
+   openair0_device_t *dev = &openair0_dev[UE->rf_map.card];
+   openair0_timestamp_t tmp_timestamp;
+   int ret = dev->trx_read_func(dev, &tmp_timestamp, buff, nsamps, num_antennas);
+@@ -470,6 +912,8 @@ int nrue_ru_read(PHY_VARS_NR_UE *UE, openair0_timestamp_t *ptimestamp, void **bu
+ 
+ int nrue_ru_write(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **buff, int nsamps, int num_antennas, int flags)
+ {
++  if (rss_share.active)
++    return rss_shared_write(UE, timestamp, buff, nsamps, num_antennas, flags);
+   openair0_device_t *dev = &openair0_dev[UE->rf_map.card];
+   int ret = dev->trx_write_func(dev, timestamp + dev->firstTS, buff, nsamps, num_antennas, flags);
+ 
+@@ -500,6 +944,10 @@ int nrue_ru_write(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **buf
+ 
+ int nrue_ru_write_reorder(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **txp, int nsamps, int nbAnt, int flags)
+ {
++  /* The reorder context lives in the device and assumes a single writer.
++     With shared RU the summing path already serialises the device write. */
++  if (rss_share.active)
++    return rss_shared_write(UE, timestamp, txp, nsamps, nbAnt, flags);
+   openair0_device_t *device = &openair0_dev[UE->rf_map.card];
+   return openair0_write_reorder_common(nrue_ru_write, UE, device, timestamp, txp, nsamps, nbAnt, flags);
+ }
+diff --git a/executables/nr-ue-ru.h b/executables/nr-ue-ru.h
+index 7d0836c..ab1b10f 100644
+--- a/executables/nr-ue-ru.h
++++ b/executables/nr-ue-ru.h
+@@ -31,4 +31,11 @@ int nrue_ru_write(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **buf
+ int nrue_ru_write_reorder(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **txp, int nsamps, int nbAnt, int flags);
+ void nrue_ru_write_reorder_clear_context(PHY_VARS_NR_UE *UE);
+ 
++
++/* RU sharing between UE instances (RRC storm reproducer, UE side only).
++   Upstream maps one UE to one cell and one cell to one RU. Enabled when
++   --num-ues > 1 so several attacker UEs can use the single DU ZMQ port pair. */
++bool nrue_ru_sharing_enabled(void);
++void nrue_ru_sharing_init(void);
++
+ #endif
+diff --git a/executables/nr-uesoftmodem.c b/executables/nr-uesoftmodem.c
+index 4a9749e..e1f86e1 100644
+--- a/executables/nr-uesoftmodem.c
++++ b/executables/nr-uesoftmodem.c
+@@ -398,7 +398,10 @@ int main(int argc, char **argv)
+                   nrue_get_cell_count());
+       nrUE_cell_params_t cell = *nrue_get_cell(cell_id);
+ 
+-      AssertFatal(cell.used_by_ue == -1,
++      /* RU sharing (RRC storm reproducer): several attacker UEs must use the
++         one cell the testbed DU exposes, so the 1:1 rule is relaxed and the
++         samples are shared in nr-ue-ru.c. */
++      AssertFatal(cell.used_by_ue == -1 || nrue_ru_sharing_enabled(),
+                   "Cell %d is already used by UE %d and cannot also be used by UE %d as cells map 1:1 to RUs and RU sharing is not implemented\n",
+                   cell_id,
+                   cell.used_by_ue,
+@@ -454,10 +457,12 @@ int main(int argc, char **argv)
+         sl_ue_phy_init(UE_CC);
+       }
+ 
+-      cell_id++; // initially connect each UE and carrier to its own cell
++      if (!nrue_ru_sharing_enabled())
++        cell_id++; // initially connect each UE and carrier to its own cell
+     }
+   }
+ 
++  nrue_ru_sharing_init();
+   nrue_init_openair0();
+ 
+   lock_memory_to_ram();

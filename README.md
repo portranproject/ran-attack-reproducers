@@ -4,13 +4,31 @@
 탐지·대응기의 입력과 정답을 검증하기 위한 도구 모음이다. 공격 모듈마다 구현,
 설정, 라벨 계약, 실험 결과를 분리하며 RF 차폐 또는 가상 RF 환경에서만 사용한다.
 
-처음 읽을 문서는 [AGENTS.md](AGENTS.md)다. 각 공격의 실행 명령과 검증 범위는 해당
-모듈의 README를 기준으로 한다.
+처음 읽을 문서는 [AGENTS.md](AGENTS.md)다. 공통 준비·빌드·실행은
+[통합 컨트롤러 사용 가이드](CONTROL-GUIDE.md), 공격별 검증 범위는 해당 모듈의 README를
+기준으로 한다.
 
 Markdown 문서는 한국어를 기본으로 하며 파일명에 언어 접미사를 붙이지 않는다. 봉인된
 증거 원문만 예외로 보존하고 한국어 안내본을 별도로 둔다. 현재 예외 안내본은
 [DU 셀 자원 고갈 보존 기록](artifacts/archive-du-cell-resource-20261026/README.md)과
 [CU 90 spike 실험 기록](artifacts/spike-cu90-20261026/EXPERIMENT-NOTES.md)이다.
+
+## 재현 도구 완료 원칙
+
+이 저장소의 필수 목표는 기지국 전체 마비가 아니라 **실재 공격의 기전을 통제된 환경에서
+재현하고, 벤더 비종속 탐지기가 평가할 관측과 정답을 만드는 것**이다. 새 공격 모듈은 다음
+세 항목을 충족하면 재현 도구 범위를 완료할 수 있다.
+
+1. 표준·논문·공개 구현의 고정 URL로 공격의 실재성과 메시지 흐름을 확인한다.
+2. 정상 대조군과 공격군에서 해당 기전이 실제 프로토콜 경로로 발생했음을 원문과 정답으로
+   확인한다. RF 원인 대신 결과를 에뮬레이션했다면 이를 명시한다.
+3. CU/F1/N2/eBPF 등 탐지 입력과 UE·코어 oracle 정답을 분리하고, 탐지 특징·라벨·시간
+   경계를 사용 가이드에 명시한다.
+
+탐지 모델의 정탐·오탐·탐지 지연 평가는 재현 도구 완료 뒤 별도 게이트다. 정상 UE 성능
+저하, 서비스 거부, 기지국 전체 마비도 관측됐을 때만 추가 성과로 기록하며 재현 도구 완료의
+필수 조건으로 강제하지 않는다. 기본 실험 자원은 CU 1대와 DU 1대다. 서비스 거부만 만들기
+위한 다중 인스턴스 증설이나 timer/capacity 완화는 별도 승인 없이는 진행하지 않는다.
 
 ## 재현 도구 상태
 
@@ -19,6 +37,8 @@ Markdown 문서는 한국어를 기본으로 하며 파일명에 언어 접미�
 | [RRC signaling storm](reproducers/rrc-signaling-storm/) | 2026-11-02 동결. 분석기 입력·정답 생성기로 사용 |
 | [Blind DoS](reproducers/blind-dos/) | 현재 유효 5G-GUTI 재사용형 구현 완료. p5 direct 2-cell ZMQ에서 matched control→attack G5 3/3 통과 |
 | [Uplink DoS](reproducers/uplink-dos/) | 프로토콜 영향 에뮬레이터 구현 완료. p5 ZMQ matched control→emulation 3/3 통과, RF overshadowing 미검증 |
+| [인증 응답 미전송형 연결 컨텍스트 고갈 (NAS 고갈)](reproducers/authentication-timeout-exhaustion/) | 2026-11-11 기전·탐지 입력 재현기로 동결. p5 direct 4-cell ZMQ에서 6개 동시 pre-auth 컨텍스트 확인, 서비스 거부는 미관측 |
+| [하향 IMSI 추출 계열 식별자 노출](reproducers/downlink-imsi-extractor/) | p5 ZMQ 프로토콜 결과 에뮬레이션 완료. 예상하지 않은 SUCI Identity Response와 null-scheme 랩 가입자 노출 matched 3/3, RF overshadowing 미검증 |
 
 각 도구는 구현·설정·라벨 계약·실험 출력을 서로 섞지 않는다.
 
@@ -26,13 +46,15 @@ Markdown 문서는 한국어를 기본으로 하며 파일명에 언어 접미�
 reproducers/
 ├── rrc-signaling-storm/   # 동결된 구현·분석기·문서·테스트
 ├── blind-dos/            # 5G-GUTI one-shot 구현·판정기·사용 가이드·G5 결과
-└── uplink-dos/           # Service Request MAC 단발 변조·판정기·3세트 캠페인
+├── uplink-dos/           # Service Request MAC 단발 변조·판정기·3세트 캠페인
+├── authentication-timeout-exhaustion/ # 인증 응답 미전송형(NAS 고갈) 구현·판정기
+└── downlink-imsi-extractor/ # 하향 Identity Response 유도 결과 에뮬레이션·판정기
 artifacts/                  # 봉인된 RRC 증거와 게시용 요약
 rss-storm/                  # 과거 문서·명령용 호환 안내와 위임 스크립트
 ```
 
-새 공격은 `reproducers/<attack-name>/`에 별도 모듈로 추가한다. 공통 실행 프레임워크는
-두 번째 공격에서 실제 중복이 확인되기 전까지 만들지 않는다.
+새 공격은 `reproducers/<attack-name>/`에 별도 모듈로 추가한다. 최상위 `ctl.sh`는 각
+모듈의 기존 빌드기·runner를 위임 호출할 뿐, 구현·설정·라벨·실험 원문은 계속 분리한다.
 
 ## RRC signaling storm 보존 기록
 

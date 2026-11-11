@@ -1,7 +1,7 @@
 # AGENTS.md — 기지국 공격 재현 도구 모음 (RAN 보안 테스트베드)
 
 > 이 디렉토리에서 작업하는 에이전트/팀원용 컨텍스트. 처음 들어오면 이 파일부터 읽을 것.
-> 최종 갱신 2026-11-05.
+> 최종 갱신 2026-11-11.
 
 ## 이 디렉토리는 무엇인가
 
@@ -12,6 +12,10 @@
 - `reproducers/rrc-signaling-storm/`: 구현·실측 완료 후 2026-11-02 동결
 - `reproducers/blind-dos/`: 현재 유효 5G-GUTI 재사용형 구현 완료. p5 direct 2-cell ZMQ의 matched control→attack G5 3/3 통과
 - `reproducers/uplink-dos/`: NAS Service Request MAC 단발 변조형 프로토콜 영향 에뮬레이터. p5 ZMQ matched control→emulation 3/3 통과
+- `ctl.sh`: 공격 선택, 상태 점검, 전용 OAI 준비·빌드, 단일 실행과 matched 캠페인을 기존 모듈 runner에 위임하는 통합 컨트롤러
+- [CONTROL-GUIDE.md](CONTROL-GUIDE.md): 통합 컨트롤러 사용법·자동화 범위·재현/에뮬레이션 표시 기준
+- `reproducers/authentication-timeout-exhaustion/`: 2026-11-11 기전·탐지 입력 재현기로 동결. p5 direct 4-cell ZMQ에서 Authentication Response 미전송과 6개 동시 pre-auth 컨텍스트 확인, 서비스 거부는 미관측
+- `reproducers/downlink-imsi-extractor/`: 5G-Spector 계열 프로토콜 결과 에뮬레이터 구현 완료. p5 direct 1-cell ZMQ에서 예상하지 않은 SUCI Identity Response와 null-scheme fingerprint matched control→emulation 3/3 통과
 
 아래 장문의 실측 기록은 첫 번째 모듈인 RRC signaling storm의 보존 컨텍스트다.
 
@@ -24,6 +28,11 @@
 - [reproducers/blind-dos/](reproducers/blind-dos/) — 현재 유효 5G-GUTI 재사용형의 one-shot 구현·사용법·G5 합격 기준·p5 결과
 - [reproducers/blind-dos/artifacts/p5-zmq-nas-guti-g5-20261102/](reproducers/blind-dos/artifacts/p5-zmq-nas-guti-g5-20261102/) — matched control→attack 3/3 판정·child manifest·원격 원문 SHA-256
 - [reproducers/uplink-dos/](reproducers/uplink-dos/) — uplink DoS 이후 NAS 인증 실패·서비스 손실을 실제 망 경로로 재현하는 에뮬레이터와 사용 가이드
+- [reproducers/authentication-timeout-exhaustion/](reproducers/authentication-timeout-exhaustion/) — 인증 응답 미전송형 연결 컨텍스트 고갈(NAS 고갈)의 이론·구현 범위·완료 기준
+- [reproducers/authentication-timeout-exhaustion/DETECTION-CONTRACT.md](reproducers/authentication-timeout-exhaustion/DETECTION-CONTRACT.md) — CU/F1/N2/eBPF 탐지 입력, oracle 분리, 라벨·출력 계약
+- [reproducers/authentication-timeout-exhaustion/artifacts/p5-zmq-multiue-limit-20261111/](reproducers/authentication-timeout-exhaustion/artifacts/p5-zmq-multiue-limit-20261111/) — p5 4셀 3프로세스×2 UICC의 control 통과, attack 기전·동시 6개 컨텍스트와 DoS 미달 판정·원격 원문 SHA-256
+- [reproducers/downlink-imsi-extractor/](reproducers/downlink-imsi-extractor/) — LTrack 원형·5G SUCI 차이·5G-Spector 공개 구현을 구분한 하향 식별자 노출 결과 에뮬레이터
+- [reproducers/downlink-imsi-extractor/artifacts/p5-zmq-identity-response-20261111/](reproducers/downlink-imsi-extractor/artifacts/p5-zmq-identity-response-20261111/) — p5 matched control→emulation 3/3 판정과 원격 원문 SHA-256
 - [reproducers/rrc-signaling-storm/docs/CURATED-VALIDATION-20261030.md](reproducers/rrc-signaling-storm/docs/CURATED-VALIDATION-20261030.md) — clean curated 빌드·정상 회귀·Msg4 ACK·독립 broker witness 실측
 - [reproducers/rrc-signaling-storm/docs/LABEL-CONTRACT.md](reproducers/rrc-signaling-storm/docs/LABEL-CONTRACT.md) — UE 정답·탐지·대응·효과 판정·시간 동기 계약
 - [reproducers/rrc-signaling-storm/docs/USAGE-GUIDE.md](reproducers/rrc-signaling-storm/docs/USAGE-GUIDE.md) — 동결된 재현기의 실행·입력 격리·라벨·채점 가이드
@@ -53,6 +62,19 @@
 - **차별성 목표**: TeleRAN식 텔레메트리 위에서 실제 공격 재현→탐지→조치→정량평가를 연결하는 것. TeleRAN은 텔레메트리 가능성을 보였지만 RSS 대응 폐루프는 실증하지 않았다. 우리 차별성도 조치 효과를 확인한 뒤에만 성과로 주장한다.
 - **현재 실측 스택**: gNB = **OCUDU 26.10**(srsRAN 기반), UE = **OAI 2026.w38**, 코어 = Open5GS, RIC = FlexRIC, RF = AWS p5 세트의 ZMQ 가상 RF.
 - **최종 목표 구성**: 노트북C(공격자 UE) ─RF차폐─ 노트북B(O-DU) ─F1(IP)─ 노트북A(O-CU+RIC+eBPF+대응). 이 OTA 구성은 아직 검증 전이다.
+
+### 재현 도구 공통 완료 기준(2026-11-11 결정)
+
+1. 3GPP·논문·공개 구현의 고정 URL로 공격의 실재성, 변형명과 메시지 흐름을 확인한다.
+2. 정상 대조군과 공격군에서 기전을 실제 프로토콜 경로로 재현하고 원문·정답·입력 해시를
+   남긴다. 에뮬레이션은 실제 원인 재현과 구분한다.
+3. CU/F1/N2/eBPF 탐지 입력과 UE·코어 oracle을 분리하고 탐지 특징·라벨·시간 경계를
+   문서화한다. 탐지 성능은 detector 출력이 생긴 뒤 별도로 평가한다.
+
+정상 UE 성능 저하, 서비스 거부와 기지국 전체 마비는 관측됐을 때만 추가 효과로 주장한다.
+재현 도구 완료를 위해 이를 강제하지 않는다. 기본 자원 상한은 CU 1대와 DU 1대이며,
+서비스 거부만 만들기 위한 다중 인스턴스 증설·timer/capacity 변경은 별도 결정 없이는 하지
+않는다.
 
 ### 대화에서 정리된 핵심 사실(정정 포함)
 - **MobiFlow는 탐지기가 아님** — 텔레메트리 구조화 프레임워크. 탐지는 MobieXpert(규칙)/MobiWatch(DL).
@@ -103,6 +125,55 @@
 
 ---
 
+## 공격 모듈: 인증 응답 미전송형 연결 컨텍스트 고갈 (NAS 고갈, 동결)
+
+- 정상 `Registration Request` 뒤 AMF의 `Authentication Request`에 Response와 Failure를
+  모두 보내지 않아 미인증 RRC·NGAP·5GMM 컨텍스트를 점유한다.
+- 1차 구현은 서로 다른 팀 가입자 프로필을 사용한다. 각 프로필의 자연 timeout 뒤 재접속은
+  별도 NGAP ID로 추적하지만, 하나의 SUPI만 여러 프로세스로 복제한 결과, 미등록 IMSI 생성,
+  gNB·코어 timer/capacity 변경은 합격 근거로 사용하지 않는다.
+- 기전 재현·자원 누적·탐지 입력 준비·서비스 영향을 분리 판정한다. 서비스 거부는 재현
+  도구 완료의 필수 조건이 아니며, 관측되지 않았으면 그대로 한계로 기록한다.
+- OAI w38 UE 패치, 다중 UICC fingerprint 검사, direct 4-cell ZMQ phase driver,
+  OCUDU·Open5GS 조인 정규화기, fail-closed 단일/캠페인 판정기와 증거 SHA-256 봉인을
+  구현했다. 최종 p5 정상 대조군은 공격자 컨텍스트 30개 exact join과 witness 5/5를
+  통과했다. attack은 Authentication Response 미전송 30건, 공격자 6명의 동시 pre-auth
+  컨텍스트를 확인했지만 witness 등록·PDU·ping이 5/5 성공했으므로 서비스 거부와 matched
+  3세트 공격 성공은 미달이다. 프로세스당 10 UICC는 11/20만 120초 안에 인증했고,
+  프로세스당 4 UICC도 반복 phase timeout으로 무효여서 성능 근거에서 제외한다.
+- 표준·LTEFuzz·5GSEC/OAI-5G·Buckler의 고정 자료로 이론과 공개 구현 계보를 기록했고,
+  `cu.log`·F1/N2 관측은 탐지 입력, UE 마커·Open5GS 로그·정규화 결과는 사후 oracle로
+  분리했다. 실제 detector의 정탐·오탐·지연 평가는 탐지팀 결과가 생긴 뒤 별도 수행한다.
+- 20가입자·5-lane 분산 진단은 정식 증거로 봉인되지 않았고 새 완료 기준에도 필요하지 않아
+  운영 코드와 성능 주장에 포함하지 않는다. 기본 사용 범위는 CU 1대+DU 1대의 검증된
+  direct 4-cell 구성이다. 이 모듈은 2026-11-11 동결하며 서비스 거부를 위한 추가 증설을
+  진행하지 않는다.
+- 상세 범위와 판정은 [모듈 README](reproducers/authentication-timeout-exhaustion/README.md)를 따른다.
+
+---
+
+## 공격 모듈: 하향 IMSI 추출 계열 식별자 노출 (완료)
+
+- LTE LTrack의 원형은 정상 하향 NAS를 공격자의 Identity Request로 RF overshadowing하고
+  uplink Identity Response(IMSI)를 수집한다. 5G SA에서는 UE가 SUPI를 직접 보내지 않고
+  SUCI를 보내므로, 항상 성립하는 결과와 null-scheme 조건부 SUPI 노출을 분리한다.
+- 현재 구현은 5GSEC/OAI-5G 공개 코드와 같은 프로토콜 결과 에뮬레이션이다. OAI w38 UE가
+  첫 Authentication Request에 Authentication Response 대신 Identity Response(SUCI)를
+  한 번 보낸다. OCUDU·Open5GS 소스와 timer/capacity는 수정하지 않는다.
+- `p5-downlink-imsi-final-20261111` matched control→emulation 3세트가 모두 통과했다. control은
+  인증·등록·PDU·ping 3/3, emulation은 같은 N2 context의 Identity Response 각 1건,
+  Identity Request 0건, scheme 0 가입자 fingerprint 일치 3/3, crash/forced kill 0이었다.
+- 현재 허용 주장은 **p5 ZMQ에서 예상하지 않은 SUCI Identity Response와 null-scheme 랩
+  가입자 노출을 실제 UE→RAN→코어 경로로 에뮬레이션했다**는 것이다. 실제 RF
+  overshadowing, Profile A 복호화, 실 SDR OTA, 상용망 IMSI 추출은 미검증이다.
+- 원시 N2 pcap에는 null-scheme 가입자 식별자가 있으므로 Git에는 판정과 SHA-256만 둔다.
+  일반 탐지 입력은 식별자 원문을 제거한 `observations.jsonl`, 사후 정답은 UE marker와
+  fingerprint oracle이다.
+- 상세 실행과 판정은 [모듈 README](reproducers/downlink-imsi-extractor/README.md)와
+  [사용 가이드](reproducers/downlink-imsi-extractor/USAGE-GUIDE.md)를 따른다.
+
+---
+
 ## 공격 모듈: RRC signaling storm (동결)
 
 **목표**: RF 차폐 랩에서 팀 OCUDU gNB를 상대로, 팀 탐지·대응기를 **검증**할 수 있는 통제 가능한 스톰 재현기.
@@ -148,7 +219,8 @@
 1. 사용자는 [사용 가이드](reproducers/rrc-signaling-storm/docs/USAGE-GUIDE.md)에 따라 RRCSetupComplete 미전송형을 주 시나리오, RRCSetupRequest 후 중단형을 별도 가시성·부하 시나리오로 사용한다.
 2. 보존 artifact와 manifest는 수정하지 않고, detector 출력이 봉인될 때까지 UE ground truth를 입력에서 분리한다.
 3. 다음 공격 재현 도구는 이 결과를 덮어쓰지 말고 별도 디렉터리·시나리오 이름·라벨 계약으로 시작한다.
-4. RRC storm을 다시 열 경우에만 30초 fresh-witness 반복 실패, 같은 witness 회복, 3회 반복, exact DU ACK를 재개 합격 기준으로 사용한다. hold32는 계속 금지한다.
+4. RRC storm은 서비스 거부를 만들기 위해 다시 열지 않는다. 탐지 입력·라벨 계약 결함이나
+   별도 승인된 OTA 통합이 있을 때만 재개하며 hold32는 계속 금지한다.
 
 ---
 

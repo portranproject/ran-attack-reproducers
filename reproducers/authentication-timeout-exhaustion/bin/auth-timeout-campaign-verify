@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+[[ $# == 2 ]] || { echo "사용법: $0 RUN_ROOT CAMPAIGN_ID" >&2; exit 2; }
+python3 "$ROOT/analysis/verify_campaign.py" "$1" "$2"

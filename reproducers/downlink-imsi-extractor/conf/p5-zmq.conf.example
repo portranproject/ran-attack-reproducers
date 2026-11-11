@@ -1,0 +1,18 @@
+# p5 DU에서 실행하는 direct 1-cell ZMQ 예시. 키 파일 자체는 저장소에 두지 않는다.
+OAI_BIN=/root/OAI-downlink-imsi-w38/cmake_targets/ran_build/build/nr-uesoftmodem
+UE_CFG=/root/oai_nrue.conf
+UECAP=/root/OAI-uplink-dos-w38/targets/PROJECTS/GENERIC-NR-5GC/CONF/uecap_ports1.xml
+DU_CTL=/root/workspace/ctl.sh
+DU_CFG=/root/OCUDU/configs/du.yaml
+
+CU_HOST=ubuntu@172.31.5.10
+SSH_KEY=/root/auth-timeout-secrets/portran-key.pem
+KNOWN_HOSTS=/root/auth-timeout-secrets/known_hosts
+CU_LOG=/tmp/ocu.log
+CORE_CONTAINER=open5gs_5gc
+CORE_CONFIG_REMOTE=/root/OCUDU/docker/open5gs/open5gs-5gc.yml
+
+TUN=oaitun_ue1
+PING_TARGET=10.45.1.1
+ATTACH_TIMEOUT_S=75
+OBSERVE_TIMEOUT_S=8

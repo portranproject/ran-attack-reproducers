@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+[[ $# == 1 ]] || { echo "사용법: $0 RUN_DIR" >&2; exit 2; }
+python3 "$ROOT/analysis/export_labels.py" "$1"
+python3 "$ROOT/analysis/verify_evidence.py" "$1"

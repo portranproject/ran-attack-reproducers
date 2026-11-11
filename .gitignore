@@ -13,6 +13,8 @@
 /reproducers/*/runs/
 /reproducers/*/logs/
 /reproducers/*/build/
+/reproducers/authentication-timeout-exhaustion/conf/auth-timeout.conf
+/reproducers/downlink-imsi-extractor/conf/downlink-imsi.conf
 
 # Artifact payloads stay local. Publish reviewed summaries and integrity metadata.
 /artifacts/*/**
@@ -54,6 +56,9 @@ htmlcov/
 *.swp
 *.swo
 *~
+
+# Module-local runtime configuration
+/reproducers/*/conf/*.conf
 
 # Local environment files
 .env

@@ -1,0 +1,20 @@
+{
+  "checks": {
+    "attacker_context_count": 30,
+    "baseline_healthy": true,
+    "crash_free": true,
+    "impact_failed_registrations": 0,
+    "peak_concurrent_pre_auth_contexts": 6,
+    "recovery_successes": 5,
+    "registration_limit_ms": 10000,
+    "withheld_request_count": 30
+  },
+  "mechanism_reproduced": true,
+  "mode": "attack",
+  "passed": false,
+  "resource_accumulation_observed": true,
+  "run_id": "auth-timeout-final-attack-20261111",
+  "same_witness_recovered": true,
+  "schema": "auth-timeout.verdict.v1",
+  "witness_denial_observed": false
+}

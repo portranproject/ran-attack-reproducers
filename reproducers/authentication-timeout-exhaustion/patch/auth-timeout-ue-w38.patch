@@ -1,0 +1,176 @@
+diff --git a/openair3/NAS/NR_UE/nr_nas_msg.c b/openair3/NAS/NR_UE/nr_nas_msg.c
+index 7ef3cbe..c05ae39 100644
+--- a/openair3/NAS/NR_UE/nr_nas_msg.c
++++ b/openair3/NAS/NR_UE/nr_nas_msg.c
+@@ -10,6 +10,8 @@
+ #include <netinet/in.h>
+ #include "NR_NAS_defs.h"
+ #include <openssl/opensslv.h>
++#include <stdatomic.h>
++#include <unistd.h>
+ #include <stdint.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+@@ -68,6 +70,44 @@ static const char hex[] = "0123456789abcdef";
+ #endif
+ 
+ static nr_ue_nas_t nr_ue_nas[MAX_NUM_NR_UE_INST] = {0};
++static atomic_bool auth_timeout_seen[MAX_NUM_NR_UE_INST];
++
++static bool auth_timeout_enabled(const char *name)
++{
++  const char *enabled = getenv(name);
++  return enabled && strcmp(enabled, "1") == 0;
++}
++
++static bool auth_timeout_withholding_enabled(void)
++{
++  if (auth_timeout_enabled("OAI_AUTH_TIMEOUT_WITHHOLD"))
++    return true;
++  const char *arm_file = getenv("OAI_AUTH_TIMEOUT_ARM_FILE");
++  return arm_file && arm_file[0] && access(arm_file, F_OK) == 0;
++}
++
++static bool withhold_authentication_response(int ue)
++{
++  if (!auth_timeout_withholding_enabled())
++    return false;
++  AssertFatal(ue >= 0 && ue < MAX_NUM_NR_UE_INST, "invalid UE id %d\n", ue);
++  bool repeated = atomic_exchange(&auth_timeout_seen[ue], true);
++  LOG_W(NAS,
++        "AUTH_TIMEOUT_EXHAUSTION event=authentication_request_withheld ue=%d "
++        "response_submitted=false retransmission=%s\n",
++        ue,
++        repeated ? "true" : "false");
++  return true;
++}
++
++static void trace_authentication_response(int ue)
++{
++  if (auth_timeout_enabled("OAI_AUTH_TIMEOUT_TRACE"))
++    LOG_I(NAS,
++          "AUTH_TIMEOUT_EXHAUSTION event=authentication_response_submitted ue=%d "
++          "response_submitted=true\n",
++          ue);
++}
+ 
+ nr_ue_nas_t *get_nr_ue_nas_info(uint8_t ue_inst)
+ {
+@@ -2472,7 +2510,10 @@ void *nas_nrue(void *args_p)
+             handle_identity_request(&initialNasMsg, nas, buffer);
+             break;
+           case FGS_AUTHENTICATION_REQUEST:
+-            handle_fgmm_authentication_request(nas, &initialNasMsg, &buffer);
++            if (!withhold_authentication_response(nas->UE_id)) {
++              handle_fgmm_authentication_request(nas, &initialNasMsg, &buffer);
++              trace_authentication_response(nas->UE_id);
++            }
+             break;
+           case FGS_AUTHENTICATION_REJECT:
+             handle_authentication_reject(nas, pdu_buffer, pdu_length);
+diff --git a/radio/zmq/zmq_imported.cpp b/radio/zmq/zmq_imported.cpp
+index 51dd842..ccc0638 100644
+--- a/radio/zmq/zmq_imported.cpp
++++ b/radio/zmq/zmq_imported.cpp
+@@ -39,6 +39,7 @@ void zmq_tx_channel::transmit(c16_t *samples, size_t nsamps, uint64_t timestamp)
+ 
+     std::lock_guard<std::mutex> q_lock(queue_mutex_);
+     queue_.push(std::move(msg));
++    queue_cvar_.notify_one();
+   }
+ 
+   sample_count_ += nsamps;
+@@ -58,6 +59,12 @@ bool zmq_tx_channel::pop_message(zmq_msg_t *msg)
+   return true;
+ }
+ 
++bool zmq_tx_channel::await_message(std::chrono::microseconds timeout)
++{
++  std::unique_lock<std::mutex> lock(queue_mutex_);
++  return queue_cvar_.wait_for(lock, timeout, [this] { return !queue_.empty(); });
++}
++
+ void zmq_tx_channel::start(uint64_t init_time)
+ {
+   sample_count_ = init_time;
+diff --git a/radio/zmq/zmq_imported.h b/radio/zmq/zmq_imported.h
+index a33ba59..6cf1cc7 100644
+--- a/radio/zmq/zmq_imported.h
++++ b/radio/zmq/zmq_imported.h
+@@ -24,6 +24,7 @@ class zmq_tx_channel {
+   std::atomic<bool> is_tx_enabled_ = false;
+   std::mutex transmit_alignment_mutex_;
+   std::condition_variable transmit_alignment_cvar_;
++  std::condition_variable queue_cvar_;
+ 
+   zmq_tx_channel(void *s, uint64_t buffer_size) : socket_(s)
+   {
+@@ -40,6 +41,7 @@ class zmq_tx_channel {
+ 
+   void transmit(c16_t *samples, size_t nsamps, uint64_t timestamp);
+   bool pop_message(zmq_msg_t *msg);
++  bool await_message(std::chrono::microseconds timeout);
+ 
+   void start(uint64_t init_time);
+ 
+diff --git a/radio/zmq/zmq_radio.cpp b/radio/zmq/zmq_radio.cpp
+index e25f7c7..fd9dc81 100644
+--- a/radio/zmq/zmq_radio.cpp
++++ b/radio/zmq/zmq_radio.cpp
+@@ -38,6 +38,7 @@
+ #include <atomic>
+ #include <condition_variable>
+ #include <ring_buffer.h>
++#include <sched.h>
+ #include <zmq.h>
+ #include "zmq_imported.h"
+ #include "zmq_simd.h"
+@@ -66,12 +67,24 @@ struct zmq_state_t {
+   double sample_rate;
+ };
+ 
++static int oai_zmq_tx_wait_us(void)
++{
++  static int cached = INT32_MIN;
++  if (cached == INT32_MIN) {
++    const char *env = getenv("OAI_ZMQ_TX_WAIT_US");
++    cached = env ? atoi(env) : -2;
++  }
++  return cached;
++}
++
+ static void tx_poll_thread(zmq_tx_channel *chan, size_t i, std::atomic<bool> *poll_thread_running)
+ {
+   zmq_pollitem_t item = {chan->socket_, 0, ZMQ_POLLIN, 0};
+   bool reply_requested = false;
++  const int wait_us = oai_zmq_tx_wait_us();
+ 
+   while (*poll_thread_running) {
++    bool tx_queue_starved = false;
+     if (reply_requested) {
+       zmq_msg_t msg;
+       if (chan->pop_message(&msg)) {
+@@ -81,9 +94,23 @@ static void tx_poll_thread(zmq_tx_channel *chan, size_t i, std::atomic<bool> *po
+         }
+         zmq_msg_close(&msg);
+         reply_requested = false;
++      } else {
++        tx_queue_starved = true;
+       }
+     }
+ 
++    if (tx_queue_starved) {
++      if (wait_us > 0)
++        usleep(wait_us);
++      else if (wait_us == -2)
++        chan->await_message(std::chrono::milliseconds(2));
++      else if (wait_us < 0)
++        sched_yield();
++      else
++        zmq_poll(&item, 1, 10);
++      continue;
++    }
++
+     int rc = zmq_poll(&item, 1, 10); // 10ms timeout
+     if (rc < 0) {
+       if (errno == EINTR)

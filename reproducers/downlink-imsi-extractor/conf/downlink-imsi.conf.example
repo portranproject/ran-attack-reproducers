@@ -1,0 +1,19 @@
+# 실제 값과 비밀은 추적하지 않는 downlink-imsi.conf에 둔다.
+OAI_BIN=/root/OAI-downlink-imsi-w38/cmake_targets/ran_build/build/nr-uesoftmodem
+UE_CFG=/root/ue1.conf
+UECAP=/root/OAI-downlink-imsi-w38/targets/PROJECTS/GENERIC-NR-5GC/CONF/uecap_ports1.xml
+DU_CTL=/root/workspace/ctl.sh
+DU_CFG=/root/OCUDU/configs/du.yaml
+
+CU_HOST=ubuntu@CU_PUBLIC_IP
+SSH_KEY=/path/to/portran-key.pem
+KNOWN_HOSTS=/path/to/known_hosts
+CU_CTL=/root/workspace/ctl.sh
+CU_LOG=/tmp/ocu.log
+CORE_CONTAINER=open5gs_5gc
+CORE_CONFIG_REMOTE=/root/OCUDU/docker/open5gs/open5gs-5gc.yml
+
+TUN=oaitun_ue1
+PING_TARGET=10.45.1.1
+ATTACH_TIMEOUT_S=75
+OBSERVE_TIMEOUT_S=20

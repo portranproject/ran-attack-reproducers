@@ -1,0 +1,38 @@
+# 실제 값과 가입자 설정은 Git 밖 auth-timeout.conf에 둔다.
+AUTH_TIMEOUT_RUN_ROOT=/root/auth-timeout-runs
+PHASE_DRIVER=/root/ran-attack-reproducers/reproducers/authentication-timeout-exhaustion/bin/auth-timeout-p5-phase
+PROFILES_MANIFEST=/root/auth-timeout-secrets/profiles.manifest.json
+OAI_BIN=/root/OAI-auth-timeout-w38/cmake_targets/ran_build/build/nr-uesoftmodem
+ZMQ_LIB=/root/OAI-auth-timeout-w38/cmake_targets/ran_build/build/liboai_zmqdevif.so
+UE_PATCH=/root/ran-attack-reproducers/reproducers/authentication-timeout-exhaustion/patch/auth-timeout-ue-w38.patch
+RU_SHARE_PATCH=/root/ran-attack-reproducers/reproducers/authentication-timeout-exhaustion/patch/ru-sharing-w38.patch
+P5_HOOK=/root/ran-attack-reproducers/reproducers/authentication-timeout-exhaustion/bin/auth-timeout-p5-hook
+SERVICE_PROBE=/root/ran-attack-reproducers/reproducers/authentication-timeout-exhaustion/bin/auth-timeout-service-probe
+
+# 공격자는 IMSI·키가 서로 다른 registration-only 설정을 한 줄에 하나씩 둔다.
+ATTACKER_CONFIGS_FILE=/root/auth-timeout-secrets/attacker-configs.txt
+WITNESS_UE_CFG=/root/auth-timeout-secrets/witness.conf
+UECAP=/root/OAI-auth-timeout-w38/targets/PROJECTS/GENERIC-NR-5GC/CONF/uecap_ports1.xml
+UE_ENDPOINTS_FILE=/root/auth-timeout-secrets/p5-direct-endpoints.txt
+
+# 해시 일치 확인용 원본 설정. 실행기가 수정하지 않는다.
+GNB_CONFIG=/root/auth-timeout-secrets/p5-du-4cell-zmq.yaml
+CORE_CONFIG=/root/auth-timeout-secrets/open5gs-subscribers.override.yml
+
+# DU에서 CU 사설망으로 current-run 로그만 수집한다.
+P5_CU_HOST=ubuntu@172.31.5.10
+P5_SSH_KEY=/root/auth-timeout-secrets/portran-key.pem
+P5_KNOWN_HOSTS=/root/auth-timeout-secrets/known_hosts
+P5_DU_BIN=/root/OCUDU/build/apps/du/odu
+P5_DU_CFG=/root/auth-timeout-secrets/p5-du-4cell-zmq.yaml
+P5_DU_LOG=/tmp/auth-timeout-odu.log
+P5_CU_LOG=/tmp/ocu.log
+P5_CORE_CONTAINER=open5gs_5gc
+WITNESS_TUN=oaitun_ue1
+PING_TARGET=10.45.1.1
+READY_TIMEOUT_S=120
+RECOVERY_SETTLE_S=10
+
+# 첫 attack 전에 고정한다.
+START_INTERVAL_MS=100
+REGISTRATION_LIMIT_MS=10000

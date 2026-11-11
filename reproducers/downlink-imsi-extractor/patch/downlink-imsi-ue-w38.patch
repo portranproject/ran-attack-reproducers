@@ -1,0 +1,74 @@
+diff --git a/openair3/NAS/NR_UE/nr_nas_msg.c b/openair3/NAS/NR_UE/nr_nas_msg.c
+index 7ef3cbe..b8d404e 100644
+--- a/openair3/NAS/NR_UE/nr_nas_msg.c
++++ b/openair3/NAS/NR_UE/nr_nas_msg.c
+@@ -10,6 +10,7 @@
+ #include <netinet/in.h>
+ #include "NR_NAS_defs.h"
+ #include <openssl/opensslv.h>
++#include <stdatomic.h>
+ #include <stdint.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+@@ -68,6 +69,13 @@ static const char hex[] = "0123456789abcdef";
+ #endif
+ 
+ static nr_ue_nas_t nr_ue_nas[MAX_NUM_NR_UE_INST] = {0};
++static atomic_bool downlink_imsi_identity_sent[MAX_NUM_NR_UE_INST];
++
++static bool downlink_imsi_enabled(const char *name)
++{
++  const char *value = getenv(name);
++  return value && strcmp(value, "1") == 0;
++}
+ 
+ nr_ue_nas_t *get_nr_ue_nas_info(uint8_t ue_inst)
+ {
+@@ -1172,6 +1180,35 @@ static void generateIdentityResponse(const nr_ue_nas_t *nas, as_nas_info_t *init
+   initialNasMsg->length = mm_msg_encode(&plain, initialNasMsg->nas_data, size);
+ }
+ 
++static bool emulate_downlink_imsi_extractor(nr_ue_nas_t *nas, as_nas_info_t *initialNasMsg)
++{
++  if (!downlink_imsi_enabled("OAI_DOWNLINK_IMSI_EMULATE"))
++    return false;
++  AssertFatal(nas->UE_id >= 0 && nas->UE_id < MAX_NUM_NR_UE_INST, "invalid UE id %ld\n", nas->UE_id);
++  bool repeated = atomic_exchange(&downlink_imsi_identity_sent[nas->UE_id], true);
++  if (!repeated)
++    generateIdentityResponse(nas, initialNasMsg, FGS_MOBILE_IDENTITY_SUCI);
++  LOG_W(NAS,
++        "DOWNLINK_IMSI_EXTRACTOR event=%s ue=%ld identity_type=suci protection_scheme=%d "
++        "identity_response_submitted=%s identity_response_substitution_emulated=true "
++        "dl_overshadowing_observed=false\n",
++        repeated ? "authentication_request_retransmission_ignored" : "identity_response_substituted",
++        nas->UE_id,
++        nas->uicc->protection_scheme,
++        !repeated && initialNasMsg->length > 0 ? "true" : "false");
++  return true;
++}
++
++static void trace_downlink_imsi_control(const nr_ue_nas_t *nas, const as_nas_info_t *initialNasMsg)
++{
++  if (downlink_imsi_enabled("OAI_DOWNLINK_IMSI_TRACE"))
++    LOG_I(NAS,
++          "DOWNLINK_IMSI_EXTRACTOR event=authentication_response_submitted ue=%ld response_submitted=%s "
++          "identity_response_substitution_emulated=false dl_overshadowing_observed=false\n",
++          nas->UE_id,
++          initialNasMsg->length > 0 ? "true" : "false");
++}
++
+ static void handle_identity_request(as_nas_info_t *initialNasMsg, nr_ue_nas_t *nas, const byte_array_t buffer)
+ {
+   fgmm_msg_header_t mm_header = {0};
+@@ -2472,7 +2509,10 @@ void *nas_nrue(void *args_p)
+             handle_identity_request(&initialNasMsg, nas, buffer);
+             break;
+           case FGS_AUTHENTICATION_REQUEST:
+-            handle_fgmm_authentication_request(nas, &initialNasMsg, &buffer);
++            if (!emulate_downlink_imsi_extractor(nas, &initialNasMsg)) {
++              handle_fgmm_authentication_request(nas, &initialNasMsg, &buffer);
++              trace_downlink_imsi_control(nas, &initialNasMsg);
++            }
+             break;
+           case FGS_AUTHENTICATION_REJECT:
+             handle_authentication_reject(nas, pdu_buffer, pdu_length);

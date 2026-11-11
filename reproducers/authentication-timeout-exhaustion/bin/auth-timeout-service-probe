@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# 이미 떠 있는 witness UE의 새 Registration/PDU/ping 결과 한 번을 JSON으로 출력한다.
+set -euo pipefail
+
+LOG=${AUTH_TIMEOUT_WITNESS_LOG:-}
+PID=${AUTH_TIMEOUT_WITNESS_PID:-}
+TUN=${AUTH_TIMEOUT_WITNESS_TUN:-}
+TARGET=${AUTH_TIMEOUT_PING_TARGET:-}
+LIMIT_MS=${AUTH_TIMEOUT_REGISTRATION_LIMIT_MS:-}
+REG_BEFORE=${AUTH_TIMEOUT_REG_BEFORE:-}
+PDU_BEFORE=${AUTH_TIMEOUT_PDU_BEFORE:-}
+POLL_MS=${AUTH_TIMEOUT_SERVICE_POLL_MS:-100}
+
+fail() { echo "auth-timeout-service-probe: $*" >&2; exit 2; }
+[[ -f $LOG && ! -L $LOG ]] || fail "witness 로그가 없습니다"
+[[ $PID =~ ^[1-9][0-9]*$ ]] || fail "witness PID가 잘못됐습니다"
+[[ -n $TUN && -n $TARGET ]] || fail "TUN과 ping 대상이 필요합니다"
+for value in LIMIT_MS REG_BEFORE PDU_BEFORE POLL_MS; do
+  [[ ${!value} =~ ^[0-9]+$ ]] || fail "$value 값이 잘못됐습니다"
+done
+(( LIMIT_MS >= 10000 && POLL_MS > 0 )) || fail "제한시간은 10초 이상, poll은 양수여야 합니다"
+command -v ping >/dev/null || fail "ping이 필요합니다"
+command -v python3 >/dev/null || fail "python3가 필요합니다"
+
+started=$(python3 -c 'import time; print(time.monotonic_ns())')
+deadline=$((started + LIMIT_MS * 1000000))
+registration_ok=false
+pdu_session_ok=false
+ping_ok=false
+
+while :; do
+  kill -0 "$PID" 2>/dev/null || fail "witness UE가 서비스 판정 중 종료됐습니다"
+  reg=$(grep -c 'Received Registration Accept' "$LOG" 2>/dev/null || true)
+  pdu=$(grep -c 'PDU Session Establishment Accept' "$LOG" 2>/dev/null || true)
+  (( reg > REG_BEFORE )) && registration_ok=true
+  (( pdu > PDU_BEFORE )) && pdu_session_ok=true
+  if [[ $registration_ok == true && $pdu_session_ok == true ]] \
+      && ping -I "$TUN" -c 1 -W 1 "$TARGET" >/dev/null 2>&1; then
+    ping_ok=true
+    break
+  fi
+  now=$(python3 -c 'import time; print(time.monotonic_ns())')
+  (( now < deadline )) || break
+  python3 - "$POLL_MS" <<'PY'
+import sys, time
+time.sleep(int(sys.argv[1]) / 1000)
+PY
+done
+
+ended=$(python3 -c 'import time; print(time.monotonic_ns())')
+elapsed_ms=$(((ended - started) / 1000000))
+if [[ $registration_ok != true || $pdu_session_ok != true || $ping_ok != true ]]; then
+  elapsed_ms=$LIMIT_MS
+  registration_ok=false
+  pdu_session_ok=false
+  ping_ok=false
+fi
+realtime_ns=$(python3 -c 'import time; print(time.time_ns())')
+printf '{"registration_ok":%s,"pdu_session_ok":%s,"ping_ok":%s,"elapsed_ms":%s,"realtime_ns":%s}\n' \
+  "$registration_ok" "$pdu_session_ok" "$ping_ok" "$elapsed_ms" "$realtime_ns"

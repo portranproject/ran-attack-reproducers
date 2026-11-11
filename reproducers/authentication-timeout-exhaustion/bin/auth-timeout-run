@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+# 랩별 phase driver를 실행하고 정규화된 증거를 fail-closed로 봉인한다.
+set -euo pipefail
+umask 077
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONF=${AUTH_TIMEOUT_CONF:-$ROOT/conf/auth-timeout.conf}
+[[ ! -L $CONF ]] || { echo "설정 파일은 심볼릭 링크일 수 없습니다: $CONF" >&2; exit 2; }
+[[ -f $CONF ]] || { echo "설정 파일이 없습니다: $CONF" >&2; exit 2; }
+. "$CONF"
+
+MODE=${1:-}
+[[ $MODE != control && $MODE != attack ]] || shift
+ENABLE=0
+RUN_ID=
+LIMIT_OVERRIDE=
+while getopts "e:n:t:h" option; do
+  case $option in
+    e) ENABLE=$OPTARG ;;
+    n) RUN_ID=$OPTARG ;;
+    t) LIMIT_OVERRIDE=$OPTARG ;;
+    h) echo "사용법: $0 control|attack -n RUN_ID [-e 0|1] [-t REGISTRATION_LIMIT_MS]"; exit 0 ;;
+    *) exit 2 ;;
+  esac
+done
+
+RUN_ROOT=${AUTH_TIMEOUT_RUN_ROOT:-$ROOT/runs}
+LOCK_FILE=${AUTH_TIMEOUT_LOCK_FILE:-/tmp/auth-timeout.lock}
+PHASE_DRIVER=${PHASE_DRIVER:-}
+PROFILES_MANIFEST=${PROFILES_MANIFEST:-}
+GNB_CONFIG=${GNB_CONFIG:-}
+CORE_CONFIG=${CORE_CONFIG:-}
+OAI_BIN=${OAI_BIN:-}
+ZMQ_LIB=${ZMQ_LIB:-${OAI_BIN%/*}/liboai_zmqdevif.so}
+UE_PATCH=${UE_PATCH:-$ROOT/patch/auth-timeout-ue-w38.patch}
+RU_SHARE_PATCH=${RU_SHARE_PATCH:-$ROOT/patch/ru-sharing-w38.patch}
+START_INTERVAL_MS=${START_INTERVAL_MS:-100}
+REGISTRATION_LIMIT_MS=${REGISTRATION_LIMIT_MS:-10000}
+[[ -z $LIMIT_OVERRIDE ]] || REGISTRATION_LIMIT_MS=$LIMIT_OVERRIDE
+
+fail() { echo "auth-timeout-run: $*" >&2; exit 2; }
+[[ $MODE == control || $MODE == attack ]] || fail "mode는 control 또는 attack이어야 합니다"
+[[ $ENABLE == 0 || $ENABLE == 1 ]] || fail "-e는 0 또는 1이어야 합니다"
+[[ $MODE == control && $ENABLE == 0 || $MODE == attack && $ENABLE == 1 ]] \
+  || fail "control은 -e 0, attack은 명시적 -e 1이 필요합니다"
+[[ $RUN_ID =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$ ]] || fail "안전한 RUN_ID가 필요합니다"
+[[ $START_INTERVAL_MS =~ ^[1-9][0-9]*$ && $REGISTRATION_LIMIT_MS =~ ^[1-9][0-9]*$ ]] \
+  || fail "시작 간격과 등록 제한은 양의 정수여야 합니다"
+(( REGISTRATION_LIMIT_MS >= 10000 )) || fail "등록 제한은 10초 이상이어야 합니다"
+for file in "$PHASE_DRIVER" "$PROFILES_MANIFEST" "$GNB_CONFIG" "$CORE_CONFIG" "$OAI_BIN" "$ZMQ_LIB" "$UE_PATCH" "$RU_SHARE_PATCH"; do
+  [[ -f $file && ! -L $file ]] || fail "필수 파일이 없거나 심볼릭 링크입니다: $file"
+done
+[[ -x $PHASE_DRIVER && -x $OAI_BIN ]] || fail "PHASE_DRIVER와 OAI_BIN은 실행 가능해야 합니다"
+command -v flock >/dev/null || fail "flock이 필요합니다"
+command -v python3 >/dev/null || fail "python3가 필요합니다"
+
+read -r ATTACKER_COUNT ATTACKER_PROCESS_COUNT PROFILE_SHA GNB_SHA CORE_SHA DRIVER_SHA PATCH_SHA RU_PATCH_SHA BIN_SHA ZMQ_SHA CONF_SHA < <(python3 - "$PROFILES_MANIFEST" "$GNB_CONFIG" "$CORE_CONFIG" "$PHASE_DRIVER" "$UE_PATCH" "$RU_SHARE_PATCH" "$OAI_BIN" "$ZMQ_LIB" "$CONF" <<'PY'
+import hashlib, json, pathlib, sys
+paths = [pathlib.Path(value) for value in sys.argv[1:]]
+profile = json.loads(paths[0].read_text())
+if profile.get("schema") != "auth-timeout.profiles.v1" or not isinstance(profile.get("attacker_count"), int) or profile["attacker_count"] < 2:
+    raise SystemExit("profile manifest가 잘못됐습니다")
+process_count = profile.get("attacker_process_count", profile["attacker_count"])
+if not isinstance(process_count, int) or process_count < 1 or process_count > profile["attacker_count"]:
+    raise SystemExit("profile manifest의 공격자 프로세스 수가 잘못됐습니다")
+def sha(path): return hashlib.sha256(path.read_bytes()).hexdigest()
+print(profile["attacker_count"], process_count, *(sha(path) for path in paths))
+PY
+) || fail "입력 manifest 또는 설정 해시를 읽지 못했습니다"
+
+exec 9>"$LOCK_FILE"
+flock -n 9 || fail "다른 인증 고갈 실행이 진행 중입니다"
+[[ ! -L $RUN_ROOT ]] || fail "run root는 심볼릭 링크일 수 없습니다"
+mkdir -p -m 700 "$RUN_ROOT"
+OUT=$RUN_ROOT/$RUN_ID
+mkdir -m 700 "$OUT" || fail "기존 실행 결과는 덮어쓰지 않습니다: $OUT"
+install -m 600 "$PROFILES_MANIFEST" "$OUT/profiles.manifest.json"
+
+RUN_ID="$RUN_ID" MODE="$MODE" ENABLE="$ENABLE" ATTACKER_COUNT="$ATTACKER_COUNT" \
+ATTACKER_PROCESS_COUNT="$ATTACKER_PROCESS_COUNT" \
+START_INTERVAL_MS="$START_INTERVAL_MS" REGISTRATION_LIMIT_MS="$REGISTRATION_LIMIT_MS" \
+PROFILE_SHA="$PROFILE_SHA" GNB_SHA="$GNB_SHA" CORE_SHA="$CORE_SHA" \
+DRIVER_SHA="$DRIVER_SHA" PATCH_SHA="$PATCH_SHA" RU_PATCH_SHA="$RU_PATCH_SHA" BIN_SHA="$BIN_SHA" ZMQ_SHA="$ZMQ_SHA" \
+CONF_SHA="$CONF_SHA" \
+python3 - "$OUT/run.json" <<'PY'
+import json, os, sys
+value = {
+    "schema": "auth-timeout.run.v1", "run_id": os.environ["RUN_ID"],
+    "mode": os.environ["MODE"], "withholding_enabled": os.environ["ENABLE"] == "1",
+    "attacker_count": int(os.environ["ATTACKER_COUNT"]),
+    "attacker_process_count": int(os.environ["ATTACKER_PROCESS_COUNT"]),
+    "start_interval_ms": int(os.environ["START_INTERVAL_MS"]),
+    "registration_limit_ms": int(os.environ["REGISTRATION_LIMIT_MS"]),
+    "profile_manifest_sha256": os.environ["PROFILE_SHA"],
+    "gnb_config_sha256": os.environ["GNB_SHA"], "core_config_sha256": os.environ["CORE_SHA"],
+    "phase_driver_sha256": os.environ["DRIVER_SHA"], "ue_patch_sha256": os.environ["PATCH_SHA"],
+    "ru_sharing_patch_sha256": os.environ["RU_PATCH_SHA"],
+    "ue_binary_sha256": os.environ["BIN_SHA"], "zmq_library_sha256": os.environ["ZMQ_SHA"],
+    "runtime_config_sha256": os.environ["CONF_SHA"],
+}
+with open(sys.argv[1], "x", encoding="utf-8") as output:
+    json.dump(value, output, sort_keys=True, separators=(",", ":")); output.write("\n")
+PY
+
+AUTH_TIMEOUT_RUN_DIR="$OUT" AUTH_TIMEOUT_RUN_ID="$RUN_ID" AUTH_TIMEOUT_MODE="$MODE" \
+AUTH_TIMEOUT_WITHHOLD="$ENABLE" AUTH_TIMEOUT_ATTACKER_COUNT="$ATTACKER_COUNT" \
+AUTH_TIMEOUT_ATTACKER_PROCESS_COUNT="$ATTACKER_PROCESS_COUNT" \
+AUTH_TIMEOUT_START_INTERVAL_MS="$START_INTERVAL_MS" \
+AUTH_TIMEOUT_REGISTRATION_LIMIT_MS="$REGISTRATION_LIMIT_MS" \
+AUTH_TIMEOUT_OAI_BIN="$OAI_BIN" AUTH_TIMEOUT_PROFILES_MANIFEST="$PROFILES_MANIFEST" \
+AUTH_TIMEOUT_CONF="$CONF" \
+  "$PHASE_DRIVER"
+
+for name in phase_inputs.json attacker_map.json attacker_truth.jsonl contexts.jsonl service.jsonl process.json ue.log cu.log amf.log; do
+  [[ -f $OUT/$name && ! -L $OUT/$name ]] || fail "phase driver 필수 원문이 없습니다: $name"
+done
+exec "$ROOT/bin/auth-timeout-seal" "$OUT"

@@ -1,0 +1,20 @@
+{
+  "checks": {
+    "attacker_context_count": 10,
+    "baseline_healthy": true,
+    "crash_free": true,
+    "impact_failed_registrations": 0,
+    "peak_concurrent_pre_auth_contexts": 2,
+    "recovery_successes": 5,
+    "registration_limit_ms": 10000,
+    "withheld_request_count": 0
+  },
+  "mechanism_reproduced": false,
+  "mode": "control",
+  "passed": true,
+  "resource_accumulation_observed": false,
+  "run_id": "auth-timeout-smoke-control-v24-20261111",
+  "same_witness_recovered": true,
+  "schema": "auth-timeout.verdict.v1",
+  "witness_denial_observed": false
+}

@@ -1,0 +1,10 @@
+# 실제 subscriber_db.csv는 Git 밖 /root/auth-timeout-secrets에 둔다.
+services:
+  5gc:
+    environment:
+      SUBSCRIBER_DB: /open5gs/subscriber_db.csv
+    volumes:
+      - type: bind
+        source: "/root/auth-timeout-secrets/subscriber_db.csv"
+        target: /open5gs/subscriber_db.csv
+        read_only: true

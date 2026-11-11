@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# p5 DU/CU lifecycle과 current-run CU·AMF 로그 slice를 제공한다.
+set -euo pipefail
+umask 077
+
+ACTION=${1:-}
+P5_CU_HOST=${P5_CU_HOST:-}
+P5_SSH_KEY=${P5_SSH_KEY:-}
+P5_KNOWN_HOSTS=${P5_KNOWN_HOSTS:-}
+P5_DU_BIN=${P5_DU_BIN:-}
+P5_DU_CFG=${P5_DU_CFG:-}
+P5_DU_LOG=${P5_DU_LOG:-/tmp/odu.log}
+P5_DU_BOOT_LOG=${P5_DU_BOOT_LOG:-/tmp/auth-timeout-odu.boot.log}
+P5_DU_PID_FILE=${P5_DU_PID_FILE:-/tmp/auth-timeout-odu.pid}
+P5_CU_LOG=${P5_CU_LOG:-/tmp/ocu.log}
+P5_CORE_CONTAINER=${P5_CORE_CONTAINER:-open5gs_5gc}
+
+fail() { echo "auth-timeout-p5-hook: $*" >&2; exit 2; }
+need_file() { [[ -f $2 && ! -L $2 ]] || fail "$1 파일이 없습니다"; }
+need_dir() { [[ -d $2 && ! -L $2 ]] || fail "$1 디렉터리가 없습니다"; }
+
+ssh_args=(-o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new)
+[[ -z $P5_SSH_KEY ]] || ssh_args+=(-i "$P5_SSH_KEY")
+[[ -z $P5_KNOWN_HOSTS ]] || ssh_args+=(-o "UserKnownHostsFile=$P5_KNOWN_HOSTS")
+
+cu() {
+  [[ -n $P5_CU_HOST ]] || fail "P5_CU_HOST가 필요합니다"
+  local quoted
+  printf -v quoted '%q' "$1"
+  ssh "${ssh_args[@]}" "$P5_CU_HOST" "sudo bash -lc $quoted"
+}
+
+case $ACTION in
+  process-clear)
+    ! pgrep -x nr-uesoftmodem >/dev/null || fail "기존 OAI UE가 실행 중입니다"
+    ;;
+  du-stop)
+    if [[ -f $P5_DU_PID_FILE && ! -L $P5_DU_PID_FILE ]]; then
+      pid=$(<"$P5_DU_PID_FILE")
+      if [[ $pid =~ ^[1-9][0-9]*$ ]]; then
+        kill -TERM "$pid" 2>/dev/null || true
+        for _ in $(seq 1 30); do kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
+        kill -KILL "$pid" 2>/dev/null || true
+      fi
+      unlink "$P5_DU_PID_FILE" 2>/dev/null || true
+    fi
+    pkill -TERM -x odu 2>/dev/null || true
+    for _ in $(seq 1 30); do pgrep -x odu >/dev/null || break; sleep 0.1; done
+    ! pgrep -x odu >/dev/null || fail "DU를 중지하지 못했습니다"
+    ;;
+  du-restart)
+    need_file P5_DU_BIN "$P5_DU_BIN"
+    need_file P5_DU_CFG "$P5_DU_CFG"
+    [[ -x $P5_DU_BIN ]] || fail "DU 바이너리가 실행 가능하지 않습니다"
+    unlink "$P5_DU_LOG" "$P5_DU_BOOT_LOG" "$P5_DU_PID_FILE" 2>/dev/null || true
+    setsid stdbuf -oL -eL "$P5_DU_BIN" -c "$P5_DU_CFG" >"$P5_DU_BOOT_LOG" 2>&1 </dev/null &
+    printf '%s\n' "$!" >"$P5_DU_PID_FILE"
+    ;;
+  du-ready)
+    need_file "DU pid" "$P5_DU_PID_FILE"
+    pid=$(<"$P5_DU_PID_FILE")
+    [[ $pid =~ ^[1-9][0-9]*$ ]] && kill -0 "$pid" 2>/dev/null || fail "DU가 실행 중이 아닙니다"
+    grep -Eqi 'F1 Setup procedure successful|E2 Setup procedure successful' "$P5_DU_LOG" \
+      || fail "DU가 F1/E2 ready 상태가 아닙니다"
+    ;;
+  log-start)
+    state=${AUTH_TIMEOUT_LOG_STATE_DIR:-}
+    need_dir "log state" "$state"
+    cu "date -u +%Y-%m-%dT%H:%M:%S.%NZ" >"$state/start.utc"
+    cu "stat -c %s '$P5_CU_LOG'" >"$state/cu.offset"
+    ;;
+  log-stop)
+    state=${AUTH_TIMEOUT_LOG_STATE_DIR:-}
+    cu_output=${AUTH_TIMEOUT_CU_LOG:-}
+    amf_output=${AUTH_TIMEOUT_AMF_LOG:-}
+    need_dir "log state" "$state"
+    need_file "log 시작 시각" "$state/start.utc"
+    need_file "CU offset" "$state/cu.offset"
+    [[ -n $cu_output && -n $amf_output && ! -e $cu_output && ! -e $amf_output ]] \
+      || fail "새 CU·AMF 출력 경로가 필요합니다"
+    since=$(<"$state/start.utc")
+    offset=$(<"$state/cu.offset")
+    [[ $since =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T && $offset =~ ^[0-9]+$ ]] \
+      || fail "로그 시작 경계가 잘못됐습니다"
+    cu "tail -c +$((offset + 1)) '$P5_CU_LOG'" >"$cu_output"
+    cu "docker logs --timestamps --since '$since' '$P5_CORE_CONTAINER' 2>&1" >"$amf_output"
+    [[ -s $cu_output && -s $amf_output ]] || fail "current-run CU·AMF 로그가 비었습니다"
+    ;;
+  *)
+    fail "사용법: $0 {process-clear|du-stop|du-restart|du-ready|log-start|log-stop}"
+    ;;
+esac

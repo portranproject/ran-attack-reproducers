@@ -63,7 +63,7 @@ BLIND_OAI=/srv/OAI-blind-dos-w38 \
 ```
 
 지원 변수는 `OAI_BASE`, `RRC_OAI`, `BLIND_OAI`, `UPLINK_OAI`,
-`AUTH_TIMEOUT_OAI`, `DOWNLINK_IMSI_OAI`다.
+`AUTH_TIMEOUT_OAI`, `DOWNLINK_IMSI_OAI`, `UE_CAPABILITY_OAI`다.
 
 ## 표시되는 재현 유형
 
@@ -74,6 +74,7 @@ BLIND_OAI=/srv/OAI-blind-dos-w38 \
 | `auth-timeout` | 프로토콜 재현 | Authentication Request를 받은 UE가 응답을 미전송 |
 | `uplink-dos` | 프로토콜 결과 에뮬레이션 | RF 송신 우위 이후의 NAS·서비스 영향을 재현 |
 | `downlink-imsi` | 프로토콜 결과 에뮬레이션 | RF overshadowing 이후 식별자 응답 결과를 재현 |
+| `ue-capability` | 프로토콜 관측 에뮬레이션 | 보안 전·선행 질의 없는 Capability Information을 F1에 재현 |
 
 컨트롤러의 유형 표시는 기존 모듈의 주장 범위를 바꾸지 않는다. 상세 성공 조건과 탐지 입력,
 검증 한계는 각 모듈 README와 사용 가이드를 기준으로 한다.

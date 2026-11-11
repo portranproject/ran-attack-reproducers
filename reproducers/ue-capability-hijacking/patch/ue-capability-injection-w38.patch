@@ -1,0 +1,91 @@
+diff --git a/openair2/RRC/NR_UE/rrc_UE.c b/openair2/RRC/NR_UE/rrc_UE.c
+index 7858a82..a365c29 100644
+--- a/openair2/RRC/NR_UE/rrc_UE.c
++++ b/openair2/RRC/NR_UE/rrc_UE.c
+@@ -52,7 +52,45 @@
+ #include "openair2/SDAP/nr_sdap/nr_sdap.h"
+ #include "openair2/SDAP/nr_sdap/nr_sdap_entity.h"
+ 
++#include <stdatomic.h>
++
+ static NR_UE_RRC_INST_t *NR_UE_rrc_inst[MAX_NUM_NR_UE_INST] = {0};
++static atomic_bool capability_information_injected[MAX_NUM_NR_UE_INST];
++
++static void nr_rrc_ue_process_ueCapabilityEnquiry(NR_UE_RRC_INST_t *rrc,
++                                                   NR_UECapabilityEnquiry_t *UECapabilityEnquiry,
++                                                   bool injected);
++
++static bool capability_injection_enabled(void)
++{
++  const char *value = getenv("OAI_UE_CAPABILITY_INJECT");
++  return value != NULL && strcmp(value, "1") == 0;
++}
++
++static bool capability_trace_enabled(void)
++{
++  const char *value = getenv("OAI_UE_CAPABILITY_TRACE");
++  return value != NULL && strcmp(value, "1") == 0;
++}
++
++static void inject_pre_security_capability_information(NR_UE_RRC_INST_t *rrc)
++{
++  if (!capability_injection_enabled() || rrc->ue_id >= MAX_NUM_NR_UE_INST
++      || atomic_exchange(&capability_information_injected[rrc->ue_id], true))
++    return;
++
++  NR_UE_CapabilityRAT_Request_t request = {.rat_Type = NR_RAT_Type_nr};
++  NR_UE_CapabilityRAT_Request_t *requests[] = {&request};
++  NR_UECapabilityEnquiry_IEs_t ies = {
++      .ue_CapabilityRAT_RequestList = {.list = {.array = requests, .count = 1, .size = 1}}};
++  NR_UECapabilityEnquiry_t enquiry = {
++      .rrc_TransactionIdentifier = 0,
++      .criticalExtensions = {
++          .present = NR_UECapabilityEnquiry__criticalExtensions_PR_ueCapabilityEnquiry,
++          .choice = {.ueCapabilityEnquiry = &ies}}};
++
++  nr_rrc_ue_process_ueCapabilityEnquiry(rrc, &enquiry, true);
++}
+ /* NAS Attach request with IMSI */
+ static const char nr_nas_attach_req_imsi_dummy_NSA_case[] = {
+     0x07,
+@@ -2298,6 +2336,7 @@ static void rrc_ue_generate_RRCSetupComplete(NR_UE_RRC_INST_t *rrc, const uint8_
+   int srb_id = 1; // RRC setup complete on SRB1
+   RRCLOG_D("PDCP_DATA_REQ/%d Bytes RRCSetupComplete ---> %d\n", size, srb_id);
+   nr_pdcp_data_req_srb(rrc->ue_id, srb_id, 0, size, buffer, deliver_pdu_srb_rlc, NULL);
++  inject_pre_security_capability_information(rrc);
+ }
+ 
+ static void nr_rrc_rrcsetup_fallback(NR_UE_RRC_INST_t *rrc)
+@@ -2742,7 +2781,9 @@ static void nr_rrc_ue_process_rrcReestablishment(NR_UE_RRC_INST_t *rrc,
+   nr_rrc_ue_generate_rrcReestablishmentComplete(rrc, rrcReestablishment);
+ }
+ 
+-static void nr_rrc_ue_process_ueCapabilityEnquiry(NR_UE_RRC_INST_t *rrc, NR_UECapabilityEnquiry_t *UECapabilityEnquiry)
++static void nr_rrc_ue_process_ueCapabilityEnquiry(NR_UE_RRC_INST_t *rrc,
++                                                   NR_UECapabilityEnquiry_t *UECapabilityEnquiry,
++                                                   bool injected)
+ {
+   NR_UL_DCCH_Message_t ul_dcch_msg = {0};
+   RRCLOG_I("Receiving from SRB1 (DL-DCCH), Processing UECapabilityEnquiry\n");
+@@ -2796,6 +2837,12 @@ static void nr_rrc_ue_process_ueCapabilityEnquiry(NR_UE_RRC_INST_t *rrc, NR_UECa
+       RRCLOG_I("UECapabilityInformation Encoded %zd bits (%zd bytes)\n", enc_rval.encoded, (enc_rval.encoded + 7) / 8);
+       int srb_id = 1; // UECapabilityInformation on SRB1
+       nr_pdcp_data_req_srb(rrc->ue_id, srb_id, 0, (enc_rval.encoded + 7) / 8, buffer, deliver_pdu_srb_rlc, NULL);
++      if (capability_trace_enabled()) {
++        RRCLOG_I("UE_CAPABILITY_INJECTION event=%s information_submitted=true enquiry_observed=%s "
++                 "capability_content_modified=false mitm_relay_observed=false\n",
++                 injected ? "pre_security_information_injected" : "normal_information_submitted",
++                 injected ? "false" : "true");
++      }
+     }
+   }
+   /* Free struct members after it's done including locally allocated ue_CapabilityRAT_Container */
+@@ -2877,7 +2924,7 @@ static int nr_rrc_ue_decode_dcch(NR_UE_RRC_INST_t *rrc,
+ 
+         case NR_DL_DCCH_MessageType__c1_PR_ueCapabilityEnquiry:
+           RRCLOG_I("Received Capability Enquiry (gNB %d)\n", gNB_indexP);
+-          nr_rrc_ue_process_ueCapabilityEnquiry(rrc, c1->choice.ueCapabilityEnquiry);
++          nr_rrc_ue_process_ueCapabilityEnquiry(rrc, c1->choice.ueCapabilityEnquiry, false);
+           break;
+ 
+         case NR_DL_DCCH_MessageType__c1_PR_rrcReestablishment:

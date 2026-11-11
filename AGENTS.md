@@ -16,6 +16,7 @@
 - [CONTROL-GUIDE.md](CONTROL-GUIDE.md): 통합 컨트롤러 사용법·자동화 범위·재현/에뮬레이션 표시 기준
 - `reproducers/authentication-timeout-exhaustion/`: 2026-11-11 기전·탐지 입력 재현기로 동결. p5 direct 4-cell ZMQ에서 Authentication Response 미전송과 6개 동시 pre-auth 컨텍스트 확인, 서비스 거부는 미관측
 - `reproducers/downlink-imsi-extractor/`: 5G-Spector 계열 프로토콜 결과 에뮬레이터 구현 완료. p5 direct 1-cell ZMQ에서 예상하지 않은 SUCI Identity Response와 null-scheme fingerprint matched control→emulation 3/3 통과
+- `reproducers/ue-capability-hijacking/`: UE Capability Hijacking 계열의 보안 전 unsolicited UECapabilityInformation F1 관측 에뮬레이터 완료. p5 matched control→emulation 3/3 통과; MITM·내용 변조·강등 수락은 주장하지 않음
 
 아래 장문의 실측 기록은 첫 번째 모듈인 RRC signaling storm의 보존 컨텍스트다.
 
@@ -33,6 +34,8 @@
 - [reproducers/authentication-timeout-exhaustion/artifacts/p5-zmq-multiue-limit-20261111/](reproducers/authentication-timeout-exhaustion/artifacts/p5-zmq-multiue-limit-20261111/) — p5 4셀 3프로세스×2 UICC의 control 통과, attack 기전·동시 6개 컨텍스트와 DoS 미달 판정·원격 원문 SHA-256
 - [reproducers/downlink-imsi-extractor/](reproducers/downlink-imsi-extractor/) — LTrack 원형·5G SUCI 차이·5G-Spector 공개 구현을 구분한 하향 식별자 노출 결과 에뮬레이터
 - [reproducers/downlink-imsi-extractor/artifacts/p5-zmq-identity-response-20261111/](reproducers/downlink-imsi-extractor/artifacts/p5-zmq-identity-response-20261111/) — p5 matched control→emulation 3/3 판정과 원격 원문 SHA-256
+- [reproducers/ue-capability-hijacking/](reproducers/ue-capability-hijacking/) — 보안 전 Capability Information 주입의 이론·구현·F1 탐지 계약·사용법
+- [reproducers/ue-capability-hijacking/artifacts/p5-zmq-pre-security-information-20261111/](reproducers/ue-capability-hijacking/artifacts/p5-zmq-pre-security-information-20261111/) — p5 matched 3/3 판정과 원격 원문 SHA-256
 - [reproducers/rrc-signaling-storm/docs/CURATED-VALIDATION-20261030.md](reproducers/rrc-signaling-storm/docs/CURATED-VALIDATION-20261030.md) — clean curated 빌드·정상 회귀·Msg4 ACK·독립 broker witness 실측
 - [reproducers/rrc-signaling-storm/docs/LABEL-CONTRACT.md](reproducers/rrc-signaling-storm/docs/LABEL-CONTRACT.md) — UE 정답·탐지·대응·효과 판정·시간 동기 계약
 - [reproducers/rrc-signaling-storm/docs/USAGE-GUIDE.md](reproducers/rrc-signaling-storm/docs/USAGE-GUIDE.md) — 동결된 재현기의 실행·입력 격리·라벨·채점 가이드
@@ -171,6 +174,28 @@
   fingerprint oracle이다.
 - 상세 실행과 판정은 [모듈 README](reproducers/downlink-imsi-extractor/README.md)와
   [사용 가이드](reproducers/downlink-imsi-extractor/USAGE-GUIDE.md)를 따른다.
+
+---
+
+## 공격 모듈: 보안 전 UE Capability Information 주입 (완료)
+
+- 원 논문의 Capability Hijacking은 MITM 기지국이 AS 보안 전 capability를 질의하고 UE
+  응답의 category·band·feature를 변조해 정상 망에 전달하는 공격이다. 현재 p5 1:1 ZMQ와
+  정상 OCUDU에는 두 RF leg와 pre-security Enquiry 조건이 없어 완전한 MITM을 주장하지 않는다.
+- OAI w38 UE가 `RRCSetupComplete` 직후 기존 표준 encoder로 `UECapabilityInformation`을
+  한 번 보내는 opt-in 에뮬레이터를 구현했다. OCUDU·Open5GS 소스와 timer/capacity는
+  수정하지 않았고 payload 내용도 변조하지 않았다.
+- `p5-ue-capability-final-20261111` matched control→emulation 3세트가 모두 통과했다. 각
+  control은 정상 `SecurityModeComplete → Enquiry → Information`, 각 emulation은 같은 F1
+  context의 보안 전 unsolicited Information 1건과 이후 정상 Information 1건이 관측됐다.
+  여섯 실행 모두 Registration·PDU·ping 성공, crash/forced kill 0이었다.
+- 허용 주장은 **p5 F1에서 UE Capability Hijacking 계열 탐지 입력인 보안 전·선행 질의
+  없는 상향 Capability Information을 통제 가능한 one-shot으로 재현했다**는 것이다.
+  MITM relay, capability 내용 변조·강등 수락, 서비스 저하, 실 SDR OTA는 미검증이다.
+- detector 입력은 same CU/DU UE ID로 exact join한 F1 `observations.jsonl`, 사후 oracle은
+  UE one-shot marker다. 실제 탐지 엔진의 정탐·오탐·지연 평가는 별도 게이트다.
+- 상세 범위와 판정은 [모듈 README](reproducers/ue-capability-hijacking/README.md)와
+  [사용 가이드](reproducers/ue-capability-hijacking/USAGE-GUIDE.md)를 따른다.
 
 ---
 

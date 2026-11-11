@@ -39,6 +39,7 @@ Markdown 문서는 한국어를 기본으로 하며 파일명에 언어 접미�
 | [Uplink DoS](reproducers/uplink-dos/) | 프로토콜 영향 에뮬레이터 구현 완료. p5 ZMQ matched control→emulation 3/3 통과, RF overshadowing 미검증 |
 | [인증 응답 미전송형 연결 컨텍스트 고갈 (NAS 고갈)](reproducers/authentication-timeout-exhaustion/) | 2026-11-11 기전·탐지 입력 재현기로 동결. p5 direct 4-cell ZMQ에서 6개 동시 pre-auth 컨텍스트 확인, 서비스 거부는 미관측 |
 | [하향 IMSI 추출 계열 식별자 노출](reproducers/downlink-imsi-extractor/) | p5 ZMQ 프로토콜 결과 에뮬레이션 완료. 예상하지 않은 SUCI Identity Response와 null-scheme 랩 가입자 노출 matched 3/3, RF overshadowing 미검증 |
+| [보안 전 UE Capability Information 주입](reproducers/ue-capability-hijacking/) | UE Capability Hijacking 계열 탐지 관측 에뮬레이터 완료. p5 F1 matched control→emulation 3/3, MITM·내용 변조·강등 수락은 범위 밖 |
 
 각 도구는 구현·설정·라벨 계약·실험 출력을 서로 섞지 않는다.
 
@@ -48,7 +49,8 @@ reproducers/
 ├── blind-dos/            # 5G-GUTI one-shot 구현·판정기·사용 가이드·G5 결과
 ├── uplink-dos/           # Service Request MAC 단발 변조·판정기·3세트 캠페인
 ├── authentication-timeout-exhaustion/ # 인증 응답 미전송형(NAS 고갈) 구현·판정기
-└── downlink-imsi-extractor/ # 하향 Identity Response 유도 결과 에뮬레이션·판정기
+├── downlink-imsi-extractor/ # 하향 Identity Response 유도 결과 에뮬레이션·판정기
+└── ue-capability-hijacking/ # 보안 전 Capability Information 주입·F1 판정기
 artifacts/                  # 봉인된 RRC 증거와 게시용 요약
 rss-storm/                  # 과거 문서·명령용 호환 안내와 위임 스크립트
 ```

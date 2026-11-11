@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ATTACKS=(rrc-storm blind-dos uplink-dos auth-timeout downlink-imsi)
+ATTACKS=(rrc-storm blind-dos uplink-dos auth-timeout downlink-imsi ue-capability)
 
 fail() { echo "ctl.sh: $*" >&2; exit 2; }
 
@@ -14,6 +14,7 @@ attack_id() {
     uplink-dos|uplink) echo uplink-dos ;;
     auth-timeout|authentication-timeout-exhaustion|auth) echo auth-timeout ;;
     downlink-imsi|downlink-imsi-extractor|downlink) echo downlink-imsi ;;
+    ue-capability|ue-capability-hijacking|capability) echo ue-capability ;;
     *) return 1 ;;
   esac
 }
@@ -25,6 +26,7 @@ attack_label() {
     uplink-dos) echo "상향 DoS 프로토콜 영향 에뮬레이션" ;;
     auth-timeout) echo "인증 응답 미전송형 연결 컨텍스트 고갈 (NAS 고갈)" ;;
     downlink-imsi) echo "하향 IMSI 추출 결과 에뮬레이션" ;;
+    ue-capability) echo "보안 전 UE Capability Information 주입" ;;
   esac
 }
 
@@ -32,6 +34,7 @@ attack_kind() {
   case $1 in
     rrc-storm|blind-dos|auth-timeout) echo "프로토콜 재현" ;;
     uplink-dos|downlink-imsi) echo "프로토콜 결과 에뮬레이션" ;;
+    ue-capability) echo "프로토콜 관측 에뮬레이션" ;;
   esac
 }
 
@@ -42,6 +45,7 @@ module_dir() {
     uplink-dos) echo "$ROOT/reproducers/uplink-dos" ;;
     auth-timeout) echo "$ROOT/reproducers/authentication-timeout-exhaustion" ;;
     downlink-imsi) echo "$ROOT/reproducers/downlink-imsi-extractor" ;;
+    ue-capability) echo "$ROOT/reproducers/ue-capability-hijacking" ;;
   esac
 }
 
@@ -53,6 +57,7 @@ config_file() {
     uplink-dos) echo "$dir/conf/uplink.conf" ;;
     auth-timeout) echo "$dir/conf/auth-timeout.conf" ;;
     downlink-imsi) echo "$dir/conf/downlink-imsi.conf" ;;
+    ue-capability) echo "$dir/conf/ue-capability.conf" ;;
   esac
 }
 
@@ -64,6 +69,7 @@ config_example() {
     uplink-dos) echo "$dir/conf/uplink.conf.example" ;;
     auth-timeout) echo "$dir/conf/auth-timeout.conf.example" ;;
     downlink-imsi) echo "$dir/conf/p5-zmq.conf.example" ;;
+    ue-capability) echo "$dir/conf/p5-zmq.conf.example" ;;
   esac
 }
 
@@ -74,6 +80,7 @@ oai_tree() {
     uplink-dos) echo "${UPLINK_OAI:-/root/OAI-uplink-dos-w38}" ;;
     auth-timeout) echo "${AUTH_TIMEOUT_OAI:-/root/OAI-auth-timeout-w38}" ;;
     downlink-imsi) echo "${DOWNLINK_IMSI_OAI:-/root/OAI-downlink-imsi-w38}" ;;
+    ue-capability) echo "${UE_CAPABILITY_OAI:-/root/OAI-ue-capability-w38}" ;;
   esac
 }
 
@@ -91,6 +98,7 @@ built_marker() {
     uplink-dos) echo 'UPLINK_DOS_EMULATION event=service_request_mac_corrupted' ;;
     auth-timeout) echo 'AUTH_TIMEOUT_EXHAUSTION event=authentication_request_withheld' ;;
     downlink-imsi) echo 'DOWNLINK_IMSI_EXTRACTOR event=identity_response_substituted' ;;
+    ue-capability) echo 'UE_CAPABILITY_INJECTION event=%s' ;;
   esac
 }
 
@@ -159,6 +167,7 @@ build_one() {
       uplink-dos) OAI="$tree" "$dir/bin/uplink-build" ;;
       auth-timeout) OAI="$tree" "$dir/bin/auth-timeout-build" ;;
       downlink-imsi) OAI="$tree" "$dir/bin/downlink-imsi-build" ;;
+      ue-capability) OAI="$tree" "$dir/bin/ue-capability-build" ;;
     esac
   fi
   is_built "$attack" || fail "빌드 산출물에서 모듈 마커를 확인하지 못했습니다"
@@ -195,6 +204,7 @@ config_env() {
     uplink-dos) echo UPLINK_CONF ;;
     auth-timeout) echo AUTH_TIMEOUT_CONF ;;
     downlink-imsi) echo DOWNLINK_IMSI_CONF ;;
+    ue-capability) echo UE_CAPABILITY_CONF ;;
   esac
 }
 
@@ -206,6 +216,7 @@ run_binary() {
     uplink-dos) echo "$dir/bin/uplink-run" ;;
     auth-timeout) echo "$dir/bin/auth-timeout-run" ;;
     downlink-imsi) echo "$dir/bin/downlink-imsi-run" ;;
+    ue-capability) echo "$dir/bin/ue-capability-run" ;;
   esac
 }
 
@@ -216,6 +227,7 @@ campaign_binary() {
     uplink-dos) echo "$dir/bin/uplink-campaign" ;;
     auth-timeout) echo "$dir/bin/auth-timeout-campaign" ;;
     downlink-imsi) echo "$dir/bin/downlink-imsi-campaign" ;;
+    ue-capability) echo "$dir/bin/ue-capability-campaign" ;;
     *) return 1 ;;
   esac
 }
@@ -223,7 +235,7 @@ campaign_binary() {
 active_mode() {
   case $1 in
     rrc-storm|blind-dos|auth-timeout) echo attack ;;
-    uplink-dos|downlink-imsi) echo emulation ;;
+    uplink-dos|downlink-imsi|ue-capability) echo emulation ;;
   esac
 }
 
@@ -369,11 +381,11 @@ usage() {
   ./ctl.sh run ID MODE RUN_ID [--enable] [--dry-run]
   ./ctl.sh campaign ID CAMPAIGN_ID --enable [--dry-run]
 
-ID: rrc-storm, blind-dos, uplink-dos, auth-timeout, downlink-imsi
+ID: rrc-storm, blind-dos, uplink-dos, auth-timeout, downlink-imsi, ue-capability
 MODE: control 또는 목록에 맞는 attack/emulation
 
 setup은 현재 p5 경로를 기본값으로 사용한다. 다른 호스트에서는 OAI_BASE와
-RRC_OAI/BLIND_OAI/UPLINK_OAI/AUTH_TIMEOUT_OAI/DOWNLINK_IMSI_OAI를 지정한다.
+RRC_OAI/BLIND_OAI/UPLINK_OAI/AUTH_TIMEOUT_OAI/DOWNLINK_IMSI_OAI/UE_CAPABILITY_OAI를 지정한다.
 EOF
 }
 

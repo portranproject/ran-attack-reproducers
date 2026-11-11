@@ -1,0 +1,173 @@
+#!/usr/bin/env bash
+# p5 direct ZMQ에서 단일 control 또는 보안 전 Capability Information 주입을 봉인한다.
+set -euo pipefail
+umask 077
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONF=${UE_CAPABILITY_CONF:-$ROOT/conf/ue-capability.conf}
+[[ -f $CONF && ! -L $CONF ]] || { echo "안전한 UE_CAPABILITY_CONF가 필요합니다: $CONF" >&2; exit 2; }
+. "$CONF"
+
+MODE=${1:-}
+[[ $MODE != control && $MODE != emulation ]] || shift
+ENABLE=0
+RUN_ID=
+while getopts "e:n:h" option; do
+  case $option in
+    e) ENABLE=$OPTARG ;;
+    n) RUN_ID=$OPTARG ;;
+    h) echo "사용법: $0 control|emulation -n RUN_ID [-e 0|1]"; exit 0 ;;
+    *) exit 2 ;;
+  esac
+done
+
+RUN_ROOT=${UE_CAPABILITY_RUN_ROOT:-$ROOT/runs}
+LOCK_FILE=${UE_CAPABILITY_LOCK_FILE:-/tmp/ue-capability.lock}
+ATTACH_TIMEOUT_S=${ATTACH_TIMEOUT_S:-75}
+OBSERVE_TIMEOUT_S=${OBSERVE_TIMEOUT_S:-12}
+CU_LOG=${CU_LOG:-/tmp/ocu.log}
+CORE_CONTAINER=${CORE_CONTAINER:-open5gs_5gc}
+CORE_CONFIG_REMOTE=${CORE_CONFIG_REMOTE:-/root/OCUDU/docker/open5gs/open5gs-5gc.yml}
+TUN=${TUN:-oaitun_ue1}
+PING_TARGET=${PING_TARGET:-10.45.1.1}
+REMOTE_PREFIX=/tmp/ue-capability-$RUN_ID
+
+fail() { echo "ue-capability-run: $*" >&2; exit 2; }
+[[ $MODE == control || $MODE == emulation ]] || fail "mode는 control 또는 emulation이어야 합니다"
+[[ $ENABLE == 0 || $ENABLE == 1 ]] || fail "-e는 0 또는 1이어야 합니다"
+[[ $MODE == control && $ENABLE == 0 || $MODE == emulation && $ENABLE == 1 ]] || fail "control은 -e 0, emulation은 명시적 -e 1이 필요합니다"
+[[ $RUN_ID =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$ ]] || fail "안전한 RUN_ID가 필요합니다"
+for value in "$ATTACH_TIMEOUT_S" "$OBSERVE_TIMEOUT_S"; do [[ $value =~ ^[1-9][0-9]*$ ]] || fail "시간 값은 양의 정수여야 합니다"; done
+for file in "$OAI_BIN" "$UE_CFG" "$UECAP" "$DU_CTL" "$DU_CFG" "$SSH_KEY" "$ROOT/patch/ue-capability-injection-w38.patch"; do
+  [[ -f $file && ! -L $file ]] || fail "필수 일반 파일이 없습니다: $file"
+done
+[[ -x $OAI_BIN && -x $DU_CTL ]] || fail "OAI_BIN과 DU_CTL은 실행 가능해야 합니다"
+[[ -n ${CU_HOST:-} && -n ${CU_IP:-} && -n ${DU_IP:-} ]] || fail "CU_HOST, CU_IP, DU_IP가 필요합니다"
+for command in flock ssh scp python3 sha256sum; do command -v "$command" >/dev/null || fail "$command가 필요합니다"; done
+
+ssh_args=(-o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new -i "$SSH_KEY")
+[[ -z ${KNOWN_HOSTS:-} ]] || ssh_args+=(-o "UserKnownHostsFile=$KNOWN_HOSTS")
+cu() { local quoted; printf -v quoted '%q' "$1"; ssh "${ssh_args[@]}" "$CU_HOST" "sudo bash -lc $quoted"; }
+
+exec 9>"$LOCK_FILE"
+flock -n 9 || fail "다른 UE capability 실행이 진행 중입니다"
+[[ ! -L $RUN_ROOT ]] || fail "run root는 심볼릭 링크일 수 없습니다"
+mkdir -p -m 700 "$RUN_ROOT"
+OUT=$RUN_ROOT/$RUN_ID
+mkdir -m 700 "$OUT" || fail "기존 실행 결과는 덮어쓰지 않습니다: $OUT"
+
+GNB_SHA=$(sha256sum "$DU_CFG" | awk '{print $1}')
+CORE_SHA_LINE=$(cu "sha256sum '$CORE_CONFIG_REMOTE'") || fail "코어 설정 해시를 읽지 못했습니다"
+CORE_SHA=${CORE_SHA_LINE%% *}
+[[ $GNB_SHA =~ ^[0-9a-f]{64}$ && $CORE_SHA =~ ^[0-9a-f]{64}$ ]] || fail "기지국·코어 설정 해시가 잘못됐습니다"
+
+UE_PID=
+DU_STARTED=0
+CAPTURE_STARTED=0
+FORCED_KILL=0
+UNEXPECTED_EXIT=0
+FINISHED=0
+stop_ue() {
+  [[ -n $UE_PID ]] || return 0
+  if ! kill -0 "$UE_PID" 2>/dev/null; then UNEXPECTED_EXIT=1; wait "$UE_PID" 2>/dev/null || true; return 0; fi
+  kill -INT "$UE_PID" 2>/dev/null || true; sleep .2; kill -INT "$UE_PID" 2>/dev/null || true
+  for _ in $(seq 1 50); do kill -0 "$UE_PID" 2>/dev/null || break; sleep .1; done
+  if kill -0 "$UE_PID" 2>/dev/null; then FORCED_KILL=1; kill -KILL "$UE_PID" 2>/dev/null || true; fi
+  wait "$UE_PID" 2>/dev/null || true
+}
+stop_capture() {
+  (( CAPTURE_STARTED == 1 )) || return 0
+  cu "kill -INT \$(cat '$REMOTE_PREFIX.tcpdump.pid') 2>/dev/null || true; sleep 1" >/dev/null || true
+  CAPTURE_STARTED=0
+}
+cleanup() {
+  local status=$?
+  set +e
+  (( FINISHED == 1 )) || stop_ue
+  (( DU_STARTED == 0 )) || "$DU_CTL" stop >/dev/null 2>&1
+  stop_capture
+  exit "$status"
+}
+trap cleanup EXIT INT TERM
+
+cu "pgrep -x ocu >/dev/null && test \"\$(docker inspect -f '{{.State.Health.Status}}' '$CORE_CONTAINER')\" = healthy && command -v tshark >/dev/null" || fail "CU·코어·tshark가 준비되지 않았습니다"
+cu "rm -f '$REMOTE_PREFIX.f1.pcap' '$REMOTE_PREFIX.tcpdump.log' '$REMOTE_PREFIX.tcpdump.pid' '$REMOTE_PREFIX.cu.offset'; stat -c %s '$CU_LOG' >'$REMOTE_PREFIX.cu.offset'; nohup tcpdump -i any -U -s 0 -w '$REMOTE_PREFIX.f1.pcap' 'sctp port 38472' >'$REMOTE_PREFIX.tcpdump.log' 2>&1 </dev/null & echo \$! >'$REMOTE_PREFIX.tcpdump.pid'; sleep 1; kill -0 \$(cat '$REMOTE_PREFIX.tcpdump.pid')" || fail "F1 capture를 시작하지 못했습니다"
+CAPTURE_STARTED=1
+
+pgrep -x nr-uesoftmodem >/dev/null && fail "기존 OAI UE가 실행 중입니다"
+"$DU_CTL" stop >/dev/null 2>&1 || true
+"$DU_CTL" start >"$OUT/du-start.log" 2>&1 || fail "DU 시작에 실패했습니다"
+DU_STARTED=1
+
+bin_dir=$(dirname "$OAI_BIN")
+(
+  cd "$bin_dir"
+  OAI_UE_CAPABILITY_TRACE=1 OAI_UE_CAPABILITY_INJECT=$ENABLE exec setsid stdbuf -oL -eL "$OAI_BIN" \
+    -O "$UE_CFG" --band 78 -C 3489420000 --numerology 1 -r 51 -E --ue-scan-carrier \
+    --uecap_file "$UECAP" --device.name oai_zmqdevif --num-ues 1 \
+    '--zmq.[0].tx_channels' tcp://127.0.0.1:4557 '--zmq.[0].rx_channels' tcp://127.0.0.1:4556
+) >"$OUT/ue.log" 2>&1 </dev/null &
+UE_PID=$!
+
+if [[ $MODE == emulation ]]; then
+  started=$SECONDS
+  until grep -Fq 'UE_CAPABILITY_INJECTION event=pre_security_information_injected' "$OUT/ue.log"; do
+    kill -0 "$UE_PID" 2>/dev/null || fail "UE가 예정보다 일찍 종료됐습니다"
+    (( SECONDS - started < ATTACH_TIMEOUT_S )) || fail "Capability Information 주입을 기다리다 시간 초과했습니다"
+    sleep .2
+  done
+fi
+
+REGISTRATION_OK=false; PDU_OK=false; PING_OK=false
+started=$SECONDS
+until ip -4 -o addr show "$TUN" >/dev/null 2>&1; do
+  kill -0 "$UE_PID" 2>/dev/null || break
+  (( SECONDS - started < ATTACH_TIMEOUT_S )) || break
+  sleep .2
+done
+grep -Fq 'Received Registration Accept' "$OUT/ue.log" && REGISTRATION_OK=true || true
+ip -4 -o addr show "$TUN" >/dev/null 2>&1 && PDU_OK=true || true
+if [[ $PDU_OK == true ]] && ping -I "$TUN" -c 3 -W 1 "$PING_TARGET" >/dev/null 2>&1; then PING_OK=true; fi
+if [[ $MODE == control && ( $REGISTRATION_OK != true || $PDU_OK != true || $PING_OK != true ) ]]; then
+  fail "control 서비스가 정상 기준을 통과하지 못했습니다"
+fi
+sleep "$OBSERVE_TIMEOUT_S"
+
+kill -0 "$UE_PID" 2>/dev/null || UNEXPECTED_EXIT=1
+stop_ue
+"$DU_CTL" stop >/dev/null 2>&1
+DU_STARTED=0
+stop_capture
+
+cu "O=\$(cat '$REMOTE_PREFIX.cu.offset'); tail -c +\$((O+1)) '$CU_LOG'" >"$OUT/cu.log"
+scp "${ssh_args[@]}" "$CU_HOST:$REMOTE_PREFIX.f1.pcap" "$OUT/f1.pcap" >/dev/null
+printf 'frame\ttime_epoch\tsrc\tdst\tdu_id\tcu_id\trrc_setup_complete\tsecurity_mode_command\tsecurity_mode_complete\tue_capability_enquiry\tue_capability_information\n' >"$OUT/f1.raw.tsv"
+cu "tshark -r '$REMOTE_PREFIX.f1.pcap' -Y 'nr-rrc.rrcSetupComplete_element || nr-rrc.securityModeCommand_element || nr-rrc.securityModeComplete_element || nr-rrc.ueCapabilityEnquiry_element || nr-rrc.ueCapabilityInformation_element' -T fields -E separator=/t -e frame.number -e frame.time_epoch -e ip.src -e ip.dst -e f1ap.GNB_DU_UE_F1AP_ID -e f1ap.GNB_CU_UE_F1AP_ID -e nr-rrc.rrcSetupComplete_element -e nr-rrc.securityModeCommand_element -e nr-rrc.securityModeComplete_element -e nr-rrc.ueCapabilityEnquiry_element -e nr-rrc.ueCapabilityInformation_element 2>/dev/null" >>"$OUT/f1.raw.tsv"
+python3 "$ROOT/analysis/normalize_f1.py" "$OUT/f1.raw.tsv" "$CU_IP" "$DU_IP" "$OUT"
+unlink "$OUT/f1.raw.tsv"
+
+INJECTED_COUNT=$(grep -Fc 'UE_CAPABILITY_INJECTION event=pre_security_information_injected' "$OUT/ue.log" || true)
+NORMAL_COUNT=$(grep -Fc 'UE_CAPABILITY_INJECTION event=normal_information_submitted' "$OUT/ue.log" || true)
+printf '{"schema":"ue-capability.oracle.v1","injected_marker_count":%s,"normal_marker_count":%s}\n' "$INJECTED_COUNT" "$NORMAL_COUNT" >"$OUT/oracle.json"
+printf '{"schema":"ue-capability.service.v1","registration_ok":%s,"pdu_session_ok":%s,"ping_ok":%s}\n' "$REGISTRATION_OK" "$PDU_OK" "$PING_OK" >"$OUT/service.json"
+printf '{"schema":"ue-capability.process.v1","crash_count":%s,"forced_kill_count":%s}\n' "$UNEXPECTED_EXIT" "$FORCED_KILL" >"$OUT/process.json"
+
+export RUN_ID MODE ENABLE GNB_SHA CORE_SHA
+python3 - "$OUT/run.json" "$ROOT/patch/ue-capability-injection-w38.patch" "$OAI_BIN" "$UE_CFG" "$UECAP" "$OUT/f1.pcap" <<'PY'
+import hashlib, json, os, pathlib, sys
+output, patch, binary, config, uecap, pcap = map(pathlib.Path, sys.argv[1:])
+def sha(path): return hashlib.sha256(path.read_bytes()).hexdigest()
+enabled = os.environ["ENABLE"] == "1"
+value = {
+    "schema":"ue-capability.run.v1", "run_id":os.environ["RUN_ID"], "mode":os.environ["MODE"],
+    "pre_security_information_injection_emulated":enabled, "mitm_relay_observed":False,
+    "capability_content_modified":False, "capability_downgrade_accepted":False,
+    "source_commit":"6d6782b48484efd935c14e834832032743f9b138", "ue_patch_sha256":sha(patch),
+    "ue_binary_sha256":sha(binary), "ue_config_sha256":sha(config), "uecap_sha256":sha(uecap),
+    "gnb_config_sha256":os.environ["GNB_SHA"], "core_config_sha256":os.environ["CORE_SHA"],
+    "f1_pcap_sha256":sha(pcap),
+}
+output.write_text(json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n")
+PY
+python3 "$ROOT/analysis/verify_run.py" "$OUT"
+FINISHED=1

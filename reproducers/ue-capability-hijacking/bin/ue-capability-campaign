@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CAMPAIGN=
+ENABLE=0
+while getopts "e:n:h" option; do
+  case $option in
+    e) ENABLE=$OPTARG ;;
+    n) CAMPAIGN=$OPTARG ;;
+    h) echo "사용법: $0 -n CAMPAIGN_ID -e 1"; exit 0 ;;
+    *) exit 2 ;;
+  esac
+done
+[[ $ENABLE == 1 ]] || { echo "3세트 캠페인은 명시적 -e 1이 필요합니다" >&2; exit 2; }
+[[ $CAMPAIGN =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,70}$ ]] || { echo "안전한 CAMPAIGN_ID가 필요합니다" >&2; exit 2; }
+RUN_ROOT=${UE_CAPABILITY_RUN_ROOT:-$ROOT/runs}
+for index in 1 2 3; do
+  "$ROOT/bin/ue-capability-run" control -n "$CAMPAIGN-control-$index" -e 0
+  "$ROOT/bin/ue-capability-run" emulation -n "$CAMPAIGN-emulation-$index" -e 1
+done
+python3 "$ROOT/analysis/verify_campaign.py" "$RUN_ROOT" "$CAMPAIGN"

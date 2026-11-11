@@ -13,6 +13,7 @@
 | [uplink-dos](uplink-dos/) | NAS Service Request MAC 단발 변조형 프로토콜 영향 에뮬레이터. p5 ZMQ matched control→emulation 3/3 통과 |
 | [authentication-timeout-exhaustion](authentication-timeout-exhaustion/) | 2026-11-11 동결. Authentication Response 미전송 기전과 탐지 입력 생성, p5 동시 pre-auth 컨텍스트 6개 확인. 서비스 거부 미관측 |
 | [downlink-imsi-extractor](downlink-imsi-extractor/) | 5G-Spector 계열 `Authentication Request → Identity Response(SUCI)` 결과 에뮬레이터. p5 ZMQ matched control→emulation 3/3, 실제 RF overshadowing 미검증 |
+| [ue-capability-hijacking](ue-capability-hijacking/) | UE Capability Hijacking 계열의 보안 전 unsolicited `UECapabilityInformation` F1 관측 에뮬레이터. p5 matched control→emulation 3/3 통과 |
 
 새 모듈은 최소한 README, 독립 라벨 계약, 정상 대조군, 유한 실행시간, `runs/`
 로컬 보존 정책을 먼저 정한다. 실제 파일이 생기기 전에는 빈 `src/`, `tests/`,

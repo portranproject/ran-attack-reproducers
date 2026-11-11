@@ -20,9 +20,17 @@ class ControllerTest(unittest.TestCase):
     def test_list_exposes_every_module_and_reproduction_type(self):
         result = self.run_ctl("list")
         self.assertEqual(result.returncode, 0, result.stderr)
-        for attack in ("rrc-storm", "blind-dos", "uplink-dos", "auth-timeout", "downlink-imsi"):
+        for attack in ("rrc-storm", "blind-dos", "uplink-dos", "auth-timeout", "downlink-imsi", "ue-capability"):
             self.assertIn(attack, result.stdout)
         self.assertIn("프로토콜 결과 에뮬레이션", result.stdout)
+
+    def test_capability_dry_run_maps_to_module_runner(self):
+        result = self.run_ctl(
+            "run", "ue-capability", "emulation", "test-capability", "--enable", "--dry-run"
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("ue-capability-run", result.stdout)
+        self.assertIn("UE_CAPABILITY_CONF", result.stdout)
 
     def test_active_run_requires_explicit_enable(self):
         result = self.run_ctl("run", "blind-dos", "attack", "test-run", "--dry-run")

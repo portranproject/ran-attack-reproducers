@@ -1,0 +1,33 @@
+{
+  "schema": "ran-reproducer.module.v1",
+  "id": "authentication-timeout-exhaustion",
+  "module": "authentication-timeout-exhaustion",
+  "name": "인증 응답 미전송형 연결 컨텍스트 고갈 (NAS 고갈)",
+  "aliases": ["auth-timeout", "nas-exhaustion"],
+  "rule_ids": ["L3-01-O"],
+  "reproduction_level": "protocol",
+  "active_mode": "attack",
+  "claim": "Authentication Request에 응답하지 않는 서로 다른 랩 가입자가 pre-auth RRC·NGAP·5GMM 컨텍스트를 점유하는 실제 프로토콜 재현",
+  "commands": {
+    "run": "bin/auth-timeout-run",
+    "campaign": "bin/auth-timeout-campaign",
+    "analyze": "analysis/normalize_p5.py",
+    "verify": "analysis/verify_evidence.py"
+  },
+  "environments": {"p5": "qualified", "ota": "pending"},
+  "detection": {
+    "expected_signal": "RegistrationRequest·AuthenticationRequest 뒤 AuthenticationResponse 미도달 컨텍스트 누적",
+    "aggregation_scope": "node/cell/window",
+    "expected_rule": "L3-01-O",
+    "expected_level": "attack",
+    "period_ms": 100
+  },
+  "safety": {"requires_enable": true, "max_duration_s": 300, "max_ues": 20},
+  "provenance": {
+    "references": [
+      "https://www.ndss-symposium.org/wp-content/uploads/2024-527-paper.pdf",
+      "https://syssec.kaist.ac.kr/pub/2019/kim_sp_2019.pdf"
+    ],
+    "upstream": ["OAI 6d6782b48484efd935c14e834832032743f9b138"]
+  }
+}

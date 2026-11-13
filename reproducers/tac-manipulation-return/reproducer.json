@@ -1,0 +1,26 @@
+{
+  "schema": "ran-reproducer.module.v1",
+  "id": "tac-manipulation-return",
+  "module": "tac-manipulation-return",
+  "name": "TAC 조작·가짜 기지국 복귀 신호",
+  "aliases": ["an-08"],
+  "rule_ids": ["AN-08"],
+  "reproduction_level": "detector-input-emulation",
+  "active_mode": "emulation",
+  "claim": "이미 알려진 5개 UE가 짧은 창에 mobility registration으로 복귀하는 결과 신호를 재현하며 TAC 송출·rogue gNB는 주장하지 않음",
+  "commands": {"run": "@common-signal", "campaign": "@common-signal"},
+  "environments": {"p5": "pending", "ota": "not-applicable"},
+  "detection": {
+    "expected_signal": "known UE 5개의 mobility RegistrationRequest 급증",
+    "aggregation_scope": "node/cell/window",
+    "expected_rule": "AN-08",
+    "expected_level": "anomaly",
+    "period_ms": 100
+  },
+  "safety": {"requires_enable": true, "max_duration_s": 90, "max_ues": 5},
+  "signal_generator": "AN-08",
+  "provenance": {
+    "references": ["https://www.usenix.org/conference/usenixsecurity19/presentation/yang-hojoon"],
+    "upstream": ["production detector AN-08"]
+  }
+}

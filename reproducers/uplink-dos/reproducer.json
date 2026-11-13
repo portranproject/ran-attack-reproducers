@@ -1,0 +1,30 @@
+{
+  "schema": "ran-reproducer.module.v1",
+  "id": "uplink-credential-flood",
+  "module": "uplink-dos",
+  "name": "무효·위조 자격증명 실패 플러드형 상향 DoS",
+  "aliases": ["uplink-l3-21", "credential-flood"],
+  "rule_ids": ["L3-21"],
+  "reproduction_level": "detector-input-emulation",
+  "active_mode": "emulation",
+  "claim": "p5에서 관측한 거절 플러드 신호 모양을 production 탐지 입력으로 재현하며 RF 원인과 live 프로토콜 경로는 주장하지 않음",
+  "commands": {
+    "run": "bin/uplink-credential-flood-run",
+    "campaign": "bin/uplink-credential-flood-campaign",
+    "analyze": "analysis/normalize_registration_failures.py",
+    "verify": "analysis/verify_l3_21.py"
+  },
+  "environments": {"p5": "qualified", "ota": "not-applicable"},
+  "detection": {
+    "expected_signal": "10초 창의 reject/authentication failure 5건 이상과 수락 부재",
+    "aggregation_scope": "node/cell/window",
+    "expected_rule": "L3-21",
+    "expected_level": "attack",
+    "period_ms": 100
+  },
+  "safety": {"requires_enable": true, "max_duration_s": 60, "max_ues": 6},
+  "provenance": {
+    "references": ["https://www.3gpp.org/ftp/Specs/archive/24_series/24.501/"],
+    "upstream": ["OAI 6d6782b48484efd935c14e834832032743f9b138", "production detector L3-21"]
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portranproject.github.io/ran-attack-reproducers/schemas/verdict.schema.json",
+  "title": "공통 재현 판정",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "run_id", "passed", "dimensions", "expected_rule", "observed_alerts"],
+  "properties": {
+    "schema": {"const": "ran-reproducer.verdict.v1"},
+    "run_id": {"type": "string"},
+    "passed": {"type": "boolean"},
+    "expected_rule": {"type": "string"},
+    "observed_alerts": {"type": "integer", "minimum": 0},
+    "detection_latency_ms": {"type": ["integer", "null"]},
+    "dimensions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mechanism", "detection_input", "detector_result", "service_impact"],
+      "properties": {
+        "mechanism": {"enum": ["pass", "fail", "not_observed", "not_applicable", "inconclusive"]},
+        "detection_input": {"enum": ["pass", "fail", "not_observed", "not_applicable", "inconclusive"]},
+        "detector_result": {"enum": ["pass", "fail", "not_observed", "not_applicable", "inconclusive"]},
+        "service_impact": {"enum": ["pass", "fail", "not_observed", "not_applicable", "inconclusive"]}
+      }
+    }
+  }
+}

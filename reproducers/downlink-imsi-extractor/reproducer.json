@@ -1,0 +1,33 @@
+{
+  "schema": "ran-reproducer.module.v1",
+  "id": "downlink-identifier-exposure",
+  "module": "downlink-imsi-extractor",
+  "name": "비정상 Identity Response·식별자 노출",
+  "aliases": ["downlink-imsi", "downlink-imsi-extractor"],
+  "rule_ids": ["L3-24"],
+  "reproduction_level": "protocol-result-emulation",
+  "active_mode": "emulation",
+  "claim": "Identity Request 없이 SUCI Identity Response를 보내는 결과를 실제 UE→RAN→코어 경로에서 재현하며 RF overshadowing은 주장하지 않음",
+  "commands": {
+    "run": "bin/downlink-imsi-run",
+    "campaign": "bin/downlink-imsi-campaign",
+    "analyze": "analysis/normalize_pcap.py",
+    "verify": "analysis/verify_run.py"
+  },
+  "environments": {"p5": "qualified", "ota": "pending"},
+  "detection": {
+    "expected_signal": "선행 Identity Request 없는 Identity Response와 null-scheme fingerprint",
+    "aggregation_scope": "UE context/node/cell",
+    "expected_rule": "L3-24",
+    "expected_level": "attack",
+    "period_ms": 100
+  },
+  "safety": {"requires_enable": true, "max_duration_s": 180, "max_ues": 4},
+  "provenance": {
+    "references": [
+      "https://www.usenix.org/system/files/sec22-kotuliak.pdf",
+      "https://github.com/5GSEC/5G-Spector/tree/63e94b9ad8860298894ed7a94e52f00faea02719"
+    ],
+    "upstream": ["OAI 6d6782b48484efd935c14e834832032743f9b138"]
+  }
+}

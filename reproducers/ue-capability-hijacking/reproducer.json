@@ -1,0 +1,30 @@
+{
+  "schema": "ran-reproducer.module.v1",
+  "id": "ue-capability-hijacking",
+  "module": "ue-capability-hijacking",
+  "name": "보안 전 UE Capability Information 주입",
+  "aliases": ["ue-capability", "capability"],
+  "rule_ids": ["L3-14"],
+  "reproduction_level": "protocol-observation-emulation",
+  "active_mode": "emulation",
+  "claim": "보안 수립·Capability Enquiry 전에 unsolicited UECapabilityInformation을 실제 F1 경로에 one-shot 주입하며 MITM·내용 변조는 주장하지 않음",
+  "commands": {
+    "run": "bin/ue-capability-run",
+    "campaign": "bin/ue-capability-campaign",
+    "analyze": "analysis/normalize_f1.py",
+    "verify": "analysis/verify_run.py"
+  },
+  "environments": {"p5": "qualified", "ota": "pending"},
+  "detection": {
+    "expected_signal": "보안 전·선행 UECapabilityEnquiry 없는 UECapabilityInformation",
+    "aggregation_scope": "same CU/DU UE context",
+    "expected_rule": "L3-14",
+    "expected_level": "attack",
+    "period_ms": 100
+  },
+  "safety": {"requires_enable": true, "max_duration_s": 180, "max_ues": 4},
+  "provenance": {
+    "references": ["https://zenodo.org/records/4671828/files/New%20vulnerabilities%20in%204G%20and%205G%20cellular%20access%20networkprotocols%20%20exposing%20device%20capabilities.pdf"],
+    "upstream": ["OAI 6d6782b48484efd935c14e834832032743f9b138"]
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "schema": "ran-reproducer.module.v1",
+  "id": "rrc-reject-release-imprisonment",
+  "module": "rrc-reject-release-imprisonment",
+  "name": "RRC 거절·해제 투옥 계열 미완료 반복",
+  "aliases": ["an-07"],
+  "rule_ids": ["AN-07"],
+  "reproduction_level": "detector-input-emulation",
+  "active_mode": "emulation",
+  "claim": "같은 5G-S-TMSI의 RRCSetupRequest 뒤 완료 없이 release되는 반복 신호를 재현하며 rogue gNB 원인은 주장하지 않음",
+  "commands": {"run": "@common-signal", "campaign": "@common-signal"},
+  "environments": {"p5": "pending", "ota": "not-applicable"},
+  "detection": {
+    "expected_signal": "같은 Part1 식별자의 RRCSetup 미완료·release 3회 반복",
+    "aggregation_scope": "pseudonymous UE identity/node/window",
+    "expected_rule": "AN-07",
+    "expected_level": "anomaly",
+    "period_ms": 100
+  },
+  "safety": {"requires_enable": true, "max_duration_s": 30, "max_ues": 3},
+  "signal_generator": "AN-07",
+  "provenance": {
+    "references": ["https://www.csl.sri.com/users/gehani/papers/NDSS-2024.5G-Spector.pdf"],
+    "upstream": ["production detector AN-07"]
+  }
+}

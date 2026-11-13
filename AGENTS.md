@@ -11,12 +11,14 @@
 
 - `reproducers/rrc-signaling-storm/`: 구현·실측 완료 후 2026-11-02 동결
 - `reproducers/blind-dos/`: 현재 유효 5G-GUTI 재사용형 구현 완료. p5 direct 2-cell ZMQ의 matched control→attack G5 3/3 통과
-- `reproducers/uplink-dos/`: NAS Service Request MAC 단발 변조형 프로토콜 영향 에뮬레이터. p5 ZMQ matched control→emulation 3/3 통과
+- `reproducers/uplink-dos/`: NAS Service Request MAC 단발 변조형 프로토콜 영향 에뮬레이터와 L3-21용 무효·위조 자격증명 실패 플러드 탐지 입력 에뮬레이터. 각각 matched control→emulation 3/3 통과
 - `ctl.sh`: 공격 선택, 상태 점검, 전용 OAI 준비·빌드, 단일 실행과 matched 캠페인을 기존 모듈 runner에 위임하는 통합 컨트롤러
 - [CONTROL-GUIDE.md](CONTROL-GUIDE.md): 통합 컨트롤러 사용법·자동화 범위·재현/에뮬레이션 표시 기준
 - `reproducers/authentication-timeout-exhaustion/`: 2026-11-11 기전·탐지 입력 재현기로 동결. p5 direct 4-cell ZMQ에서 Authentication Response 미전송과 6개 동시 pre-auth 컨텍스트 확인, 서비스 거부는 미관측
 - `reproducers/downlink-imsi-extractor/`: 5G-Spector 계열 프로토콜 결과 에뮬레이터 구현 완료. p5 direct 1-cell ZMQ에서 예상하지 않은 SUCI Identity Response와 null-scheme fingerprint matched control→emulation 3/3 통과
 - `reproducers/ue-capability-hijacking/`: UE Capability Hijacking 계열의 보안 전 unsolicited UECapabilityInformation F1 관측 에뮬레이터 완료. p5 matched control→emulation 3/3 통과; MITM·내용 변조·강등 수락은 주장하지 않음
+- `reproducers/{nas-counter-desynchronization,authentication-sync-failure,nas-counter-reset,uplink-imsi-extractor,short-connection-repeat,rrc-reject-release-imprisonment,tac-manipulation-return}/`: L3-06·AN-01·AN-06a·AN-02·AN-04·AN-07·AN-08 연구 기반 탐지 입력 에뮬레이터. production detector 고정 commit의 기본 설정에서 각각 matched control→emulation 3/3 통과. p5 live protocol과 RF 원인은 미관측
+- `reproducer.json`, `schemas/`, `profiles/`, `tools/reproctl.py`: 13개 룰 카탈로그, p5/OTA profile, 공통 run/verdict/evidence 계약, production replay·report·verify
 
 아래 장문의 실측 기록은 첫 번째 모듈인 RRC signaling storm의 보존 컨텍스트다.
 
@@ -125,6 +127,14 @@
 - 사용법과 판정 기준은 [README](reproducers/uplink-dos/README.md), 원복을 포함한 운영
   절차는 [사용 가이드](reproducers/uplink-dos/USAGE-GUIDE.md), 실측 해시는
   [p5 결과](reproducers/uplink-dos/artifacts/p5-zmq-protocol-impact-20261105/)를 따른다.
+- 탐지팀 L3-21과 맞춘 별도 변형은 무효·위조 자격증명 실패 플러드형이다. control은
+  실패 연결 1개, emulation은 2초 안 실패 연결 5개를 `ue_evt`로 만들고 production 기본
+  설정에 재생한다. 2026-11-11 matched 3세트에서 control 경보 0회, emulation은 매번
+  `branch=1` RAISE 1회였다.
+- p5 live F1에서 거절 5건·2.260초를 한 번 확인했지만 OAI 반복 재접속과 RU-sharing은
+  반복 안정성이 없었다. 따라서 새 변형의 허용 주장은 **실제 p5 신호 모양을 기반으로 한
+  탐지 입력 에뮬레이션 3/3**이며 `live_protocol_path_observed=false`다. 결과는
+  [L3-21 입력 실측](reproducers/uplink-dos/artifacts/p5-l3-21-input-emulation-20261111/)을 따른다.
 
 ---
 

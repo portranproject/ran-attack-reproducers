@@ -1,0 +1,32 @@
+{
+  "schema": "ran-reproducer.module.v1",
+  "id": "rrc-context-exhaustion",
+  "module": "rrc-signaling-storm",
+  "name": "RRC UE 컨텍스트 고갈",
+  "aliases": ["rrc-storm", "rrc-signaling-storm"],
+  "rule_ids": ["L3-01-V"],
+  "reproduction_level": "protocol",
+  "active_mode": "attack",
+  "claim": "RRCSetupComplete를 보내지 않는 UE가 미완료 RRC 절차와 자원 압력을 만드는 실제 프로토콜 재현",
+  "commands": {
+    "run": "bin/rss-run",
+    "analyze": "analysis/export_labels.py",
+    "verify": "analysis/evidence_manifest.py"
+  },
+  "environments": {"p5": "qualified", "ota": "pending"},
+  "detection": {
+    "expected_signal": "RRCSetupRequest·RRCSetup 뒤 RRCSetupComplete 미도달 반복",
+    "aggregation_scope": "node/cell/window",
+    "expected_rule": "L3-01-V",
+    "expected_level": "attack",
+    "period_ms": 100
+  },
+  "safety": {"requires_enable": true, "max_duration_s": 300, "max_ues": 20},
+  "provenance": {
+    "references": [
+      "https://arxiv.org/abs/2608.16441",
+      "https://github.com/5gattacks/5g-rrc-storm/tree/0e71f7aee24999b66d44e10db4612f96b5219d98"
+    ],
+    "upstream": ["OAI 1c2f4d3c2e68181cdef9f426d161163147ad4b77"]
+  }
+}

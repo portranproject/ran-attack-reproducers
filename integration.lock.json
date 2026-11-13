@@ -1,0 +1,16 @@
+{
+  "schema": "ran-reproducer.integration-lock.v1",
+  "detector": {
+    "repository": "https://github.com/portranproject/detection",
+    "commit": "a34b358e585e24aa91b1586da022ad14ef98d3e0"
+  },
+  "telemetry": {
+    "repository": "https://github.com/portranproject/telemetry",
+    "commit": "7550153a58a993942303bd3d4a6cd635b664468b",
+    "period_ms": 100
+  },
+  "dashboard": {
+    "repository": "https://github.com/portranproject/dashboard",
+    "commit": "01a1a44a12ed7b3b6a1fe7465849d1f3daa41e20"
+  }
+}

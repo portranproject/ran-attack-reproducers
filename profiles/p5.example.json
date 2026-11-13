@@ -1,0 +1,33 @@
+{
+  "schema": "ran-reproducer.profile.v1",
+  "id": "p5",
+  "backend": "p5",
+  "configured": false,
+  "lab_only": true,
+  "run_root": "/var/lib/ran-reproducer/runs",
+  "environment": {
+    "OAI_BASE": "/root/OAI",
+    "DETECTOR_BIN": "/root/detection/build/detector",
+    "DETECTOR_CONFIG": "/root/detection/config/detector.json",
+    "P5_CU_HOST": "replace-with-cu-ssh-host",
+    "P5_DU_HOST": "replace-with-du-ssh-host",
+    "P5_CU_PRIVATE_IP": "replace-with-cu-private-ip",
+    "P5_DU_PRIVATE_IP": "replace-with-du-private-ip"
+  },
+  "credentials_file": "/root/.config/ran-reproducer/p5.env",
+  "detector": {
+    "binary": "/root/detection/build/detector",
+    "config": "/root/detection/config/detector.json",
+    "repository": "https://github.com/portranproject/detection",
+    "commit": "a34b358e585e24aa91b1586da022ad14ef98d3e0"
+  },
+  "telemetry": {
+    "binary": "/root/telemetry/build/telemetry",
+    "period_ms": 100,
+    "repository": "https://github.com/portranproject/telemetry",
+    "commit": "7550153a58a993942303bd3d4a6cd635b664468b"
+  },
+  "limits": {"max_duration_s": 300, "max_ues": 20, "max_tx_gain_db": null},
+  "target_allowlist": ["replace-with-p5-lab-target"],
+  "rf": null
+}

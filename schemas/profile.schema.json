@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portranproject.github.io/ran-attack-reproducers/schemas/profile.schema.json",
+  "title": "재현 환경 프로필",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "backend", "configured", "lab_only", "run_root", "environment", "detector", "telemetry", "limits", "target_allowlist"],
+  "properties": {
+    "schema": {"const": "ran-reproducer.profile.v1"},
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"},
+    "backend": {"enum": ["p5", "ota", "replay"]},
+    "configured": {"type": "boolean"},
+    "lab_only": {"const": true},
+    "run_root": {"type": "string", "minLength": 1},
+    "environment": {"type": "object", "additionalProperties": {"type": "string"}},
+    "credentials_file": {"type": ["string", "null"]},
+    "detector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["binary", "config", "repository", "commit"],
+      "properties": {
+        "binary": {"type": "string"},
+        "config": {"type": "string"},
+        "repository": {"type": "string"},
+        "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
+      }
+    },
+    "telemetry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["binary", "period_ms", "repository", "commit"],
+      "properties": {
+        "binary": {"type": "string"},
+        "period_ms": {"const": 100},
+        "repository": {"type": "string"},
+        "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_duration_s", "max_ues"],
+      "properties": {
+        "max_duration_s": {"type": "integer", "minimum": 1, "maximum": 3600},
+        "max_ues": {"type": "integer", "minimum": 1, "maximum": 256},
+        "max_tx_gain_db": {"type": ["number", "null"]}
+      }
+    },
+    "target_allowlist": {"type": "array", "items": {"type": "string"}, "minItems": 1, "uniqueItems": true},
+    "rf": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["shielding_confirmed", "clock_source", "devices"],
+      "properties": {
+        "shielding_confirmed": {"type": "boolean"},
+        "clock_source": {"type": "string"},
+        "devices": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["role", "serial"],
+            "properties": {"role": {"type": "string"}, "serial": {"type": "string"}}
+          }
+        }
+      }
+    }
+  }
+}

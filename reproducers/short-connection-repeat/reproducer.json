@@ -1,0 +1,26 @@
+{
+  "schema": "ran-reproducer.module.v1",
+  "id": "short-connection-repeat",
+  "module": "short-connection-repeat",
+  "name": "짧은 RRC 연결 반복",
+  "aliases": ["an-04"],
+  "rule_ids": ["AN-04"],
+  "reproduction_level": "detector-input-emulation",
+  "active_mode": "emulation",
+  "claim": "같은 UE 가명 식별자의 짧은 연결·서비스·해제 반복을 production 탐지 입력으로 재현하며 단일 공격 원인에 귀속하지 않음",
+  "commands": {"run": "@common-signal", "campaign": "@common-signal"},
+  "environments": {"p5": "pending", "ota": "not-applicable"},
+  "detection": {
+    "expected_signal": "같은 5G-S-TMSI의 짧은 연결 3회 이상 반복",
+    "aggregation_scope": "pseudonymous UE identity/node/window",
+    "expected_rule": "AN-04",
+    "expected_level": "anomaly",
+    "period_ms": 100
+  },
+  "safety": {"requires_enable": true, "max_duration_s": 30, "max_ues": 3},
+  "signal_generator": "AN-04",
+  "provenance": {
+    "references": ["https://github.com/relentless-warrior/LTEInspector/tree/033184ce35f2dee31ed1103c1289a57d48579b2a"],
+    "upstream": ["production detector AN-04"]
+  }
+}

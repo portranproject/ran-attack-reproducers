@@ -1,0 +1,26 @@
+{
+  "schema": "ran-reproducer.module.v1",
+  "id": "nas-counter-reset",
+  "module": "nas-counter-reset",
+  "name": "NAS 카운터 reset 계열 재인증",
+  "aliases": ["an-06a"],
+  "rule_ids": ["AN-06a"],
+  "reproduction_level": "detector-input-emulation",
+  "active_mode": "emulation",
+  "claim": "보안 수립 뒤 같은 UE 컨텍스트에 AuthenticationRequest와 NAS SMC가 다시 나타나는 탐지 신호를 재현하며 실제 카운터 reset은 주장하지 않음",
+  "commands": {"run": "@common-signal", "campaign": "@common-signal"},
+  "environments": {"p5": "pending", "ota": "not-applicable"},
+  "detection": {
+    "expected_signal": "보안 수립 뒤 같은 UE의 AuthenticationRequest·SecurityModeCommand 재등장",
+    "aggregation_scope": "same UE context/window",
+    "expected_rule": "AN-06a",
+    "expected_level": "anomaly",
+    "period_ms": 100
+  },
+  "safety": {"requires_enable": true, "max_duration_s": 10, "max_ues": 1},
+  "signal_generator": "AN-06a",
+  "provenance": {
+    "references": ["https://www.csl.sri.com/users/gehani/papers/NDSS-2024.5G-Spector.pdf"],
+    "upstream": ["production detector AN-06a"]
+  }
+}

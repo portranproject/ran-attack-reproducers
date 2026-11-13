@@ -1,0 +1,138 @@
+{
+  "campaign_id": "p5-uplink-l321-emulation-20261111",
+  "children": [
+    {
+      "checks": {
+        "complete_contexts": 1,
+        "l3_21_branch1_raise_count": 0,
+        "l3_21_raise_count": 0,
+        "registration_accept_count": 0,
+        "registration_reject_count": 1,
+        "registration_request_count": 1,
+        "reject_span_ms": 0
+      },
+      "mode": "control",
+      "run_id": "p5-uplink-l321-emulation-20261111-control-1",
+      "set_index": 1
+    },
+    {
+      "checks": {
+        "complete_contexts": 5,
+        "l3_21_branch1_raise_count": 1,
+        "l3_21_raise_count": 1,
+        "registration_accept_count": 0,
+        "registration_reject_count": 5,
+        "registration_request_count": 5,
+        "reject_span_ms": 2000
+      },
+      "mode": "emulation",
+      "run_id": "p5-uplink-l321-emulation-20261111-emulation-1",
+      "set_index": 1
+    },
+    {
+      "checks": {
+        "complete_contexts": 1,
+        "l3_21_branch1_raise_count": 0,
+        "l3_21_raise_count": 0,
+        "registration_accept_count": 0,
+        "registration_reject_count": 1,
+        "registration_request_count": 1,
+        "reject_span_ms": 0
+      },
+      "mode": "control",
+      "run_id": "p5-uplink-l321-emulation-20261111-control-2",
+      "set_index": 2
+    },
+    {
+      "checks": {
+        "complete_contexts": 5,
+        "l3_21_branch1_raise_count": 1,
+        "l3_21_raise_count": 1,
+        "registration_accept_count": 0,
+        "registration_reject_count": 5,
+        "registration_request_count": 5,
+        "reject_span_ms": 2000
+      },
+      "mode": "emulation",
+      "run_id": "p5-uplink-l321-emulation-20261111-emulation-2",
+      "set_index": 2
+    },
+    {
+      "checks": {
+        "complete_contexts": 1,
+        "l3_21_branch1_raise_count": 0,
+        "l3_21_raise_count": 0,
+        "registration_accept_count": 0,
+        "registration_reject_count": 1,
+        "registration_request_count": 1,
+        "reject_span_ms": 0
+      },
+      "mode": "control",
+      "run_id": "p5-uplink-l321-emulation-20261111-control-3",
+      "set_index": 3
+    },
+    {
+      "checks": {
+        "complete_contexts": 5,
+        "l3_21_branch1_raise_count": 1,
+        "l3_21_raise_count": 1,
+        "registration_accept_count": 0,
+        "registration_reject_count": 5,
+        "registration_request_count": 5,
+        "reject_span_ms": 2000
+      },
+      "mode": "emulation",
+      "run_id": "p5-uplink-l321-emulation-20261111-emulation-3",
+      "set_index": 3
+    }
+  ],
+  "detector_config_sha256": "9bbb0b5039b05d0aa73c31c4a4e30860042a873ebc48ba8589191f6f61c77c53",
+  "detector_sha256": "f50ce9bd8149663c7a3f3fddc88d46fbd8edf204649f7d8c72c7414bbb97e067",
+  "live_protocol_path_observed": false,
+  "matched_repetitions": 3,
+  "passed": true,
+  "raw_files_sha256": {
+    "p5-uplink-l321-emulation-20261111-control-1/detector-input.jsonl": "0825a8c89cdd70799365080e8ff2983f994a7cc91e30ad2f019abfcd83c8410c",
+    "p5-uplink-l321-emulation-20261111-control-1/evidence_manifest.json": "5d78f1cbf97eb9a6de4b5726a91600e1074c769b69f744dc8c62f586185fe1f6",
+    "p5-uplink-l321-emulation-20261111-control-1/l3-21-verdict.json": "d7f8a53cd17c9e31a76262754e58432d050be53e8deb9941a972e73a67405394",
+    "p5-uplink-l321-emulation-20261111-control-1/observations.jsonl": "af8b18036bd81734afec7aa05c131b1e90ca0db220c437c0d707a46c97b89d82",
+    "p5-uplink-l321-emulation-20261111-control-1/run.json": "fafbeef9f1d4a97e108d8111aa95f494209d1afafb251ef0ff40c4f55979c92d",
+    "p5-uplink-l321-emulation-20261111-control-1/verdict.json": "eb93523b07e725694aed98c79a6f56529bbc565c580f52f31575ea3b83a7856f",
+    "p5-uplink-l321-emulation-20261111-control-2/detector-input.jsonl": "291c683d8b4878a1a6b20879b736b4655c4f860b3e7a426eba81b723db0b4ad0",
+    "p5-uplink-l321-emulation-20261111-control-2/evidence_manifest.json": "0f925ffa00eb00be5e789689b8824f6c34735dac5bd24b395085370d11cf0a36",
+    "p5-uplink-l321-emulation-20261111-control-2/l3-21-verdict.json": "773c3b3fb8202c7939ac9340b2da6b2da2fb2917ea873a9c7263df80b5d7c647",
+    "p5-uplink-l321-emulation-20261111-control-2/observations.jsonl": "af8b18036bd81734afec7aa05c131b1e90ca0db220c437c0d707a46c97b89d82",
+    "p5-uplink-l321-emulation-20261111-control-2/run.json": "8cd9063ade89c03331e90dbe105046e84325e0df53f51669cf923c0e2b5eefd9",
+    "p5-uplink-l321-emulation-20261111-control-2/verdict.json": "06bd4ca9ae04badaf066d928ccedadcdee0d42c39c86d9e518abf38c378e942a",
+    "p5-uplink-l321-emulation-20261111-control-3/detector-input.jsonl": "9439fb21b0106723f35a779464c3e539b7e8c95a919ba843020d4d44b83a3ea8",
+    "p5-uplink-l321-emulation-20261111-control-3/evidence_manifest.json": "8958048c3db9aa3affe83d2da515b3f820751fc73a228ba825129507dcc2e8d3",
+    "p5-uplink-l321-emulation-20261111-control-3/l3-21-verdict.json": "9bbe824057207f59e5ed51125eaaf3f4dc396cdeea38873b1d93cebaa6882865",
+    "p5-uplink-l321-emulation-20261111-control-3/observations.jsonl": "af8b18036bd81734afec7aa05c131b1e90ca0db220c437c0d707a46c97b89d82",
+    "p5-uplink-l321-emulation-20261111-control-3/run.json": "7fb350f099f87a36910001f1ec5bb3565be2a21df9853663d592296b89fbd947",
+    "p5-uplink-l321-emulation-20261111-control-3/verdict.json": "3d4079606d049d00d82ff7ec4031638c80202d8cf0b01359d92fd4ea0f710f18",
+    "p5-uplink-l321-emulation-20261111-emulation-1/detector-input.jsonl": "63503d4a0bc2eb68dc7f359eccb053e5c88941f35fa7edb9a5c66ecb8a344687",
+    "p5-uplink-l321-emulation-20261111-emulation-1/evidence_manifest.json": "a56c7b7de8b59cdd66c7f635da194178169eadd9ca172771acfebf8b572ed2b3",
+    "p5-uplink-l321-emulation-20261111-emulation-1/l3-21-verdict.json": "372eedf2f03627aa04a289c9fb803c4dcce0d6bc82466917653d76d758af5860",
+    "p5-uplink-l321-emulation-20261111-emulation-1/observations.jsonl": "c7bf77f4712a57a41a303b680902137539a4d00b4ab3a35542a05994fb59fe48",
+    "p5-uplink-l321-emulation-20261111-emulation-1/run.json": "49d28921258e4c963d14fa01b220333d86d3f0035540c1ccf81795d640b4be66",
+    "p5-uplink-l321-emulation-20261111-emulation-1/verdict.json": "3fcedcf781433975abea6690a44a9be5b8d96362c3806435f1d52406a7fda987",
+    "p5-uplink-l321-emulation-20261111-emulation-2/detector-input.jsonl": "811d90061d4318c006657b3d669150a1da3267d60c0968ac94f831a7f17516f0",
+    "p5-uplink-l321-emulation-20261111-emulation-2/evidence_manifest.json": "178f3124b0a3961f88c996b23a288ab1d2a97bf56b00780430f7bc1ec4493b62",
+    "p5-uplink-l321-emulation-20261111-emulation-2/l3-21-verdict.json": "7fd47821f21f5a716e929b776308f6e8850fae4dfd9d88710ed603c5f76f39b3",
+    "p5-uplink-l321-emulation-20261111-emulation-2/observations.jsonl": "c7bf77f4712a57a41a303b680902137539a4d00b4ab3a35542a05994fb59fe48",
+    "p5-uplink-l321-emulation-20261111-emulation-2/run.json": "dce06f97f95338db00696c0b45e5e02abc44a8694d463b1ed18317a65ad2de59",
+    "p5-uplink-l321-emulation-20261111-emulation-2/verdict.json": "d1610c3f0b85b20e4e45afa404ef7bb21cf41ccc66aee78e4337db80468d407b",
+    "p5-uplink-l321-emulation-20261111-emulation-3/detector-input.jsonl": "a8a8daa620a4daaa7dc327e099957335a1cc1c0c96c1dcf51d5d2f1708e0401b",
+    "p5-uplink-l321-emulation-20261111-emulation-3/evidence_manifest.json": "8fc96b48a62337d399f35a653a8bb616123c7018be26178fb4dcc0d38d5da316",
+    "p5-uplink-l321-emulation-20261111-emulation-3/l3-21-verdict.json": "81107a0d6e49c3d9bfd34699785c5a9348a5dff23ce471717b5d97efadf0efa9",
+    "p5-uplink-l321-emulation-20261111-emulation-3/observations.jsonl": "c7bf77f4712a57a41a303b680902137539a4d00b4ab3a35542a05994fb59fe48",
+    "p5-uplink-l321-emulation-20261111-emulation-3/run.json": "ab1aeeffea7d2cf914ab7c29c41504b285652a8995aa2e081d12f9906dcd7f16",
+    "p5-uplink-l321-emulation-20261111-emulation-3/verdict.json": "d7893ef742135ed9fb74e2c9a2a99ac09da2ed2ed420a45ef394313232429d6e"
+  },
+  "rf_overshadowing_observed": false,
+  "schema": "uplink-dos.registration-failure-campaign.v1",
+  "set_order": [
+    "control",
+    "emulation"
+  ]
+}

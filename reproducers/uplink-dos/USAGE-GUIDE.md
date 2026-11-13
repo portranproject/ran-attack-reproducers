@@ -1,4 +1,11 @@
-# Uplink DoS 프로토콜 영향 재현 에뮬레이터 사용 가이드
+# Uplink DoS 재현 도구 사용 가이드
+
+## 0. 시나리오 선택
+
+- NAS MAC 실패·서비스 손실을 보려면 기존 `uplink-run`을 사용한다.
+- 탐지 룰 L3-21을 검증하려면 `uplink-credential-flood-run`을 사용한다.
+
+두 실행은 합격 기준과 허용 주장이 다르므로 결과를 한 campaign으로 섞지 않는다.
 
 ## 1. 전제
 
@@ -44,6 +51,13 @@ chmod 600 conf/uplink.conf
 `OAI_BIN`, UE 설정, CU 접속 주소·키, TUN과 피해 IP를 실제 랩 값으로 검토한다. 개인키와
 가입자 설정은 저장소 밖에 둔다.
 
+L3-21 입력 에뮬레이션에는 탐지 엔진 실행 파일과 production 설정을 추가한다.
+
+```bash
+DETECTOR_BIN=/root/detection/build/detector
+DETECTOR_CONFIG=/root/detection/config/detector.json
+```
+
 ## 5. 실행
 
 먼저 정상 대조를 실행한다.
@@ -68,6 +82,28 @@ UPLINK_CONF=conf/uplink.conf ./bin/uplink-campaign \
 동일 run ID는 덮어쓰지 않는다. 설정 누락, 기존 UE, PDU setup 미완료, release 미완료,
 child 실패가 있으면 fail-closed로 중단한다.
 
+### L3-21 실패 플러드 입력 에뮬레이션
+
+```bash
+UPLINK_CONF=conf/uplink.conf ./bin/uplink-credential-flood-run \
+  control -n l321-control -e 0
+UPLINK_CONF=conf/uplink.conf ./bin/uplink-credential-flood-run \
+  emulation -n l321-emulation -e 1
+UPLINK_CONF=conf/uplink.conf ./bin/uplink-credential-flood-campaign \
+  -n l321-campaign-YYYYMMDD -e 1
+```
+
+통합 컨트롤러에서는 공격 ID `uplink-credential-flood`를 사용한다.
+
+```bash
+./ctl.sh run uplink-credential-flood emulation l321-smoke --enable
+./ctl.sh campaign uplink-credential-flood l321-campaign --enable
+```
+
+이 경로는 p5·OAI를 기동하지 않는다. `detector-input.jsonl`을 실제 탐지 엔진에 재생하고
+L3-21 결과까지 판정한다. 실제 F1 캡처가 있으면 `normalize_registration_failures.py`로
+같은 입력 형식으로 변환할 수 있다.
+
 ## 6. 결과 읽기
 
 각 run에는 다음 원문과 판정이 생긴다.
@@ -78,6 +114,14 @@ child 실패가 있으면 fail-closed로 중단한다.
 - `process.json`: crash·강제 종료 수
 - `verdict.json`: 단일 실행 판정
 - `<campaign>-campaign.json`: 6개 child 판정과 모든 원문 SHA-256
+
+L3-21 입력 에뮬레이션 run에는 다음 파일이 생긴다.
+
+- `observations.jsonl`: 연결별 RRC·NAS 메시지 순서
+- `detector-input.jsonl`: `hello`·`ue_evt`·`kpm2` 재생 입력
+- `l3-21-verdict.json`: 실제 탐지 엔진 stdout 기반 경보 판정
+- `verdict.json`: 신호 모양·탐지 결과·주장 경계 판정
+- `evidence_manifest.json`: 위 파일의 크기와 SHA-256
 
 탐지기에는 UE 변조 마커나 `verdict.json`을 입력으로 주지 않는다. 먼저 CU·AMF·DU
 텔레메트리만으로 탐지 결과를 봉인한 뒤 ground truth와 비교한다. 재현 성공과 탐지 성공은
@@ -101,6 +145,8 @@ sudo ./bin/uplink-profile restore /root/OCUDU/configs/cu.yaml
 - 실제 공격자가 더 강한 RF 신호로 피해 UE를 덮었다.
 - 실 SDR OTA나 상용망에서 같은 성공률이 보장된다.
 - 탐지기가 RF 원인까지 식별했다.
+- 실패 플러드 입력 에뮬레이션이 live OAI→gNB→코어 3/3에 성공했다.
 
 허용되는 표현은 “uplink DoS 이후의 NAS 인증 실패와 서비스 영향을 실제 프로토콜
-경로에서 에뮬레이션했다”이다.
+경로에서 에뮬레이션했다”와 “실제 F1 관측에 맞춘 실패 플러드 입력으로 L3-21을
+검증했다”이다.

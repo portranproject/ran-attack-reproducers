@@ -1,0 +1,29 @@
+{
+  "schema": "ran-reproducer.module.v1",
+  "id": "authentication-sync-failure",
+  "module": "authentication-sync-failure",
+  "name": "인증 동기 실패",
+  "aliases": ["an-01"],
+  "rule_ids": ["AN-01"],
+  "reproduction_level": "detector-input-emulation",
+  "active_mode": "emulation",
+  "claim": "NAS AuthenticationFailure cause 21 뒤 정상 인증이 이어지는 연구 기반 탐지 신호를 재현하며 실제 USIM SQN 교란은 주장하지 않음",
+  "commands": {"run": "@common-signal", "campaign": "@common-signal"},
+  "environments": {"p5": "pending", "ota": "not-applicable"},
+  "detection": {
+    "expected_signal": "AuthenticationFailure synchronization failure cause 21",
+    "aggregation_scope": "UE context/node/cell/window",
+    "expected_rule": "AN-01",
+    "expected_level": "anomaly",
+    "period_ms": 100
+  },
+  "safety": {"requires_enable": true, "max_duration_s": 10, "max_ues": 1},
+  "signal_generator": "AN-01",
+  "provenance": {
+    "references": [
+      "https://github.com/relentless-warrior/LTEInspector/tree/033184ce35f2dee31ed1103c1289a57d48579b2a",
+      "https://www.csl.sri.com/users/gehani/papers/NDSS-2024.5G-Spector.pdf"
+    ],
+    "upstream": ["production detector AN-01"]
+  }
+}

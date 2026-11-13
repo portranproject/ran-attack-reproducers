@@ -1,0 +1,30 @@
+{
+  "schema": "ran-reproducer.module.v1",
+  "id": "blind-dos",
+  "module": "blind-dos",
+  "name": "현재 유효 5G-GUTI 재사용형 Blind DoS",
+  "aliases": ["blind"],
+  "rule_ids": ["L3-20"],
+  "reproduction_level": "protocol",
+  "active_mode": "attack",
+  "claim": "별도 가입자 UE가 피해자의 현재 5G-GUTI를 재사용해 기존 피해자 컨텍스트와 서비스를 교란하는 one-shot 프로토콜 재현",
+  "commands": {
+    "run": "bin/blind-run",
+    "campaign": "bin/blind-campaign",
+    "analyze": "analysis/export_labels.py",
+    "verify": "analysis/evidence_manifest.py"
+  },
+  "environments": {"p5": "qualified", "ota": "pending"},
+  "detection": {
+    "expected_signal": "동일 5G-S-TMSI/GUTI의 상충 등록과 피해자 컨텍스트 효과",
+    "aggregation_scope": "UE identity/node/cell/window",
+    "expected_rule": "L3-20",
+    "expected_level": "attack",
+    "period_ms": 100
+  },
+  "safety": {"requires_enable": true, "max_duration_s": 180, "max_ues": 4},
+  "provenance": {
+    "references": ["https://github.com/open5gs/open5gs/issues/4577"],
+    "upstream": ["OAI 6d6782b48484efd935c14e834832032743f9b138"]
+  }
+}

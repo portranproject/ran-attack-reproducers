@@ -10,6 +10,7 @@
 
 # Local run and build output
 /logs/
+/runs/
 /reproducers/*/runs/
 /reproducers/*/logs/
 /reproducers/*/build/
@@ -64,6 +65,8 @@ htmlcov/
 .env
 .env.*
 !.env.example
+/profiles/*.json
+!/profiles/*.example.json
 
 # OS metadata
 .DS_Store

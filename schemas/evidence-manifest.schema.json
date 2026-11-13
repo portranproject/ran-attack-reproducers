@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portranproject.github.io/ran-attack-reproducers/schemas/evidence-manifest.schema.json",
+  "title": "공통 증거 봉인",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "run_id", "files"],
+  "properties": {
+    "schema": {"const": "ran-reproducer.evidence.v1"},
+    "run_id": {"type": "string"},
+    "files": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["size", "sha256"],
+        "properties": {
+          "size": {"type": "integer", "minimum": 0},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    }
+  }
+}

@@ -3,18 +3,31 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ATTACKS=(rrc-storm blind-dos uplink-dos auth-timeout downlink-imsi ue-capability)
+ATTACKS=(
+  rrc-storm blind-dos uplink-dos uplink-credential-flood auth-timeout downlink-imsi ue-capability
+  nas-counter-desynchronization authentication-sync-failure nas-counter-reset
+  uplink-identifier-exposure short-connection-repeat rrc-reject-release-imprisonment tac-manipulation-return
+)
+REPROCTL="$ROOT/tools/reproctl.py"
 
 fail() { echo "ctl.sh: $*" >&2; exit 2; }
 
 attack_id() {
   case ${1:-} in
-    rrc-storm|rrc-signaling-storm|rrc) echo rrc-storm ;;
+    rrc-storm|rrc-signaling-storm|rrc-context-exhaustion|rrc) echo rrc-storm ;;
     blind-dos|blind) echo blind-dos ;;
     uplink-dos|uplink) echo uplink-dos ;;
+    uplink-credential-flood|credential-flood|uplink-l3-21) echo uplink-credential-flood ;;
     auth-timeout|authentication-timeout-exhaustion|auth) echo auth-timeout ;;
-    downlink-imsi|downlink-imsi-extractor|downlink) echo downlink-imsi ;;
+    downlink-imsi|downlink-imsi-extractor|downlink-identifier-exposure|downlink) echo downlink-imsi ;;
     ue-capability|ue-capability-hijacking|capability) echo ue-capability ;;
+    nas-counter-desynchronization|l3-06) echo nas-counter-desynchronization ;;
+    authentication-sync-failure|an-01) echo authentication-sync-failure ;;
+    nas-counter-reset|an-06a) echo nas-counter-reset ;;
+    uplink-identifier-exposure|uplink-imsi|an-02) echo uplink-identifier-exposure ;;
+    short-connection-repeat|an-04) echo short-connection-repeat ;;
+    rrc-reject-release-imprisonment|an-07) echo rrc-reject-release-imprisonment ;;
+    tac-manipulation-return|an-08) echo tac-manipulation-return ;;
     *) return 1 ;;
   esac
 }
@@ -24,9 +37,17 @@ attack_label() {
     rrc-storm) echo "RRCSetupComplete 미전송형" ;;
     blind-dos) echo "현재 유효 5G-GUTI 재사용형 Blind DoS" ;;
     uplink-dos) echo "상향 DoS 프로토콜 영향 에뮬레이션" ;;
+    uplink-credential-flood) echo "무효·위조 자격증명 플러드형 상향 DoS 입력 에뮬레이션" ;;
     auth-timeout) echo "인증 응답 미전송형 연결 컨텍스트 고갈 (NAS 고갈)" ;;
     downlink-imsi) echo "하향 IMSI 추출 결과 에뮬레이션" ;;
     ue-capability) echo "보안 전 UE Capability Information 주입" ;;
+    nas-counter-desynchronization) echo "NAS 카운터 비동기화 결과" ;;
+    authentication-sync-failure) echo "인증 동기 실패" ;;
+    nas-counter-reset) echo "NAS 카운터 reset 계열 재인증" ;;
+    uplink-identifier-exposure) echo "GUTI 불일치 후 상향 식별자 요청 결과" ;;
+    short-connection-repeat) echo "짧은 RRC 연결 반복" ;;
+    rrc-reject-release-imprisonment) echo "RRC 거절·해제 투옥 계열 미완료 반복" ;;
+    tac-manipulation-return) echo "TAC 조작·가짜 기지국 복귀 신호" ;;
   esac
 }
 
@@ -34,7 +55,10 @@ attack_kind() {
   case $1 in
     rrc-storm|blind-dos|auth-timeout) echo "프로토콜 재현" ;;
     uplink-dos|downlink-imsi) echo "프로토콜 결과 에뮬레이션" ;;
+    uplink-credential-flood) echo "탐지 입력 에뮬레이션" ;;
     ue-capability) echo "프로토콜 관측 에뮬레이션" ;;
+    nas-counter-desynchronization|authentication-sync-failure|nas-counter-reset|uplink-identifier-exposure|short-connection-repeat|rrc-reject-release-imprisonment|tac-manipulation-return)
+      echo "탐지 입력 에뮬레이션" ;;
   esac
 }
 
@@ -42,11 +66,27 @@ module_dir() {
   case $1 in
     rrc-storm) echo "$ROOT/reproducers/rrc-signaling-storm" ;;
     blind-dos) echo "$ROOT/reproducers/blind-dos" ;;
-    uplink-dos) echo "$ROOT/reproducers/uplink-dos" ;;
+    uplink-dos|uplink-credential-flood) echo "$ROOT/reproducers/uplink-dos" ;;
     auth-timeout) echo "$ROOT/reproducers/authentication-timeout-exhaustion" ;;
     downlink-imsi) echo "$ROOT/reproducers/downlink-imsi-extractor" ;;
     ue-capability) echo "$ROOT/reproducers/ue-capability-hijacking" ;;
+    uplink-identifier-exposure) echo "$ROOT/reproducers/uplink-imsi-extractor" ;;
+    nas-counter-desynchronization|authentication-sync-failure|nas-counter-reset|short-connection-repeat|rrc-reject-release-imprisonment|tac-manipulation-return)
+      echo "$ROOT/reproducers/$1" ;;
   esac
+}
+
+is_common_signal() {
+  case $1 in
+    nas-counter-desynchronization|authentication-sync-failure|nas-counter-reset|uplink-identifier-exposure|short-connection-repeat|rrc-reject-release-imprisonment|tac-manipulation-return) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+load_profile_env() {
+  local profile=$1 line output
+  output=$(python3 "$REPROCTL" env --profile "$profile") || fail "profile을 불러오지 못했습니다: $profile"
+  while IFS= read -r line; do export "$line"; done <<<"$output"
 }
 
 config_file() {
@@ -54,7 +94,7 @@ config_file() {
   case $1 in
     rrc-storm) echo "$dir/conf/rss.conf" ;;
     blind-dos) echo "$dir/conf/blind.conf" ;;
-    uplink-dos) echo "$dir/conf/uplink.conf" ;;
+    uplink-dos|uplink-credential-flood) echo "$dir/conf/uplink.conf" ;;
     auth-timeout) echo "$dir/conf/auth-timeout.conf" ;;
     downlink-imsi) echo "$dir/conf/downlink-imsi.conf" ;;
     ue-capability) echo "$dir/conf/ue-capability.conf" ;;
@@ -66,7 +106,7 @@ config_example() {
   case $1 in
     rrc-storm) echo "$dir/conf/rss.conf.example" ;;
     blind-dos) echo "$dir/conf/p5-zmq.conf.example" ;;
-    uplink-dos) echo "$dir/conf/uplink.conf.example" ;;
+    uplink-dos|uplink-credential-flood) echo "$dir/conf/uplink.conf.example" ;;
     auth-timeout) echo "$dir/conf/auth-timeout.conf.example" ;;
     downlink-imsi) echo "$dir/conf/p5-zmq.conf.example" ;;
     ue-capability) echo "$dir/conf/p5-zmq.conf.example" ;;
@@ -77,7 +117,7 @@ oai_tree() {
   case $1 in
     rrc-storm) echo "${RRC_OAI:-${OAI_BASE:-/root/OAI}}" ;;
     blind-dos) echo "${BLIND_OAI:-/root/OAI-blind-dos-w38}" ;;
-    uplink-dos) echo "${UPLINK_OAI:-/root/OAI-uplink-dos-w38}" ;;
+    uplink-dos|uplink-credential-flood) echo "${UPLINK_OAI:-/root/OAI-uplink-dos-w38}" ;;
     auth-timeout) echo "${AUTH_TIMEOUT_OAI:-/root/OAI-auth-timeout-w38}" ;;
     downlink-imsi) echo "${DOWNLINK_IMSI_OAI:-/root/OAI-downlink-imsi-w38}" ;;
     ue-capability) echo "${UE_CAPABILITY_OAI:-/root/OAI-ue-capability-w38}" ;;
@@ -95,7 +135,7 @@ built_marker() {
   case $1 in
     rrc-storm) echo target_occupancy ;;
     blind-dos) echo target_5g_s_tmsi ;;
-    uplink-dos) echo 'UPLINK_DOS_EMULATION event=service_request_mac_corrupted' ;;
+    uplink-dos|uplink-credential-flood) echo 'UPLINK_DOS_EMULATION event=service_request_mac_corrupted' ;;
     auth-timeout) echo 'AUTH_TIMEOUT_EXHAUSTION event=authentication_request_withheld' ;;
     downlink-imsi) echo 'DOWNLINK_IMSI_EXTRACTOR event=identity_response_substituted' ;;
     ue-capability) echo 'UE_CAPABILITY_INJECTION event=%s' ;;
@@ -106,6 +146,15 @@ ue_binary() { echo "$(oai_tree "$1")/cmake_targets/ran_build/build/nr-uesoftmode
 
 is_built() {
   local binary marker
+  if is_common_signal "$1"; then
+    [[ -x $REPROCTL && -f $ROOT/tools/generate_rule_signal.py ]]
+    return
+  fi
+  if [[ $1 == uplink-credential-flood ]]; then
+    [[ -x $ROOT/reproducers/uplink-dos/bin/uplink-credential-flood-run \
+       && -f $ROOT/reproducers/uplink-dos/analysis/generate_l3_21_replay.py ]]
+    return
+  fi
   binary=$(ue_binary "$1")
   marker=$(built_marker "$1")
   [[ -x $binary ]] && grep -Faq "$marker" "$binary"
@@ -151,7 +200,17 @@ ensure_worktree() {
 build_one() {
   local attack=$1 dir tree
   dir=$(module_dir "$attack")
+  if is_common_signal "$attack"; then
+    python3 "$REPROCTL" validate >/dev/null
+    echo "도구 준비됨: $(attack_label "$attack") (OAI 빌드 없음)"
+    return
+  fi
   tree=$(oai_tree "$attack")
+  if [[ $attack == uplink-credential-flood ]]; then
+    is_built "$attack" || fail "탐지 입력 도구가 없습니다: $dir"
+    echo "도구 준비됨: $(attack_label "$attack") (OAI 빌드 없음)"
+    return
+  fi
   if is_built "$attack"; then
     echo "빌드 준비됨: $(attack_label "$attack")"
     return
@@ -174,12 +233,18 @@ build_one() {
 }
 
 setup_one() {
+  if is_common_signal "$1"; then build_one "$1"; return; fi
   prepare_config "$1"
   build_one "$1"
 }
 
 doctor_one() {
   local attack=$1 config failed=0
+  if is_common_signal "$attack"; then
+    echo "[$attack] $(attack_label "$attack")"
+    if is_built "$attack"; then echo "  OK 공통 탐지 입력 runner"; else echo "  필요 도구: $REPROCTL"; failed=1; fi
+    return "$failed"
+  fi
   config=$(config_file "$attack")
   echo "[$attack] $(attack_label "$attack")"
   if [[ -f $config && ! -L $config ]]; then
@@ -189,7 +254,11 @@ doctor_one() {
     failed=1
   fi
   if is_built "$attack"; then
-    echo "  OK 빌드: $(ue_binary "$attack")"
+    if [[ $attack == uplink-credential-flood ]]; then
+      echo "  OK 도구: $(run_binary "$attack")"
+    else
+      echo "  OK 빌드: $(ue_binary "$attack")"
+    fi
   else
     echo "  필요 빌드: $(ue_binary "$attack")"
     failed=1
@@ -201,7 +270,7 @@ config_env() {
   case $1 in
     rrc-storm) echo RSS_CONF ;;
     blind-dos) echo BLIND_CONF ;;
-    uplink-dos) echo UPLINK_CONF ;;
+    uplink-dos|uplink-credential-flood) echo UPLINK_CONF ;;
     auth-timeout) echo AUTH_TIMEOUT_CONF ;;
     downlink-imsi) echo DOWNLINK_IMSI_CONF ;;
     ue-capability) echo UE_CAPABILITY_CONF ;;
@@ -214,6 +283,7 @@ run_binary() {
     rrc-storm) echo "$dir/bin/rss-run" ;;
     blind-dos) echo "$dir/bin/blind-run" ;;
     uplink-dos) echo "$dir/bin/uplink-run" ;;
+    uplink-credential-flood) echo "$dir/bin/uplink-credential-flood-run" ;;
     auth-timeout) echo "$dir/bin/auth-timeout-run" ;;
     downlink-imsi) echo "$dir/bin/downlink-imsi-run" ;;
     ue-capability) echo "$dir/bin/ue-capability-run" ;;
@@ -225,6 +295,7 @@ campaign_binary() {
   case $1 in
     blind-dos) echo "$dir/bin/blind-campaign" ;;
     uplink-dos) echo "$dir/bin/uplink-campaign" ;;
+    uplink-credential-flood) echo "$dir/bin/uplink-credential-flood-campaign" ;;
     auth-timeout) echo "$dir/bin/auth-timeout-campaign" ;;
     downlink-imsi) echo "$dir/bin/downlink-imsi-campaign" ;;
     ue-capability) echo "$dir/bin/ue-capability-campaign" ;;
@@ -235,7 +306,8 @@ campaign_binary() {
 active_mode() {
   case $1 in
     rrc-storm|blind-dos|auth-timeout) echo attack ;;
-    uplink-dos|downlink-imsi|ue-capability) echo emulation ;;
+    uplink-credential-flood|uplink-dos|downlink-imsi|ue-capability) echo emulation ;;
+    nas-counter-desynchronization|authentication-sync-failure|nas-counter-reset|uplink-identifier-exposure|short-connection-repeat|rrc-reject-release-imprisonment|tac-manipulation-return) echo emulation ;;
   esac
 }
 
@@ -250,7 +322,7 @@ print_command() {
 }
 
 run_one() {
-  local attack=$1 mode=$2 run_id=$3 enabled=$4 dry_run=$5
+  local attack=$1 mode=$2 run_id=$3 enabled=$4 dry_run=$5 profile=${6:-p5}
   local expected config env_name runner enable_value
   local -a command
   expected=$(active_mode "$attack")
@@ -267,6 +339,12 @@ run_one() {
     [[ $enabled == 1 ]] || fail "$mode 실행에는 명시적 --enable이 필요합니다"
     enable_value=1
   fi
+  if is_common_signal "$attack"; then
+    command=(python3 "$REPROCTL" signal-run "$attack" "$mode" "$run_id" --profile "$profile")
+    [[ $enabled == 1 ]] && command+=(--enable)
+    if [[ $dry_run == 1 ]]; then print_command "${command[@]}"; return; fi
+    exec "${command[@]}"
+  fi
   config=$(config_file "$attack")
   env_name=$(config_env "$attack")
   runner=$(run_binary "$attack")
@@ -282,12 +360,34 @@ run_one() {
 }
 
 campaign_one() {
-  local attack=$1 campaign_id=$2 enabled=$3 dry_run=$4
+  local attack=$1 campaign_id=$2 enabled=$3 dry_run=$4 profile=${5:-p5}
   local config env_name runner
   local -a command
-  [[ $attack != rrc-storm ]] || fail "동결된 RRC 모듈에는 공통 3세트 캠페인이 없습니다"
   valid_run_id "$campaign_id" || fail "CAMPAIGN_ID가 안전하지 않습니다"
   [[ $enabled == 1 ]] || fail "캠페인에는 명시적 --enable이 필요합니다"
+  if is_common_signal "$attack"; then
+    command=(python3 "$REPROCTL" signal-campaign "$attack" "$campaign_id" --profile "$profile" --enable)
+    if [[ $dry_run == 1 ]]; then print_command "${command[@]}"; return; fi
+    exec "${command[@]}"
+  fi
+  if [[ $attack == rrc-storm ]]; then
+    config=$(config_file "$attack")
+    runner=$(run_binary "$attack")
+    if [[ $dry_run == 1 ]]; then
+      print_command env "RSS_CONF=$config" "$runner" -n "$campaign_id-control-1" -e 0
+      print_command env "RSS_CONF=$config" "$runner" -n "$campaign_id-attack-1" -e 1
+      echo "위 control→attack을 set 1..3으로 반복"
+      return
+    fi
+    [[ -f $config && ! -L $config ]] || fail "설정이 없습니다. 먼저 실행: ./ctl.sh setup $attack"
+    [[ -x $runner ]] || fail "runner가 없습니다: $runner"
+    local index
+    for index in 1 2 3; do
+      env "RSS_CONF=$config" "$runner" -n "$campaign_id-control-$index" -e 0
+      env "RSS_CONF=$config" "$runner" -n "$campaign_id-attack-$index" -e 1
+    done
+    return
+  fi
   config=$(config_file "$attack")
   env_name=$(config_env "$attack")
   runner=$(campaign_binary "$attack")
@@ -299,11 +399,8 @@ campaign_one() {
 }
 
 list_attacks() {
-  printf '%-16s %-28s %s\n' ID 유형 이름
-  local attack
-  for attack in "${ATTACKS[@]}"; do
-    printf '%-16s %-28s %s\n' "$attack" "$(attack_kind "$attack")" "$(attack_label "$attack")"
-  done
+  python3 "$REPROCTL" catalog
+  printf '%-32s %-12s %-30s %s\n' uplink-dos legacy protocol-result-emulation "상향 DoS 단발 MAC 변조 결과 에뮬레이션"
 }
 
 for_each_strict() {
@@ -357,7 +454,6 @@ menu() {
           if [[ $answer == ENABLE ]]; then run_one "$choice" "$mode" "$run_id" 1 0; else echo "취소됨"; fi
           ;;
         3세트_캠페인)
-          if [[ $choice == rrc-storm ]]; then echo "RRC 공통 캠페인은 지원하지 않습니다"; break; fi
           run_id="$choice-campaign-$(date -u +%Y%m%dT%H%M%SZ)"
           read -r -p "CAMPAIGN_ID [$run_id]: " answer; run_id=${answer:-$run_id}
           read -r -p "격리 테스트베드임을 확인하려면 ENABLE 입력: " answer
@@ -378,10 +474,15 @@ usage() {
   ./ctl.sh doctor [ID|all]         설정·빌드 상태 확인
   ./ctl.sh setup ID|all            설정 생성 + 전용 OAI 준비 + 빌드
   ./ctl.sh build ID|all            이미 준비된 OAI에서 빌드
-  ./ctl.sh run ID MODE RUN_ID [--enable] [--dry-run]
-  ./ctl.sh campaign ID CAMPAIGN_ID --enable [--dry-run]
+  ./ctl.sh run ID MODE RUN_ID [--profile p5|ota] [--enable] [--dry-run]
+  ./ctl.sh campaign ID [CAMPAIGN_ID] [--profile p5|ota] --enable [--dry-run]
+  ./ctl.sh replay RUN_ID --profile p5|ota
+  ./ctl.sh report RUN_ID [--profile p5|ota]
+  ./ctl.sh verify RUN_ID [--profile p5|ota]
+  ./ctl.sh coverage
+  ./ctl.sh validate
 
-ID: rrc-storm, blind-dos, uplink-dos, auth-timeout, downlink-imsi, ue-capability
+ID 전체 목록: ./ctl.sh list
 MODE: control 또는 목록에 맞는 attack/emulation
 
 setup은 현재 p5 경로를 기본값으로 사용한다. 다른 호스트에서는 OAI_BASE와
@@ -390,37 +491,58 @@ EOF
 }
 
 main() {
-  local subcommand=${1:-menu} target attack mode run_id enabled=0 dry_run=0 option
+  local subcommand=${1:-menu} target attack mode run_id enabled=0 dry_run=0 option profile=p5 profile_given=0
   case $subcommand in
     menu) menu ;;
     list) list_attacks ;;
+    coverage) python3 "$REPROCTL" coverage ;;
+    validate) python3 "$REPROCTL" validate ;;
     doctor)
       command -v git >/dev/null && command -v python3 >/dev/null \
         || fail "git과 python3가 필요합니다"
-      doctor_targets "${2:-all}" ;;
-    setup) [[ $# == 2 ]] || fail "setup은 ID 또는 all 하나가 필요합니다"; for_each_strict setup_one "$2" ;;
-    build) [[ $# == 2 ]] || fail "build는 ID 또는 all 하나가 필요합니다"; for_each_strict build_one "$2" ;;
+      target=all
+      shift
+      while [[ $# -gt 0 ]]; do
+        case $1 in --profile) [[ $# -ge 2 ]] || fail "--profile 값이 필요합니다"; profile=$2; profile_given=1; shift 2 ;; *) target=$1; shift ;; esac
+      done
+      [[ $profile_given == 0 ]] || python3 "$REPROCTL" doctor --profile "$profile"
+      doctor_targets "$target" ;;
+    setup|build)
+      [[ $# -ge 2 ]] || fail "$subcommand는 ID 또는 all이 필요합니다"
+      target=$2; shift 2
+      while [[ $# -gt 0 ]]; do
+        case $1 in --profile) [[ $# -ge 2 ]] || fail "--profile 값이 필요합니다"; profile=$2; profile_given=1; shift 2 ;; *) fail "알 수 없는 옵션: $1" ;; esac
+      done
+      [[ $profile_given == 0 ]] || load_profile_env "$profile"
+      if [[ $subcommand == setup ]]; then for_each_strict setup_one "$target"; else for_each_strict build_one "$target"; fi ;;
     run)
       [[ $# -ge 4 ]] || fail "run은 ID MODE RUN_ID가 필요합니다"
       attack=$(attack_id "$2") || fail "알 수 없는 공격 ID: $2"
       mode=$3
       run_id=$4
       shift 4
-      for option in "$@"; do
-        case $option in --enable) enabled=1 ;; --dry-run) dry_run=1 ;; *) fail "알 수 없는 옵션: $option" ;; esac
+      while [[ $# -gt 0 ]]; do
+        case $1 in --enable) enabled=1; shift ;; --dry-run) dry_run=1; shift ;; --profile) [[ $# -ge 2 ]] || fail "--profile 값이 필요합니다"; profile=$2; shift 2 ;; *) fail "알 수 없는 옵션: $1" ;; esac
       done
-      run_one "$attack" "$mode" "$run_id" "$enabled" "$dry_run"
+      run_one "$attack" "$mode" "$run_id" "$enabled" "$dry_run" "$profile"
       ;;
     campaign)
-      [[ $# -ge 3 ]] || fail "campaign은 ID CAMPAIGN_ID가 필요합니다"
+      [[ $# -ge 2 ]] || fail "campaign은 ID가 필요합니다"
       attack=$(attack_id "$2") || fail "알 수 없는 공격 ID: $2"
-      target=$3
-      shift 3
-      for option in "$@"; do
-        case $option in --enable) enabled=1 ;; --dry-run) dry_run=1 ;; *) fail "알 수 없는 옵션: $option" ;; esac
+      if [[ ${3:-} == --* || -z ${3:-} ]]; then target="$attack-campaign-$(date -u +%Y%m%dT%H%M%SZ)"; shift 2; else target=$3; shift 3; fi
+      while [[ $# -gt 0 ]]; do
+        case $1 in --enable) enabled=1; shift ;; --dry-run) dry_run=1; shift ;; --profile) [[ $# -ge 2 ]] || fail "--profile 값이 필요합니다"; profile=$2; shift 2 ;; *) fail "알 수 없는 옵션: $1" ;; esac
       done
-      campaign_one "$attack" "$target" "$enabled" "$dry_run"
+      campaign_one "$attack" "$target" "$enabled" "$dry_run" "$profile"
       ;;
+    replay)
+      [[ $# == 4 && $3 == --profile ]] || fail "replay RUN_ID --profile NAME 형식이 필요합니다"
+      exec python3 "$REPROCTL" replay "$2" --profile "$4" ;;
+    report|verify)
+      [[ $# -ge 2 ]] || fail "$subcommand RUN_ID가 필요합니다"
+      run_id=$2; shift 2
+      if [[ $# -gt 0 ]]; then [[ $# == 2 && $1 == --profile ]] || fail "--profile NAME 형식이 필요합니다"; profile=$2; exec python3 "$REPROCTL" "$subcommand" "$run_id" --profile "$profile"; fi
+      exec python3 "$REPROCTL" "$subcommand" "$run_id" ;;
     -h|--help|help) usage ;;
     *) usage; fail "알 수 없는 명령: $subcommand" ;;
   esac

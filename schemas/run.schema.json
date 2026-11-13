@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portranproject.github.io/ran-attack-reproducers/schemas/run.schema.json",
+  "title": "공통 재현 실행",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema", "run_id", "scenario_id", "rule_ids", "mode", "profile", "reproduction_level", "started_at", "period_ms", "claims"],
+  "properties": {
+    "schema": {"const": "ran-reproducer.run.v1"},
+    "run_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"},
+    "scenario_id": {"type": "string"},
+    "rule_ids": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "mode": {"enum": ["control", "attack", "emulation"]},
+    "profile": {"type": "string"},
+    "reproduction_level": {"type": "string"},
+    "started_at": {"type": "string", "format": "date-time"},
+    "period_ms": {"const": 100},
+    "claims": {
+      "type": "object",
+      "required": ["live_protocol_path_observed", "rf_cause_observed", "service_denial_observed"],
+      "properties": {
+        "live_protocol_path_observed": {"type": "boolean"},
+        "rf_cause_observed": {"type": "boolean"},
+        "service_denial_observed": {"type": "boolean"}
+      }
+    }
+  }
+}

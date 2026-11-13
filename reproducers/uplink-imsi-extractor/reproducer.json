@@ -1,0 +1,29 @@
+{
+  "schema": "ran-reproducer.module.v1",
+  "id": "uplink-identifier-exposure",
+  "module": "uplink-imsi-extractor",
+  "name": "GUTI 불일치 후 상향 식별자 요청 결과",
+  "aliases": ["uplink-imsi", "an-02"],
+  "rule_ids": ["AN-02"],
+  "reproduction_level": "detector-input-emulation",
+  "active_mode": "emulation",
+  "claim": "GUTI 기반 연결 뒤 IdentityRequest가 반복되는 5G-Spector 계열 탐지 신호를 재현하며 RF 공격과 IMSI 획득은 주장하지 않음",
+  "commands": {"run": "@common-signal", "campaign": "@common-signal"},
+  "environments": {"p5": "pending", "ota": "not-applicable"},
+  "detection": {
+    "expected_signal": "5G-GUTI 등록 시도 뒤 IdentityRequest 반복",
+    "aggregation_scope": "node/cell/window",
+    "expected_rule": "AN-02",
+    "expected_level": "anomaly",
+    "period_ms": 100
+  },
+  "safety": {"requires_enable": true, "max_duration_s": 10, "max_ues": 5},
+  "signal_generator": "AN-02",
+  "provenance": {
+    "references": [
+      "https://github.com/5GSEC/5G-Spector/tree/63e94b9ad8860298894ed7a94e52f00faea02719",
+      "https://www.csl.sri.com/users/gehani/papers/NDSS-2024.5G-Spector.pdf"
+    ],
+    "upstream": ["production detector AN-02"]
+  }
+}

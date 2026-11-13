@@ -23,3 +23,7 @@ SESSION_SETTLE_S=4
 IDLE_RELEASE_TIMEOUT_S=12
 PING_COUNT=5
 RECOVERY_MAX_PINGS=10
+
+# 무효·위조 자격증명 플러드형 탐지 입력 에뮬레이션
+DETECTOR_BIN=/root/detection/build/detector
+DETECTOR_CONFIG=/root/detection/config/detector.json

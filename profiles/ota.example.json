@@ -1,0 +1,36 @@
+{
+  "schema": "ran-reproducer.profile.v1",
+  "id": "ota",
+  "backend": "ota",
+  "configured": false,
+  "lab_only": true,
+  "run_root": "/var/lib/ran-reproducer/runs",
+  "environment": {
+    "OAI_BASE": "/srv/OAI",
+    "DETECTOR_BIN": "/srv/detection/build/detector",
+    "DETECTOR_CONFIG": "/srv/detection/config/detector.json"
+  },
+  "credentials_file": "/root/.config/ran-reproducer/ota.env",
+  "detector": {
+    "binary": "/srv/detection/build/detector",
+    "config": "/srv/detection/config/detector.json",
+    "repository": "https://github.com/portranproject/detection",
+    "commit": "a34b358e585e24aa91b1586da022ad14ef98d3e0"
+  },
+  "telemetry": {
+    "binary": "/srv/telemetry/build/telemetry",
+    "period_ms": 100,
+    "repository": "https://github.com/portranproject/telemetry",
+    "commit": "7550153a58a993942303bd3d4a6cd635b664468b"
+  },
+  "limits": {"max_duration_s": 180, "max_ues": 8, "max_tx_gain_db": 0},
+  "target_allowlist": ["replace-with-shielded-lab-target"],
+  "rf": {
+    "shielding_confirmed": false,
+    "clock_source": "replace-with-reviewed-clock-source",
+    "devices": [
+      {"role": "attacker-ue", "serial": "replace-with-sdr-serial"},
+      {"role": "o-du", "serial": "replace-with-sdr-serial"}
+    ]
+  }
+}

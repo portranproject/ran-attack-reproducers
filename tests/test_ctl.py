@@ -20,7 +20,7 @@ class ControllerTest(unittest.TestCase):
     def test_list_exposes_every_module_and_reproduction_type(self):
         result = self.run_ctl("list")
         self.assertEqual(result.returncode, 0, result.stderr)
-        for attack in ("rrc-storm", "blind-dos", "uplink-dos", "auth-timeout", "downlink-imsi", "ue-capability"):
+        for attack in ("rrc-storm", "blind-dos", "uplink-dos", "uplink-credential-flood", "auth-timeout", "downlink-imsi", "ue-capability"):
             self.assertIn(attack, result.stdout)
         self.assertIn("프로토콜 결과 에뮬레이션", result.stdout)
 
@@ -45,6 +45,32 @@ class ControllerTest(unittest.TestCase):
         self.assertIn("uplink-run", result.stdout)
         self.assertIn("emulation", result.stdout)
         self.assertIn("-e 1", result.stdout)
+
+    def test_credential_flood_dry_run_maps_to_detection_runner(self):
+        result = self.run_ctl(
+            "run", "uplink-credential-flood", "emulation", "test-flood", "--enable", "--dry-run"
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("uplink-credential-flood-run", result.stdout)
+        self.assertIn("emulation", result.stdout)
+
+    def test_credential_flood_build_does_not_build_oai(self):
+        result = self.run_ctl("build", "uplink-credential-flood")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("OAI 빌드 없음", result.stdout)
+
+    def test_manifest_scenario_alias_and_generated_campaign_id(self):
+        result = self.run_ctl(
+            "campaign", "rrc-context-exhaustion", "--profile", "p5", "--enable", "--dry-run"
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("rss-run", result.stdout)
+        self.assertIn("set 1..3", result.stdout)
+
+    def test_validate_routes_to_manifest_catalog(self):
+        result = self.run_ctl("validate")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("13 modules", result.stdout)
 
     def test_control_rejects_enable(self):
         result = self.run_ctl(

@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portranproject.github.io/ran-attack-reproducers/schemas/reproducer.schema.json",
+  "title": "기지국 공격 재현 모듈",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "module",
+    "name",
+    "rule_ids",
+    "reproduction_level",
+    "active_mode",
+    "claim",
+    "commands",
+    "environments",
+    "detection",
+    "safety",
+    "provenance"
+  ],
+  "properties": {
+    "schema": {"const": "ran-reproducer.module.v1"},
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,63}$"},
+    "module": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,63}$"},
+    "name": {"type": "string", "minLength": 1},
+    "aliases": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "rule_ids": {"type": "array", "items": {"type": "string"}, "minItems": 1, "uniqueItems": true},
+    "reproduction_level": {
+      "enum": ["protocol", "protocol-result-emulation", "protocol-observation-emulation", "detector-input-emulation"]
+    },
+    "active_mode": {"enum": ["attack", "emulation"]},
+    "claim": {"type": "string", "minLength": 1},
+    "commands": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run"],
+      "properties": {
+        "doctor": {"type": "string"},
+        "setup": {"type": "string"},
+        "build": {"type": "string"},
+        "run": {"type": "string"},
+        "campaign": {"type": "string"},
+        "analyze": {"type": "string"},
+        "verify": {"type": "string"}
+      }
+    },
+    "environments": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["p5", "ota"],
+      "properties": {
+        "p5": {"enum": ["qualified", "pending", "not-applicable"]},
+        "ota": {"enum": ["qualified", "pending", "not-applicable"]}
+      }
+    },
+    "detection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expected_signal", "aggregation_scope", "expected_rule", "expected_level", "period_ms"],
+      "properties": {
+        "expected_signal": {"type": "string", "minLength": 1},
+        "aggregation_scope": {"type": "string", "minLength": 1},
+        "expected_rule": {"type": "string", "minLength": 1},
+        "expected_level": {"enum": ["attack", "anomaly"]},
+        "period_ms": {"const": 100}
+      }
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requires_enable", "max_duration_s"],
+      "properties": {
+        "requires_enable": {"type": "boolean"},
+        "max_duration_s": {"type": "integer", "minimum": 1, "maximum": 3600},
+        "max_ues": {"type": "integer", "minimum": 1, "maximum": 256}
+      }
+    },
+    "signal_generator": {"type": "string"},
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["references", "upstream"],
+      "properties": {
+        "references": {
+          "type": "array",
+          "items": {"type": "string", "format": "uri"},
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "upstream": {
+          "type": "array",
+          "items": {"type": "string"},
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

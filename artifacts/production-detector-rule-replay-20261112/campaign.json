@@ -1,0 +1,24 @@
+{
+  "schema": "ran-reproducer.aggregate-campaign.v1",
+  "date": "2026-11-12",
+  "detector": {
+    "binary_sha256": "b28565aacac1a2187f5874732f3b84637326b5b651678fd32efb019f9ead4704",
+    "commit": "a34b358e585e24aa91b1586da022ad14ef98d3e0",
+    "config_sha256": "9bbb0b5039b05d0aa73c31c4a4e30860042a873ebc48ba8589191f6f61c77c53"
+  },
+  "generator_sha256": "6c301022229e56b3e9c6c6cadd6767ff300aa5b6004d31740ad016522f9327e0",
+  "live_protocol_path_observed": false,
+  "matched_repetitions": 3,
+  "passed": true,
+  "results": [
+    {"rule": "L3-06", "scenario_id": "nas-counter-desynchronization", "control_expected_alerts": 0, "emulation_expected_alerts": 3, "detection_latency_ms": [2, 2, 2]},
+    {"rule": "AN-01", "scenario_id": "authentication-sync-failure", "control_expected_alerts": 0, "emulation_expected_alerts": 3, "detection_latency_ms": [82, 82, 82]},
+    {"rule": "AN-06a", "scenario_id": "nas-counter-reset", "control_expected_alerts": 0, "emulation_expected_alerts": 3, "detection_latency_ms": [50, 50, 50]},
+    {"rule": "AN-02", "scenario_id": "uplink-identifier-exposure", "control_expected_alerts": 0, "emulation_expected_alerts": 3, "detection_latency_ms": [5, 5, 5]},
+    {"rule": "AN-04", "scenario_id": "short-connection-repeat", "control_expected_alerts": 0, "emulation_expected_alerts": 3, "detection_latency_ms": [1300, 1300, 1300]},
+    {"rule": "AN-07", "scenario_id": "rrc-reject-release-imprisonment", "control_expected_alerts": 0, "emulation_expected_alerts": 3, "detection_latency_ms": [2100, 2100, 2100]},
+    {"rule": "AN-08", "scenario_id": "tac-manipulation-return", "control_expected_alerts": 0, "emulation_expected_alerts": 3, "detection_latency_ms": [100, 100, 100]}
+  ],
+  "rf_cause_observed": false,
+  "service_denial_observed": false
+}

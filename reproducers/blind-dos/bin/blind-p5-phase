@@ -36,6 +36,12 @@ VICTIM_TX_ENDPOINT=${VICTIM_TX_ENDPOINT:-}
 VICTIM_RX_ENDPOINT=${VICTIM_RX_ENDPOINT:-}
 ATTACKER_TX_ENDPOINT=${ATTACKER_TX_ENDPOINT:-}
 ATTACKER_RX_ENDPOINT=${ATTACKER_RX_ENDPOINT:-}
+if [[ -n ${SAME_CELL_VICTIM_TX_ENDPOINT:-} ]]; then
+  VICTIM_TX_ENDPOINT=$SAME_CELL_VICTIM_TX_ENDPOINT
+  VICTIM_RX_ENDPOINT=${SAME_CELL_VICTIM_RX_ENDPOINT:-}
+  ATTACKER_TX_ENDPOINT=${SAME_CELL_ATTACKER_TX_ENDPOINT:-}
+  ATTACKER_RX_ENDPOINT=${SAME_CELL_ATTACKER_RX_ENDPOINT:-}
+fi
 
 PROCESS_CLEAR_CMD=${PROCESS_CLEAR_CMD:-}
 DU_STOP_CMD=${DU_STOP_CMD:-}
@@ -69,6 +75,9 @@ RECOVERY_PING_COUNT=${RECOVERY_PING_COUNT:-20}
 TEARDOWN_GRACE_S=${TEARDOWN_GRACE_S:-5}
 HOOK_TIMEOUT_S=${HOOK_TIMEOUT_S:-30}
 ATTACKER_GATE_TIMEOUT_S=${ATTACKER_GATE_TIMEOUT_S:-240}
+BLIND_MANAGE_DU=${SAME_CELL_BLIND_MANAGE_DU:-${BLIND_MANAGE_DU:-1}}
+SAME_CELL_READY_FILE=${SAME_CELL_READY_FILE:-}
+SAME_CELL_READY_TIMEOUT_S=${SAME_CELL_READY_TIMEOUT_S:-120}
 
 fail() { echo "blind-p5-phase: $*" >&2; exit 2; }
 positive_int() { [[ $2 =~ ^[1-9][0-9]*$ ]] || fail "$1 must be a positive integer"; }
@@ -114,6 +123,10 @@ for pair in \
 done
 positive_decimal OBSERVATION_POLL_S "$OBSERVATION_POLL_S"
 [[ $USE_SETSID == 0 || $USE_SETSID == 1 ]] || fail "USE_SETSID must be 0 or 1"
+[[ $BLIND_MANAGE_DU == 0 || $BLIND_MANAGE_DU == 1 ]] || fail "BLIND_MANAGE_DU must be 0 or 1"
+positive_int SAME_CELL_READY_TIMEOUT_S "$SAME_CELL_READY_TIMEOUT_S"
+[[ -z $SAME_CELL_READY_FILE || $SAME_CELL_READY_FILE == /* ]] \
+  || fail "SAME_CELL_READY_FILE must be absolute"
 
 for name in OAI_BLIND_BIN VICTIM_UE_CFG ATTACKER_UE_CFG UECAP; do
   value=${!name}
@@ -126,13 +139,16 @@ for name in BAND DL_FREQ NUMEROLOGY PRB DEVICE \
 done
 [[ $AMF_REGION_ID =~ ^(0|[1-9][0-9]{0,2})$ ]] && (( AMF_REGION_ID <= 255 )) \
   || fail "AMF_REGION_ID must be an integer from 0 to 255"
-for name in PROCESS_CLEAR_CMD DU_STOP_CMD DU_RESTART_CMD DU_READY_CMD \
+for name in PROCESS_CLEAR_CMD DU_READY_CMD \
   VICTIM_ENDPOINT_READY_CMD ATTACKER_ENDPOINT_READY_CMD \
   VICTIM_REGISTRATION_CMD VICTIM_TUN_CMD VICTIM_PING_CMD \
   CU_TARGET_SNAPSHOT_CMD CU_LOG_SLICE_START_CMD CU_LOG_SLICE_STOP_CMD \
   CU_CAPTURE_START_CMD CU_CAPTURE_STOP_CMD CU_NETWORK_EVENTS_CMD; do
   [[ -n ${!name} ]] || fail "$name is required"
 done
+if (( BLIND_MANAGE_DU )); then
+  [[ -n $DU_STOP_CMD && -n $DU_RESTART_CMD ]] || fail "managed DU requires stop and restart commands"
+fi
 command -v "$PYTHON_BIN" >/dev/null 2>&1 || fail "missing PYTHON_BIN"
 if (( USE_SETSID )); then
   command -v "$SETSID_BIN" >/dev/null 2>&1 || fail "missing SETSID_BIN"
@@ -460,10 +476,12 @@ export BLIND_ATTACKER_EVENTS_PATH=$ATTACKER_EVENTS
 export BLIND_CAPTURE_STATE_DIR=$WORK/capture BLIND_LOG_SLICE_STATE_DIR=$WORK/log-slice
 export BLIND_NETWORK_EVENTS_PATH=$WORK/network-events.jsonl
 
-run_hook du-stop "$DU_STOP_CMD" || fail "DU stop hook failed"
-(( DU_SETTLE_S == 0 )) || sleep "$DU_SETTLE_S"
-run_hook du-restart "$DU_RESTART_CMD" || fail "DU restart hook failed"
-DU_STARTED=1
+if (( BLIND_MANAGE_DU )); then
+  run_hook du-stop "$DU_STOP_CMD" || fail "DU stop hook failed"
+  (( DU_SETTLE_S == 0 )) || sleep "$DU_SETTLE_S"
+  run_hook du-restart "$DU_RESTART_CMD" || fail "DU restart hook failed"
+  DU_STARTED=1
+fi
 wait_hook du-ready "$DU_READY_CMD" "$DU_READY_TIMEOUT_S" || fail "DU readiness timed out"
 LOG_STARTED=1
 run_hook log-slice-start "$CU_LOG_SLICE_START_CMD" || fail "log-slice start hook failed"
@@ -506,6 +524,17 @@ export BLIND_ENDPOINT_ROLE=attacker BLIND_CHILD_PID=$LAST_CHILD_PID
 wait_hook attacker-endpoint "$ATTACKER_ENDPOINT_READY_CMD" "$ENDPOINT_READY_TIMEOUT_S" \
   || fail "attacker endpoint readiness timed out"
 require_alive "$ATTACKER_INDEX"
+
+if [[ -n $SAME_CELL_READY_FILE ]]; then
+  ready_started=$SECONDS
+  until [[ -f $SAME_CELL_READY_FILE && ! -L $SAME_CELL_READY_FILE ]]; do
+    require_alive "$VICTIM_INDEX"
+    require_alive "$ATTACKER_INDEX"
+    (( SECONDS - ready_started < SAME_CELL_READY_TIMEOUT_S )) \
+      || fail "same-cell normal UE readiness timed out"
+    sleep 0.2
+  done
+fi
 
 service_probe() {
   PROBE_REG=0 PROBE_PDU=0 PROBE_PING=0
@@ -695,8 +724,10 @@ run_hook network-events "$CU_NETWORK_EVENTS_CMD" || fail "network-event extracti
    && ! -L $BLIND_NETWORK_EVENTS_PATH ]] || fail "network-event hook produced no safe output"
 cat "$BLIND_NETWORK_EVENTS_PATH" >>"$GROUND_TRUTH" \
   || fail "cannot append normalized network events"
-run_hook du-final-stop "$DU_STOP_CMD" || fail "final DU stop hook failed"
-DU_STARTED=0
+if (( BLIND_MANAGE_DU )); then
+  run_hook du-final-stop "$DU_STOP_CMD" || fail "final DU stop hook failed"
+  DU_STARTED=0
+fi
 (( EVIDENCE_WRITE_FAILED == 0 )) || fail "infrastructure event could not be preserved"
 
 for path in "${RAW_PATHS[@]}"; do

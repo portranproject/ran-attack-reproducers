@@ -36,7 +36,11 @@ esac; done
 
 OAI=${OAI:-/root/OAI}
 UE_BIN=${UE_BIN:-$OAI/cmake_targets/ran_build/build/nr-uesoftmodem}
+BROKER_ATTACK_UE_BIN=${BROKER_ATTACK_UE_BIN:-$UE_BIN}
+BROKER_WITNESS_UE_BIN=${BROKER_WITNESS_UE_BIN:-$UE_BIN}
 UE_CFG=${UE_CFG:-/root/oai_nrue.conf}
+BROKER_ATTACK_UE_CFG=${BROKER_ATTACK_UE_CFG:-$UE_CFG}
+BROKER_WITNESS_UE_CFG=${BROKER_WITNESS_UE_CFG:-$UE_CFG}
 UECAP=${UECAP:-$OAI/targets/PROJECTS/GENERIC-NR-5GC/CONF/uecap_ports1.xml}
 BROKER_ATTACK_PROCESSES=${BROKER_ATTACK_PROCESSES:-4}
 BROKER_RECOVERY_WITNESS_DELAY_MS=${BROKER_RECOVERY_WITNESS_DELAY_MS:-}
@@ -86,8 +90,15 @@ BROKER_ATTACK_START_DELAY_MS=${BROKER_ATTACK_START_DELAY_MS:-0}
 BROKER_ATTACK_START_STRIDE_MS=${BROKER_ATTACK_START_STRIDE_MS:-0}
 BROKER_ATTACK_PHASE_MS=${BROKER_ATTACK_PHASE_MS:-0}
 BROKER_ATTACK_UES_PER_PROCESS=${BROKER_ATTACK_UES_PER_PROCESS:-1}
+BROKER_WITNESS_UES=${BROKER_WITNESS_UES:-1}
+BROKER_WITNESS_RSS=${BROKER_WITNESS_RSS:-1}
+BROKER_WITNESS_MULTI_RU=${BROKER_WITNESS_MULTI_RU:-0}
+BROKER_WITNESS_PHASE_MS=${BROKER_WITNESS_PHASE_MS:-0}
+BROKER_WITNESS_RETRY_MS=${BROKER_WITNESS_RETRY_MS:-1000}
 BROKER_WITNESS_HONOR_REJECT=${BROKER_WITNESS_HONOR_REJECT:-0}
+BROKER_START_GNB_LAST=${BROKER_START_GNB_LAST:-0}
 UE_BEFORE_BROKER_S=${UE_BEFORE_BROKER_S:-3}
+BROKER_ENDPOINT_READY_TIMEOUT_S=${BROKER_ENDPOINT_READY_TIMEOUT_S:-30}
 BROKER_SYNC_TIMEOUT_S=${BROKER_SYNC_TIMEOUT_S:-30}
 BAND=${BAND:-78}
 DL_FREQ=${DL_FREQ:-3489420000}
@@ -109,8 +120,12 @@ SETSID_BIN=${SETSID_BIN:-setsid}
 for value in WITNESS_DELAY_MS BROKER_ATTACK_MAX_DURATION_S BROKER_ATTACK_START_DELAY_MS BROKER_ATTACK_START_STRIDE_MS GNB_SETTLE_S UE_BEFORE_BROKER_S; do
   [[ ${!value} =~ ^[0-9]+$ ]] || { echo "$value must be a non-negative integer" >&2; exit 1; }
 done
-for value in BROKER_ATTACK_MSG4_WAIT BROKER_WITNESS_HONOR_REJECT; do
+for value in BROKER_ATTACK_MSG4_WAIT BROKER_WITNESS_HONOR_REJECT BROKER_START_GNB_LAST; do
   [[ ${!value} == 0 || ${!value} == 1 ]] || { echo "$value must be 0 or 1" >&2; exit 1; }
+done
+for value in BROKER_WITNESS_RSS BROKER_WITNESS_MULTI_RU; do
+  [[ ${!value} == 0 || ${!value} == 1 ]] \
+    || { echo "$value must be 0 or 1" >&2; exit 1; }
 done
 (( BROKER_ATTACK_MAX_DURATION_S <= 86400 )) \
   || { echo "BROKER_ATTACK_MAX_DURATION_S must be 0..86400" >&2; exit 1; }
@@ -118,6 +133,12 @@ done
   || { echo "BROKER_ATTACK_PHASE_MS must be 0..5000" >&2; exit 1; }
 [[ $BROKER_ATTACK_UES_PER_PROCESS =~ ^[1-9][0-9]*$ ]] && (( BROKER_ATTACK_UES_PER_PROCESS <= 16 )) \
   || { echo "BROKER_ATTACK_UES_PER_PROCESS must be 1..16" >&2; exit 1; }
+[[ $BROKER_WITNESS_UES =~ ^[1-9][0-9]*$ ]] && (( BROKER_WITNESS_UES <= 16 )) \
+  || { echo "BROKER_WITNESS_UES must be 1..16" >&2; exit 1; }
+[[ $BROKER_WITNESS_PHASE_MS =~ ^[0-9]+$ ]] && (( BROKER_WITNESS_PHASE_MS <= 5000 )) \
+  || { echo "BROKER_WITNESS_PHASE_MS must be 0..5000" >&2; exit 1; }
+[[ $BROKER_WITNESS_RETRY_MS =~ ^[0-9]+$ ]] && (( BROKER_WITNESS_RETRY_MS >= 10 && BROKER_WITNESS_RETRY_MS <= 60000 )) \
+  || { echo "BROKER_WITNESS_RETRY_MS must be 10..60000" >&2; exit 1; }
 [[ $BROKER_ATTACK_PROCESSES == 1 || $BROKER_ATTACK_PROCESSES == 4 || $BROKER_ATTACK_PROCESSES == 6 \
    || $BROKER_ATTACK_PROCESSES == 7 ]] \
   || { echo "BROKER_ATTACK_PROCESSES must be 1, 4, 6 or 7" >&2; exit 1; }
@@ -146,8 +167,20 @@ if (( BROKER_SAME_WITNESS_CYCLE )); then
   (( BROKER_WITNESS_HONOR_REJECT == 1 )) \
     || { echo "BROKER_SAME_WITNESS_CYCLE requires BROKER_WITNESS_HONOR_REJECT=1" >&2; exit 1; }
 fi
+if (( !BROKER_WITNESS_RSS && (RECOVERY_WITNESS_ENABLED || BROKER_CONTROL_EXTRA_QUIET_WITNESS || BROKER_SAME_WITNESS_CYCLE) )); then
+  echo "BROKER_WITNESS_RSS=0 supports only the primary normal-UE pool" >&2
+  exit 1
+fi
+if (( BROKER_WITNESS_MULTI_RU )); then
+  [[ $MODE == attack || $BROKER_ATTACK_PROCESSES == 1 ]] \
+    || { echo "BROKER_WITNESS_MULTI_RU control mode requires one quiet load process" >&2; exit 1; }
+  (( RECOVERY_WITNESS_ENABLED == 0 && BROKER_CONTROL_EXTRA_QUIET_WITNESS == 0 && BROKER_SAME_WITNESS_CYCLE == 0 )) \
+    || { echo "BROKER_WITNESS_MULTI_RU supports only the primary normal-UE pool" >&2; exit 1; }
+fi
 WITNESS_PROCESSES=$((1 + RECOVERY_WITNESS_ENABLED + BROKER_CONTROL_EXTRA_QUIET_WITNESS))
 TOTAL_UE_PROCESSES=$((BROKER_ATTACK_PROCESSES + WITNESS_PROCESSES))
+BROKER_ENDPOINTS=$TOTAL_UE_PROCESSES
+(( BROKER_WITNESS_MULTI_RU == 0 )) || BROKER_ENDPOINTS=$((BROKER_ENDPOINTS + BROKER_WITNESS_UES - 1))
 PLANNED_UE_PROCESS_STARTS=$TOTAL_UE_PROCESSES
 WITNESS_INDEX=$((BROKER_ATTACK_PROCESSES + 1))
 RECOVERY_WITNESS_INDEX=-1
@@ -155,6 +188,7 @@ RECOVERY_WITNESS_INDEX=-1
 CONTROL_EXTRA_QUIET_WITNESS_INDEX=-1
 (( BROKER_CONTROL_EXTRA_QUIET_WITNESS == 0 )) || CONTROL_EXTRA_QUIET_WITNESS_INDEX=$TOTAL_UE_PROCESSES
 ATTACK_LOGICAL_UES=$((BROKER_ATTACK_PROCESSES * BROKER_ATTACK_UES_PER_PROCESS))
+WITNESS_LOGICAL_UES=$((BROKER_WITNESS_UES + RECOVERY_WITNESS_ENABLED + BROKER_CONTROL_EXTRA_QUIET_WITNESS))
 SAME_WITNESS_MIN_MSG3_TX=10
 SAME_WITNESS_MIN_DISTINCT_TC_RNTI=10
 SAME_WITNESS_MIN_MSG3_SPAN_MS=30000
@@ -182,18 +216,26 @@ if (( BROKER_SAME_WITNESS_CYCLE )); then
     exit 1
   }
 fi
-for value in GNB_READY_TIMEOUT_S GNB_READY_INTERVAL_S GNB_READY_PROBE_TIMEOUT_S BROKER_SYNC_TIMEOUT_S; do
+for value in GNB_READY_TIMEOUT_S GNB_READY_INTERVAL_S GNB_READY_PROBE_TIMEOUT_S BROKER_ENDPOINT_READY_TIMEOUT_S BROKER_SYNC_TIMEOUT_S; do
   [[ ${!value} =~ ^[1-9][0-9]*$ ]] || { echo "$value must be a positive integer" >&2; exit 1; }
 done
 [[ $DEVICE == oai_zmqdevif ]] \
   || { echo "DEVICE=$DEVICE is unsupported: the broker witness is ZMQ-only" >&2; exit 1; }
-[[ -x $UE_BIN ]] || { echo "missing UE binary: $UE_BIN" >&2; exit 1; }
-[[ -f $UE_CFG && -f $UECAP && -f $BROKER_PY && -f $GNB_CONFIG ]] \
+[[ -x $BROKER_ATTACK_UE_BIN && -x $BROKER_WITNESS_UE_BIN ]] \
+  || { echo "missing attack or witness UE binary" >&2; exit 1; }
+[[ -f $BROKER_ATTACK_UE_CFG && -f $BROKER_WITNESS_UE_CFG && -f $UECAP && -f $BROKER_PY && -f $GNB_CONFIG ]] \
   || { echo "missing UE config, capability, broker, or gNB config" >&2; exit 1; }
-BROKER_LAST_TX=$((2001 + 100 * TOTAL_UE_PROCESSES))
-BROKER_LAST_RX=$((2000 + 100 * TOTAL_UE_PROCESSES))
-grep -q ":$BROKER_LAST_TX" "$BROKER_PY" && grep -q ":$BROKER_LAST_RX" "$BROKER_PY" \
-  || { echo "broker does not expose UE $TOTAL_UE_PROCESSES ports $BROKER_LAST_TX/$BROKER_LAST_RX" >&2; exit 1; }
+BROKER_LAST_TX=$((2001 + 100 * BROKER_ENDPOINTS))
+BROKER_LAST_RX=$((2000 + 100 * BROKER_ENDPOINTS))
+if ! { grep -q ":$BROKER_LAST_TX" "$BROKER_PY" && grep -q ":$BROKER_LAST_RX" "$BROKER_PY"; } \
+   && ! grep -q "NORMAL_UE_BROKER_ENDPOINTS" "$BROKER_PY"; then
+  if (( BROKER_WITNESS_MULTI_RU )); then
+    echo "broker does not expose endpoint $BROKER_ENDPOINTS ports $BROKER_LAST_TX/$BROKER_LAST_RX" >&2
+  else
+    echo "broker does not expose UE $TOTAL_UE_PROCESSES ports $BROKER_LAST_TX/$BROKER_LAST_RX" >&2
+  fi
+  exit 1
+fi
 [[ -n $GNB_STOP_CMD && -n $GNB_RESTART_CMD && -n $GNB_READY_CMD ]] \
   || { echo "GNB_STOP_CMD, GNB_RESTART_CMD and GNB_READY_CMD are required" >&2; exit 1; }
 command -v "$FLOCK_BIN" >/dev/null || { echo "missing flock: $FLOCK_BIN" >&2; exit 1; }
@@ -228,6 +270,8 @@ SAME_WITNESS_ROLE_JSON=""
 if (( BROKER_SAME_WITNESS_CYCLE )); then
   SAME_WITNESS_ROLE_JSON=",\"same_witness_cycle\":{\"enabled\":true,\"endpoint_index\":$WITNESS_INDEX,\"min_msg3_tx\":$SAME_WITNESS_MIN_MSG3_TX,\"min_distinct_nonzero_tc_rnti\":$SAME_WITNESS_MIN_DISTINCT_TC_RNTI,\"min_msg3_span_ms\":$SAME_WITNESS_MIN_MSG3_SPAN_MS,\"recovery_deadline_s\":$SAME_WITNESS_RECOVERY_DEADLINE_S,\"min_ping_transmitted\":$SAME_WITNESS_MIN_PING_TX,\"required_ping_loss_pct\":0,\"expected_last_attacker_stop_ms\":$ATTACK_LAST_STOP_MS,\"ping_budget_ms\":$SAME_WITNESS_PING_BUDGET_MS,\"required_duration_ms\":$SAME_WITNESS_REQUIRED_DURATION_MS}"
 fi
+MULTI_RU_TOPOLOGY_JSON=""
+(( BROKER_WITNESS_MULTI_RU == 0 )) || MULTI_RU_TOPOLOGY_JSON=",\"zmq_endpoints\":$BROKER_ENDPOINTS"
 
 PIDS=()
 GROUPED=()
@@ -317,11 +361,13 @@ PY
 }
 
 count_sync_ues() {
-  local i synced=0
+  local i synced=0 current expected
   for ((i=1; i<=TOTAL_UE_PROCESSES; i++)); do
-    if (( $(count "Initial sync successful" "$OUT/ue${i}.log") > 0 )); then
-      synced=$((synced + 1))
-    fi
+    expected=1
+    (( BROKER_WITNESS_MULTI_RU == 0 || i != WITNESS_INDEX )) || expected=$BROKER_WITNESS_UES
+    current=$(count "Initial sync successful" "$OUT/ue${i}.log")
+    (( current <= expected )) || current=$expected
+    synced=$((synced + current))
   done
   echo "$synced"
 }
@@ -455,10 +501,10 @@ fi
 cat >"$OUT/run.json" <<EOF
 {"type":"broker_witness_run","run_id":"$RUN_ID","mode":"$MODE",
  "duration_s":$DURATION_S,"witness_delay_ms":$WITNESS_DELAY_MS,"broker_sync_timeout_s":$BROKER_SYNC_TIMEOUT_S,
- "topology":{"attack_or_quiet_processes":$BROKER_ATTACK_PROCESSES,"attack_or_quiet_ues":$ATTACK_LOGICAL_UES,"witness_processes":$WITNESS_PROCESSES,"witness_ues":$WITNESS_PROCESSES,"ue_processes":$TOTAL_UE_PROCESSES,"planned_ue_process_starts":$PLANNED_UE_PROCESS_STARTS,"gnb_tx_port":$GNB_TX_PORT,"gnb_rx_port":$GNB_RX_PORT},
+ "topology":{"attack_or_quiet_processes":$BROKER_ATTACK_PROCESSES,"attack_or_quiet_ues":$ATTACK_LOGICAL_UES,"witness_processes":$WITNESS_PROCESSES,"witness_ues":$WITNESS_LOGICAL_UES,"ue_processes":$TOTAL_UE_PROCESSES,"planned_ue_process_starts":$PLANNED_UE_PROCESS_STARTS$MULTI_RU_TOPOLOGY_JSON,"gnb_tx_port":$GNB_TX_PORT,"gnb_rx_port":$GNB_RX_PORT},
  "roles":{"attacker":{"processes":$BROKER_ATTACK_PROCESSES,"ues_per_process":$BROKER_ATTACK_UES_PER_PROCESS,"msg4_wait":$BROKER_ATTACK_MSG4_WAIT,"max_duration_s":$BROKER_ATTACK_MAX_DURATION_S,"start_delay_ms":$BROKER_ATTACK_START_DELAY_MS,"start_stride_ms":$BROKER_ATTACK_START_STRIDE_MS,"phase_ms":$BROKER_ATTACK_PHASE_MS,"honor_reject":0},
           "control_load":{"processes":$BROKER_ATTACK_PROCESSES,"ues_per_process":$BROKER_ATTACK_UES_PER_PROCESS,"msg4_wait":1,"max_duration_s":0,"phase_ms":0,"honor_reject":0},
-          "witness":{"processes":1,"ues_per_process":1,"msg4_wait":1,"max_duration_s":0,"phase_ms":0,"honor_reject":$BROKER_WITNESS_HONOR_REJECT}$RECOVERY_ROLE_JSON$CONTROL_EXTRA_ROLE_JSON$SAME_WITNESS_ROLE_JSON},
+          "witness":{"processes":1,"ues_per_process":$BROKER_WITNESS_UES,"msg4_wait":1,"max_duration_s":0,"phase_ms":0,"honor_reject":$BROKER_WITNESS_HONOR_REJECT}$RECOVERY_ROLE_JSON$CONTROL_EXTRA_ROLE_JSON$SAME_WITNESS_ROLE_JSON},
  "t_start_utc":"$(date -u +%FT%TZ)"}
 EOF
 
@@ -471,28 +517,30 @@ fi
 
 "$IP_CMD" addr flush dev "$IFACE" >/dev/null 2>&1 || true
 
-echo "== restarting gNB"
-if ! bash -c "$GNB_RESTART_CMD" 9>&- >"$OUT/gnb_boot.txt" 2>&1 </dev/null; then
-  echo "gNB restart failed" >&2
-  exit 1
-fi
-
-ready=0
-ready_started=$SECONDS
-: >"$OUT/gnb_ready.txt"
-while (( SECONDS - ready_started < GNB_READY_TIMEOUT_S )); do
-  if "$TIMEOUT_BIN" --signal=TERM --kill-after=1 "${GNB_READY_PROBE_TIMEOUT_S}s" \
-       bash -c "$GNB_READY_CMD" 9>&- >>"$OUT/gnb_ready.txt" 2>&1 </dev/null; then
-    ready=1
-    break
+restart_gnb() {
+  echo "== restarting gNB"
+  if ! bash -c "$GNB_RESTART_CMD" 9>&- >"$OUT/gnb_boot.txt" 2>&1 </dev/null; then
+    echo "gNB restart failed" >&2
+    return 1
   fi
-  sleep "$GNB_READY_INTERVAL_S"
-done
-(( ready )) || { echo "gNB readiness failed; no UE was launched" >&2; exit 1; }
+  local ready=0 ready_started=$SECONDS
+  : >"$OUT/gnb_ready.txt"
+  while (( SECONDS - ready_started < GNB_READY_TIMEOUT_S )); do
+    if "$TIMEOUT_BIN" --signal=TERM --kill-after=1 "${GNB_READY_PROBE_TIMEOUT_S}s" \
+         bash -c "$GNB_READY_CMD" 9>&- >>"$OUT/gnb_ready.txt" 2>&1 </dev/null; then
+      ready=1
+      break
+    fi
+    sleep "$GNB_READY_INTERVAL_S"
+  done
+  (( ready )) || { echo "gNB readiness failed" >&2; return 1; }
+}
 
-COMMON=(-O "$UE_CFG" --band "$BAND" -C "$DL_FREQ" --numerology "$NUMEROLOGY" -r "$PRB"
-        -E --ue-scan-carrier --uecap_file "$UECAP" --device.name "$DEVICE"
-        --rss.enable 1 --rss.interval_ms 0 --rss.completion_pct 0
+(( BROKER_START_GNB_LAST )) || restart_gnb || exit 1
+
+COMMON=(--band "$BAND" -C "$DL_FREQ" --numerology "$NUMEROLOGY" -r "$PRB"
+        -E --ue-scan-carrier --uecap_file "$UECAP" --device.name "$DEVICE")
+RSS_COMMON=(--rss.enable 1 --rss.interval_ms 0 --rss.completion_pct 0
         --rss.ack_gate 1 --rss.ra_gate 1 --rss.gate_timeout_ms 500
         --rss.target_occupancy 0 --rss.hold_ms 2000 --rss.msg4_ack 1
         )
@@ -506,18 +554,33 @@ for ((i=1; i<=TOTAL_UE_PROCESSES; i++)); do
   rx=$((2000 + 100 * i))
   ROLE_ARGS=()
   ROLE_NUM_UES=$BROKER_ATTACK_UES_PER_PROCESS
+  ROLE_CFG=$BROKER_ATTACK_UE_CFG
+  ROLE_BIN=$BROKER_ATTACK_UE_BIN
+  ROLE_USES_RSS=1
   if (( i == WITNESS_INDEX )); then
-    ROLE_NUM_UES=1
-    ROLE_ARGS=(--num-ues 1 --rss.max_duration_s 0 --rss.honor_reject "$BROKER_WITNESS_HONOR_REJECT"
-               --rss.msg4_wait 1 --rss.probe_ues 1 --rss.probe_delay_ms "$WITNESS_DELAY_MS"
-               --rss.probe_ra_only 0 --rss.probe_interval_ms 1000 --rss.phase_ms 0)
+    ROLE_NUM_UES=$BROKER_WITNESS_UES
+    ROLE_CFG=$BROKER_WITNESS_UE_CFG
+    ROLE_BIN=$BROKER_WITNESS_UE_BIN
+    ROLE_USES_RSS=$BROKER_WITNESS_RSS
+    if (( ROLE_USES_RSS )); then
+      ROLE_ARGS=(--num-ues "$ROLE_NUM_UES" --rss.max_duration_s 0 --rss.honor_reject "$BROKER_WITNESS_HONOR_REJECT"
+                 --rss.msg4_wait 1 --rss.probe_ues "$ROLE_NUM_UES" --rss.probe_delay_ms "$WITNESS_DELAY_MS"
+                 --rss.probe_ra_only 0 --rss.probe_interval_ms "$BROKER_WITNESS_RETRY_MS"
+                 --rss.phase_ms "$BROKER_WITNESS_PHASE_MS")
+    else
+      ROLE_ARGS=(--num-ues "$ROLE_NUM_UES")
+    fi
   elif (( RECOVERY_WITNESS_ENABLED && i == RECOVERY_WITNESS_INDEX )); then
     ROLE_NUM_UES=1
+    ROLE_CFG=$BROKER_WITNESS_UE_CFG
+    ROLE_BIN=$BROKER_WITNESS_UE_BIN
     ROLE_ARGS=(--num-ues 1 --rss.max_duration_s 0 --rss.honor_reject 1
                --rss.msg4_wait 1 --rss.probe_ues 1 --rss.probe_delay_ms "$BROKER_RECOVERY_WITNESS_DELAY_MS"
                --rss.probe_ra_only 0 --rss.probe_interval_ms 1000 --rss.phase_ms 0)
   elif (( BROKER_CONTROL_EXTRA_QUIET_WITNESS && i == CONTROL_EXTRA_QUIET_WITNESS_INDEX )); then
     ROLE_NUM_UES=1
+    ROLE_CFG=$BROKER_WITNESS_UE_CFG
+    ROLE_BIN=$BROKER_WITNESS_UE_BIN
     ROLE_ARGS=(--num-ues 1 --rss.max_duration_s 0 --rss.honor_reject 0 --rss.msg4_wait 1
                --rss.probe_ues 1 --rss.probe_delay_ms "$QUIET_DELAY_MS"
                --rss.probe_ra_only 0 --rss.probe_interval_ms 1000 --rss.phase_ms 0)
@@ -535,11 +598,26 @@ for ((i=1; i<=TOTAL_UE_PROCESSES; i++)); do
   ROLE_RUN_ID="u${i}-$RUN_ID"
   (( i != RECOVERY_WITNESS_INDEX )) || ROLE_RUN_ID+=-recovery
   (( i != CONTROL_EXTRA_QUIET_WITNESS_INDEX )) || ROLE_RUN_ID+=-control-extra-quiet
-  start_child "$OUT/ue${i}.log" env RSS_SHARE_NUE="$ROLE_NUM_UES" "$UE_BIN" "${COMMON[@]}" \
-    '--zmq.[0].tx_channels' "tcp://127.0.0.1:$tx" \
-    '--zmq.[0].rx_channels' "tcp://127.0.0.1:$rx" \
-    "${ROLE_ARGS[@]}" --rss.run_id "$ROLE_RUN_ID" \
-    --rss.log_file "$OUT/ue${i}.jsonl"
+  ROLE_TAIL=()
+  ROLE_RSS_ARGS=()
+  ROLE_ZMQ_ARGS=('--zmq.[0].tx_channels' "tcp://127.0.0.1:$tx"
+                 '--zmq.[0].rx_channels' "tcp://127.0.0.1:$rx")
+  if (( ROLE_USES_RSS )); then
+    ROLE_RSS_ARGS=("${RSS_COMMON[@]}")
+    ROLE_TAIL=(--rss.run_id "$ROLE_RUN_ID" --rss.log_file "$OUT/ue${i}.jsonl")
+  else
+    : >"$OUT/ue${i}.jsonl"
+  fi
+  if (( BROKER_WITNESS_MULTI_RU && i == WITNESS_INDEX )); then
+    ROLE_ZMQ_ARGS=()
+    for ((ru=0; ru<ROLE_NUM_UES; ru++)); do
+      endpoint=$((i + ru))
+      ROLE_ZMQ_ARGS+=("--zmq.[$ru].tx_channels" "tcp://127.0.0.1:$((2001 + 100 * endpoint))"
+                      "--zmq.[$ru].rx_channels" "tcp://127.0.0.1:$((2000 + 100 * endpoint))")
+    done
+  fi
+  start_child "$OUT/ue${i}.log" env RSS_SHARE_NUE="$ROLE_NUM_UES" "$ROLE_BIN" -O "$ROLE_CFG" "${COMMON[@]}" \
+    "${ROLE_RSS_ARGS[@]}" "${ROLE_ZMQ_ARGS[@]}" "${ROLE_ARGS[@]}" "${ROLE_TAIL[@]}"
   INITIAL_UE_PIDS+=("$LAST_PID")
   UE_CHILD_INDEXES+=("$LAST_CHILD_INDEX")
 done
@@ -550,12 +628,36 @@ done
 # proven-stable order is to let every UE bind its REP endpoint first; without
 # downlink samples they wait safely until the broker starts.
 (( UE_BEFORE_BROKER_S == 0 )) || sleep "$UE_BEFORE_BROKER_S"
+ENDPOINT_READY_DEADLINE=$((SECONDS + BROKER_ENDPOINT_READY_TIMEOUT_S))
+ENDPOINT_EARLY_EXIT=0
+while :; do
+  ENDPOINTS_READY=0
+  for ((i=1; i<=TOTAL_UE_PROCESSES; i++)); do
+    expected=1
+    (( BROKER_WITNESS_MULTI_RU == 0 || i != WITNESS_INDEX )) || expected=$BROKER_WITNESS_UES
+    ready=$(count "TX socket for antenna 0 bound to" "$OUT/ue${i}.log")
+    (( ready < expected )) || ENDPOINTS_READY=$((ENDPOINTS_READY + expected))
+  done
+  (( ENDPOINTS_READY == BROKER_ENDPOINTS )) && break
+  if ! all_active_ues_running; then
+    echo "UE exited before its ZMQ endpoint was ready" >&2
+    ENDPOINT_EARLY_EXIT=1
+    break
+  fi
+  (( SECONDS < ENDPOINT_READY_DEADLINE )) \
+    || { echo "$ENDPOINTS_READY/$BROKER_ENDPOINTS UE ZMQ endpoints ready after ${BROKER_ENDPOINT_READY_TIMEOUT_S}s" >&2; exit 1; }
+  sleep 0.2
+done
 echo "== starting the broker after all $TOTAL_UE_PROCESSES OAI endpoints"
 start_child "$OUT/broker.log" bash -c "$BROKER_CMD"
 BROKER_PID=$LAST_PID
 BROKER_INDEX=$((${#PIDS[@]} - 1))
 
-EARLY_EXIT=0
+if (( BROKER_START_GNB_LAST )); then
+  restart_gnb || exit 1
+fi
+
+EARLY_EXIT=$ENDPOINT_EARLY_EXIT
 BROKER_EARLY_EXIT=0
 for pid in "${INITIAL_UE_PIDS[@]}"; do
   if ! is_running "$pid"; then
@@ -579,7 +681,7 @@ while :; do
     fi
   done
   SYNC_COUNT=$(count_sync_ues)
-  if (( SYNC_COUNT == TOTAL_UE_PROCESSES )); then
+  if (( SYNC_COUNT == BROKER_ENDPOINTS )); then
     SYNC_READY=1
     break
   fi
@@ -588,7 +690,7 @@ while :; do
   fi
   if (( SECONDS >= SYNC_DEADLINE )); then
     SYNC_TIMED_OUT=1
-    echo "$TOTAL_UE_PROCESSES-UE sync timed out after ${BROKER_SYNC_TIMEOUT_S}s" >&2
+    echo "$BROKER_ENDPOINTS-endpoint sync timed out after ${BROKER_SYNC_TIMEOUT_S}s" >&2
     break
   fi
   sleep 1
@@ -883,7 +985,7 @@ fi
 
 VALID=1
 REASON=ok
-if (( !SYNC_READY || BROKER_EARLY_EXIT || EARLY_EXIT || SYNC != TOTAL_UE_PROCESSES || CRASH != 0
+if (( !SYNC_READY || BROKER_EARLY_EXIT || EARLY_EXIT || SYNC != BROKER_ENDPOINTS || CRASH != 0
       || RECOVERY_WITNESS_ENABLED && (!RECOVERY_STARTED || RECOVERY_QUIET_MISSING
          || RECOVERY_PRE_ATTACK_ATTEMPTS != 0 || RECOVERY_PRE_PHASE_ATTEMPTS != 0) )); then
   VALID=0; REASON=infrastructure_failure
@@ -968,7 +1070,7 @@ fi
 cat >"$OUT/result.json" <<EOF
 {"type":"broker_witness_result","run_id":"$RUN_ID","mode":"$MODE",
  "valid":$(bool "$VALID"),"reason":"$REASON","sync_ues":$SYNC,"crash_markers":$CRASH,
- "topology":{"attack_or_quiet_processes":$BROKER_ATTACK_PROCESSES,"attack_or_quiet_ues":$ATTACK_LOGICAL_UES,"witness_processes":$WITNESS_PROCESSES,"witness_ues":$WITNESS_PROCESSES,"ue_processes":$TOTAL_UE_PROCESSES,"ue_process_starts":$UE_PROCESS_STARTS},
+ "topology":{"attack_or_quiet_processes":$BROKER_ATTACK_PROCESSES,"attack_or_quiet_ues":$ATTACK_LOGICAL_UES,"witness_processes":$WITNESS_PROCESSES,"witness_ues":$WITNESS_LOGICAL_UES,"ue_processes":$TOTAL_UE_PROCESSES,"ue_process_starts":$UE_PROCESS_STARTS$MULTI_RU_TOPOLOGY_JSON},
  "startup":{"sync_ready":$(bool "$SYNC_READY"),"sync_wait_s":$SYNC_WAIT_S,"sync_timeout":$(bool "$SYNC_TIMED_OUT")},
  "load_ue_attempts":$ATTACK_ATTEMPTS,"load_ue_msg5":$ATTACK_MSG5,
  "attacker_attempts":$MODE_ATTACK_ATTEMPTS,"attacker_msg3":$MODE_ATTACK_MSG3,"attacker_msg5":$MODE_ATTACK_MSG5,

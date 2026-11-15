@@ -16,6 +16,7 @@ BROKER2 = ROOT / "tools" / "multi_ue_2ue.py"
 BROKER5 = ROOT / "tools" / "multi_ue_5ue.py"
 BROKER7 = ROOT / "tools" / "multi_ue_7ue.py"
 BROKER8 = ROOT / "tools" / "multi_ue_8ue.py"
+DYNAMIC_BROKER = ROOT.parents[1] / "workloads" / "normal-ue" / "tools" / "same_cell_broker.py"
 
 
 class BrokerWitnessTests(unittest.TestCase):
@@ -30,10 +31,11 @@ class BrokerWitnessTests(unittest.TestCase):
         self.tun_state = self.root / "tun.state"
 
         self.ue_cfg = self.root / "ue.conf"
+        self.witness_ue_cfg = self.root / "witness-ue.conf"
         self.uecap = self.root / "uecap.xml"
         self.broker_py = self.root / "broker.py"
         self.gnb_cfg = self.root / "du.yaml"
-        for path in (self.ue_cfg, self.uecap, self.broker_py):
+        for path in (self.ue_cfg, self.witness_ue_cfg, self.uecap, self.broker_py):
             path.write_text("fixture\n")
         self.broker_py.write_text(
             "tcp://127.0.0.1:2501 tcp://127.0.0.1:2500 "
@@ -48,10 +50,11 @@ class BrokerWitnessTests(unittest.TestCase):
         self.ue = self.root / "nr-uesoftmodem"
         self.ue.write_text(
             "#!/bin/bash\n"
-            "tx= probe= delay= log= run= max_duration= honor_reject= msg4_wait= num_ues= probe_ra_only= probe_interval= phase=\n"
+            "tx= probe= delay= log= run= max_duration= honor_reject= msg4_wait= num_ues= probe_ra_only= probe_interval= phase= cfg=\n"
+            "txs=()\n"
             "while (( $# )); do\n"
             "  case $1 in\n"
-            "    --zmq.\\[0\\].tx_channels) tx=$2; shift 2;;\n"
+            "    --zmq.\\[*\\].tx_channels) tx=$2; txs+=(\"$2\"); shift 2;;\n"
             "    --rss.probe_ues) probe=$2; shift 2;;\n"
             "    --rss.probe_delay_ms) delay=$2; shift 2;;\n"
             "    --rss.log_file) log=$2; shift 2;;\n"
@@ -63,16 +66,17 @@ class BrokerWitnessTests(unittest.TestCase):
             "    --rss.probe_ra_only) probe_ra_only=$2; shift 2;;\n"
             "    --rss.probe_interval_ms) probe_interval=$2; shift 2;;\n"
             "    --rss.phase_ms) phase=$2; shift 2;;\n"
+            "    -O) cfg=$2; shift 2;;\n"
             "    *) shift;;\n"
             "  esac\n"
             "done\n"
             "trap 'exit 0' INT TERM\n"
-            "printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\\n' \"$tx\" \"$probe\" \"$delay\" \"$run\" \"$max_duration\" \"$honor_reject\" \"$msg4_wait\" \"$num_ues\" \"$RSS_SHARE_NUE\" \"$probe_ra_only\" \"$probe_interval\" \"$phase\" >> \"$FAKE_TRACE\"\n"
+            "printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\\n' \"$tx\" \"$probe\" \"$delay\" \"$run\" \"$max_duration\" \"$honor_reject\" \"$msg4_wait\" \"$num_ues\" \"$RSS_SHARE_NUE\" \"$probe_ra_only\" \"$probe_interval\" \"$phase\" \"$cfg\" >> \"$FAKE_TRACE\"\n"
             "printf '%s\\n' '[RSS] fixture'\n"
-            "if [[ -z ${FAKE_NO_TX_BOUND_RUN:-} || $run != ${FAKE_NO_TX_BOUND_RUN} ]]; then printf '%s\\n' \"[HW] [ZMQ] TX socket for antenna 0 bound to $tx\"; fi\n"
-            "if [[ ( -z ${FAKE_NO_SYNC_PORT:-} || $tx != *:${FAKE_NO_SYNC_PORT} ) && ( -z ${FAKE_NO_SYNC_RUN:-} || $run != ${FAKE_NO_SYNC_RUN} ) ]]; then\n"
-            "  printf '%s\\n' 'Initial sync successful'\n"
-            "fi\n"
+            "for endpoint in \"${txs[@]}\"; do\n"
+            "  if [[ -z ${FAKE_NO_TX_BOUND_RUN:-} || $run != ${FAKE_NO_TX_BOUND_RUN} ]]; then printf '%s\\n' \"[HW] [ZMQ] TX socket for antenna 0 bound to $endpoint\"; fi\n"
+            "  if [[ ( -z ${FAKE_NO_SYNC_PORT:-} || $endpoint != *:${FAKE_NO_SYNC_PORT} ) && ( -z ${FAKE_NO_SYNC_RUN:-} || $run != ${FAKE_NO_SYNC_RUN} ) ]]; then printf '%s\\n' 'Initial sync successful'; fi\n"
+            "done\n"
             ": > \"$log\"\n"
             "witness_tx=${FAKE_WITNESS_TX_PORT:-2501}\n"
             "same_witness=0\n"
@@ -265,6 +269,97 @@ class BrokerWitnessTests(unittest.TestCase):
         self.assertEqual(verdict["teardown"]["forced_kill_count"], 0)
         self.assertEqual(verdict["teardown"]["ue_stop_signal"], "INTx2")
         self.assertEqual(verdict["teardown"]["broker_stop_signal"], "INT")
+
+    def test_primary_witness_supports_five_ues_and_a_separate_config(self):
+        result = self.run_script(
+            run_id="bw-five-witnesses",
+            BROKER_ATTACK_PROCESSES="1",
+            BROKER_PY=str(BROKER2),
+            BROKER_WITNESS_UES="5",
+            BROKER_WITNESS_PHASE_MS="250",
+            BROKER_WITNESS_RETRY_MS="5000",
+            BROKER_WITNESS_UE_CFG=str(self.witness_ue_cfg),
+            FAKE_WITNESS_TX_PORT="2201",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        rows = [line.split("|") for line in self.trace.read_text().splitlines()]
+        roles = {row[0].rsplit(":", 1)[1]: row for row in rows}
+        self.assertEqual(roles["2101"][7], "1")
+        self.assertEqual(roles["2101"][12], str(self.ue_cfg))
+        self.assertEqual(roles["2201"][1], "5")
+        self.assertEqual(roles["2201"][7], "5")
+        self.assertEqual(roles["2201"][8], "5")
+        self.assertEqual(roles["2201"][10], "5000")
+        self.assertEqual(roles["2201"][11], "250")
+        self.assertEqual(roles["2201"][12], str(self.witness_ue_cfg))
+        self.assertEqual(self.result("bw-five-witnesses")["topology"]["witness_ues"], 5)
+
+    def test_primary_witness_can_use_five_independent_ru_endpoints(self):
+        result = self.run_script(
+            run_id="bw-five-ru-witnesses",
+            BROKER_ATTACK_PROCESSES="1",
+            BROKER_WITNESS_UES="5",
+            BROKER_WITNESS_MULTI_RU="1",
+            BROKER_WITNESS_UE_CFG=str(self.witness_ue_cfg),
+            FAKE_WITNESS_TX_PORT="2601",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        witness_log = (self.runs / "bw-five-ru-witnesses" / "ue2.log").read_text()
+        self.assertEqual(witness_log.count("TX socket for antenna 0 bound to"), 5)
+        verdict = self.result("bw-five-ru-witnesses")
+        self.assertTrue(verdict["valid"])
+        self.assertEqual(verdict["sync_ues"], 6)
+        self.assertEqual(verdict["topology"]["ue_processes"], 2)
+        self.assertEqual(verdict["topology"]["zmq_endpoints"], 6)
+
+    def test_six_attack_processes_can_share_a_cell_with_five_independent_witness_rus(self):
+        result = self.run_script(
+            mode="attack",
+            run_id="bw-six-attack-five-witness",
+            BROKER_ATTACK_PROCESSES="6",
+            BROKER_ATTACK_UES_PER_PROCESS="2",
+            BROKER_WITNESS_UES="5",
+            BROKER_WITNESS_MULTI_RU="1",
+            BROKER_WITNESS_UE_CFG=str(self.witness_ue_cfg),
+            BROKER_PY=str(DYNAMIC_BROKER),
+            FAKE_WITNESS_TX_PORT="2701",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        verdict = self.result("bw-six-attack-five-witness")
+        self.assertTrue(verdict["valid"])
+        self.assertEqual(verdict["sync_ues"], 11)
+        self.assertEqual(verdict["topology"]["attack_or_quiet_ues"], 12)
+        self.assertEqual(verdict["topology"]["witness_ues"], 5)
+        self.assertEqual(verdict["topology"]["zmq_endpoints"], 11)
+
+    def test_primary_witness_can_use_an_unpatched_normal_ue_binary(self):
+        result = self.run_script(
+            run_id="bw-clean-witness",
+            BROKER_ATTACK_PROCESSES="1",
+            BROKER_PY=str(BROKER2),
+            BROKER_WITNESS_UES="5",
+            BROKER_WITNESS_RSS="0",
+            BROKER_WITNESS_UE_CFG=str(self.witness_ue_cfg),
+            FAKE_WITNESS_TX_PORT="2201",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        rows = [line.split("|") for line in self.trace.read_text().splitlines()]
+        witness = next(row for row in rows if row[0].endswith(":2201"))
+        self.assertEqual(witness[1:4], ["", "", ""])
+        self.assertEqual(witness[7:9], ["5", "5"])
+        self.assertEqual(witness[12], str(self.witness_ue_cfg))
+
+    def test_broker_waits_for_every_ue_zmq_endpoint(self):
+        result = self.run_script(
+            run_id="bw-endpoint-timeout",
+            BROKER_ATTACK_PROCESSES="1",
+            BROKER_PY=str(BROKER2),
+            BROKER_ENDPOINT_READY_TIMEOUT_S="1",
+            FAKE_NO_TX_BOUND_RUN="u2-bw-endpoint-timeout",
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("1/2 UE ZMQ endpoints ready", result.stderr)
+        self.assertFalse((self.runs / "bw-endpoint-timeout" / "broker.log").exists())
 
     def test_control_can_match_attack_with_an_eighth_quiet_endpoint(self):
         result = self.run_script(

@@ -2,6 +2,8 @@
 
 1. `reproducers/<설명형-id>/`를 만들고 한국어 README와 `reproducer.json`을 둔다.
 2. 표준·논문·공개 구현의 원문 URL로 메시지 흐름과 변형을 고정한다.
+   `PROVENANCE.md`에는 레퍼런스별로 참고한 부분, 가져오지 않은 부분, 자체 구현, 주장 한계를
+   구분해 적고 [통합 레퍼런스 문서](ATTACK-REFERENCES.md)에 한 행 또는 절을 추가한다.
 3. 수정 UE로 실제 기전을 만들 수 있는지 먼저 판단하고, 불가능할 때만 결과 또는 탐지 입력
    에뮬레이션으로 낮춘다.
 4. control과 attack/emulation의 차이를 최소화하고 `--enable`, duration, UE 수 상한을 둔다.

@@ -1,0 +1,12 @@
+diff --git a/executables/nr-ue-ru.c b/executables/nr-ue-ru.c
+--- a/executables/nr-ue-ru.c
++++ b/executables/nr-ue-ru.c
+@@ -174,7 +174,7 @@ static rss_ru_share_t rss_share = {.mtx = PTHREAD_MUTEX_INITIALIZER, .cv = PTHRE
+ 
+ bool nrue_ru_sharing_enabled(void)
+ {
+-  return NB_UE_INST > 1;
++  return NB_UE_INST > nrue_get_ru_count();
+ }
+ 
+ void nrue_ru_sharing_init(void)

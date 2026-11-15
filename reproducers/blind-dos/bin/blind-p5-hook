@@ -10,13 +10,14 @@ P5_KNOWN_HOSTS=${P5_KNOWN_HOSTS:-}
 P5_EVIDENCE_PY=${P5_EVIDENCE_PY:-}
 P5_DU_BIN=${P5_DU_BIN:-}
 P5_DU_CFG=${P5_DU_CFG:-}
-P5_DU_LOG=${P5_DU_LOG:-/tmp/odu.log}
+P5_DU_LOG=${SAME_CELL_DU_LOG:-${P5_DU_LOG:-/tmp/odu.log}}
 P5_DU_BOOT_LOG=${P5_DU_BOOT_LOG:-/tmp/blind-dos-odu.boot.log}
 P5_DU_PID_FILE=${P5_DU_PID_FILE:-/tmp/blind-dos-odu.pid}
 P5_CU_LOG=${P5_CU_LOG:-/tmp/ocu.log}
 P5_CORE_CONTAINER=${P5_CORE_CONTAINER:-open5gs_5gc}
 P5_VICTIM_TUN=${P5_VICTIM_TUN:-oaitun_ue1p1}
 P5_PING_TARGET=${P5_PING_TARGET:-10.45.1.1}
+P5_EXTERNAL_RAN=${P5_EXTERNAL_RAN:-0}
 
 fail() { echo "blind-p5-hook: $*" >&2; exit 1; }
 need_file() { [[ -f $2 && ! -L $2 ]] || fail "$1 must be a regular non-symlink file"; }
@@ -63,7 +64,9 @@ stop_capture() {
 
 case $ACTION in
   process-clear)
-    ! pgrep -x nr-uesoftmodem >/dev/null || fail "an OAI UE is already running"
+    [[ $P5_EXTERNAL_RAN == 1 ]] \
+      || ! pgrep -x nr-uesoftmodem >/dev/null \
+      || fail "an OAI UE is already running"
     ;;
   du-stop)
     if [[ -f $P5_DU_PID_FILE && ! -L $P5_DU_PID_FILE ]]; then
@@ -91,10 +94,14 @@ case $ACTION in
     printf '%s\n' "$!" >"$P5_DU_PID_FILE"
     ;;
   du-ready)
-    need_file "DU pid file" "$P5_DU_PID_FILE"
-    pid=$(<"$P5_DU_PID_FILE")
-    [[ $pid =~ ^[1-9][0-9]*$ ]] && kill -0 "$pid" 2>/dev/null \
-      || fail "DU process is not alive"
+    if [[ $P5_EXTERNAL_RAN == 1 ]]; then
+      pgrep -x odu >/dev/null || fail "DU process is not alive"
+    else
+      need_file "DU pid file" "$P5_DU_PID_FILE"
+      pid=$(<"$P5_DU_PID_FILE")
+      [[ $pid =~ ^[1-9][0-9]*$ ]] && kill -0 "$pid" 2>/dev/null \
+        || fail "DU process is not alive"
+    fi
     grep -Eqi 'F1 Setup procedure successful|E2 Setup procedure successful' "$P5_DU_LOG" \
       || fail "DU is not F1/E2 ready"
     ;;

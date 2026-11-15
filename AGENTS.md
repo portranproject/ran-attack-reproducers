@@ -1,7 +1,7 @@
 # AGENTS.md — 기지국 공격 재현 도구 모음 (RAN 보안 테스트베드)
 
 > 이 디렉토리에서 작업하는 에이전트/팀원용 컨텍스트. 처음 들어오면 이 파일부터 읽을 것.
-> 최종 갱신 2026-11-11.
+> 최종 갱신 2026-11-13.
 
 ## 이 디렉토리는 무엇인가
 
@@ -19,6 +19,7 @@
 - `reproducers/ue-capability-hijacking/`: UE Capability Hijacking 계열의 보안 전 unsolicited UECapabilityInformation F1 관측 에뮬레이터 완료. p5 matched control→emulation 3/3 통과; MITM·내용 변조·강등 수락은 주장하지 않음
 - `reproducers/{nas-counter-desynchronization,authentication-sync-failure,nas-counter-reset,uplink-imsi-extractor,short-connection-repeat,rrc-reject-release-imprisonment,tac-manipulation-return}/`: L3-06·AN-01·AN-06a·AN-02·AN-04·AN-07·AN-08 연구 기반 탐지 입력 에뮬레이터. production detector 고정 commit의 기본 설정에서 각각 matched control→emulation 3/3 통과. p5 live protocol과 RF 원인은 미관측
 - `reproducer.json`, `schemas/`, `profiles/`, `tools/reproctl.py`: 13개 룰 카탈로그, p5/OTA profile, 공통 run/verdict/evidence 계약, production replay·report·verify
+- `workloads/normal-ue/`: 공격 슬롯과 같은 DU·셀의 지속 정상 UE 풀. 한 OAI 프로세스 안에서 UE별 독립 virtual RU/ZMQ endpoint를 broker로 합치는 구조로 p5 cold-start 3회 Registration·PDU·ping 5/5, timeout·crash 0을 통과. RRC storm 두 변형과의 단일 공존 실측에서는 선연결 5/5 유지, 공격 중 신규 접속은 4/5였으며 1대가 pre-RRC 단계에서 실패. 다른 공격·OTA 공존은 미검증
 
 아래 장문의 실측 기록은 첫 번째 모듈인 RRC signaling storm의 보존 컨텍스트다.
 

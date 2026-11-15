@@ -9,6 +9,8 @@ ATTACKS=(
   uplink-identifier-exposure short-connection-repeat rrc-reject-release-imprisonment tac-manipulation-return
 )
 REPROCTL="$ROOT/tools/reproctl.py"
+NORMAL_UE="$ROOT/workloads/normal-ue/bin/normal-ue"
+SAME_CELL="$ROOT/workloads/normal-ue/bin/same-cell-run"
 
 fail() { echo "ctl.sh: $*" >&2; exit 2; }
 
@@ -481,6 +483,10 @@ usage() {
   ./ctl.sh verify RUN_ID [--profile p5|ota]
   ./ctl.sh coverage
   ./ctl.sh validate
+  ./ctl.sh normal-ue setup|doctor|start|status|stop [--profile p5] [--count N]
+  ./ctl.sh same-cell start -n SESSION_ID [--count 5]
+  ./ctl.sh same-cell run blind|uplink|auth-timeout -n RUN_ID -- COMMAND...
+  ./ctl.sh same-cell status|stop
 
 ID 전체 목록: ./ctl.sh list
 MODE: control 또는 목록에 맞는 attack/emulation
@@ -497,6 +503,14 @@ main() {
     list) list_attacks ;;
     coverage) python3 "$REPROCTL" coverage ;;
     validate) python3 "$REPROCTL" validate ;;
+    normal-ue)
+      [[ -x $NORMAL_UE ]] || fail "normal-ue runner가 없습니다: $NORMAL_UE"
+      shift
+      exec "$NORMAL_UE" "$@" ;;
+    same-cell)
+      [[ -x $SAME_CELL ]] || fail "same-cell runner가 없습니다: $SAME_CELL"
+      shift
+      exec "$SAME_CELL" "$@" ;;
     doctor)
       command -v git >/dev/null && command -v python3 >/dev/null \
         || fail "git과 python3가 필요합니다"

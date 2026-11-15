@@ -1,0 +1,11 @@
+diff --git a/openair2/RRC/NR_UE/rrc_timers_and_constants.c b/openair2/RRC/NR_UE/rrc_timers_and_constants.c
+--- a/openair2/RRC/NR_UE/rrc_timers_and_constants.c
++++ b/openair2/RRC/NR_UE/rrc_timers_and_constants.c
+@@ -200,7 +200,7 @@ bool nr_rss_is_probe(int ue)
+ 
+ static uint64_t rss_probe_delay_ms(int ue, int base_ms)
+ {
+-  const uint64_t phase_ms = nr_rss_probe_ra_only() ? (uint64_t)ue * rss_get_cfg()->phase_ms : 0;
++  const uint64_t phase_ms = (uint64_t)ue * rss_get_cfg()->phase_ms;
+   return (uint64_t)base_ms + phase_ms;
+ }

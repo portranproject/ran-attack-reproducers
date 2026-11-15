@@ -34,7 +34,8 @@ class multi_ue_2ue(gr.top_block):
         uplink = blocks.add_vcc(1)
         self.witness_ul = ue2_ul
         self.uplink = uplink
-        throttle = blocks.throttle(gr.sizeof_gr_complex, 23.04e6, True)
+        # Match the official multi-UE flowgraph's default 4x slowdown.
+        throttle = blocks.throttle(gr.sizeof_gr_complex, 23.04e6 / 4, True)
 
         self.connect((du_dl, 0), (throttle, 0))
         self.connect((throttle, 0), (ue1_dl, 0))

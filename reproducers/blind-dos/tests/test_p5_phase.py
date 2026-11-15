@@ -358,6 +358,18 @@ class BlindP5PhaseTests(unittest.TestCase):
         self.assertFalse(any(row["event"] in {"process_crash", "forced_kill"}
                              for row in truth))
 
+    def test_external_ran_keeps_du_running_and_honors_readiness_gate(self):
+        ready = self.root / "normal.ready"
+        ready.write_text("")
+        result, _ = self.execute(
+            "external-ran", BLIND_MANAGE_DU="0", SAME_CELL_READY_FILE=str(ready),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        names = [row["event"] for row in self.events()]
+        self.assertIn("du-ready", names)
+        self.assertNotIn("du-stop", names)
+        self.assertNotIn("du-restart", names)
+
     def test_attack_passes_exact_target_run_and_exclusive_log_arguments(self):
         result, run_dir = self.execute(
             "attack", BLIND_MODE="attack", BLIND_ATTACK_ENABLED="1",

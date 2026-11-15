@@ -44,6 +44,11 @@ SESSION_READY_TIMEOUT_S=${SESSION_READY_TIMEOUT_S:-15}
 SESSION_SETTLE_S=${SESSION_SETTLE_S:-4}
 PING_COUNT=${PING_COUNT:-5}
 RECOVERY_MAX_PINGS=${RECOVERY_MAX_PINGS:-10}
+UPLINK_MANAGE_RAN=${SAME_CELL_UPLINK_MANAGE_RAN:-${UPLINK_MANAGE_RAN:-1}}
+UE_TX_ENDPOINT=${SAME_CELL_UE_TX_ENDPOINT:-${UE_TX_ENDPOINT:-tcp://127.0.0.1:4557}}
+UE_RX_ENDPOINT=${SAME_CELL_UE_RX_ENDPOINT:-${UE_RX_ENDPOINT:-tcp://127.0.0.1:4556}}
+SAME_CELL_READY_FILE=${SAME_CELL_READY_FILE:-}
+SAME_CELL_READY_TIMEOUT_S=${SAME_CELL_READY_TIMEOUT_S:-120}
 
 fail() { echo "uplink-run: $*" >&2; exit 2; }
 [[ $MODE == control || $MODE == emulation ]] || fail "mode는 control 또는 emulation이어야 합니다"
@@ -51,14 +56,22 @@ fail() { echo "uplink-run: $*" >&2; exit 2; }
 [[ $MODE == control && $ENABLE == 0 || $MODE == emulation && $ENABLE == 1 ]] \
   || fail "control은 -e 0, emulation은 명시적 -e 1이 필요합니다"
 [[ $RUN_ID =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$ ]] || fail "안전한 RUN_ID가 필요합니다"
-for value in "$ATTACH_TIMEOUT_S" "$IDLE_RELEASE_TIMEOUT_S" "$CU_READY_TIMEOUT_S" "$SESSION_READY_TIMEOUT_S" "$SESSION_SETTLE_S" "$PING_COUNT" "$RECOVERY_MAX_PINGS"; do
+for value in "$ATTACH_TIMEOUT_S" "$IDLE_RELEASE_TIMEOUT_S" "$CU_READY_TIMEOUT_S" "$SESSION_READY_TIMEOUT_S" "$SESSION_SETTLE_S" "$PING_COUNT" "$RECOVERY_MAX_PINGS" "$SAME_CELL_READY_TIMEOUT_S"; do
   [[ $value =~ ^[1-9][0-9]*$ ]] || fail "시간·횟수 값은 양의 정수여야 합니다"
 done
 (( PING_COUNT >= 5 && RECOVERY_MAX_PINGS >= 5 )) || fail "ping 표본은 5개 이상이어야 합니다"
-for file in "$OAI_BIN" "$UE_CFG" "$UECAP" "$DU_CTL" "$SSH_KEY"; do
+[[ $UPLINK_MANAGE_RAN == 0 || $UPLINK_MANAGE_RAN == 1 ]] || fail "UPLINK_MANAGE_RAN은 0 또는 1이어야 합니다"
+[[ $UE_TX_ENDPOINT == tcp://127.0.0.1:* && $UE_RX_ENDPOINT == tcp://127.0.0.1:* ]] \
+  || fail "UE endpoint는 로컬 tcp ZMQ 주소여야 합니다"
+[[ -z $SAME_CELL_READY_FILE || $SAME_CELL_READY_FILE == /* ]] \
+  || fail "SAME_CELL_READY_FILE은 절대 경로여야 합니다"
+for file in "$OAI_BIN" "$UE_CFG" "$UECAP" "$SSH_KEY"; do
   [[ -f $file && ! -L $file ]] || fail "필수 파일이 없거나 심볼릭 링크입니다: $file"
 done
-[[ -x $OAI_BIN && -x $DU_CTL ]] || fail "OAI_BIN과 DU_CTL은 실행 가능해야 합니다"
+[[ -x $OAI_BIN ]] || fail "OAI_BIN은 실행 가능해야 합니다"
+if (( UPLINK_MANAGE_RAN )); then
+  [[ -f $DU_CTL && ! -L $DU_CTL && -x $DU_CTL ]] || fail "DU_CTL은 실행 가능한 일반 파일이어야 합니다"
+fi
 [[ -n $CU_HOST ]] || fail "CU_HOST가 필요합니다"
 command -v flock >/dev/null || fail "flock이 필요합니다"
 command -v ssh >/dev/null || fail "ssh가 필요합니다"
@@ -175,22 +188,28 @@ wait_network_release() {
 
 CU_START_UTC=$(cu 'date -u +%Y-%m-%dT%H:%M:%S.%NZ') || fail "CU 시각을 읽을 수 없습니다"
 cu "test \"\$(grep -c 'inactivity_timer: 2' '$CU_CFG')\" = 1" || fail "CU inactivity_timer가 2가 아닙니다"
-cu "rm -f /tmp/uplink-dos-cu-start.log; nohup setsid '$CU_CTL' start >/tmp/uplink-dos-cu-start.log 2>&1 </dev/null &" \
-  || fail "CU/core 초기화를 시작하지 못했습니다"
-started=$SECONDS
-until cu "grep -Fq '=== ✅ CU 준비 완료 ===' /tmp/uplink-dos-cu-start.log"; do
-  (( SECONDS - started < CU_READY_TIMEOUT_S )) || fail "CU/core 초기화가 시간 초과했습니다"
-  sleep 1
-done
-cu 'cat /tmp/uplink-dos-cu-start.log' >"$OUT/cu-start.log" || fail "CU 시작 로그를 수집하지 못했습니다"
+if (( UPLINK_MANAGE_RAN )); then
+  cu "rm -f /tmp/uplink-dos-cu-start.log; nohup setsid '$CU_CTL' start >/tmp/uplink-dos-cu-start.log 2>&1 </dev/null &" \
+    || fail "CU/core 초기화를 시작하지 못했습니다"
+  started=$SECONDS
+  until cu "grep -Fq '=== ✅ CU 준비 완료 ===' /tmp/uplink-dos-cu-start.log"; do
+    (( SECONDS - started < CU_READY_TIMEOUT_S )) || fail "CU/core 초기화가 시간 초과했습니다"
+    sleep 1
+  done
+  cu 'cat /tmp/uplink-dos-cu-start.log' >"$OUT/cu-start.log" || fail "CU 시작 로그를 수집하지 못했습니다"
+fi
 cu "pgrep -x ocu >/dev/null && test \"\$(docker inspect -f '{{.State.Health.Status}}' '$CORE_CONTAINER')\" = healthy" \
   || fail "CU 또는 코어가 준비되지 않았습니다"
 CU_OFFSET=$(cu "stat -c %s '$CU_LOG'") || fail "CU 로그 오프셋을 읽을 수 없습니다"
 [[ $CU_OFFSET =~ ^[0-9]+$ ]] || fail "CU 로그 오프셋이 잘못됐습니다"
 
-pgrep -x nr-uesoftmodem >/dev/null && fail "기존 OAI UE가 실행 중입니다"
-"$DU_CTL" start >"$OUT/du-start.log" 2>&1 || fail "DU 시작에 실패했습니다"
-DU_STARTED=1
+if (( UPLINK_MANAGE_RAN )); then
+  pgrep -x nr-uesoftmodem >/dev/null && fail "기존 OAI UE가 실행 중입니다"
+  "$DU_CTL" start >"$OUT/du-start.log" 2>&1 || fail "DU 시작에 실패했습니다"
+  DU_STARTED=1
+else
+  pgrep -x odu >/dev/null || fail "external DU가 실행 중이 아닙니다"
+fi
 
 bin_dir=$(dirname "$OAI_BIN")
 (
@@ -198,12 +217,23 @@ bin_dir=$(dirname "$OAI_BIN")
   OAI_UPLINK_DOS_EMULATE=$ENABLE exec setsid stdbuf -oL -eL "$OAI_BIN" \
     -O "$UE_CFG" --band 78 -C 3489420000 --numerology 1 -r 51 -E --ue-scan-carrier \
     --uecap_file "$UECAP" --device.name oai_zmqdevif --num-ues 1 \
-    '--zmq.[0].tx_channels' tcp://127.0.0.1:4557 \
-    '--zmq.[0].rx_channels' tcp://127.0.0.1:4556
+    '--zmq.[0].tx_channels' "$UE_TX_ENDPOINT" \
+    '--zmq.[0].rx_channels' "$UE_RX_ENDPOINT"
 ) >"$OUT/ue.log" 2>&1 </dev/null &
 UE_PID=$!
-printf '{"schema":"uplink-dos.run.v1","run_id":"%s","mode":"%s","emulation_enabled":%s,"victim_pid":%s,"rf_overshadowing_observed":false}\n' \
-  "$RUN_ID" "$MODE" "$([[ $ENABLE == 1 ]] && echo true || echo false)" "$UE_PID" >"$OUT/run.json"
+printf '{"schema":"uplink-dos.run.v1","run_id":"%s","mode":"%s","emulation_enabled":%s,"victim_pid":%s,"ran_lifecycle":"%s","rf_overshadowing_observed":false}\n' \
+  "$RUN_ID" "$MODE" "$([[ $ENABLE == 1 ]] && echo true || echo false)" "$UE_PID" \
+  "$([[ $UPLINK_MANAGE_RAN == 1 ]] && echo managed || echo external-persistent)" >"$OUT/run.json"
+
+if [[ -n $SAME_CELL_READY_FILE ]]; then
+  started=$SECONDS
+  until [[ -f $SAME_CELL_READY_FILE && ! -L $SAME_CELL_READY_FILE ]]; do
+    require_alive
+    (( SECONDS - started < SAME_CELL_READY_TIMEOUT_S )) \
+      || fail "same-cell 정상 UE readiness가 시간 초과했습니다"
+    sleep .2
+  done
+fi
 
 started=$SECONDS
 until ip -4 -o addr show "$TUN" >/dev/null 2>&1; do
@@ -255,8 +285,10 @@ cu "pgrep -x ocu >/dev/null && test \"\$(docker inspect -f '{{.State.Health.Stat
 pgrep -x odu >/dev/null || fail "실행 중 DU가 종료됐습니다"
 
 stop_ue
-"$DU_CTL" stop >/dev/null 2>&1
-DU_STARTED=0
+if (( UPLINK_MANAGE_RAN )); then
+  "$DU_CTL" stop >/dev/null 2>&1
+  DU_STARTED=0
+fi
 collect_network_logs
 write_process
 FINISHED=1

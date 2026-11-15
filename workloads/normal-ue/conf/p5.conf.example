@@ -1,0 +1,20 @@
+# Git 밖의 p5 실제 경로만 지정한다. 가입자 원문은 이 파일에 넣지 않는다.
+NORMAL_UE_OAI=/root/OAI-rss-rate-v2-20261030
+NORMAL_UE_ATTACK_BIN=/root/OAI-rss-rate-v2-20261030/cmake_targets/ran_build/build/nr-uesoftmodem
+NORMAL_UE_BIN=/root/OAI-rss-rate-v2-20261030/cmake_targets/ran_build/build/nr-uesoftmodem
+NORMAL_UE_UECAP=/root/OAI-rss-rate-v2-20261030/targets/PROJECTS/GENERIC-NR-5GC/CONF/uecap_ports1.xml
+NORMAL_UE_ATTACK_CFG=/root/auth-timeout-secrets/witness.conf
+NORMAL_UE_CFG=/root/normal-ue-secrets/p5-5ue.conf
+NORMAL_UE_GNB_CONFIG=/root/OCUDU/configs/du-broker-default.yaml
+NORMAL_UE_GNB_STOP_CMD='pkill -x odu 2>/dev/null || true'
+NORMAL_UE_GNB_RESTART_CMD='truncate -s 0 /tmp/odu.log /tmp/normal-ue-odu.boot.log; cd /root/OCUDU/build; setsid stdbuf -oL -eL ./apps/du/odu -c /root/OCUDU/configs/du-broker-default.yaml >/tmp/normal-ue-odu.boot.log 2>&1 </dev/null &'
+NORMAL_UE_GNB_READY_CMD='pgrep -x odu >/dev/null && grep -q "E2 Setup procedure successful" /tmp/odu.log'
+NORMAL_UE_DEFAULT_COUNT=5
+NORMAL_UE_MAX_COUNT=10
+NORMAL_UE_INITIAL_DELAY_MS=0
+NORMAL_UE_PHASE_MS=1000
+NORMAL_UE_RETRY_MS=5000
+NORMAL_UE_SEGMENT_S=3600
+NORMAL_UE_SUPERVISOR_RETRY_S=5
+NORMAL_UE_STATE_DIR=/run/ran-reproducer/normal-ue
+NORMAL_UE_RUN_ROOT=/var/lib/ran-reproducer/normal-ue

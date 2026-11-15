@@ -1,0 +1,247 @@
+#!/usr/bin/env bash
+# Persistent same-cell normal UE pool using the proven RRC broker harness.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+SELF="$ROOT/workloads/normal-ue/bin/normal-ue"
+ACTION=${1:-help}
+[[ $# == 0 ]] || shift
+PROFILE=p5
+CONF=${NORMAL_UE_CONF:-}
+COUNT=""
+SESSION_ID=""
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --profile) [[ $# -ge 2 ]] || { echo "--profile 값이 필요합니다" >&2; exit 2; }; PROFILE=$2; shift 2 ;;
+    --config) [[ $# -ge 2 ]] || { echo "--config 값이 필요합니다" >&2; exit 2; }; CONF=$2; shift 2 ;;
+    --count) [[ $# -ge 2 ]] || { echo "--count 값이 필요합니다" >&2; exit 2; }; COUNT=$2; shift 2 ;;
+    --session-id) [[ $# -ge 2 ]] || { echo "--session-id 값이 필요합니다" >&2; exit 2; }; SESSION_ID=$2; shift 2 ;;
+    *) echo "알 수 없는 옵션: $1" >&2; exit 2 ;;
+  esac
+done
+
+[[ $PROFILE == p5 ]] || { echo "현재 normal-ue backend는 p5만 지원합니다" >&2; exit 2; }
+CONF=${CONF:-$ROOT/workloads/normal-ue/conf/p5.conf}
+EXAMPLE=$ROOT/workloads/normal-ue/conf/p5.conf.example
+
+if [[ $ACTION == help || $ACTION == -h || $ACTION == --help ]]; then
+  echo "사용법: normal-ue setup|doctor|prepare|start|status|stop [--profile p5] [--count N] [--config FILE]"
+  exit 0
+fi
+
+if [[ $ACTION == setup ]]; then
+  [[ ! -e $CONF ]] || { echo "설정 유지: $CONF"; exit 0; }
+  [[ -f $EXAMPLE ]] || { echo "설정 예제가 없습니다: $EXAMPLE" >&2; exit 1; }
+  install -d -m 700 "$(dirname "$CONF")"
+  install -m 600 "$EXAMPLE" "$CONF"
+  echo "설정 생성: $CONF"
+  echo "p5 경로와 가입자 설정을 확인한 뒤 doctor를 실행하세요."
+  exit 0
+fi
+
+[[ -f $CONF && ! -L $CONF ]] || { echo "설정이 없습니다: $CONF (먼저 normal-ue setup)" >&2; exit 1; }
+# shellcheck source=/dev/null
+. "$CONF"
+
+NORMAL_UE_DEFAULT_COUNT=${NORMAL_UE_DEFAULT_COUNT:-5}
+NORMAL_UE_MAX_COUNT=${NORMAL_UE_MAX_COUNT:-10}
+NORMAL_UE_STATE_DIR=${SAME_CELL_NORMAL_STATE_DIR:-${NORMAL_UE_STATE_DIR:-/run/ran-reproducer/normal-ue}}
+NORMAL_UE_RUN_ROOT=${NORMAL_UE_RUN_ROOT:-/var/lib/ran-reproducer/normal-ue}
+NORMAL_UE_SEGMENT_S=${NORMAL_UE_SEGMENT_S:-3600}
+NORMAL_UE_SUPERVISOR_RETRY_S=${NORMAL_UE_SUPERVISOR_RETRY_S:-5}
+NORMAL_UE_INITIAL_DELAY_MS=${NORMAL_UE_INITIAL_DELAY_MS:-0}
+NORMAL_UE_PHASE_MS=${NORMAL_UE_PHASE_MS:-1000}
+NORMAL_UE_RETRY_MS=${NORMAL_UE_RETRY_MS:-5000}
+NORMAL_UE_RUNNER=${NORMAL_UE_RUNNER:-$ROOT/reproducers/rrc-signaling-storm/bin/rss-broker-witness}
+NORMAL_UE_BROKER_PY=${NORMAL_UE_BROKER_PY:-$ROOT/workloads/normal-ue/tools/same_cell_broker.py}
+SETSID_BIN=${SETSID_BIN:-setsid}
+IP_CMD=${IP_CMD:-ip}
+PING_CMD=${PING_CMD:-ping}
+COUNT=${COUNT:-$NORMAL_UE_DEFAULT_COUNT}
+
+fail() { echo "normal-ue: $*" >&2; exit 1; }
+
+validate() {
+  [[ $NORMAL_UE_MAX_COUNT =~ ^[1-9][0-9]*$ ]] && (( NORMAL_UE_MAX_COUNT <= 10 )) \
+    || fail "NORMAL_UE_MAX_COUNT는 1..10 범위여야 합니다"
+  [[ $COUNT =~ ^[1-9][0-9]*$ ]] && (( COUNT <= NORMAL_UE_MAX_COUNT )) \
+    || fail "count는 1..$NORMAL_UE_MAX_COUNT 범위여야 합니다"
+  [[ $NORMAL_UE_SEGMENT_S =~ ^[1-9][0-9]*$ ]] && (( NORMAL_UE_SEGMENT_S <= 3600 )) \
+    || fail "NORMAL_UE_SEGMENT_S는 1..3600이어야 합니다"
+  [[ $NORMAL_UE_SUPERVISOR_RETRY_S =~ ^[1-9][0-9]*$ ]] || fail "supervisor retry는 양의 정수여야 합니다"
+  [[ -x $NORMAL_UE_RUNNER && -x $NORMAL_UE_ATTACK_BIN && -x $NORMAL_UE_BIN ]] \
+    || fail "runner 또는 UE 바이너리가 없습니다"
+  for path in "$NORMAL_UE_BROKER_PY" "$NORMAL_UE_UECAP" "$NORMAL_UE_ATTACK_CFG" \
+              "$NORMAL_UE_CFG" "$NORMAL_UE_GNB_CONFIG"; do
+    [[ -f $path && ! -L $path ]] || fail "필수 파일이 없거나 심볼릭 링크입니다: $path"
+  done
+  [[ -n $NORMAL_UE_GNB_STOP_CMD && -n $NORMAL_UE_GNB_RESTART_CMD && -n $NORMAL_UE_GNB_READY_CMD ]] \
+    || fail "gNB stop/restart/ready 명령이 필요합니다"
+  command -v "$SETSID_BIN" >/dev/null || fail "setsid가 없습니다"
+  command -v "$IP_CMD" >/dev/null || fail "ip가 없습니다"
+  command -v "$PING_CMD" >/dev/null || fail "ping이 없습니다"
+  python3 - "$NORMAL_UE_CFG" "$COUNT" <<'PY'
+import hashlib, os, pathlib, re, stat, sys
+path = pathlib.Path(sys.argv[1])
+count = int(sys.argv[2])
+if stat.S_IMODE(path.stat().st_mode) & 0o077:
+    raise SystemExit(f"가입자 설정 권한은 0600 이하여야 합니다: {path}")
+text = path.read_text(encoding="utf-8")
+if re.search(r"(?m)^\s*(RUs|cells)\s*=", text):
+    raise SystemExit("가입자 설정에는 RUs/cells를 넣지 마세요; normal-ue가 대수에 맞게 생성합니다")
+blocks = re.findall(r"(?ms)^\s*uicc\d+\s*=\s*\{.*?(?=^\s*uicc\d+\s*=|\Z)", text)
+values = []
+for block in blocks[:count]:
+    match = re.search(r'imsi\s*=\s*"?([^";\s]+)', block)
+    if match:
+        values.append(hashlib.sha256(match.group(1).encode()).digest())
+if len(values) < count or len(set(values)) != count:
+    raise SystemExit(f"서로 다른 가입자 설정이 {count}개 필요합니다")
+PY
+}
+
+runtime_config() {
+  local target=$NORMAL_UE_STATE_DIR/normal-ue-runtime.conf
+  python3 - "$NORMAL_UE_CFG" "$target" "$COUNT" <<'PY'
+import os, pathlib, sys
+source = pathlib.Path(sys.argv[1])
+target = pathlib.Path(sys.argv[2])
+count = int(sys.argv[3])
+radios = ",\n".join('  { nb_tx = 1; nb_rx = 1; sdr_addrs = "type=zmq"; }' for _ in range(count))
+cells = ",\n".join(
+    f"  {{ ru_id = {i}; band = 78; rf_freq = 3489420000L; rf_offset = 0L; "
+    "numerology = 1; N_RB_DL = 51; ssb_start = 516; }"
+    for i in range(count)
+)
+payload = source.read_text(encoding="utf-8").rstrip() + f"\n\nRUs = (\n{radios}\n);\n\ncells = (\n{cells}\n);\n"
+temporary = target.with_suffix(".tmp")
+temporary.write_text(payload, encoding="utf-8")
+temporary.chmod(0o600)
+os.replace(temporary, target)
+PY
+  echo "$target"
+}
+
+pid_starttime() { awk '{print $22}' "/proc/$1/stat" 2>/dev/null || true; }
+
+active_pid() {
+  local pid expected actual cmdline
+  [[ -r $NORMAL_UE_STATE_DIR/supervisor.pid && -r $NORMAL_UE_STATE_DIR/supervisor.starttime ]] || return 1
+  read -r pid <"$NORMAL_UE_STATE_DIR/supervisor.pid"
+  read -r expected <"$NORMAL_UE_STATE_DIR/supervisor.starttime"
+  [[ $pid =~ ^[1-9][0-9]*$ && -r /proc/$pid/stat ]] || return 1
+  actual=$(pid_starttime "$pid")
+  [[ -n $actual && $actual == "$expected" ]] || return 1
+  cmdline=$(tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null || true)
+  [[ $cmdline == *"$SELF _supervise"* ]] || return 1
+  echo "$pid"
+}
+
+run_segment() {
+  local run_id=$1 witness_cfg
+  witness_cfg=$(runtime_config)
+  exec env RSS_CONF=/dev/null OAI="$NORMAL_UE_OAI" UE_BIN="$NORMAL_UE_ATTACK_BIN" \
+    BROKER_ATTACK_UE_BIN="$NORMAL_UE_ATTACK_BIN" BROKER_WITNESS_UE_BIN="$NORMAL_UE_BIN" \
+    UECAP="$NORMAL_UE_UECAP" BROKER_ATTACK_PROCESSES=1 BROKER_ATTACK_UES_PER_PROCESS=1 \
+    BROKER_WITNESS_UES="$COUNT" BROKER_WITNESS_RSS=1 BROKER_WITNESS_MULTI_RU=1 \
+    BROKER_WITNESS_PHASE_MS="$NORMAL_UE_PHASE_MS" \
+    BROKER_WITNESS_RETRY_MS="$NORMAL_UE_RETRY_MS" BROKER_START_GNB_LAST=1 \
+    BROKER_ATTACK_UE_CFG="$NORMAL_UE_ATTACK_CFG" BROKER_WITNESS_UE_CFG="$witness_cfg" \
+    BROKER_PY="$NORMAL_UE_BROKER_PY" \
+    BROKER_CMD="exec env NORMAL_UE_BROKER_ENDPOINTS=$((COUNT + 1)) python3 '$NORMAL_UE_BROKER_PY'" \
+    BROKER_LOGDIR="$NORMAL_UE_RUN_ROOT/runs" \
+    GNB_CONFIG="$NORMAL_UE_GNB_CONFIG" GNB_STOP_CMD="$NORMAL_UE_GNB_STOP_CMD" \
+    GNB_RESTART_CMD="$NORMAL_UE_GNB_RESTART_CMD" GNB_READY_CMD="$NORMAL_UE_GNB_READY_CMD" \
+    GNB_SETTLE_S="${NORMAL_UE_GNB_SETTLE_S:-2}" GNB_READY_TIMEOUT_S="${NORMAL_UE_GNB_READY_TIMEOUT_S:-60}" \
+    BROKER_ENDPOINT_READY_TIMEOUT_S="${NORMAL_UE_ENDPOINT_TIMEOUT_S:-30}" \
+    BROKER_SYNC_TIMEOUT_S="${NORMAL_UE_SYNC_TIMEOUT_S:-60}" UE_BEFORE_BROKER_S="${NORMAL_UE_BEFORE_BROKER_S:-3}" \
+    WITNESS_DELAY_MS="$NORMAL_UE_INITIAL_DELAY_MS" LOCK_FILE="$NORMAL_UE_STATE_DIR/broker.lock" \
+    "$NORMAL_UE_RUNNER" control -n "$run_id" -d "$NORMAL_UE_SEGMENT_S"
+}
+
+supervise() {
+  local generation=0 child="" stopping=0 run_id status
+  mkdir -p "$NORMAL_UE_STATE_DIR" "$NORMAL_UE_RUN_ROOT/runs"
+  printf '%s\n' "$COUNT" >"$NORMAL_UE_STATE_DIR/count"
+  printf '%s\n' "$SESSION_ID" >"$NORMAL_UE_STATE_DIR/session_id"
+  stop_child() {
+    stopping=1
+    if [[ -n $child ]]; then
+      kill -TERM "$child" 2>/dev/null || true
+      wait "$child" 2>/dev/null || true
+      child=""
+    fi
+    bash -c "$NORMAL_UE_GNB_STOP_CMD" >/dev/null 2>&1 || true
+  }
+  request_stop() { stopping=1; exit 0; }
+  trap request_stop INT TERM
+  trap stop_child EXIT
+  while (( !stopping )); do
+    generation=$((generation + 1))
+    run_id="$SESSION_ID-g$generation"
+    printf '%s\n' "$run_id" >"$NORMAL_UE_STATE_DIR/current_run"
+    run_segment "$run_id" & child=$!
+    if wait "$child"; then status=0; else status=$?; fi
+    child=""
+    printf '{"run_id":"%s","exit_status":%d,"time":"%s"}\n' \
+      "$run_id" "$status" "$(date -u +%FT%TZ)" >>"$NORMAL_UE_STATE_DIR/generations.jsonl"
+    (( stopping )) && break
+    sleep "$NORMAL_UE_SUPERVISOR_RETRY_S"
+  done
+}
+
+case $ACTION in
+  doctor)
+    validate
+    echo "OK p5 same-cell backend: normal_ues=$COUNT attack_slot=1 broker=$(basename "$NORMAL_UE_BROKER_PY")"
+    ;;
+  prepare)
+    validate
+    mkdir -p "$NORMAL_UE_STATE_DIR"
+    runtime_config
+    ;;
+  start)
+    validate
+    if pid=$(active_pid); then fail "이미 실행 중입니다: pid=$pid"; fi
+    SESSION_ID=${SESSION_ID:-nue-$(date -u +%Y%m%dT%H%M%SZ)}
+    [[ $SESSION_ID =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$ && ${SESSION_ID:1:1} != O ]] \
+      || fail "안전하지 않은 session id입니다"
+    mkdir -p "$NORMAL_UE_STATE_DIR" "$NORMAL_UE_RUN_ROOT"
+    "$SETSID_BIN" "$SELF" _supervise --config "$CONF" --profile "$PROFILE" --count "$COUNT" \
+      --session-id "$SESSION_ID" >"$NORMAL_UE_STATE_DIR/supervisor.log" 2>&1 </dev/null &
+    pid=$!
+    printf '%s\n' "$pid" >"$NORMAL_UE_STATE_DIR/supervisor.pid"
+    printf '%s\n' "$(pid_starttime "$pid")" >"$NORMAL_UE_STATE_DIR/supervisor.starttime"
+    sleep 1
+    active_pid >/dev/null || fail "supervisor가 시작 직후 종료했습니다: $NORMAL_UE_STATE_DIR/supervisor.log"
+    echo "시작됨: session=$SESSION_ID pid=$pid normal_ues=$COUNT"
+    ;;
+  _supervise)
+    validate
+    [[ -n $SESSION_ID ]] || fail "internal session id missing"
+    supervise
+    ;;
+  status)
+    pid=$(active_pid) || fail "실행 중인 normal-ue 세션이 없습니다"
+    read -r COUNT <"$NORMAL_UE_STATE_DIR/count"
+    read -r SESSION_ID <"$NORMAL_UE_STATE_DIR/session_id"
+    current=""; [[ ! -r $NORMAL_UE_STATE_DIR/current_run ]] || read -r current <"$NORMAL_UE_STATE_DIR/current_run"
+    tun_count=0; ping_count=0
+    for ((i=1; i<=COUNT; i++)); do
+      if "$IP_CMD" -4 -o addr show "oaitun_ue$i" >/dev/null 2>&1; then
+        tun_count=$((tun_count + 1))
+        "$PING_CMD" -n -I "oaitun_ue$i" -c 1 -W 1 10.45.1.1 >/dev/null 2>&1 && ping_count=$((ping_count + 1)) || true
+      fi
+    done
+    state=degraded; (( tun_count == COUNT && ping_count == COUNT )) && state=healthy
+    echo "state=$state session=$SESSION_ID pid=$pid requested=$COUNT tun=$tun_count ping=$ping_count current_run=$current"
+    ;;
+  stop)
+    pid=$(active_pid) || fail "실행 중인 normal-ue 세션이 없습니다"
+    kill -TERM "$pid"
+    for _ in {1..75}; do active_pid >/dev/null || { echo "종료됨: pid=$pid"; exit 0; }; sleep 0.2; done
+    fail "supervisor가 15초 안에 종료되지 않았습니다; 소유 PID만 확인하세요: $pid"
+    ;;
+  *) fail "알 수 없는 작업: $ACTION" ;;
+esac

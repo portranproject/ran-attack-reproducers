@@ -23,7 +23,7 @@ SERVICE_PROBE=${SERVICE_PROBE:-$ROOT/bin/auth-timeout-service-probe}
 ATTACKER_CONFIGS_FILE=${ATTACKER_CONFIGS_FILE:-}
 WITNESS_UE_CFG=${WITNESS_UE_CFG:-}
 UECAP=${UECAP:-}
-UE_ENDPOINTS_FILE=${UE_ENDPOINTS_FILE:-}
+UE_ENDPOINTS_FILE=${SAME_CELL_UE_ENDPOINTS_FILE:-${UE_ENDPOINTS_FILE:-}}
 BAND=${BAND:-78}
 DL_FREQ=${DL_FREQ:-3489420000}
 NUMEROLOGY=${NUMEROLOGY:-1}
@@ -35,6 +35,9 @@ READY_TIMEOUT_S=${READY_TIMEOUT_S:-60}
 RECOVERY_SETTLE_S=${RECOVERY_SETTLE_S:-10}
 HOOK_TIMEOUT_S=${HOOK_TIMEOUT_S:-45}
 USE_SETSID=${USE_SETSID:-1}
+AUTH_TIMEOUT_MANAGE_DU=${SAME_CELL_AUTH_TIMEOUT_MANAGE_DU:-${AUTH_TIMEOUT_MANAGE_DU:-1}}
+SAME_CELL_READY_FILE=${SAME_CELL_READY_FILE:-}
+SAME_CELL_READY_TIMEOUT_S=${SAME_CELL_READY_TIMEOUT_S:-120}
 
 fail() { echo "auth-timeout-p5-phase: $*" >&2; exit 2; }
 regular() { [[ -f $1 && ! -L $1 ]] || fail "필수 일반 파일이 없습니다: $1"; }
@@ -51,12 +54,16 @@ done
 (( LIMIT_MS >= 10000 )) || fail "등록 제한은 10초 이상이어야 합니다"
 [[ $DEVICE == oai_zmqdevif ]] || fail "p5 phase는 oai_zmqdevif 전용입니다"
 [[ $USE_SETSID == 0 || $USE_SETSID == 1 ]] || fail "USE_SETSID는 0 또는 1이어야 합니다"
+[[ $AUTH_TIMEOUT_MANAGE_DU == 0 || $AUTH_TIMEOUT_MANAGE_DU == 1 ]] || fail "AUTH_TIMEOUT_MANAGE_DU는 0 또는 1이어야 합니다"
+positive SAME_CELL_READY_TIMEOUT_S "$SAME_CELL_READY_TIMEOUT_S"
+[[ -z $SAME_CELL_READY_FILE || $SAME_CELL_READY_FILE == /* ]] || fail "SAME_CELL_READY_FILE은 절대 경로여야 합니다"
 for file in "$P5_HOOK" "$SERVICE_PROBE" "$ATTACKER_CONFIGS_FILE" "$WITNESS_UE_CFG" "$UECAP" "$UE_ENDPOINTS_FILE" "$OAI_BIN" "$PROFILES"; do regular "$file"; done
 [[ -x $P5_HOOK && -x $SERVICE_PROBE && -x $OAI_BIN ]] || fail "hook, probe, OAI binary가 실행 가능해야 합니다"
 for command in python3 timeout flock grep head tail stat; do command -v "$command" >/dev/null || fail "$command가 필요합니다"; done
 (( USE_SETSID == 0 )) || command -v setsid >/dev/null || fail "setsid가 필요합니다"
 export P5_CU_HOST P5_SSH_KEY P5_KNOWN_HOSTS P5_DU_BIN P5_DU_CFG P5_DU_LOG
 export P5_DU_BOOT_LOG P5_DU_PID_FILE P5_CU_LOG P5_CORE_CONTAINER
+export P5_EXTERNAL_RAN
 
 mapfile -t ATTACKER_CFGS < <(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$ATTACKER_CONFIGS_FILE")
 (( ${#ATTACKER_CFGS[@]} == ATTACKER_PROCESS_COUNT )) || fail "공격자 설정 수가 profile manifest의 프로세스 수와 다릅니다"
@@ -181,9 +188,11 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 run_hook process-clear
-run_hook du-stop
-run_hook du-restart
-DU_STARTED=1
+if (( AUTH_TIMEOUT_MANAGE_DU )); then
+  run_hook du-stop
+  run_hook du-restart
+  DU_STARTED=1
+fi
 ready_started=$SECONDS
 until run_hook du-ready >/dev/null 2>&1; do
   (( SECONDS - ready_started < READY_TIMEOUT_S )) || fail "DU readiness timeout"
@@ -238,13 +247,22 @@ launch_witness() {
     '--zmq.[0].tx_channels' "$tx" '--zmq.[0].rx_channels' "$rx"
   WITNESS_INDEX=$LAST_INDEX
 }
-launch_witness
-for ((i=0; i<ATTACKER_PROCESS_COUNT; i++)); do wait_attacker_baseline "${ATTACKER_INDEXES[$i]}" "$i"; done
 require_radio_alive() {
   is_running "${PIDS[$WITNESS_INDEX]}" || fail "witness UE가 조기 종료됐습니다"
   local index
   for index in "${ATTACKER_INDEXES[@]}"; do is_running "${PIDS[$index]}" || fail "공격자 UE가 조기 종료됐습니다"; done
 }
+launch_witness
+if [[ -n $SAME_CELL_READY_FILE ]]; then
+  ready_started=$SECONDS
+  until [[ -f $SAME_CELL_READY_FILE && ! -L $SAME_CELL_READY_FILE ]]; do
+    require_radio_alive
+    (( SECONDS - ready_started < SAME_CELL_READY_TIMEOUT_S )) \
+      || fail "same-cell 정상 UE readiness timeout"
+    sleep .2
+  done
+fi
+for ((i=0; i<ATTACKER_PROCESS_COUNT; i++)); do wait_attacker_baseline "${ATTACKER_INDEXES[$i]}" "$i"; done
 service_attempt() {
   local phase=$1 attempt=$2 row
   require_radio_alive
@@ -287,8 +305,10 @@ stop_current_ues() {
 
 restart_du() {
   local started
-  run_hook du-stop
-  run_hook du-restart
+  if (( AUTH_TIMEOUT_MANAGE_DU )); then
+    run_hook du-stop
+    run_hook du-restart
+  fi
   started=$SECONDS
   until run_hook du-ready >/dev/null 2>&1; do
     (( SECONDS - started < READY_TIMEOUT_S )) || fail "DU restart readiness timeout"
@@ -346,8 +366,10 @@ done
 
 export AUTH_TIMEOUT_CU_LOG="$OUT/cu.log" AUTH_TIMEOUT_AMF_LOG="$OUT/amf.log"
 stop_current_ues
-run_hook du-stop
-DU_STARTED=0
+if (( AUTH_TIMEOUT_MANAGE_DU )); then
+  run_hook du-stop
+  DU_STARTED=0
+fi
 sleep 5
 run_hook log-stop
 

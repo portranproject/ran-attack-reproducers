@@ -17,7 +17,8 @@
 ./ctl.sh verify <run-id> --profile p5
 ```
 
-공격 카탈로그는 [13개 탐지 룰 기준표](ATTACK-CATALOG.md), 새 환경 이관은
+공격 카탈로그는 [13개 탐지 룰 기준표](ATTACK-CATALOG.md), 각 공격에서 참고한 논문·공개
+코드와 자체 구현 범위는 [공격별 레퍼런스와 구현 기여](ATTACK-REFERENCES.md), 새 환경 이관은
 [포팅 가이드](PORTING-GUIDE.md), 새 공격 추가는 [새 모듈 가이드](NEW-MODULE-GUIDE.md)를
 따른다. 실험실 운용은 [p5 운영](P5-OPERATIONS.md)과 [차폐 OTA 운영](OTA-OPERATIONS.md),
 detector·telemetry·dashboard 호환 commit은 `integration.lock.json`에 고정한다.

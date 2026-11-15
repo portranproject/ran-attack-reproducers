@@ -31,6 +31,15 @@ CORE_CONFIG_REMOTE=${CORE_CONFIG_REMOTE:-/root/OCUDU/docker/open5gs/open5gs-5gc.
 TUN=${TUN:-oaitun_ue1}
 PING_TARGET=${PING_TARGET:-10.45.1.1}
 REMOTE_PREFIX=/tmp/downlink-imsi-$RUN_ID
+DOWNLINK_IMSI_MANAGE_RAN=${SAME_CELL_DOWNLINK_IMSI_MANAGE_RAN:-${DOWNLINK_IMSI_MANAGE_RAN:-1}}
+DU_CFG=${SAME_CELL_GNB_CONFIG:-$DU_CFG}
+UE_TX_ENDPOINT=${SAME_CELL_UE_TX_ENDPOINT:-tcp://127.0.0.1:4557}
+UE_RX_ENDPOINT=${SAME_CELL_UE_RX_ENDPOINT:-tcp://127.0.0.1:4556}
+SAME_CELL_READY_FILE=${SAME_CELL_READY_FILE:-}
+SAME_CELL_RAN_READY_FILE=${SAME_CELL_RAN_READY_FILE:-}
+SAME_CELL_READY_TIMEOUT_S=${SAME_CELL_READY_TIMEOUT_S:-120}
+SAME_CELL_PRESTART=${SAME_CELL_PRESTART:-0}
+SAME_CELL_ATTACK_READY_FILE=${SAME_CELL_ATTACK_READY_FILE:-}
 
 fail() { echo "downlink-imsi-run: $*" >&2; exit 2; }
 [[ $MODE == control || $MODE == emulation ]] || fail "mode는 control 또는 emulation이어야 합니다"
@@ -38,10 +47,21 @@ fail() { echo "downlink-imsi-run: $*" >&2; exit 2; }
 [[ $MODE == control && $ENABLE == 0 || $MODE == emulation && $ENABLE == 1 ]] || fail "control은 -e 0, emulation은 명시적 -e 1이 필요합니다"
 [[ $RUN_ID =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$ ]] || fail "안전한 RUN_ID가 필요합니다"
 for value in "$ATTACH_TIMEOUT_S" "$OBSERVE_TIMEOUT_S"; do [[ $value =~ ^[1-9][0-9]*$ ]] || fail "시간 값은 양의 정수여야 합니다"; done
-for file in "$OAI_BIN" "$UE_CFG" "$UECAP" "$DU_CTL" "$DU_CFG" "$SSH_KEY" "$ROOT/patch/downlink-imsi-ue-w38.patch"; do
+[[ $DOWNLINK_IMSI_MANAGE_RAN == 0 || $DOWNLINK_IMSI_MANAGE_RAN == 1 ]] || fail "DOWNLINK_IMSI_MANAGE_RAN은 0 또는 1이어야 합니다"
+[[ $SAME_CELL_PRESTART == 0 || $SAME_CELL_PRESTART == 1 ]] || fail "SAME_CELL_PRESTART는 0 또는 1이어야 합니다"
+(( SAME_CELL_PRESTART == 0 || DOWNLINK_IMSI_MANAGE_RAN == 0 )) || fail "prestart는 외부 RAN lifecycle이 필요합니다"
+[[ $SAME_CELL_READY_TIMEOUT_S =~ ^[1-9][0-9]*$ ]] || fail "same-cell timeout은 양의 정수여야 합니다"
+[[ $UE_TX_ENDPOINT == tcp://127.0.0.1:* && $UE_RX_ENDPOINT == tcp://127.0.0.1:* ]] || fail "UE endpoint는 로컬 tcp ZMQ 주소여야 합니다"
+[[ -z $SAME_CELL_READY_FILE || $SAME_CELL_READY_FILE == /* ]] || fail "SAME_CELL_READY_FILE은 절대 경로여야 합니다"
+[[ $SAME_CELL_PRESTART == 0 || $SAME_CELL_RAN_READY_FILE == /* ]] || fail "prestart에는 절대 RAN ready 경로가 필요합니다"
+[[ $SAME_CELL_PRESTART == 0 || $SAME_CELL_ATTACK_READY_FILE == /* ]] || fail "prestart에는 절대 attack ready 경로가 필요합니다"
+for file in "$OAI_BIN" "$UE_CFG" "$UECAP" "$DU_CFG" "$SSH_KEY" "$ROOT/patch/downlink-imsi-ue-w38.patch"; do
   [[ -f $file && ! -L $file ]] || fail "필수 일반 파일이 없습니다: $file"
 done
-[[ -x $OAI_BIN && -x $DU_CTL ]] || fail "OAI_BIN과 DU_CTL은 실행 가능해야 합니다"
+[[ -x $OAI_BIN ]] || fail "OAI_BIN은 실행 가능해야 합니다"
+if (( DOWNLINK_IMSI_MANAGE_RAN )); then
+  [[ -f $DU_CTL && ! -L $DU_CTL && -x $DU_CTL ]] || fail "DU_CTL은 실행 가능한 일반 파일이어야 합니다"
+fi
 [[ -n ${CU_HOST:-} ]] || fail "CU_HOST가 필요합니다"
 for command in flock ssh scp python3 sha256sum; do command -v "$command" >/dev/null || fail "$command가 필요합니다"; done
 
@@ -88,6 +108,11 @@ stop_capture() {
   cu "kill -INT \$(cat '$REMOTE_PREFIX.tcpdump.pid') 2>/dev/null || true; sleep 1" >/dev/null || true
   CAPTURE_STARTED=0
 }
+start_capture() {
+  cu "rm -f '$REMOTE_PREFIX.ngap.pcap' '$REMOTE_PREFIX.tcpdump.log' '$REMOTE_PREFIX.tcpdump.pid' '$REMOTE_PREFIX.start.utc' '$REMOTE_PREFIX.cu.offset'; date -u +%Y-%m-%dT%H:%M:%S.%NZ >'$REMOTE_PREFIX.start.utc'; stat -c %s '$CU_LOG' >'$REMOTE_PREFIX.cu.offset'; nohup tcpdump -i any -U -s 0 -w '$REMOTE_PREFIX.ngap.pcap' 'sctp port 38412' >'$REMOTE_PREFIX.tcpdump.log' 2>&1 </dev/null & echo \$! >'$REMOTE_PREFIX.tcpdump.pid'; sleep 1; kill -0 \$(cat '$REMOTE_PREFIX.tcpdump.pid')" \
+    || fail "N2 capture를 시작하지 못했습니다"
+  CAPTURE_STARTED=1
+}
 cleanup() {
   local status=$?
   set +e
@@ -100,14 +125,16 @@ trap cleanup EXIT INT TERM
 
 cu "pgrep -x ocu >/dev/null && test \"\$(docker inspect -f '{{.State.Health.Status}}' '$CORE_CONTAINER')\" = healthy && command -v tshark >/dev/null" \
   || fail "CU·코어·tshark가 준비되지 않았습니다"
-cu "rm -f '$REMOTE_PREFIX.ngap.pcap' '$REMOTE_PREFIX.tcpdump.log' '$REMOTE_PREFIX.tcpdump.pid' '$REMOTE_PREFIX.start.utc' '$REMOTE_PREFIX.cu.offset'; date -u +%Y-%m-%dT%H:%M:%S.%NZ >'$REMOTE_PREFIX.start.utc'; stat -c %s '$CU_LOG' >'$REMOTE_PREFIX.cu.offset'; nohup tcpdump -i any -U -s 0 -w '$REMOTE_PREFIX.ngap.pcap' 'sctp port 38412' >'$REMOTE_PREFIX.tcpdump.log' 2>&1 </dev/null & echo \$! >'$REMOTE_PREFIX.tcpdump.pid'; sleep 1; kill -0 \$(cat '$REMOTE_PREFIX.tcpdump.pid')" \
-  || fail "N2 capture를 시작하지 못했습니다"
-CAPTURE_STARTED=1
+(( SAME_CELL_PRESTART )) || start_capture
 
-pgrep -x nr-uesoftmodem >/dev/null && fail "기존 OAI UE가 실행 중입니다"
-"$DU_CTL" stop >/dev/null 2>&1 || true
-"$DU_CTL" start >"$OUT/du-start.log" 2>&1 || fail "DU 시작에 실패했습니다"
-DU_STARTED=1
+if (( DOWNLINK_IMSI_MANAGE_RAN )); then
+  pgrep -x nr-uesoftmodem >/dev/null && fail "기존 OAI UE가 실행 중입니다"
+  "$DU_CTL" stop >/dev/null 2>&1 || true
+  "$DU_CTL" start >"$OUT/du-start.log" 2>&1 || fail "DU 시작에 실패했습니다"
+  DU_STARTED=1
+elif (( SAME_CELL_PRESTART == 0 )); then
+  pgrep -x odu >/dev/null || fail "external DU가 실행 중이 아닙니다"
+fi
 
 bin_dir=$(dirname "$OAI_BIN")
 (
@@ -115,9 +142,31 @@ bin_dir=$(dirname "$OAI_BIN")
   OAI_DOWNLINK_IMSI_TRACE=1 OAI_DOWNLINK_IMSI_EMULATE=$ENABLE exec setsid stdbuf -oL -eL "$OAI_BIN" \
     -O "$UE_CFG" --band 78 -C 3489420000 --numerology 1 -r 51 -E --ue-scan-carrier \
     --uecap_file "$UECAP" --device.name oai_zmqdevif --num-ues 1 \
-    '--zmq.[0].tx_channels' tcp://127.0.0.1:4557 '--zmq.[0].rx_channels' tcp://127.0.0.1:4556
+    '--zmq.[0].tx_channels' "$UE_TX_ENDPOINT" '--zmq.[0].rx_channels' "$UE_RX_ENDPOINT"
 ) >"$OUT/ue.log" 2>&1 </dev/null &
 UE_PID=$!
+
+if (( SAME_CELL_PRESTART )); then
+  started=$SECONDS
+  until [[ -f $SAME_CELL_RAN_READY_FILE && ! -L $SAME_CELL_RAN_READY_FILE ]]; do
+    kill -0 "$UE_PID" 2>/dev/null || fail "UE가 RAN 준비 전에 종료됐습니다"
+    (( SECONDS - started < SAME_CELL_READY_TIMEOUT_S )) || fail "same-cell RAN readiness가 시간 초과했습니다"
+    sleep .2
+  done
+  pgrep -x odu >/dev/null || fail "external DU가 실행 중이 아닙니다"
+fi
+if [[ -n $SAME_CELL_READY_FILE ]]; then
+  started=$SECONDS
+  until [[ -f $SAME_CELL_READY_FILE && ! -L $SAME_CELL_READY_FILE ]]; do
+    kill -0 "$UE_PID" 2>/dev/null || fail "UE가 normal UE 준비 전에 종료됐습니다"
+    (( SECONDS - started < SAME_CELL_READY_TIMEOUT_S )) || fail "same-cell normal UE readiness가 시간 초과했습니다"
+    sleep .2
+  done
+fi
+if (( SAME_CELL_PRESTART )); then
+  start_capture
+  ( set -o noclobber; : >"$SAME_CELL_ATTACK_READY_FILE" ) || fail "same-cell attack readiness 게시 실패"
+fi
 
 marker='DOWNLINK_IMSI_EXTRACTOR event=authentication_response_submitted'
 [[ $MODE == control ]] || marker='DOWNLINK_IMSI_EXTRACTOR event=identity_response_substituted'
@@ -147,8 +196,10 @@ fi
 
 kill -0 "$UE_PID" 2>/dev/null || UNEXPECTED_EXIT=1
 stop_ue
-"$DU_CTL" stop >/dev/null 2>&1
-DU_STARTED=0
+if (( DOWNLINK_IMSI_MANAGE_RAN )); then
+  "$DU_CTL" stop >/dev/null 2>&1
+  DU_STARTED=0
+fi
 stop_capture
 
 cu "O=\$(cat '$REMOTE_PREFIX.cu.offset'); tail -c +\$((O+1)) '$CU_LOG'" >"$OUT/cu.log"
@@ -162,7 +213,7 @@ unlink "$OUT/nas.raw.tsv"
 printf '{"schema":"downlink-imsi.service.v1","registration_ok":%s,"pdu_session_ok":%s,"ping_ok":%s}\n' "$REGISTRATION_OK" "$PDU_OK" "$PING_OK" >"$OUT/service.json"
 printf '{"schema":"downlink-imsi.process.v1","crash_count":%s,"forced_kill_count":%s}\n' "$UNEXPECTED_EXIT" "$FORCED_KILL" >"$OUT/process.json"
 
-export RUN_ID MODE ENABLE ROOT OUT OAI_BIN UE_CFG UECAP GNB_SHA CORE_SHA
+export RUN_ID MODE ENABLE ROOT OUT OAI_BIN UE_CFG UECAP GNB_SHA CORE_SHA DOWNLINK_IMSI_MANAGE_RAN
 python3 - "$OUT/run.json" "$ROOT/patch/downlink-imsi-ue-w38.patch" "$OAI_BIN" "$UE_CFG" "$UECAP" "$OUT/ngap.pcap" <<'PY'
 import hashlib, json, os, pathlib, sys
 output, patch, binary, config, uecap, pcap = map(pathlib.Path, sys.argv[1:])
@@ -174,6 +225,7 @@ value = {
     "ue_binary_sha256":sha(binary), "ue_config_sha256":sha(config), "uecap_sha256":sha(uecap),
     "gnb_config_sha256":os.environ["GNB_SHA"], "core_config_sha256":os.environ["CORE_SHA"],
     "ngap_pcap_sha256":sha(pcap),
+    "ran_lifecycle":"managed" if os.environ.get("DOWNLINK_IMSI_MANAGE_RAN", "1") == "1" else "external-persistent",
 }
 output.write_text(json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n")
 PY

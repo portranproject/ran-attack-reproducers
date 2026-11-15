@@ -12,31 +12,28 @@ broker가 모든 endpoint의 하향 신호를 복제하고 상향 신호를 합�
 ./ctl.sh normal-ue stop --profile p5
 ```
 
-공격과 같이 실행할 때는 `same-cell` 세션이 정상 UE 5대와 고정 공격 슬롯 4개를 하나의
-broker/셀에 연결한다. 세션 시작 때 broker 연결 뒤 DU만 한 번 재시작하며, 이후 공격 전환은
-DU·CU·broker와 대기 UE를 유지한 채 broker의 슬롯 경로만 선택한다. 정상 5대의
-Registration·PDU·ping이 모두 성공한 뒤에만 공격 runner의 readiness gate가 열린다.
+공격과 같이 실행할 때는 `same-cell run`이 해당 공격에 필요한 UE와 정상 UE 5대를 하나의
+broker/셀에서 함께 cold-start한다. 공격 UE는 DU보다 먼저 시작해 downlink와 uplink sample을
+계속 소비하되, 정상 UE 5/5가 준비될 때까지 broker가 공격 슬롯의 상·하향 이득을 0으로
+유지한다. 준비 뒤 같은 stream의 이득만 1로 바꾸므로 실행 중 새 ZMQ stream을 삽입하지 않는다.
 
 ```bash
-./ctl.sh same-cell start -n demo --count 5
-./ctl.sh same-cell status
-./ctl.sh same-cell run blind -n demo-blind -- /path/to/blind-run attack -n blind-1 -e 1
-./ctl.sh same-cell run uplink -n demo-uplink -- /path/to/uplink-run emulation -n uplink-1 -e 1
-./ctl.sh same-cell run auth-timeout -n demo-auth -- /path/to/auth-timeout-run attack -n auth-1 -e 1
-./ctl.sh same-cell stop
+./ctl.sh same-cell run blind -n demo-blind --count 5 -- /path/to/blind-run attack -n blind-1 -e 1
+./ctl.sh same-cell run uplink -n demo-uplink --count 5 -- /path/to/uplink-run emulation -n uplink-1 -e 1
+./ctl.sh same-cell run auth-timeout -n demo-auth --count 5 -- /path/to/auth-timeout-run attack -n auth-1 -e 1
+./ctl.sh same-cell run downlink-imsi -n demo-id --count 5 -- /path/to/downlink-imsi-run emulation -n id-1 -e 1
+./ctl.sh same-cell run ue-capability -n demo-cap --count 5 -- /path/to/ue-capability-run emulation -n cap-1 -e 1
 ```
 
 각 module의 Git 밖 설정과 `--enable` 안전 조건은 기존과 같다. 각 공격 module runner는
-CU/DU를 시작·중지하지 않는 외부 lifecycle 모드로 실행된다. 세션 종료 시에는 PID와
-시작시각이 일치하는 정상 UE, 대기 UE, broker, DU만 종료하고 CU·코어는 유지한다.
+CU/DU를 시작·중지하지 않는 외부 lifecycle·prestart 모드로 실행된다. 실행 종료 시에는 PID와
+시작시각이 일치하는 정상 UE, 공격 runner, broker, DU만 종료하고 CU·코어는 유지한다.
 
-> p5 hot-swap 자격 검증에서 실행 중인 ZMQ RF 스트림에 서로 다른 OAI 공격 프로세스를
-> 전환하면 공격 UE uplink 시간축이 DU와 맞지 않았고 정상 UE도 무재시작 회복하지 못했다.
-> 따라서 `same-cell run`은 기본 비활성이며 위 명령은 개발 진입점 예시다. 현재 안전한 다음
-> 구현 방향은 같은 셀 설정을 유지하되 공격 모듈이 바뀔 때 DU·broker·UE를 함께 다시 시작하는
-> 방식이며, 정상 UE 5대와 각 공격의 결합 자격 검증은 별도로 필요하다.
-> 단일 셀 자체가 불가능한 것은 아니다. 무재시작이 필요할 때의 상시 clocked attack slot과
-> sample-clock bridge 설계, 검증 순서는
+> 과거 selector 기반 hot-swap은 p5 자격 검증에 실패해 `hot-run` 진단 경로로만 남겼다.
+> 기본 `run`은 공격별 cold-start와 상시 clocked attack slot을 사용한다. UE Capability
+> control·emulation은 p5에서 각각 1회 정상 UE 5대와 함께 통과했다. Blind DoS·상향 DoS·
+> 인증 응답 미전송형·하향 식별자 노출의 p5 결합 자격은 아직 필요하다. 설계와 과거 실패
+> 근거는
 > [hot-swap 검증 기록](docs/SAME-CELL-HOT-SWAP-20261113.md)을 따른다.
 
 - `start` 뒤 supervisor는 수동 `stop` 전까지 계속 실행한다.
@@ -51,7 +48,7 @@ CU/DU를 시작·중지하지 않는 외부 lifecycle 모드로 실행된다. �
 - `status`의 `healthy`는 요청 수만큼 TUN과 gateway ping이 모두 성공한 경우다.
 - p5 cold-start에서 5/5 수렴까지 12.7~62.3초가 걸렸으므로 시작 직후의 `degraded`는
   최종 실패가 아니다.
-- `same-cell run`의 무재시작 전환 코드는 연구용으로 남겨 두되
+- `same-cell hot-run`의 과거 selector 전환 코드는 연구용으로 남겨 두되
   `SAME_CELL_EXPERIMENTAL_SWITCH=1` 없이는 실행되지 않는다.
 
 ## p5 자격 현황

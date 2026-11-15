@@ -78,6 +78,9 @@ ATTACKER_GATE_TIMEOUT_S=${ATTACKER_GATE_TIMEOUT_S:-240}
 BLIND_MANAGE_DU=${SAME_CELL_BLIND_MANAGE_DU:-${BLIND_MANAGE_DU:-1}}
 SAME_CELL_READY_FILE=${SAME_CELL_READY_FILE:-}
 SAME_CELL_READY_TIMEOUT_S=${SAME_CELL_READY_TIMEOUT_S:-120}
+SAME_CELL_PRESTART=${SAME_CELL_PRESTART:-0}
+SAME_CELL_RAN_READY_FILE=${SAME_CELL_RAN_READY_FILE:-}
+SAME_CELL_ATTACK_READY_FILE=${SAME_CELL_ATTACK_READY_FILE:-}
 
 fail() { echo "blind-p5-phase: $*" >&2; exit 2; }
 positive_int() { [[ $2 =~ ^[1-9][0-9]*$ ]] || fail "$1 must be a positive integer"; }
@@ -124,9 +127,15 @@ done
 positive_decimal OBSERVATION_POLL_S "$OBSERVATION_POLL_S"
 [[ $USE_SETSID == 0 || $USE_SETSID == 1 ]] || fail "USE_SETSID must be 0 or 1"
 [[ $BLIND_MANAGE_DU == 0 || $BLIND_MANAGE_DU == 1 ]] || fail "BLIND_MANAGE_DU must be 0 or 1"
+[[ $SAME_CELL_PRESTART == 0 || $SAME_CELL_PRESTART == 1 ]] || fail "SAME_CELL_PRESTART must be 0 or 1"
+(( SAME_CELL_PRESTART == 0 || BLIND_MANAGE_DU == 0 )) || fail "prestart requires external DU lifecycle"
 positive_int SAME_CELL_READY_TIMEOUT_S "$SAME_CELL_READY_TIMEOUT_S"
 [[ -z $SAME_CELL_READY_FILE || $SAME_CELL_READY_FILE == /* ]] \
   || fail "SAME_CELL_READY_FILE must be absolute"
+[[ $SAME_CELL_PRESTART == 0 || $SAME_CELL_RAN_READY_FILE == /* ]] \
+  || fail "SAME_CELL_RAN_READY_FILE must be absolute in prestart mode"
+[[ $SAME_CELL_PRESTART == 0 || $SAME_CELL_ATTACK_READY_FILE == /* ]] \
+  || fail "SAME_CELL_ATTACK_READY_FILE must be absolute in prestart mode"
 
 for name in OAI_BLIND_BIN VICTIM_UE_CFG ATTACKER_UE_CFG UECAP; do
   value=${!name}
@@ -482,7 +491,9 @@ if (( BLIND_MANAGE_DU )); then
   run_hook du-restart "$DU_RESTART_CMD" || fail "DU restart hook failed"
   DU_STARTED=1
 fi
-wait_hook du-ready "$DU_READY_CMD" "$DU_READY_TIMEOUT_S" || fail "DU readiness timed out"
+if (( SAME_CELL_PRESTART == 0 )); then
+  wait_hook du-ready "$DU_READY_CMD" "$DU_READY_TIMEOUT_S" || fail "DU readiness timed out"
+fi
 LOG_STARTED=1
 run_hook log-slice-start "$CU_LOG_SLICE_START_CMD" || fail "log-slice start hook failed"
 CAPTURE_STARTED=1
@@ -525,6 +536,17 @@ wait_hook attacker-endpoint "$ATTACKER_ENDPOINT_READY_CMD" "$ENDPOINT_READY_TIME
   || fail "attacker endpoint readiness timed out"
 require_alive "$ATTACKER_INDEX"
 
+if (( SAME_CELL_PRESTART )); then
+  ready_started=$SECONDS
+  until [[ -f $SAME_CELL_RAN_READY_FILE && ! -L $SAME_CELL_RAN_READY_FILE ]]; do
+    require_alive "$VICTIM_INDEX"
+    require_alive "$ATTACKER_INDEX"
+    (( SECONDS - ready_started < SAME_CELL_READY_TIMEOUT_S )) || fail "same-cell RAN readiness timed out"
+    sleep 0.2
+  done
+  wait_hook du-ready "$DU_READY_CMD" "$DU_READY_TIMEOUT_S" || fail "DU readiness timed out"
+fi
+
 if [[ -n $SAME_CELL_READY_FILE ]]; then
   ready_started=$SECONDS
   until [[ -f $SAME_CELL_READY_FILE && ! -L $SAME_CELL_READY_FILE ]]; do
@@ -534,6 +556,9 @@ if [[ -n $SAME_CELL_READY_FILE ]]; then
       || fail "same-cell normal UE readiness timed out"
     sleep 0.2
   done
+fi
+if (( SAME_CELL_PRESTART )); then
+  ( set -o noclobber; : >"$SAME_CELL_ATTACK_READY_FILE" ) || fail "same-cell attack readiness publish failed"
 fi
 
 service_probe() {

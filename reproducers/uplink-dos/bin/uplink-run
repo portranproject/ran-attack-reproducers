@@ -49,6 +49,9 @@ UE_TX_ENDPOINT=${SAME_CELL_UE_TX_ENDPOINT:-${UE_TX_ENDPOINT:-tcp://127.0.0.1:455
 UE_RX_ENDPOINT=${SAME_CELL_UE_RX_ENDPOINT:-${UE_RX_ENDPOINT:-tcp://127.0.0.1:4556}}
 SAME_CELL_READY_FILE=${SAME_CELL_READY_FILE:-}
 SAME_CELL_READY_TIMEOUT_S=${SAME_CELL_READY_TIMEOUT_S:-120}
+SAME_CELL_PRESTART=${SAME_CELL_PRESTART:-0}
+SAME_CELL_RAN_READY_FILE=${SAME_CELL_RAN_READY_FILE:-}
+SAME_CELL_ATTACK_READY_FILE=${SAME_CELL_ATTACK_READY_FILE:-}
 
 fail() { echo "uplink-run: $*" >&2; exit 2; }
 [[ $MODE == control || $MODE == emulation ]] || fail "mode는 control 또는 emulation이어야 합니다"
@@ -61,10 +64,16 @@ for value in "$ATTACH_TIMEOUT_S" "$IDLE_RELEASE_TIMEOUT_S" "$CU_READY_TIMEOUT_S"
 done
 (( PING_COUNT >= 5 && RECOVERY_MAX_PINGS >= 5 )) || fail "ping 표본은 5개 이상이어야 합니다"
 [[ $UPLINK_MANAGE_RAN == 0 || $UPLINK_MANAGE_RAN == 1 ]] || fail "UPLINK_MANAGE_RAN은 0 또는 1이어야 합니다"
+[[ $SAME_CELL_PRESTART == 0 || $SAME_CELL_PRESTART == 1 ]] || fail "SAME_CELL_PRESTART는 0 또는 1이어야 합니다"
+(( SAME_CELL_PRESTART == 0 || UPLINK_MANAGE_RAN == 0 )) || fail "prestart는 외부 RAN lifecycle이 필요합니다"
 [[ $UE_TX_ENDPOINT == tcp://127.0.0.1:* && $UE_RX_ENDPOINT == tcp://127.0.0.1:* ]] \
   || fail "UE endpoint는 로컬 tcp ZMQ 주소여야 합니다"
 [[ -z $SAME_CELL_READY_FILE || $SAME_CELL_READY_FILE == /* ]] \
   || fail "SAME_CELL_READY_FILE은 절대 경로여야 합니다"
+[[ $SAME_CELL_PRESTART == 0 || $SAME_CELL_RAN_READY_FILE == /* ]] \
+  || fail "prestart에는 절대 RAN ready 경로가 필요합니다"
+[[ $SAME_CELL_PRESTART == 0 || $SAME_CELL_ATTACK_READY_FILE == /* ]] \
+  || fail "prestart에는 절대 attack ready 경로가 필요합니다"
 for file in "$OAI_BIN" "$UE_CFG" "$UECAP" "$SSH_KEY"; do
   [[ -f $file && ! -L $file ]] || fail "필수 파일이 없거나 심볼릭 링크입니다: $file"
 done
@@ -207,7 +216,7 @@ if (( UPLINK_MANAGE_RAN )); then
   pgrep -x nr-uesoftmodem >/dev/null && fail "기존 OAI UE가 실행 중입니다"
   "$DU_CTL" start >"$OUT/du-start.log" 2>&1 || fail "DU 시작에 실패했습니다"
   DU_STARTED=1
-else
+elif (( SAME_CELL_PRESTART == 0 )); then
   pgrep -x odu >/dev/null || fail "external DU가 실행 중이 아닙니다"
 fi
 
@@ -225,6 +234,16 @@ printf '{"schema":"uplink-dos.run.v1","run_id":"%s","mode":"%s","emulation_enabl
   "$RUN_ID" "$MODE" "$([[ $ENABLE == 1 ]] && echo true || echo false)" "$UE_PID" \
   "$([[ $UPLINK_MANAGE_RAN == 1 ]] && echo managed || echo external-persistent)" >"$OUT/run.json"
 
+if (( SAME_CELL_PRESTART )); then
+  started=$SECONDS
+  until [[ -f $SAME_CELL_RAN_READY_FILE && ! -L $SAME_CELL_RAN_READY_FILE ]]; do
+    require_alive
+    (( SECONDS - started < SAME_CELL_READY_TIMEOUT_S )) || fail "same-cell RAN readiness가 시간 초과했습니다"
+    sleep .2
+  done
+  pgrep -x odu >/dev/null || fail "external DU가 실행 중이 아닙니다"
+fi
+
 if [[ -n $SAME_CELL_READY_FILE ]]; then
   started=$SECONDS
   until [[ -f $SAME_CELL_READY_FILE && ! -L $SAME_CELL_READY_FILE ]]; do
@@ -233,6 +252,9 @@ if [[ -n $SAME_CELL_READY_FILE ]]; then
       || fail "same-cell 정상 UE readiness가 시간 초과했습니다"
     sleep .2
   done
+fi
+if (( SAME_CELL_PRESTART )); then
+  ( set -o noclobber; : >"$SAME_CELL_ATTACK_READY_FILE" ) || fail "same-cell attack readiness 게시 실패"
 fi
 
 started=$SECONDS

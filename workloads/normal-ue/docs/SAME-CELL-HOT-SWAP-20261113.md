@@ -149,3 +149,27 @@ PRACH 송신에서도 유지되는지 소스·실측 검증이 필요하다. 따
 2. 완전 무재시작은 일반 UE 상시 clocked slot 3/3을 먼저 증명한 뒤 공격 모듈로 확장한다.
 3. sample-clock bridge는 2번이 CPU 또는 패치 충돌로 불가능할 때만 개발한다.
 4. detector-input-emulation 7개는 RF 셀에 억지로 넣지 않고 동일 run/cell metadata로 재생한다.
+
+## 2026-11-16 구현 반영
+
+- `same-cell run`을 공격별 one-shot cold-start 경로로 변경했다.
+- 공격 UE와 정상 UE를 DU보다 먼저 실행하고, 하나의 broker가 동일 cell stream에 합친다.
+- 공격 endpoint는 처음부터 downlink·uplink를 계속 소비한다. broker의 양방향 complex gain을
+  standby `0`에서 attack `1`로 바꿀 뿐 stream을 교체하지 않는다.
+- Blind DoS 2개, 상향 DoS·하향 식별자·UE capability 각 1개, 인증 응답 미전송형 4개
+  endpoint를 지원한다. RRC storm은 이미 별도 same-cell+정상 5 UE 경로로 자격 검증돼 있다.
+- 과거 selector 전환은 `hot-run`으로 이름을 바꾸고 기본 비활성을 유지한다.
+- 이 반영은 아직 p5 결합 자격 전이다. 공격별 control→attack 3세트가 통과하기 전에는
+  `qualified`로 표시하지 않는다.
+
+## 2026-11-16 p5 smoke
+
+- `sc-cap-control-20261116e`: 정상 UE 5대 준비 뒤 UE Capability control이 등록·PDU·ping과
+  정상 `Enquiry → Information`을 통과했다.
+- `sc-cap-emulation-20261116a`: 같은 구조에서 보안 전 unsolicited Information과 이후 정상
+  Information이 분리 관측됐고 module verdict가 통과했다.
+- 두 실행 모두 공격 구간의 정상 UE health 표본은 각각 9/9, 10/10이 5/5였다. runner가 대상
+  UE를 종료한 뒤 분석하는 teardown 표본 1개씩은 broker 입력 종료로 0/5였으며 공격 구간
+  안정성 표본에는 넣지 않는다.
+- 이 smoke로 1-slot 양방향 clock gate와 capture readiness 계약은 확인했다. 2-slot Blind DoS,
+  4-slot 인증 응답 미전송형, 상향 DoS, 하향 식별자 노출은 아직 p5 미검증이다.

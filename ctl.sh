@@ -484,8 +484,8 @@ usage() {
   ./ctl.sh coverage
   ./ctl.sh validate
   ./ctl.sh normal-ue setup|doctor|start|status|stop [--profile p5] [--count N]
-  ./ctl.sh same-cell start -n SESSION_ID [--count 5]
-  ./ctl.sh same-cell run blind|uplink|auth-timeout -n RUN_ID -- COMMAND...
+  ./ctl.sh same-cell run blind|uplink|auth-timeout|downlink-imsi|ue-capability -n RUN_ID [--count 5] -- COMMAND...
+  ./ctl.sh same-cell start -n SESSION_ID [--count 5]  # 정상 UE 개발 세션
   ./ctl.sh same-cell status|stop
 
 ID 전체 목록: ./ctl.sh list

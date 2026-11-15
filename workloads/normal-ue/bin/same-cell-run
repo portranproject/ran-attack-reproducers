@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Persistent p5 ZMQ cell: four swappable attack slots plus the normal UE pool.
+# p5 ZMQ의 한 셀에서 공격 UE와 정상 UE 풀을 함께 cold-start한다.
 set -euo pipefail
 umask 077
 
@@ -21,8 +21,9 @@ PLACEHOLDER_CFG=""
 usage() {
   cat <<'EOF'
 사용법:
-  same-cell-run start -n SESSION_ID [--count 5] [--config FILE]
-  same-cell-run run blind|uplink|auth-timeout -n RUN_ID -- COMMAND...
+  same-cell-run run blind|uplink|auth-timeout|downlink-imsi|ue-capability -n RUN_ID [--count 5] [--config FILE] -- COMMAND...
+  same-cell-run start -n SESSION_ID [--count 5] [--config FILE]  # 정상 UE 개발 세션
+  same-cell-run hot-run blind|uplink|auth-timeout -n RUN_ID -- COMMAND...  # 미승인 진단용
   same-cell-run status
   same-cell-run stop
 EOF
@@ -40,11 +41,13 @@ case $ACTION in
       esac
     done
     ;;
-  run)
+  run|hot-run)
     ATTACK=${1:-}; [[ $# == 0 ]] || shift
     while [[ $# -gt 0 && $1 != -- ]]; do
       case $1 in
         -n|--run-id) [[ $# -ge 2 ]] || fail "run id 값이 필요합니다"; RUN_ID=$2; shift 2 ;;
+        -c|--count) [[ $ACTION == run && $# -ge 2 ]] || fail "count는 run에서만 지정할 수 있습니다"; COUNT=$2; shift 2 ;;
+        --config) [[ $ACTION == run && $# -ge 2 ]] || fail "config는 run에서만 지정할 수 있습니다"; CONF=$2; shift 2 ;;
         *) fail "알 수 없는 옵션: $1" ;;
       esac
     done
@@ -58,7 +61,7 @@ case $ACTION in
   *) usage; fail "알 수 없는 작업: $ACTION" ;;
 esac
 
-if [[ $ACTION == start ]]; then
+if [[ $ACTION == start || $ACTION == run ]]; then
   CONF=${CONF:-$ROOT/workloads/normal-ue/conf/p5.conf}
 else
   [[ -f $STATE/config.path && ! -L $STATE/config.path ]] || fail "실행 중인 same-cell 세션이 없습니다"
@@ -86,7 +89,16 @@ SAME_CELL_EXPERIMENTAL_SWITCH=${SAME_CELL_EXPERIMENTAL_SWITCH:-0}
 IP_CMD=${IP_CMD:-ip}
 PING_CMD=${PING_CMD:-ping}
 SS_CMD=${SS_CMD:-ss}
-ATTACK_SLOTS=4
+if [[ $ACTION == run ]]; then
+  case $ATTACK in
+    blind) ATTACK_SLOTS=2 ;;
+    uplink|downlink-imsi|ue-capability) ATTACK_SLOTS=1 ;;
+    auth-timeout) ATTACK_SLOTS=4 ;;
+    *) fail "지원하지 않는 same-cell 공격: $ATTACK" ;;
+  esac
+else
+  ATTACK_SLOTS=4
+fi
 TOTAL_ENDPOINTS=$((ATTACK_SLOTS + COUNT))
 
 for command in flock python3 setsid "$IP_CMD" "$PING_CMD" "$SS_CMD"; do
@@ -162,6 +174,14 @@ wait_port() {
     sleep .2
   done
 }
+wait_attack_port() {
+  local port=$1 started=$SECONDS
+  until port_ready "$port"; do
+    is_running "$ATTACK_PID" || return 2
+    (( SECONDS - started < SAME_CELL_ENDPOINT_TIMEOUT_S )) || return 1
+    sleep .2
+  done
+}
 wait_port_free() {
   local port=$1 started=$SECONDS
   while port_ready "$port"; do
@@ -195,6 +215,45 @@ rss_args() {
   RSS_ARGS=(--rss.enable 1 --rss.interval_ms 0 --rss.completion_pct 0 --rss.ack_gate 1
     --rss.ra_gate 1 --rss.gate_timeout_ms 500 --rss.target_occupancy 0 --rss.hold_ms 2000
     --rss.msg4_ack 1)
+}
+resolve_pdu_session_id() {
+  if [[ -z $NORMAL_UE_PDU_SESSION_ID ]]; then
+    NORMAL_UE_PDU_SESSION_ID=$(python3 - "$NORMAL_UE_CFG" "$COUNT" <<'PY'
+import pathlib, re, sys
+text = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+blocks = re.findall(r"(?ms)^\s*uicc\d+\s*=\s*\{.*?(?=^\s*uicc\d+\s*=|\Z)", text)[:int(sys.argv[2])]
+ids = []
+for block in blocks:
+    sessions = re.search(r"(?s)pdu_sessions\s*=\s*\((.*?)\)\s*;", block)
+    match = sessions and re.search(r"\bid\s*=\s*(\d+)", sessions.group(1))
+    if not match: raise SystemExit("normal UE PDU session id를 읽지 못했습니다")
+    ids.append(int(match.group(1)))
+if not ids or len(set(ids)) != 1: raise SystemExit("normal UE PDU session id가 서로 다릅니다")
+print(ids[0])
+PY
+    ) || fail "normal UE PDU session id 검증에 실패했습니다"
+  fi
+  [[ $NORMAL_UE_PDU_SESSION_ID =~ ^[1-9][0-9]*$ && $NORMAL_UE_PDU_SESSION_ID -le 255 ]] \
+    || fail "NORMAL_UE_PDU_SESSION_ID는 1..255여야 합니다"
+  printf '%s\n' "$NORMAL_UE_PDU_SESSION_ID" >"$STATE/pdu_session_id"
+}
+start_normal_group() {
+  local runtime_cfg=$1 endpoint_offset=$2 run_id=$3 endpoint
+  local -a normal_zmq=()
+  normal_args; rss_args
+  for ((ru=0; ru<COUNT; ru++)); do
+    endpoint=$((endpoint_offset + ru + 1))
+    normal_zmq+=("--zmq.[$ru].tx_channels" "tcp://127.0.0.1:$((2001 + 100 * endpoint))"
+                "--zmq.[$ru].rx_channels" "tcp://127.0.0.1:$((2000 + 100 * endpoint))")
+  done
+  setsid env RSS_SHARE_NUE="$COUNT" OAI_NORMAL_TUN_SUFFIX=1 "$NORMAL_UE_BIN" -O "$runtime_cfg" \
+    "${NORMAL_ARGS[@]}" "${RSS_ARGS[@]}" --num-ues "$COUNT" --rss.max_duration_s 0 \
+    --rss.honor_reject 0 --rss.msg4_wait 1 --rss.probe_ues "$COUNT" --rss.probe_delay_ms 0 \
+    --rss.probe_ra_only 0 --rss.probe_interval_ms "$NORMAL_UE_RETRY_MS" \
+    --rss.phase_ms "$NORMAL_UE_PHASE_MS" --rss.run_id "n-$run_id" \
+    --rss.log_file "$RUN_OUT/normal.jsonl" "${normal_zmq[@]}" \
+    >"$RUN_OUT/normal.log" 2>&1 </dev/null 9>&- &
+  record_pid normal "$!"
 }
 start_placeholder_group() {
   local generation=${1:-1} pid endpoint
@@ -230,12 +289,12 @@ stop_placeholder_group() {
 select_broker() {
   local mode=$1 before started=$SECONDS count slots=""
   shift
-  [[ $mode == placeholder || $mode == warmup || $mode == attack ]] || return 1
+  [[ $mode == placeholder || $mode == standby || $mode == warmup || $mode == attack ]] || return 1
   if [[ $mode == warmup || $mode == attack ]]; then
     slots=$(IFS=,; echo "$*")
     printf '%s %s\n' "$mode" "$slots" >"$STATE/broker-control"
   else
-    printf 'placeholder\n' >"$STATE/broker-control"
+    printf '%s\n' "$mode" >"$STATE/broker-control"
   fi
   before=$(grep -c '^SAME_CELL_SLOT_SELECTION ' "$RUN_OUT/broker.log" 2>/dev/null || true)
   kill -USR1 "$BROKER_PID" || return 1
@@ -247,6 +306,135 @@ select_broker() {
     sleep .1
   done
 }
+
+if [[ $ACTION == run ]]; then
+  [[ $RUN_ID =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$ ]] || fail "안전한 run id가 필요합니다"
+  [[ $COUNT =~ ^[1-9][0-9]*$ && $COUNT -le 7 ]] || fail "count는 1..7이어야 합니다"
+  (( TOTAL_ENDPOINTS <= 11 )) || fail "공격 UE endpoint와 normal UE 합계는 11 이하여야 합니다"
+  [[ ! -e $STATE ]] || fail "same-cell 상태 디렉터리가 이미 있습니다: $STATE"
+  pgrep -x nr-uesoftmodem >/dev/null 2>&1 && fail "기존 OAI UE가 있습니다"
+  mkdir -m 700 "$STATE"
+  RUN_OUT="$NORMAL_UE_RUN_ROOT/same-cell/$RUN_ID"
+  [[ ! -e $RUN_OUT ]] || fail "run id가 이미 존재합니다: $RUN_OUT"
+  mkdir -m 700 -p "$RUN_OUT"
+  printf '%s\n' "$CONF" >"$STATE/config.path"
+  printf '%s\n' "$COUNT" >"$STATE/count"
+  printf '%s\n' "$RUN_ID" >"$STATE/session_id"
+  printf '%s\n' "$RUN_OUT" >"$STATE/run_root"
+  RUNTIME_CFG=$(SAME_CELL_NORMAL_STATE_DIR="$STATE" "$NORMAL_CTL" prepare --config "$CONF" --count "$COUNT")
+  resolve_pdu_session_id
+
+  ENDPOINTS_FILE="$STATE/attack-endpoints.txt"
+  for ((i=1; i<=ATTACK_SLOTS; i++)); do
+    printf 'tcp://127.0.0.1:%d tcp://127.0.0.1:%d\n' \
+      "$((2001 + 100 * i))" "$((2000 + 100 * i))" >>"$ENDPOINTS_FILE"
+  done
+  printf 'standby\n' >"$STATE/broker-control"
+
+  ATTACK_PID=""
+  BROKER_PID=""
+  NORMAL_PID=""
+  DU_PID=""
+  GNB_RESTARTED=0
+  cleanup_cold_run() {
+    local status=$? pid
+    trap - EXIT INT TERM
+    [[ -z $ATTACK_PID ]] || stop_group "$ATTACK_PID"
+    pid=$(owned_pid broker 2>/dev/null || true); [[ -z $pid ]] || stop_group "$pid"
+    pid=$(owned_pid normal 2>/dev/null || true); [[ -z $pid ]] || stop_group "$pid"
+    pid=$(owned_pid du 2>/dev/null || true); [[ -z $pid ]] || stop_group "$pid"
+    (( GNB_RESTARTED == 0 )) || bash -c "$NORMAL_UE_GNB_STOP_CMD" >/dev/null 2>&1 || true
+    clear_state 2>/dev/null || true
+    exit "$status"
+  }
+  trap cleanup_cold_run EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+
+  export SAME_CELL_PRESTART=1
+  export SAME_CELL_RAN_READY_FILE="$STATE/ran.ready"
+  export SAME_CELL_READY_FILE="$STATE/normal.ready"
+  export SAME_CELL_ATTACK_READY_FILE="$STATE/attack.ready"
+  export SAME_CELL_READY_TIMEOUT_S="$SAME_CELL_HEALTH_TIMEOUT_S"
+  export P5_EXTERNAL_RAN=1 SAME_CELL_UE_ENDPOINTS_FILE="$ENDPOINTS_FILE"
+  export SAME_CELL_DU_LOG="$NORMAL_UE_GNB_LOG" SAME_CELL_GNB_CONFIG="$NORMAL_UE_GNB_CONFIG"
+  export SAME_CELL_BLIND_MANAGE_DU=0 SAME_CELL_UPLINK_MANAGE_RAN=0 SAME_CELL_AUTH_TIMEOUT_MANAGE_DU=0
+  export SAME_CELL_DOWNLINK_IMSI_MANAGE_RAN=0 SAME_CELL_UE_CAPABILITY_MANAGE_RAN=0
+  export SAME_CELL_VICTIM_TX_ENDPOINT="tcp://127.0.0.1:2101"
+  export SAME_CELL_VICTIM_RX_ENDPOINT="tcp://127.0.0.1:2100"
+  export SAME_CELL_ATTACKER_TX_ENDPOINT="tcp://127.0.0.1:2201"
+  export SAME_CELL_ATTACKER_RX_ENDPOINT="tcp://127.0.0.1:2200"
+  export SAME_CELL_UE_TX_ENDPOINT="$SAME_CELL_VICTIM_TX_ENDPOINT"
+  export SAME_CELL_UE_RX_ENDPOINT="$SAME_CELL_VICTIM_RX_ENDPOINT"
+
+  start_normal_group "$RUNTIME_CFG" "$ATTACK_SLOTS" "$RUN_ID"
+  NORMAL_PID=$(owned_pid normal) || fail "normal UE PID를 기록하지 못했습니다"
+  setsid "${COMMAND[@]}" >"$RUN_OUT/attack.stdout" 2>"$RUN_OUT/attack.stderr" </dev/null 9>&- &
+  ATTACK_PID=$!
+  record_pid attack "$ATTACK_PID"
+
+  for ((i=1; i<=TOTAL_ENDPOINTS; i++)); do
+    if ! wait_attack_port "$((2001 + 100 * i))"; then
+      is_running "$ATTACK_PID" || fail "공격 runner가 endpoint 준비 전에 종료됐습니다"
+      fail "UE endpoint $i 준비가 시간 초과했습니다"
+    fi
+  done
+  setsid env NORMAL_UE_BROKER_ENDPOINTS="$TOTAL_ENDPOINTS" \
+    NORMAL_UE_BROKER_ATTACK_SLOTS="$ATTACK_SLOTS" NORMAL_UE_BROKER_PERSISTENT_ATTACK=1 \
+    NORMAL_UE_BROKER_CONTROL="$STATE/broker-control" python3 "$NORMAL_UE_BROKER_PY" \
+    >"$RUN_OUT/broker.log" 2>&1 </dev/null 9>&- &
+  record_pid broker "$!"
+  BROKER_PID=$(owned_pid broker) || fail "broker PID를 기록하지 못했습니다"
+
+  sleep 2
+  bash -c "$NORMAL_UE_GNB_STOP_CMD" >"$RUN_OUT/gnb-stop.log" 2>&1
+  (( SAME_CELL_GNB_SETTLE_S == 0 )) || sleep "$SAME_CELL_GNB_SETTLE_S"
+  bash -c "$NORMAL_UE_GNB_RESTART_CMD" >"$RUN_OUT/gnb-start.log" 2>&1 9>&-
+  GNB_RESTARTED=1
+  started=$SECONDS
+  until bash -c "$NORMAL_UE_GNB_READY_CMD" >/dev/null 2>&1; do
+    is_running "$ATTACK_PID" || fail "공격 runner가 DU 준비 전에 종료됐습니다"
+    (( SECONDS - started < SAME_CELL_HEALTH_TIMEOUT_S )) || fail "DU readiness가 시간 초과했습니다"
+    sleep 1
+  done
+  mapfile -t GNB_PIDS < <(pgrep -x odu)
+  (( ${#GNB_PIDS[@]} == 1 )) || fail "세션이 소유할 DU PID를 하나로 확정하지 못했습니다"
+  record_pid du "${GNB_PIDS[0]}"
+  DU_PID=${GNB_PIDS[0]}
+  ( set -o noclobber; : >"$STATE/ran.ready" )
+
+  started=$SECONDS
+  until [[ $(health "$COUNT") == "$COUNT" ]]; do
+    is_running "$ATTACK_PID" || fail "공격 runner가 normal UE 준비 전에 종료됐습니다"
+    (( SECONDS - started < SAME_CELL_HEALTH_TIMEOUT_S )) || fail "normal UE $COUNT/$COUNT 준비가 시간 초과했습니다"
+    sleep 1
+  done
+  ( set -o noclobber; : >"$STATE/normal.ready" )
+  started=$SECONDS
+  until [[ -f $STATE/attack.ready && ! -L $STATE/attack.ready ]]; do
+    is_running "$ATTACK_PID" || fail "공격 runner가 활성화 준비 전에 종료됐습니다"
+    (( SECONDS - started < SAME_CELL_HEALTH_TIMEOUT_S )) || fail "공격 runner readiness가 시간 초과했습니다"
+    sleep .2
+  done
+  ATTACK_SLOT_IDS=()
+  for ((i=1; i<=ATTACK_SLOTS; i++)); do ATTACK_SLOT_IDS+=("$i"); done
+  select_broker attack "${ATTACK_SLOT_IDS[@]}" || fail "상시 attack slot 활성화에 실패했습니다"
+  printf '{"schema":"same-cell.session.v2","run_id":"%s","attack":"%s","normal_ues":%d,"attack_slots":%d,"cell_restarts":1,"cu_restarts":0,"clocked_attack_slots":true}\n' \
+    "$RUN_ID" "$ATTACK" "$COUNT" "$ATTACK_SLOTS" >"$RUN_OUT/session.json"
+
+  while is_running "$ATTACK_PID"; do
+    printf '%s\t%s\n' "$(date +%s%N)" "$(health "$COUNT")" >>"$RUN_OUT/normal-health.tsv"
+    sleep 1
+  done
+  if wait "$ATTACK_PID"; then ATTACK_STATUS=0; else ATTACK_STATUS=$?; fi
+  ATTACK_PID=""
+  select_broker standby || true
+  printf '{"schema":"same-cell.run.v2","run_id":"%s","attack":"%s","normal_ues":%d,"attack_slots":%d,"du_restarted_during_attack":false,"attack_exit_status":%d}\n' \
+    "$RUN_ID" "$ATTACK" "$COUNT" "$ATTACK_SLOTS" "$ATTACK_STATUS" >"$RUN_OUT/run.json"
+  (( ATTACK_STATUS == 0 )) || fail "공격 runner가 실패했습니다: status=$ATTACK_STATUS"
+  echo "완료됨: attack=$ATTACK same_cell=true normal=$COUNT output=$RUN_OUT"
+  exit 0
+fi
 
 if [[ $ACTION == start ]]; then
   [[ $RUN_ID =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$ ]] || fail "안전한 session id가 필요합니다"
@@ -281,40 +469,8 @@ if [[ $ACTION == start ]]; then
   PLACEHOLDER_CFG=$(SAME_CELL_NORMAL_STATE_DIR="$STATE/placeholders" "$NORMAL_CTL" prepare --config "$CONF" --count "$ATTACK_SLOTS")
   printf '%s\n' "$PLACEHOLDER_CFG" >"$STATE/placeholder_config"
   printf 'placeholder\n' >"$STATE/broker-control"
-  if [[ -z $NORMAL_UE_PDU_SESSION_ID ]]; then
-    NORMAL_UE_PDU_SESSION_ID=$(python3 - "$NORMAL_UE_CFG" "$COUNT" <<'PY'
-import pathlib, re, sys
-text = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
-blocks = re.findall(r"(?ms)^\s*uicc\d+\s*=\s*\{.*?(?=^\s*uicc\d+\s*=|\Z)", text)[:int(sys.argv[2])]
-ids = []
-for block in blocks:
-    sessions = re.search(r"(?s)pdu_sessions\s*=\s*\((.*?)\)\s*;", block)
-    match = sessions and re.search(r"\bid\s*=\s*(\d+)", sessions.group(1))
-    if not match: raise SystemExit("normal UE PDU session id를 읽지 못했습니다")
-    ids.append(int(match.group(1)))
-if not ids or len(set(ids)) != 1: raise SystemExit("normal UE PDU session id가 서로 다릅니다")
-print(ids[0])
-PY
-    ) || fail "normal UE PDU session id 검증에 실패했습니다"
-  fi
-  [[ $NORMAL_UE_PDU_SESSION_ID =~ ^[1-9][0-9]*$ && $NORMAL_UE_PDU_SESSION_ID -le 255 ]] \
-    || fail "NORMAL_UE_PDU_SESSION_ID는 1..255여야 합니다"
-  printf '%s\n' "$NORMAL_UE_PDU_SESSION_ID" >"$STATE/pdu_session_id"
-  normal_args; rss_args
-  NORMAL_ZMQ=()
-  for ((ru=0; ru<COUNT; ru++)); do
-    endpoint=$((ATTACK_SLOTS + ru + 1))
-    NORMAL_ZMQ+=("--zmq.[$ru].tx_channels" "tcp://127.0.0.1:$((2001 + 100 * endpoint))"
-                 "--zmq.[$ru].rx_channels" "tcp://127.0.0.1:$((2000 + 100 * endpoint))")
-  done
-  setsid env RSS_SHARE_NUE="$COUNT" OAI_NORMAL_TUN_SUFFIX=1 "$NORMAL_UE_BIN" -O "$RUNTIME_CFG" \
-    "${NORMAL_ARGS[@]}" "${RSS_ARGS[@]}" --num-ues "$COUNT" --rss.max_duration_s 0 \
-    --rss.honor_reject 0 --rss.msg4_wait 1 --rss.probe_ues "$COUNT" --rss.probe_delay_ms 0 \
-    --rss.probe_ra_only 0 --rss.probe_interval_ms "$NORMAL_UE_RETRY_MS" \
-    --rss.phase_ms "$NORMAL_UE_PHASE_MS" --rss.run_id "n-$RUN_ID" \
-    --rss.log_file "$RUN_OUT/normal.jsonl" "${NORMAL_ZMQ[@]}" \
-    >"$RUN_OUT/normal.log" 2>&1 </dev/null 9>&- &
-  record_pid normal "$!"
+  resolve_pdu_session_id
+  start_normal_group "$RUNTIME_CFG" "$ATTACK_SLOTS" "$RUN_ID"
   start_placeholder_group 1
   for ((i=1; i<=TOTAL_ENDPOINTS; i++)); do wait_port "$((2001 + 100 * i))" || fail "UE endpoint $i 준비가 시간 초과했습니다"; done
   setsid env NORMAL_UE_BROKER_ENDPOINTS="$TOTAL_ENDPOINTS" NORMAL_UE_BROKER_ATTACK_SLOTS="$ATTACK_SLOTS" \

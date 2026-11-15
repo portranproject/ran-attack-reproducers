@@ -8,14 +8,15 @@ SCRIPT = ROOT / "workloads" / "normal-ue" / "bin" / "same-cell-run"
 
 
 class SameCellContractTests(unittest.TestCase):
-    def test_help_lists_the_three_live_protocol_modules(self):
+    def test_help_lists_the_same_cell_live_protocol_modules(self):
         result = subprocess.run([str(SCRIPT), "--help"], text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("same-cell-run start", result.stdout)
         self.assertIn("same-cell-run run", result.stdout)
         self.assertIn("same-cell-run status", result.stdout)
         self.assertIn("same-cell-run stop", result.stdout)
-        self.assertIn("blind|uplink|auth-timeout", result.stdout)
+        self.assertIn("blind|uplink|auth-timeout|downlink-imsi|ue-capability", result.stdout)
+        self.assertIn("hot-run", result.stdout)
 
     def test_module_runners_have_external_lifecycle_and_readiness_gates(self):
         contracts = {
@@ -23,11 +24,18 @@ class SameCellContractTests(unittest.TestCase):
             ROOT / "reproducers/uplink-dos/bin/uplink-run": "UPLINK_MANAGE_RAN",
             ROOT / "reproducers/authentication-timeout-exhaustion/bin/auth-timeout-p5-phase":
                 "AUTH_TIMEOUT_MANAGE_DU",
+            ROOT / "reproducers/downlink-imsi-extractor/bin/downlink-imsi-run":
+                "DOWNLINK_IMSI_MANAGE_RAN",
+            ROOT / "reproducers/ue-capability-hijacking/bin/ue-capability-run":
+                "UE_CAPABILITY_MANAGE_RAN",
         }
         for path, lifecycle in contracts.items():
             source = path.read_text()
             self.assertIn(lifecycle, source)
             self.assertIn("SAME_CELL_READY_FILE", source)
+            self.assertIn("SAME_CELL_RAN_READY_FILE", source)
+            self.assertIn("SAME_CELL_PRESTART", source)
+            self.assertIn("SAME_CELL_ATTACK_READY_FILE", source)
 
     def test_normal_tun_suffix_is_opt_in(self):
         patch = (ROOT / "workloads/normal-ue/patch/normal-tun-suffix.patch").read_text()
@@ -45,13 +53,17 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn("SAME_CELL_EXPERIMENTAL_SWITCH", source)
         self.assertGreaterEqual(source.count("9>&- &"), 4)
         self.assertIn('NORMAL_UE_GNB_RESTART_CMD" >"$RUN_OUT/gnb-start.log" 2>&1 9>&-', source)
-        run_section = source.split("case $ATTACK in", 1)[1]
+        run_section = source.rsplit("case $ATTACK in", 1)[1]
         self.assertNotIn("NORMAL_UE_GNB_RESTART_CMD", run_section)
 
     def test_broker_switches_paths_without_replacing_zmq_peers(self):
         broker = (ROOT / "workloads/normal-ue/tools/same_cell_broker.py").read_text()
         self.assertIn("def select_attack_slots", broker)
         self.assertIn("blocks.selector", broker)
+        self.assertIn("blocks.multiply_const_cc(0.0)", broker)
+        self.assertIn("ul_gate.set_k", broker)
+        self.assertIn("dl_gate.set_k", broker)
+        self.assertIn("NORMAL_UE_BROKER_PERSISTENT_ATTACK", broker)
         self.assertIn('mode == "warmup"', broker)
         self.assertIn("attack slots must be warmed first", broker)
         method = broker.split("def select_attack_slots", 1)[1].split("\n\n", 1)[0]
@@ -59,6 +71,33 @@ class SameCellContractTests(unittest.TestCase):
         self.assertNotIn("self.connect(", method)
         self.assertIn("signal.SIGUSR1", broker)
         self.assertIn("SAME_CELL_SLOT_SELECTION", broker)
+
+    def test_default_run_cold_starts_clocked_attack_slots(self):
+        source = SCRIPT.read_text()
+        run_section = source.rsplit("if [[ $ACTION == run ]]; then", 1)[1].split(
+            "if [[ $ACTION == start ]]; then", 1
+        )[0]
+        self.assertIn("SAME_CELL_PRESTART=1", run_section)
+        self.assertIn("NORMAL_UE_BROKER_PERSISTENT_ATTACK=1", run_section)
+        self.assertIn("select_broker attack", run_section)
+        self.assertIn("attack.ready", run_section)
+        self.assertIn("clocked_attack_slots", run_section)
+        restart = run_section.index('bash -c "$NORMAL_UE_GNB_RESTART_CMD"')
+        self.assertLess(run_section.index("start_normal_group"), restart)
+        self.assertLess(run_section.index('setsid "${COMMAND[@]}"'), restart)
+
+    def test_modified_shell_entrypoints_are_syntax_valid(self):
+        paths = [
+            SCRIPT,
+            ROOT / "reproducers/blind-dos/bin/blind-p5-phase",
+            ROOT / "reproducers/uplink-dos/bin/uplink-run",
+            ROOT / "reproducers/authentication-timeout-exhaustion/bin/auth-timeout-p5-phase",
+            ROOT / "reproducers/downlink-imsi-extractor/bin/downlink-imsi-run",
+            ROOT / "reproducers/ue-capability-hijacking/bin/ue-capability-run",
+        ]
+        for path in paths:
+            result = subprocess.run(["bash", "-n", str(path)], text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, f"{path}: {result.stderr}")
 
 
 if __name__ == "__main__":

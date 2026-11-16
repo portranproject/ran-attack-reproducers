@@ -51,11 +51,11 @@ chmod 600 conf/uplink.conf
 `OAI_BIN`, UE 설정, CU 접속 주소·키, TUN과 피해 IP를 실제 랩 값으로 검토한다. 개인키와
 가입자 설정은 저장소 밖에 둔다.
 
-L3-21 입력 에뮬레이션에는 탐지 엔진 실행 파일과 production 설정을 추가한다.
+L3-21 live 실행에는 무가입 랩 프로필과 CU의 TeleRAN·production detector 경로를 추가한다.
 
 ```bash
-DETECTOR_BIN=/root/detection/build/detector
-DETECTOR_CONFIG=/root/detection/config/detector.json
+CREDENTIAL_FLOOD_UE_CFG=/root/oai-invalid-subscriber.conf
+CU_PLATFORM_ROOT=/home/ubuntu/portran-e2e-20261113
 ```
 
 ## 5. 실행
@@ -82,13 +82,13 @@ UPLINK_CONF=conf/uplink.conf ./bin/uplink-campaign \
 동일 run ID는 덮어쓰지 않는다. 설정 누락, 기존 UE, PDU setup 미완료, release 미완료,
 child 실패가 있으면 fail-closed로 중단한다.
 
-### L3-21 실패 플러드 입력 에뮬레이션
+### L3-21 실패 플러드 실제 UE 경로
 
 ```bash
 UPLINK_CONF=conf/uplink.conf ./bin/uplink-credential-flood-run \
   control -n l321-control -e 0
 UPLINK_CONF=conf/uplink.conf ./bin/uplink-credential-flood-run \
-  emulation -n l321-emulation -e 1
+  attack -n l321-attack -e 1
 UPLINK_CONF=conf/uplink.conf ./bin/uplink-credential-flood-campaign \
   -n l321-campaign-YYYYMMDD -e 1
 ```
@@ -96,13 +96,14 @@ UPLINK_CONF=conf/uplink.conf ./bin/uplink-credential-flood-campaign \
 통합 컨트롤러에서는 공격 ID `uplink-credential-flood`를 사용한다.
 
 ```bash
-./ctl.sh run uplink-credential-flood emulation l321-smoke --enable
+./ctl.sh run uplink-credential-flood attack l321-smoke --enable
 ./ctl.sh campaign uplink-credential-flood l321-campaign --enable
+./ctl.sh same-cell run uplink-credential-flood -n l321-same --count 5 -- \
+  ./reproducers/uplink-dos/bin/uplink-credential-flood-run attack -n l321-same -e 1
 ```
 
-이 경로는 p5·OAI를 기동하지 않는다. `detector-input.jsonl`을 실제 탐지 엔진에 재생하고
-L3-21 결과까지 판정한다. 실제 F1 캡처가 있으면 `normalize_registration_failures.py`로
-같은 입력 형식으로 변환할 수 있다.
+이 경로는 OAI UE를 실행해 실제 ZMQ→DU/CU→TeleRAN 입력을 production detector에 전달한다.
+합성 9/10건 임계 회귀는 별도 `uplink-credential-flood-fixture-run`만 사용한다.
 
 ## 6. 결과 읽기
 
@@ -115,11 +116,12 @@ L3-21 결과까지 판정한다. 실제 F1 캡처가 있으면 `normalize_regist
 - `verdict.json`: 단일 실행 판정
 - `<campaign>-campaign.json`: 6개 child 판정과 모든 원문 SHA-256
 
-L3-21 입력 에뮬레이션 run에는 다음 파일이 생긴다.
+L3-21 live run에는 다음 파일이 생긴다.
 
 - `observations.jsonl`: 연결별 RRC·NAS 메시지 순서
-- `detector-input.jsonl`: `hello`·`ue_evt`·`kpm2` 재생 입력
-- `l3-21-verdict.json`: 실제 탐지 엔진 stdout 기반 경보 판정
+- `live/telemetry.jsonl`: `hello`·`ue_evt`·`kpm2` 원문
+- `live/detector-input.jsonl`: 탐지기가 실제 받은 입력
+- `detector.jsonl`: production 탐지 결과
 - `verdict.json`: 신호 모양·탐지 결과·주장 경계 판정
 - `evidence_manifest.json`: 위 파일의 크기와 SHA-256
 
@@ -145,8 +147,8 @@ sudo ./bin/uplink-profile restore /root/OCUDU/configs/cu.yaml
 - 실제 공격자가 더 강한 RF 신호로 피해 UE를 덮었다.
 - 실 SDR OTA나 상용망에서 같은 성공률이 보장된다.
 - 탐지기가 RF 원인까지 식별했다.
-- 실패 플러드 입력 에뮬레이션이 live OAI→gNB→코어 3/3에 성공했다.
+- 한 UE의 10개 RAN 컨텍스트를 물리 UE 10대로 일반화한다.
 
 허용되는 표현은 “uplink DoS 이후의 NAS 인증 실패와 서비스 영향을 실제 프로토콜
-경로에서 에뮬레이션했다”와 “실제 F1 관측에 맞춘 실패 플러드 입력으로 L3-21을
-검증했다”이다.
+경로에서 에뮬레이션했다”와 “수정 UE가 실제 망 경로에서 만든 실패 플러드를 p5
+production L3-21이 matched 3/3으로 검출했다”이다.

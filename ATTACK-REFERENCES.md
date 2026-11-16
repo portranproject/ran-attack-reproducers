@@ -71,15 +71,15 @@
   [3GPP TS 24.501 보관소](https://www.3gpp.org/ftp/Specs/archive/24_series/24.501/),
   production detector의 L3-21 규칙, p5에서 수집한 F1 Registration Reject 원문
 - **참고한 부분**: NAS 무결성 실패 처리, L3-21이 세는 Reject·AuthenticationFailure의
-  종류와 `10초/5건` 기본 임계값, p5에서 실제 관측한 거절 순서를 사용했다.
+  종류와 p5 production 문턱 `10초/10건`, 실제 관측한 거절 순서를 사용했다.
 - **가져오지 않은 부분**: 공개된 RF 공격 구현을 포팅하지 않았다. RF 송신 우위의 논문
   구현을 현재 모듈의 성공 근거로 사용하지도 않는다.
 - **이 저장소의 기여**: 첫 Service Request MAC을 한 번만 변조하는 프로토콜 결과
-  에뮬레이터와, p5 거절 모양을 재생해 L3-21을 검증하는 실패 플러드 입력 에뮬레이터를
-  별도로 구현했다. 서비스 영향·회복과 production detector 3/3 판정도 새로 만들었다.
-- **주장 한계**: RF 원인은 두 변형 모두 미관측이다. 실패 플러드형은 live 프로토콜 공격이
-  아니라 탐지 입력 에뮬레이션이다. 이 모듈은 다른 모듈보다 공개 공격 구현 근거가 약하며,
-  표준·p5 원문·팀 탐지 계약을 주 근거로 한다.
+  에뮬레이터와, 수정 OAI UE가 10개 RAN 연결의 실제 Registration Reject를 만드는 실패
+  플러드 runner를 별도로 구현했다. TeleRAN·production detector·대시보드 종단 연동,
+  정상 UE 5대 공존, fail-closed 판정·봉인도 새로 만들었다.
+- **주장 한계**: RF 원인은 두 변형 모두 미관측이다. 실패 플러드형은 실제 프로토콜
+  경로지만 한 물리 UE의 반복 연결이며 물리 UE 10대나 서비스 거부를 뜻하지 않는다.
 
 ### L3-24 — 비정상 Identity Response·식별자 노출
 

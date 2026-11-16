@@ -51,7 +51,7 @@ Markdown 문서는 한국어를 기본으로 하며 파일명에 언어 접미�
 |---|---|
 | [RRC signaling storm](reproducers/rrc-signaling-storm/) | 2026-11-02 동결. 분석기 입력·정답 생성기로 사용 |
 | [Blind DoS](reproducers/blind-dos/) | 현재 유효 5G-GUTI 재사용형 구현 완료. p5 direct 2-cell ZMQ에서 matched control→attack G5 3/3 통과 |
-| [Uplink DoS](reproducers/uplink-dos/) | 단발 NAS 무결성 손상형과 L3-21용 위조 자격증명 실패 플러드 입력 에뮬레이션. 각각 matched 3/3 통과, RF overshadowing 미검증 |
+| [Uplink DoS](reproducers/uplink-dos/) | 단발 NAS 무결성 손상형 프로토콜 영향 에뮬레이션과 L3-21용 실제 UE 실패 플러드. L3-21은 정상 UE 5대와 같은 셀에서 matched control→attack 3/3 통과, RF overshadowing 미검증 |
 | [인증 응답 미전송형 연결 컨텍스트 고갈 (NAS 고갈)](reproducers/authentication-timeout-exhaustion/) | 2026-11-11 기전·탐지 입력 재현기로 동결. p5 direct 4-cell ZMQ에서 6개 동시 pre-auth 컨텍스트 확인, 서비스 거부는 미관측 |
 | [하향 IMSI 추출 계열 식별자 노출](reproducers/downlink-imsi-extractor/) | p5 ZMQ 프로토콜 결과 에뮬레이션 완료. 예상하지 않은 SUCI Identity Response와 null-scheme 랩 가입자 노출 matched 3/3, RF overshadowing 미검증 |
 | [보안 전 UE Capability Information 주입](reproducers/ue-capability-hijacking/) | UE Capability Hijacking 계열 탐지 관측 에뮬레이터 완료. p5 F1 matched control→emulation 3/3, MITM·내용 변조·강등 수락은 범위 밖 |
@@ -63,7 +63,7 @@ Markdown 문서는 한국어를 기본으로 하며 파일명에 언어 접미�
 reproducers/
 ├── rrc-signaling-storm/   # 동결된 구현·분석기·문서·테스트
 ├── blind-dos/            # 5G-GUTI one-shot 구현·판정기·사용 가이드·G5 결과
-├── uplink-dos/           # Service Request MAC 단발 변조 + L3-21 실패 플러드 탐지 입력
+├── uplink-dos/           # Service Request MAC 단발 변조 + L3-21 실제 UE 실패 플러드
 ├── authentication-timeout-exhaustion/ # 인증 응답 미전송형(NAS 고갈) 구현·판정기
 ├── downlink-imsi-extractor/ # 하향 Identity Response 유도 결과 에뮬레이션·판정기
 ├── ue-capability-hijacking/ # 보안 전 Capability Information 주입·F1 판정기

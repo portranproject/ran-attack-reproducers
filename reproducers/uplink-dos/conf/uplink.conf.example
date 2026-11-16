@@ -24,6 +24,16 @@ IDLE_RELEASE_TIMEOUT_S=12
 PING_COUNT=5
 RECOVERY_MAX_PINGS=10
 
-# 무효·위조 자격증명 플러드형 탐지 입력 에뮬레이션
-DETECTOR_BIN=/root/detection/build/detector
-DETECTOR_CONFIG=/root/detection/config/detector.json
+# 무효·위조 자격증명 플러드형 실제 UE 경로
+CREDENTIAL_FLOOD_UE_CFG=/root/oai-invalid-subscriber.conf
+UPLINK_CREDENTIAL_FLOOD_RUN_ROOT=/root/uplink-credential-flood-runs
+UPLINK_CREDENTIAL_FLOOD_RAW_ROOT=/root/uplink-credential-flood-raw
+CU_PLATFORM_ROOT=/home/ubuntu/portran-e2e-20261113
+CU_LIVE_RUN_ROOT=/home/ubuntu/ran-reproducer-live
+CU_F1_INTERFACE=ens5
+CU_N2_INTERFACE=br-6afe1528cfa6
+CU_DASHBOARD_URL=https://127.0.0.1/ingest
+CU_DASHBOARD_CA_FILE=/home/ubuntu/portran-e2e-20261113/dashboard/certs/ingest.crt
+CU_DASHBOARD_ENV=p5
+CREDENTIAL_FLOOD_UE_TIMEOUT_S=90
+CREDENTIAL_FLOOD_POST_REJECT_S=4

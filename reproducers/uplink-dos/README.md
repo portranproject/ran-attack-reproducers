@@ -6,10 +6,10 @@
 | 시나리오 | 구현 | 용도 |
 |---|---|---|
 | 단발 NAS 무결성 손상형 | 실제 OAI UE→ZMQ→OCUDU→Open5GS 경로에서 최초 `Service Request` MAC 1비트 변조 | NAS MAC 실패와 서비스 손실·회복 관측 |
-| 무효·위조 자격증명 실패 플러드형 | 실제 p5 F1 trace와 같은 5개 연결의 `RegistrationRequest→RegistrationReject`를 `ue_evt`로 에뮬레이션 | 탐지 룰 L3-21 branch 1 검증 |
+| 무효·위조 자격증명 실패 플러드형 | 수정 OAI UE가 실제 ZMQ→DU/CU 경로에서 10개 연결의 `RegistrationRequest→RegistrationReject` 생성 | 탐지 룰 L3-21 branch 1 검증 |
 
 두 시나리오는 같은 공격명이지만 신호가 다르다. 단발 MAC 손상형은 AMF가 조용히 폐기해
-L3-21이 세는 Reject 메시지가 0건이다. 실패 플러드형은 10초 안 서로 다른 실패 연결 5개를
+L3-21이 세는 Reject 메시지가 0건이다. 실패 플러드형은 10초 안 서로 다른 실패 연결 10개를
 만들어 production 기본 임계값을 직접 만족한다.
 
 ## 구현 방식
@@ -46,10 +46,12 @@ Open5GS의 `NAS MAC verification failed`, UE의 `Service Reject`, 피해 ping �
 `f3222e81d0cef1904159e724ead95e831a8aefa847761069e8cbdbcc264609e6`이다. 다만 OAI의
 반복 RRC 재접속이 PHY에서 불안정해 이 live 경로는 반복 캠페인 기능으로 승인하지 않았다.
 
-대신 같은 메시지 순서와 임계값을 만드는 탐지 입력 에뮬레이션을 production 탐지 엔진에
-재생했다. matched `control → emulation` 3세트에서 control은 L3-21 경보 0회,
-emulation은 매번 `branch=1`, `fails_w=5` 경보 정확히 1회였다. 에뮬레이션의 5개 거절
-간격은 2초다. 결과는 [L3-21 입력 에뮬레이션 실측](artifacts/p5-l3-21-input-emulation-20261111/)에 있다.
+과거에는 같은 메시지 순서의 탐지 입력 에뮬레이션만 3/3 검증했다. 현재 runner는 이를
+회귀 fixture로 강등하고, 수정 OAI UE가 10개의 새 RAN 컨텍스트를 만드는 실제
+`UE→ZMQ→DU/CU→TeleRAN→production detector` 경로를 사용한다. 최신 production 기준은
+`n_fail_th=10`, `fail_accept_wait_ms=3000`이다. 2026-11-16 정상 UE 5대 same-cell
+control→attack 3세트가 모두 통과했고 attack은 각각 L3-21 경보 1회, 정상 health 5/5였다.
+결과는 [L3-21 live same-cell 실측](artifacts/p5-l3-21-live-same-cell-20261116/)에 있다.
 
 ## 단발 NAS 무결성 손상형 합격 기준
 
@@ -66,11 +68,11 @@ emulation은 같은 1초 probe에서 5개 전부 실패해야 한다.
 ## 무효·위조 자격증명 실패 플러드형 합격 기준
 
 - control: 완전한 RRC→등록 거절 연결 1개, 수락 0, L3-21 경보 0
-- emulation: 완전한 연결 5개, `RegistrationRequest`·`RegistrationReject` 각 5건,
+- attack: 완전한 연결 10개, `RegistrationRequest`·`RegistrationReject` 각 10건,
   거절 간격 10초 미만, 수락 0
 - 탐지: production 기본 설정에서 L3-21 `branch=1` RAISE 정확히 1회
-- campaign: 고정 순서 `control → emulation` 3세트의 child 6개가 모두 통과
-- 모든 결과: `live_protocol_path_observed=false`, `rf_overshadowing_observed=false`
+- campaign: 고정 순서 `control → attack` 3세트의 child 6개가 모두 통과
+- 모든 결과: `live_protocol_path_observed=true`, `rf_overshadowing_observed=false`
 
 ## 구성
 
@@ -78,7 +80,8 @@ emulation은 같은 1초 probe에서 5개 전부 실패해야 한다.
 - `bin/uplink-build`: 전용 clean OAI 작업 트리 빌드와 마커 검증
 - `bin/uplink-run`: 단일 control/emulation 수집·종료·판정
 - `bin/uplink-campaign`: matched 3세트 실행
-- `bin/uplink-credential-flood-run`: L3-21 control/emulation 생성·실제 탐지 엔진 재생
+- `bin/uplink-credential-flood-run`: L3-21 실제 UE·TeleRAN·탐지 엔진 실행
+- `bin/uplink-credential-flood-fixture-run`: 9/10건 탐지 임계 회귀 fixture
 - `bin/uplink-credential-flood-campaign`: L3-21 matched 3세트 실행
 - `bin/uplink-profile`: CU의 짧은 idle 전환 프로필 적용·해시 원복
 - `analysis/export_labels.py`: child 원문 독립 판정
@@ -90,7 +93,6 @@ emulation은 같은 1초 probe에서 5개 전부 실패해야 한다.
 ## 주장 범위
 
 단발형에는 **p5 ZMQ에서 uplink DoS의 NAS·서비스 영향을 실제 망 경로로 에뮬레이션했다**고
-말할 수 있다. 실패 플러드형에는 **실제 p5 F1 관측으로 신호 모양을 확인하고, 그 신호의
-탐지 입력 에뮬레이션으로 L3-21 branch 1을 3/3 검증했다**고 말할 수 있다. 후자를 live
-프로토콜 플러드 성공으로 표현하면 안 된다. 두 시나리오 모두 RF 송신 우위, 실 SDR OTA,
-상용망 일반화와 RF 원인 식별은 미검증이다.
+말할 수 있다. 실패 플러드형은 **수정 UE가 실제 망 경로에서 L3-21 입력을 만들고 production
+탐지기가 matched 3/3으로 검출했다**고 말할 수 있다. 이는 한 UE가 만든 10개 RAN
+컨텍스트이며 10대 UE나 RF 송신 우위를 뜻하지 않는다. 실 SDR OTA와 상용망 일반화는 미검증이다.

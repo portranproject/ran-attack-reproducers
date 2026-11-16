@@ -9,7 +9,7 @@
 | L3-01-V | RRC UE 컨텍스트 고갈 | 실제 프로토콜 | qualified | pending |
 | L3-01-O | 인증 응답 미전송형 고갈 | 실제 프로토콜 | qualified | pending |
 | L3-20 | 현재 유효 5G-GUTI 재사용형 Blind DoS | 실제 프로토콜 | qualified | pending |
-| L3-21 | 무효·위조 자격증명 실패 플러드 | 탐지 입력 에뮬레이션 | qualified | 해당 없음 |
+| L3-21 | 무효·위조 자격증명 실패 플러드 | 실제 프로토콜 | qualified | pending |
 | L3-24 | 비정상 Identity Response·식별자 노출 | 프로토콜 결과 에뮬레이션 | qualified | pending |
 | L3-14 | 보안 전 UE Capability Information | 프로토콜 관측 에뮬레이션 | qualified | pending |
 | L3-06 | NAS 카운터 비동기화 결과 | 탐지 입력 에뮬레이션 | pending | 해당 없음 |

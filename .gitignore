@@ -43,7 +43,6 @@
 
 # Local tool state, interpreter caches, and editor output
 /.claude/
-/CLAUDE.md
 **/__pycache__/
 .pytest_cache/
 .mypy_cache/

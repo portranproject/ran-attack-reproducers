@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""위조 자격증명 실패 플러드 탐지 입력 에뮬레이션을 판정·봉인한다."""
+"""위조 자격증명 실패 플러드의 합성 탐지 fixture를 판정·봉인한다."""
 
 from __future__ import annotations
 
@@ -71,7 +71,7 @@ def verify(run_dir: Path) -> dict:
     requests = sum(row.get("message") == "RegistrationRequest" for row in rows)
     rejects = [row for row in rows if row.get("message") == "RegistrationReject"]
     accepts = sum(row.get("message") == "RegistrationAccept" for row in rows)
-    expected = 5 if enabled else 1
+    expected = 10 if enabled else 9
     span_ms = (rejects[-1]["realtime_ns"] - rejects[0]["realtime_ns"]) // 1_000_000 if rejects else None
     signal_ok = complete == expected and requests == expected and len(rejects) == expected and accepts == 0 and span_ms is not None and span_ms < 10000
     hashes = (detection.get("detector_sha256"), detection.get("detector_config_sha256"))

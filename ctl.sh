@@ -39,7 +39,7 @@ attack_label() {
     rrc-storm) echo "RRCSetupComplete 미전송형" ;;
     blind-dos) echo "현재 유효 5G-GUTI 재사용형 Blind DoS" ;;
     uplink-dos) echo "상향 DoS 프로토콜 영향 에뮬레이션" ;;
-    uplink-credential-flood) echo "무효·위조 자격증명 플러드형 상향 DoS 입력 에뮬레이션" ;;
+    uplink-credential-flood) echo "무효·위조 자격증명 플러드형 상향 DoS" ;;
     auth-timeout) echo "인증 응답 미전송형 연결 컨텍스트 고갈 (NAS 고갈)" ;;
     downlink-imsi) echo "하향 IMSI 추출 결과 에뮬레이션" ;;
     ue-capability) echo "보안 전 UE Capability Information 주입" ;;
@@ -57,7 +57,7 @@ attack_kind() {
   case $1 in
     rrc-storm|blind-dos|auth-timeout) echo "프로토콜 재현" ;;
     uplink-dos|downlink-imsi) echo "프로토콜 결과 에뮬레이션" ;;
-    uplink-credential-flood) echo "탐지 입력 에뮬레이션" ;;
+    uplink-credential-flood) echo "프로토콜 재현" ;;
     ue-capability) echo "프로토콜 관측 에뮬레이션" ;;
     nas-counter-desynchronization|authentication-sync-failure|nas-counter-reset|uplink-identifier-exposure|short-connection-repeat|rrc-reject-release-imprisonment|tac-manipulation-return)
       echo "탐지 입력 에뮬레이션" ;;
@@ -137,7 +137,8 @@ built_marker() {
   case $1 in
     rrc-storm) echo target_occupancy ;;
     blind-dos) echo target_5g_s_tmsi ;;
-    uplink-dos|uplink-credential-flood) echo 'UPLINK_DOS_EMULATION event=service_request_mac_corrupted' ;;
+    uplink-dos) echo 'UPLINK_DOS_EMULATION event=service_request_mac_corrupted' ;;
+    uplink-credential-flood) echo 'UPLINK_DOS_DETECTION event=registration_failure' ;;
     auth-timeout) echo 'AUTH_TIMEOUT_EXHAUSTION event=authentication_request_withheld' ;;
     downlink-imsi) echo 'DOWNLINK_IMSI_EXTRACTOR event=identity_response_substituted' ;;
     ue-capability) echo 'UE_CAPABILITY_INJECTION event=%s' ;;
@@ -150,11 +151,6 @@ is_built() {
   local binary marker
   if is_common_signal "$1"; then
     [[ -x $REPROCTL && -f $ROOT/tools/generate_rule_signal.py ]]
-    return
-  fi
-  if [[ $1 == uplink-credential-flood ]]; then
-    [[ -x $ROOT/reproducers/uplink-dos/bin/uplink-credential-flood-run \
-       && -f $ROOT/reproducers/uplink-dos/analysis/generate_l3_21_replay.py ]]
     return
   fi
   binary=$(ue_binary "$1")
@@ -208,11 +204,6 @@ build_one() {
     return
   fi
   tree=$(oai_tree "$attack")
-  if [[ $attack == uplink-credential-flood ]]; then
-    is_built "$attack" || fail "탐지 입력 도구가 없습니다: $dir"
-    echo "도구 준비됨: $(attack_label "$attack") (OAI 빌드 없음)"
-    return
-  fi
   if is_built "$attack"; then
     echo "빌드 준비됨: $(attack_label "$attack")"
     return
@@ -225,7 +216,7 @@ build_one() {
     ensure_worktree "$attack"
     case $attack in
       blind-dos) BLIND_CONF=/dev/null OAI="$tree" "$dir/bin/blind-build" ;;
-      uplink-dos) OAI="$tree" "$dir/bin/uplink-build" ;;
+      uplink-dos|uplink-credential-flood) OAI="$tree" "$dir/bin/uplink-build" ;;
       auth-timeout) OAI="$tree" "$dir/bin/auth-timeout-build" ;;
       downlink-imsi) OAI="$tree" "$dir/bin/downlink-imsi-build" ;;
       ue-capability) OAI="$tree" "$dir/bin/ue-capability-build" ;;
@@ -256,11 +247,7 @@ doctor_one() {
     failed=1
   fi
   if is_built "$attack"; then
-    if [[ $attack == uplink-credential-flood ]]; then
-      echo "  OK 도구: $(run_binary "$attack")"
-    else
-      echo "  OK 빌드: $(ue_binary "$attack")"
-    fi
+    echo "  OK 빌드: $(ue_binary "$attack")"
   else
     echo "  필요 빌드: $(ue_binary "$attack")"
     failed=1
@@ -308,7 +295,8 @@ campaign_binary() {
 active_mode() {
   case $1 in
     rrc-storm|blind-dos|auth-timeout) echo attack ;;
-    uplink-credential-flood|uplink-dos|downlink-imsi|ue-capability) echo emulation ;;
+    uplink-credential-flood) echo attack ;;
+    uplink-dos|downlink-imsi|ue-capability) echo emulation ;;
     nas-counter-desynchronization|authentication-sync-failure|nas-counter-reset|uplink-identifier-exposure|short-connection-repeat|rrc-reject-release-imprisonment|tac-manipulation-return) echo emulation ;;
   esac
 }
@@ -484,7 +472,7 @@ usage() {
   ./ctl.sh coverage
   ./ctl.sh validate
   ./ctl.sh normal-ue setup|doctor|start|status|stop [--profile p5] [--count N]
-  ./ctl.sh same-cell run blind|uplink|auth-timeout|downlink-imsi|ue-capability -n RUN_ID [--count 5] -- COMMAND...
+  ./ctl.sh same-cell run blind|uplink|uplink-credential-flood|auth-timeout|downlink-imsi|ue-capability -n RUN_ID [--count 5] -- COMMAND...
   ./ctl.sh same-cell start -n SESSION_ID [--count 5]  # 정상 UE 개발 세션
   ./ctl.sh same-cell status|stop
 

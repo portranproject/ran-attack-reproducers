@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""위조 자격증명 실패 플러드 matched control→emulation 3세트를 집계한다."""
+"""위조 자격증명 실패 플러드 matched control→attack 3세트를 집계한다."""
 
 from __future__ import annotations
 
@@ -35,35 +35,38 @@ def verify(root: Path, campaign: str) -> dict:
     hashes = {}
     detector_identities = set()
     for set_index in range(1, 4):
-        for mode in ("control", "emulation"):
+        for mode in ("control", "attack"):
             run_id = f"{campaign}-{mode}-{set_index}"
             run_dir = root / run_id
             run = load(run_dir / "run.json")
             verdict = load(run_dir / "verdict.json")
-            if run.get("schema") != "uplink-dos.registration-failure-emulation.v1" or run.get("run_id") != run_id or run.get("mode") != mode:
+            oracle = json.loads(regular(run_dir / "oracle.jsonl").read_text(encoding="utf-8").splitlines()[0])
+            if run.get("schema") != "ran-reproducer.run.v1" or run.get("run_id") != run_id or run.get("mode") != mode:
                 raise ValueError(f"child run identity가 다릅니다: {run_id}")
-            if verdict.get("schema") != "uplink-dos.registration-failure-verdict.v1" or verdict.get("passed") is not True:
+            if verdict.get("schema") != "ran-reproducer.verdict.v1" or verdict.get("passed") is not True:
                 raise ValueError(f"child verdict가 통과하지 않았습니다: {run_id}")
-            if mode == "control" and verdict.get("l3_21_signal_emulated") is not False:
-                raise ValueError(f"control이 공격 신호로 판정됐습니다: {run_id}")
-            if mode == "emulation" and verdict.get("l3_21_signal_emulated") is not True:
-                raise ValueError(f"emulation 신호가 불완전합니다: {run_id}")
-            identity = (verdict.get("detector_sha256"), verdict.get("detector_config_sha256"))
+            checks = oracle.get("checks", {})
+            expected = 1 if mode == "control" else 10
+            if checks.get("registration_reject_count") != expected:
+                raise ValueError(f"등록 거절 수가 다릅니다: {run_id}")
+            detector = run.get("source", {}).get("detector", {})
+            identity = (detector.get("binary_sha256"), detector.get("config_sha256"))
             if not all(isinstance(value, str) and len(value) == 64 for value in identity):
                 raise ValueError(f"탐지 엔진·설정 해시가 없습니다: {run_id}")
             detector_identities.add(identity)
-            for path in sorted(run_dir.iterdir()):
-                if path.is_symlink() or not path.is_file():
-                    raise ValueError(f"child에 비정규 항목이 있습니다: {path}")
-                hashes[f"{run_id}/{path.name}"] = sha256(path)
-            children.append({"run_id": run_id, "set_index": set_index, "mode": mode, "checks": verdict["checks"]})
+            for path in sorted(run_dir.rglob("*")):
+                if path.is_symlink():
+                    raise ValueError(f"child에 심볼릭 링크가 있습니다: {path}")
+                if path.is_file():
+                    hashes[f"{run_id}/{path.relative_to(run_dir)}"] = sha256(path)
+            children.append({"run_id": run_id, "set_index": set_index, "mode": mode, "checks": checks})
     if len(detector_identities) != 1:
         raise ValueError("child가 서로 다른 탐지 엔진 또는 설정을 사용했습니다")
     detector_sha256, config_sha256 = detector_identities.pop()
     return {"schema": "uplink-dos.registration-failure-campaign.v1", "campaign_id": campaign,
-            "matched_repetitions": 3, "set_order": ["control", "emulation"], "passed": True,
+            "matched_repetitions": 3, "set_order": ["control", "attack"], "passed": True,
             "detector_sha256": detector_sha256, "detector_config_sha256": config_sha256,
-            "rf_overshadowing_observed": False, "live_protocol_path_observed": False,
+            "rf_overshadowing_observed": False, "live_protocol_path_observed": True,
             "children": children, "raw_files_sha256": hashes}
 
 
@@ -82,7 +85,7 @@ def main() -> int:
         print("기존 campaign 결과는 덮어쓰지 않습니다", file=sys.stderr)
         return 2
     output.write_text(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(f"uplink-credential-flood-campaign: matched control→emulation 3/3 통과 ({output})")
+    print(f"uplink-credential-flood-campaign: matched control→attack 3/3 통과 ({output})")
     return 0
 
 

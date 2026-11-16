@@ -252,6 +252,8 @@ p5 direct 2-cell ZMQ에서 3/3 재현됐다**이다.
 - victim status 141/0: `SIGUSR1`을 process group에 보내는 구버전 runner인지 확인
 - cell clock 정지: attack terminal 직후 공격 endpoint를 수동 종료하지 않았는지 확인
 - exact join 거짓: current-run CU/AMF log slice와 before NGAP IDs 확인
+- same-cell baseline timeout: 배경 UE 수를 늘리거나 timeout만 연장하지 않는다. 피해 UE가
+  반복 동기화 뒤 RAR 실패라면 독립 ZMQ 송신기 시간축 한계이며 direct 2-cell을 사용한다.
 - manifest verify 실패: 봉인 뒤 파일이 추가·삭제·변경됐는지 확인
 
 ## 12. 종료와 원복

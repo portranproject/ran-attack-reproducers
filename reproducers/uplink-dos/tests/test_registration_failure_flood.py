@@ -5,10 +5,16 @@ import unittest
 from pathlib import Path
 
 from analysis.generate_l3_21_replay import generate
+from analysis.verify_registration_failure_live import failed_contexts, session_started_at
 from analysis.verify_registration_failure_run import verify
 
 
 class RegistrationFailureFloodTest(unittest.TestCase):
+    def test_live_session_start_is_normalized(self):
+        self.assertEqual(session_started_at("20261116T030405Z"), "2026-11-16T03:04:05Z")
+        with self.assertRaises(ValueError):
+            session_started_at("2026-11-16T03:04:05Z")
+
     def make_run(self, root: Path, mode: str) -> None:
         generate(mode, f"test-{mode}", root)
         replay = root / "detector-input.jsonl"
@@ -24,26 +30,34 @@ class RegistrationFailureFloodTest(unittest.TestCase):
             "detector_sha256": "a" * 64, "detector_config_sha256": "b" * 64,
         }))
 
-    def test_emulation_generates_five_contexts_and_passes(self):
+    def test_emulation_generates_ten_contexts_and_passes(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             self.make_run(root, "emulation")
             observations = [json.loads(line) for line in (root / "observations.jsonl").read_text().splitlines()]
             replay = [json.loads(line) for line in (root / "detector-input.jsonl").read_text().splitlines()]
             verdict = verify(root)
-        self.assertEqual(sum(row["message"] == "RegistrationReject" for row in observations), 5)
+        self.assertEqual(sum(row["message"] == "RegistrationReject" for row in observations), 10)
         self.assertEqual([row["seq"] for row in replay], list(range(1, len(replay) + 1)))
         self.assertTrue(verdict["passed"])
         self.assertTrue(verdict["l3_21_signal_emulated"])
 
-    def test_control_generates_one_failure_without_alert(self):
+    def test_control_generates_nine_failures_without_alert(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             self.make_run(root, "control")
             verdict = verify(root)
         self.assertTrue(verdict["passed"])
         self.assertFalse(verdict["l3_21_signal_emulated"])
+        self.assertEqual(verdict["checks"]["registration_reject_count"], 9)
         self.assertEqual(verdict["checks"]["l3_21_raise_count"], 0)
+
+    def test_live_verifier_ignores_normal_background_contexts(self):
+        normal = [{"cell_id": 1, "du_ue_id": 1, "crnti": 10, "msg": "RegistrationRequest"},
+                  {"cell_id": 1, "du_ue_id": 1, "crnti": 10, "msg": "RegistrationAccept"}]
+        failed = [{"cell_id": 1, "du_ue_id": 2, "crnti": 11, "msg": "RegistrationRequest"},
+                  {"cell_id": 1, "du_ue_id": 2, "crnti": 11, "msg": "RegistrationReject"}]
+        self.assertEqual(failed_contexts(normal + failed), [failed])
 
 
 if __name__ == "__main__":

@@ -10,6 +10,12 @@ ping 손실 0건이었다.
 [구현·검증 계획](IMPLEMENTATION-PLAN.md), 보존 결과는
 [G5 실측 자료](artifacts/p5-zmq-nas-guti-g5-20261102/)를 따른다.
 
+same-cell 경로는 승인 범위가 아니다. 다중 `InitialUEMessage`에서 피해자 IMSI와 현재
+S-TMSI가 일치하고 해제되지 않은 mapping 하나를 고르는 oracle은 구현·회귀 검증했지만,
+p5에서는 별도 victim·attacker ZMQ 프로세스의 상향 시간축이 어긋나 피해 UE가 RA를
+완료하지 못했다. 실측은 [same-cell 한계 기록](artifacts/p5-same-cell-limit-20261116/)을
+따른다.
+
 ## 무엇을 재현하는가
 
 이 모듈의 Blind DoS는 공격자가 피해자의 SUPI·인증 키를 모르는 상태에서 현재 유효한
@@ -121,6 +127,8 @@ reproducers/blind-dos/
 - raw log/pcap은 Git에 넣지 않고 run별 manifest와 원격 SHA-256으로 식별한다.
 - OAI 기준 commit은 `6d6782b48484efd935c14e834832032743f9b138`, 최종 패치
   SHA-256은 `5ee58d5b0009431dbddbba0c08f0dbe25f46c7b4d48f06a9accdb88c06b3697a`다.
+- same-cell에서 피해 UE TUN은 정상 풀과 충돌하지 않도록 `oaitun_ue1`을 사용한다. 이
+  격리는 TUN 충돌을 해결하지만 ZMQ 상향 시간축 문제를 해결하지는 않는다.
 
 다른 변형인 RRC 재수립 식별자 위조형, RRC 재개 식별자 위조형, 무작위·만료 식별자
 대조는 이 구현과 합산하지 않는다. 필요하면 별도 시나리오와 라벨 계약으로 추가한다.

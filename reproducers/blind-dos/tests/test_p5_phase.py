@@ -360,15 +360,24 @@ class BlindP5PhaseTests(unittest.TestCase):
 
     def test_external_ran_keeps_du_running_and_honors_readiness_gate(self):
         ready = self.root / "normal.ready"
+        ran_ready = self.root / "ran.ready"
+        attack_ready = self.root / "attack.ready"
         ready.write_text("")
+        ran_ready.write_text("")
         result, _ = self.execute(
             "external-ran", BLIND_MANAGE_DU="0", SAME_CELL_READY_FILE=str(ready),
+            SAME_CELL_PRESTART="1", SAME_CELL_RAN_READY_FILE=str(ran_ready),
+            SAME_CELL_ATTACK_READY_FILE=str(attack_ready),
         )
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
-        names = [row["event"] for row in self.events()]
+        events = self.events()
+        names = [row["event"] for row in events]
         self.assertIn("du-ready", names)
         self.assertNotIn("du-stop", names)
         self.assertNotIn("du-restart", names)
+        self.assertTrue(attack_ready.is_file())
+        self.assertEqual([row["tun_suffix"] for row in events
+                          if row["event"] == "ue_start"], ["0", "1"])
 
     def test_attack_passes_exact_target_run_and_exclusive_log_arguments(self):
         result, run_dir = self.execute(

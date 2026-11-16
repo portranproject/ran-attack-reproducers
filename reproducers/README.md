@@ -10,7 +10,7 @@
 |---|---|
 | [rrc-signaling-storm](rrc-signaling-storm/) | 동결·사용 가능. 검증 범위와 한계는 모듈 README 참고 |
 | [blind-dos](blind-dos/) | 현재 유효 5G-GUTI one-shot 구현 완료. p5 direct 2-cell ZMQ matched control→attack G5 3/3 통과 |
-| [uplink-dos](uplink-dos/) | NAS Service Request MAC 단발 변조형 + L3-21 위조 자격증명 실패 플러드 입력 에뮬레이션. 각 matched 3/3 통과 |
+| [uplink-dos](uplink-dos/) | NAS Service Request MAC 단발 변조형 + L3-21 실제 UE 실패 플러드. L3-21은 정상 UE 5대 same-cell matched 3/3 통과 |
 | [authentication-timeout-exhaustion](authentication-timeout-exhaustion/) | 2026-11-11 동결. Authentication Response 미전송 기전과 탐지 입력 생성, p5 동시 pre-auth 컨텍스트 6개 확인. 서비스 거부 미관측 |
 | [downlink-imsi-extractor](downlink-imsi-extractor/) | 5G-Spector 계열 `Authentication Request → Identity Response(SUCI)` 결과 에뮬레이터. p5 ZMQ matched control→emulation 3/3, 실제 RF overshadowing 미검증 |
 | [ue-capability-hijacking](ue-capability-hijacking/) | UE Capability Hijacking 계열의 보안 전 unsolicited `UECapabilityInformation` F1 관측 에뮬레이터. p5 matched control→emulation 3/3 통과 |

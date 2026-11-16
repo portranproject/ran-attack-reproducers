@@ -10,8 +10,8 @@
 설정, 라벨 계약, 실행 원문을 다른 공격과 섞지 않는다.
 
 - `reproducers/rrc-signaling-storm/`: 구현·실측 완료 후 2026-11-02 동결
-- `reproducers/blind-dos/`: 현재 유효 5G-GUTI 재사용형 구현 완료. p5 direct 2-cell ZMQ의 matched control→attack G5 3/3 통과
-- `reproducers/uplink-dos/`: NAS Service Request MAC 단발 변조형 프로토콜 영향 에뮬레이터와 L3-21용 무효·위조 자격증명 실패 플러드 탐지 입력 에뮬레이터. 각각 matched control→emulation 3/3 통과
+- `reproducers/blind-dos/`: 현재 유효 5G-GUTI 재사용형 구현 완료. p5 direct 2-cell ZMQ의 matched control→attack G5 3/3 통과. same-cell oracle은 다중 InitialUEMessage에서 피해자 IMSI와 live mapping을 고르도록 수정했지만 독립 ZMQ UE의 상향 시간축 불일치로 피해 UE RA가 실패해 결합 자격은 미승인
+- `reproducers/uplink-dos/`: NAS Service Request MAC 단발 변조형 프로토콜 영향 에뮬레이터와 L3-21용 실제 UE 무효·위조 자격증명 실패 플러드. L3-21은 정상 UE 5대와 같은 셀의 UE→ZMQ→DU/CU→TeleRAN→production detector 경로에서 matched control→attack 3/3 통과
 - `ctl.sh`: 공격 선택, 상태 점검, 전용 OAI 준비·빌드, 단일 실행과 matched 캠페인을 기존 모듈 runner에 위임하는 통합 컨트롤러
 - [CONTROL-GUIDE.md](CONTROL-GUIDE.md): 통합 컨트롤러 사용법·자동화 범위·재현/에뮬레이션 표시 기준
 - `reproducers/authentication-timeout-exhaustion/`: 2026-11-11 기전·탐지 입력 재현기로 동결. p5 direct 4-cell ZMQ에서 Authentication Response 미전송과 6개 동시 pre-auth 컨텍스트 확인, 서비스 거부는 미관측
@@ -19,7 +19,7 @@
 - `reproducers/ue-capability-hijacking/`: UE Capability Hijacking 계열의 보안 전 unsolicited UECapabilityInformation F1 관측 에뮬레이터 완료. p5 matched control→emulation 3/3 통과; MITM·내용 변조·강등 수락은 주장하지 않음
 - `reproducers/{nas-counter-desynchronization,authentication-sync-failure,nas-counter-reset,uplink-imsi-extractor,short-connection-repeat,rrc-reject-release-imprisonment,tac-manipulation-return}/`: L3-06·AN-01·AN-06a·AN-02·AN-04·AN-07·AN-08 연구 기반 탐지 입력 에뮬레이터. production detector 고정 commit의 기본 설정에서 각각 matched control→emulation 3/3 통과. p5 live protocol과 RF 원인은 미관측
 - `reproducer.json`, `schemas/`, `profiles/`, `tools/reproctl.py`: 13개 룰 카탈로그, p5/OTA profile, 공통 run/verdict/evidence 계약, production replay·report·verify
-- `workloads/normal-ue/`: 공격 슬롯과 같은 DU·셀의 지속 정상 UE 풀. 한 OAI 프로세스 안에서 UE별 독립 virtual RU/ZMQ endpoint를 broker로 합치는 구조로 p5 cold-start 3회 Registration·PDU·ping 5/5, timeout·crash 0을 통과. RRC storm 두 변형과의 단일 공존 실측에서는 선연결 5/5 유지, 공격 중 신규 접속은 4/5였으며 1대가 pre-RRC 단계에서 실패. 공격 UE를 DU보다 먼저 clock하고 양방향 gain을 정상 5/5 뒤 여는 one-shot 단일 셀 경로에서 UE Capability control·emulation 각 1회가 통과했다. Blind DoS·상향 DoS·인증 응답 미전송형·하향 식별자 노출과 OTA 공존은 미검증
+- `workloads/normal-ue/`: 공격 슬롯과 같은 DU·셀의 지속 정상 UE 풀. 한 OAI 프로세스 안에서 UE별 독립 virtual RU/ZMQ endpoint를 broker로 합치는 구조로 p5 cold-start 3회 Registration·PDU·ping 5/5, timeout·crash 0을 통과. RRC storm 두 변형과의 단일 공존 실측에서는 선연결 5/5 유지, 공격 중 신규 접속은 4/5였다. one-shot 단일 셀 경로에서 UE Capability control·emulation 각 1회와 L3-21 control→attack 3/3이 통과했다. Blind DoS는 배경 1대와 2대 모두 피해 UE RA가 실패해 미승인이고, 다른 공격·OTA 공존은 미검증
 
 아래 장문의 실측 기록은 첫 번째 모듈인 RRC signaling storm의 보존 컨텍스트다.
 
@@ -31,7 +31,9 @@
 - [reproducers/rrc-signaling-storm/](reproducers/rrc-signaling-storm/) — 현재 OAI UE 패치·실행기·분석기·회귀 테스트·실험 기록
 - [reproducers/blind-dos/](reproducers/blind-dos/) — 현재 유효 5G-GUTI 재사용형의 one-shot 구현·사용법·G5 합격 기준·p5 결과
 - [reproducers/blind-dos/artifacts/p5-zmq-nas-guti-g5-20261102/](reproducers/blind-dos/artifacts/p5-zmq-nas-guti-g5-20261102/) — matched control→attack 3/3 판정·child manifest·원격 원문 SHA-256
+- [reproducers/blind-dos/artifacts/p5-same-cell-limit-20261116/](reproducers/blind-dos/artifacts/p5-same-cell-limit-20261116/) — same-cell oracle 수정과 독립 ZMQ UE 시간축 한계 실측
 - [reproducers/uplink-dos/](reproducers/uplink-dos/) — uplink DoS 이후 NAS 인증 실패·서비스 손실을 실제 망 경로로 재현하는 에뮬레이터와 사용 가이드
+- [reproducers/uplink-dos/artifacts/p5-l3-21-live-same-cell-20261116/](reproducers/uplink-dos/artifacts/p5-l3-21-live-same-cell-20261116/) — 정상 UE 5대 same-cell L3-21 live matched 3/3 판정과 원격 원문 SHA-256
 - [reproducers/authentication-timeout-exhaustion/](reproducers/authentication-timeout-exhaustion/) — 인증 응답 미전송형 연결 컨텍스트 고갈(NAS 고갈)의 이론·구현 범위·완료 기준
 - [reproducers/authentication-timeout-exhaustion/DETECTION-CONTRACT.md](reproducers/authentication-timeout-exhaustion/DETECTION-CONTRACT.md) — CU/F1/N2/eBPF 탐지 입력, oracle 분리, 라벨·출력 계약
 - [reproducers/authentication-timeout-exhaustion/artifacts/p5-zmq-multiue-limit-20261111/](reproducers/authentication-timeout-exhaustion/artifacts/p5-zmq-multiue-limit-20261111/) — p5 4셀 3프로세스×2 UICC의 control 통과, attack 기전·동시 6개 컨텍스트와 DoS 미달 판정·원격 원문 SHA-256
@@ -108,6 +110,10 @@
   OAI TUN 보조 프로세스까지 종료된다.
 - 현재 허용 주장은 **p5 ZMQ의 oracle 보조 단발 Blind DoS G5 성공**이다. 비특권
   식별자 획득(G6), 지속 차단(G7), 실 SDR OTA와 상용망 일반화는 미검증이다.
+- same-cell snapshot은 현재 실행의 피해자 IMSI와 target S-TMSI를 조인하고 해제된 과거
+  mapping을 제외한다. 단, p5 단일 셀에서는 별도 victim·attacker ZMQ 프로세스의 상향
+  시간축이 맞지 않아 배경 1대·2대 모두 victim Registration 전에 종료됐다. direct 2-cell
+  G5 결과를 same-cell 성공으로 일반화하지 않는다.
 
 ---
 
@@ -128,14 +134,14 @@
 - 사용법과 판정 기준은 [README](reproducers/uplink-dos/README.md), 원복을 포함한 운영
   절차는 [사용 가이드](reproducers/uplink-dos/USAGE-GUIDE.md), 실측 해시는
   [p5 결과](reproducers/uplink-dos/artifacts/p5-zmq-protocol-impact-20261105/)를 따른다.
-- 탐지팀 L3-21과 맞춘 별도 변형은 무효·위조 자격증명 실패 플러드형이다. control은
-  실패 연결 1개, emulation은 2초 안 실패 연결 5개를 `ue_evt`로 만들고 production 기본
-  설정에 재생한다. 2026-11-11 matched 3세트에서 control 경보 0회, emulation은 매번
-  `branch=1` RAISE 1회였다.
-- p5 live F1에서 거절 5건·2.260초를 한 번 확인했지만 OAI 반복 재접속과 RU-sharing은
-  반복 안정성이 없었다. 따라서 새 변형의 허용 주장은 **실제 p5 신호 모양을 기반으로 한
-  탐지 입력 에뮬레이션 3/3**이며 `live_protocol_path_observed=false`다. 결과는
-  [L3-21 입력 실측](reproducers/uplink-dos/artifacts/p5-l3-21-input-emulation-20261111/)을 따른다.
+- 탐지팀 L3-21과 맞춘 별도 변형은 무효·위조 자격증명 실패 플러드형이다. 수정 OAI UE
+  1대가 10초 안 서로 다른 RAN 연결 10개에서 Registration Request/Reject를 만들고,
+  production 설정의 실제 문턱 `max(5, ceil(96×0.1))=10`을 만족한다.
+- 2026-11-16 정상 UE 5대 same-cell matched control→attack 3세트에서 control 경보 0회,
+  attack은 매번 `branch=1` RAISE 1회였다. attack Reject span은 8.627~9.333초였고 모든
+  정상 health 표본이 5/5였다. 허용 주장은 **실제 UE→ZMQ→DU/CU→TeleRAN→production
+  detector 경로의 L3-21 검출 3/3**이다. RF 우위와 서비스 거부는 미관측이다. 결과는
+  [L3-21 live 실측](reproducers/uplink-dos/artifacts/p5-l3-21-live-same-cell-20261116/)을 따른다.
 
 ---
 

@@ -31,9 +31,9 @@ CU/DU를 시작·중지하지 않는 외부 lifecycle·prestart 모드로 실행
 
 > 과거 selector 기반 hot-swap은 p5 자격 검증에 실패해 `hot-run` 진단 경로로만 남겼다.
 > 기본 `run`은 공격별 cold-start와 상시 clocked attack slot을 사용한다. UE Capability
-> control·emulation은 p5에서 각각 1회 정상 UE 5대와 함께 통과했다. Blind DoS·상향 DoS·
-> 인증 응답 미전송형·하향 식별자 노출의 p5 결합 자격은 아직 필요하다. 설계와 과거 실패
-> 근거는
+> control·emulation은 각각 1회, L3-21 실패 플러드는 control→attack 3/3이 정상 UE 5대와
+> 함께 통과했다. Blind DoS는 배경 1대·2대에서도 피해 UE RA가 실패해 미승인이다. 다른
+> 공격의 p5 결합 자격은 아직 필요하다. 설계와 과거 실패 근거는
 > [hot-swap 검증 기록](docs/SAME-CELL-HOT-SWAP-20261113.md)을 따른다.
 
 - `start` 뒤 supervisor는 수동 `stop` 전까지 계속 실행한다.
@@ -46,6 +46,9 @@ CU/DU를 시작·중지하지 않는 외부 lifecycle·prestart 모드로 실행
   custom RU-sharing 집계기를 우회한다. 공격 UE와 TUN 이름이 충돌하지 않도록 same-cell
   실행용 binary에는 `patch/normal-tun-suffix.patch`도 적용한다.
 - `status`의 `healthy`는 요청 수만큼 TUN과 gateway ping이 모두 성공한 경우다.
+- 자격증명 실패 플러드 러너는 목표 실패를 만든 뒤에도 공격 UE를 idle 상태로 유지한다.
+  컨트롤러가 같은 RF clock에서 정상 UE 5/5를 확인한 뒤 종료를 허가하므로, 공격 UE가 먼저
+  사라져 broker 전체가 멈추는 종료 효과를 서비스 영향으로 오판하지 않는다.
 - p5 cold-start에서 5/5 수렴까지 12.7~62.3초가 걸렸으므로 시작 직후의 `degraded`는
   최종 실패가 아니다.
 - `same-cell hot-run`의 과거 selector 전환 코드는 연구용으로 남겨 두되
@@ -56,7 +59,9 @@ CU/DU를 시작·중지하지 않는 외부 lifecycle·prestart 모드로 실행
 2026-11-13 독립 virtual RU 구조의 cold-start 3회 모두 정상 UE 5/5가 등록·PDU·개별
 gateway ping을 통과했다. 세 실행의 ZMQ channel timeout과 crash marker는 모두 0이었고,
 종료 후 UE·broker·TUN 잔존도 0이었다. 따라서 p5 기본 5대 정상 배경 트래픽 용도로 승인한다.
-실 SDR OTA와 정상 풀을 유지한 live 공격 전환은 아직 승인 범위가 아니다.
+L3-21은 2026-11-16 정상 UE 5대가 모든 attack 표본에서 5/5를 유지한 채 matched 3/3을
+통과했다. Blind DoS는 같은 날 배경 1대·2대 모두 정상 풀은 유지했지만 피해 UE가 180초
+안에 등록하지 못해 미승인이다. 실 SDR OTA는 아직 승인 범위가 아니다.
 
 반복 실행별 결과와 증거 해시는 [p5 자격 검증](docs/P5-QUALIFICATION-20261113.md)에 남겼다.
 5 UE 불안정성의 코드 원인과 비교 실험은

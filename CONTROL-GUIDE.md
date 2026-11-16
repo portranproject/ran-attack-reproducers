@@ -116,6 +116,7 @@ BLIND_OAI=/srv/OAI-blind-dos-w38 \
 | `blind-dos` | 프로토콜 재현 | 유효 5G-GUTI를 실제 RRC·NAS 경로에서 재사용 |
 | `auth-timeout` | 프로토콜 재현 | Authentication Request를 받은 UE가 응답을 미전송 |
 | `uplink-dos` | 프로토콜 결과 에뮬레이션 | RF 송신 우위 이후의 NAS·서비스 영향을 재현 |
+| `uplink-credential-flood` | 프로토콜 재현 | 수정 UE가 실제 RAN 경로에 L3-21 등록 거절 10건을 생성 |
 | `downlink-imsi` | 프로토콜 결과 에뮬레이션 | RF overshadowing 이후 식별자 응답 결과를 재현 |
 | `ue-capability` | 프로토콜 관측 에뮬레이션 | 보안 전·선행 질의 없는 Capability Information을 F1에 재현 |
 | `l3-06`, `an-01`, `an-06a`, `an-02`, `an-04`, `an-07`, `an-08` | 탐지 입력 에뮬레이션 | 연구 기반 메시지 순서를 production detector 기본 설정에 재생 |

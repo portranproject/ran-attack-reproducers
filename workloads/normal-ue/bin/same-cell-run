@@ -21,7 +21,7 @@ PLACEHOLDER_CFG=""
 usage() {
   cat <<'EOF'
 사용법:
-  same-cell-run run blind|uplink|auth-timeout|downlink-imsi|ue-capability -n RUN_ID [--count 5] [--config FILE] -- COMMAND...
+  same-cell-run run blind|uplink|uplink-credential-flood|auth-timeout|downlink-imsi|ue-capability -n RUN_ID [--count 5] [--config FILE] -- COMMAND...
   same-cell-run start -n SESSION_ID [--count 5] [--config FILE]  # 정상 UE 개발 세션
   same-cell-run hot-run blind|uplink|auth-timeout -n RUN_ID -- COMMAND...  # 미승인 진단용
   same-cell-run status
@@ -82,7 +82,7 @@ NORMAL_UE_GNB_CONFIG=${NORMAL_UE_GNB_CONFIG:-}
 NORMAL_UE_GNB_LOG=${NORMAL_UE_GNB_LOG:-/tmp/odu.log}
 SAME_CELL_ENDPOINT_TIMEOUT_S=${SAME_CELL_ENDPOINT_TIMEOUT_S:-30}
 SAME_CELL_HEALTH_TIMEOUT_S=${SAME_CELL_HEALTH_TIMEOUT_S:-120}
-SAME_CELL_RECOVERY_TIMEOUT_S=${SAME_CELL_RECOVERY_TIMEOUT_S:-30}
+SAME_CELL_RECOVERY_TIMEOUT_S=${SAME_CELL_RECOVERY_TIMEOUT_S:-90}
 SAME_CELL_GNB_SETTLE_S=${SAME_CELL_GNB_SETTLE_S:-2}
 SAME_CELL_ATTACK_WARMUP_S=${SAME_CELL_ATTACK_WARMUP_S:-8}
 SAME_CELL_EXPERIMENTAL_SWITCH=${SAME_CELL_EXPERIMENTAL_SWITCH:-0}
@@ -93,6 +93,7 @@ if [[ $ACTION == run ]]; then
   case $ATTACK in
     blind) ATTACK_SLOTS=2 ;;
     uplink|downlink-imsi|ue-capability) ATTACK_SLOTS=1 ;;
+    uplink-credential-flood) ATTACK_SLOTS=1 ;;
     auth-timeout) ATTACK_SLOTS=4 ;;
     *) fail "지원하지 않는 same-cell 공격: $ATTACK" ;;
   esac
@@ -163,7 +164,7 @@ stop_group() {
   kill -INT -- "-$pid" 2>/dev/null || true
   sleep .2
   kill -INT -- "-$pid" 2>/dev/null || true
-  for _ in {1..25}; do is_running "$pid" || return 0; sleep .2; done
+  for _ in {1..100}; do is_running "$pid" || return 0; sleep .2; done
   kill -KILL -- "-$pid" 2>/dev/null || true
 }
 port_ready() { "$SS_CMD" -H -ltn 2>/dev/null | awk '{print $4}' | grep -Eq ":$1$"; }
@@ -355,13 +356,17 @@ if [[ $ACTION == run ]]; then
   export SAME_CELL_RAN_READY_FILE="$STATE/ran.ready"
   export SAME_CELL_READY_FILE="$STATE/normal.ready"
   export SAME_CELL_ATTACK_READY_FILE="$STATE/attack.ready"
-  export SAME_CELL_READY_TIMEOUT_S="$SAME_CELL_HEALTH_TIMEOUT_S"
+  export SAME_CELL_ATTACK_DONE_FILE="$STATE/attack.done"
+  export SAME_CELL_RELEASE_FILE="$STATE/attack.release"
+  export SAME_CELL_READY_TIMEOUT_S=$((SAME_CELL_HEALTH_TIMEOUT_S + 30))
   export P5_EXTERNAL_RAN=1 SAME_CELL_UE_ENDPOINTS_FILE="$ENDPOINTS_FILE"
   export SAME_CELL_DU_LOG="$NORMAL_UE_GNB_LOG" SAME_CELL_GNB_CONFIG="$NORMAL_UE_GNB_CONFIG"
-  export SAME_CELL_BLIND_MANAGE_DU=0 SAME_CELL_UPLINK_MANAGE_RAN=0 SAME_CELL_AUTH_TIMEOUT_MANAGE_DU=0
+  export SAME_CELL_BLIND_MANAGE_DU=0 SAME_CELL_UPLINK_MANAGE_RAN=0 SAME_CELL_CREDENTIAL_FLOOD_MANAGE_RAN=0
+  export SAME_CELL_AUTH_TIMEOUT_MANAGE_DU=0
   export SAME_CELL_DOWNLINK_IMSI_MANAGE_RAN=0 SAME_CELL_UE_CAPABILITY_MANAGE_RAN=0
   export SAME_CELL_VICTIM_TX_ENDPOINT="tcp://127.0.0.1:2101"
   export SAME_CELL_VICTIM_RX_ENDPOINT="tcp://127.0.0.1:2100"
+  export SAME_CELL_VICTIM_TUN=oaitun_ue1
   export SAME_CELL_ATTACKER_TX_ENDPOINT="tcp://127.0.0.1:2201"
   export SAME_CELL_ATTACKER_RX_ENDPOINT="tcp://127.0.0.1:2200"
   export SAME_CELL_UE_TX_ENDPOINT="$SAME_CELL_VICTIM_TX_ENDPOINT"
@@ -422,15 +427,29 @@ if [[ $ACTION == run ]]; then
   printf '{"schema":"same-cell.session.v2","run_id":"%s","attack":"%s","normal_ues":%d,"attack_slots":%d,"cell_restarts":1,"cu_restarts":0,"clocked_attack_slots":true}\n' \
     "$RUN_ID" "$ATTACK" "$COUNT" "$ATTACK_SLOTS" >"$RUN_OUT/session.json"
 
+  NORMAL_HEALTH_BEFORE_TEARDOWN=null
+  if [[ $ATTACK == uplink-credential-flood ]]; then
+    until [[ -f $STATE/attack.done && ! -L $STATE/attack.done ]]; do
+      is_running "$ATTACK_PID" || fail "공격 runner가 완료 marker 전에 종료됐습니다"
+      printf '%s\t%s\n' "$(date +%s%N)" "$(health "$COUNT")" >>"$RUN_OUT/normal-health.tsv"
+      sleep 1
+    done
+    wait_healthy "$COUNT" "$SAME_CELL_RECOVERY_TIMEOUT_S" \
+      || fail "공격 UE clock 유지 중 normal UE가 $COUNT/$COUNT가 아닙니다"
+    NORMAL_HEALTH_BEFORE_TEARDOWN=true
+    ( set -o noclobber; : >"$STATE/attack.release" )
+  fi
   while is_running "$ATTACK_PID"; do
-    printf '%s\t%s\n' "$(date +%s%N)" "$(health "$COUNT")" >>"$RUN_OUT/normal-health.tsv"
+    [[ $ATTACK == uplink-credential-flood ]] \
+      || printf '%s\t%s\n' "$(date +%s%N)" "$(health "$COUNT")" >>"$RUN_OUT/normal-health.tsv"
     sleep 1
   done
   if wait "$ATTACK_PID"; then ATTACK_STATUS=0; else ATTACK_STATUS=$?; fi
   ATTACK_PID=""
   select_broker standby || true
-  printf '{"schema":"same-cell.run.v2","run_id":"%s","attack":"%s","normal_ues":%d,"attack_slots":%d,"du_restarted_during_attack":false,"attack_exit_status":%d}\n' \
-    "$RUN_ID" "$ATTACK" "$COUNT" "$ATTACK_SLOTS" "$ATTACK_STATUS" >"$RUN_OUT/run.json"
+  printf '{"schema":"same-cell.run.v2","run_id":"%s","attack":"%s","normal_ues":%d,"attack_slots":%d,"du_restarted_during_attack":false,"normal_healthy_before_attack_teardown":%s,"attack_exit_status":%d}\n' \
+    "$RUN_ID" "$ATTACK" "$COUNT" "$ATTACK_SLOTS" \
+    "$NORMAL_HEALTH_BEFORE_TEARDOWN" "$ATTACK_STATUS" >"$RUN_OUT/run.json"
   (( ATTACK_STATUS == 0 )) || fail "공격 runner가 실패했습니다: status=$ATTACK_STATUS"
   echo "완료됨: attack=$ATTACK same_cell=true normal=$COUNT output=$RUN_OUT"
   exit 0

@@ -46,6 +46,12 @@ SUCI = re.compile(
     r"[0-9]+-[0-9]+-[0-9]+-(?P<msin>[0-9]+)", re.I,
 )
 IMSI_LOG = re.compile(r"imsi-(?P<imsi>[0-9]{15})", re.I)
+RELEASE_EVENTS = {
+    "clear_ng_context",
+    "ue_context_release_command",
+    "ue_context_release_complete",
+    "ue_context_release_request",
+}
 
 
 def fail(message):
@@ -209,6 +215,42 @@ def parse_amf(text, victim_imsi=None):
     return rows
 
 
+def select_victim_mapping(rows, target):
+    """Select the one live current-run mapping without guessing between contexts."""
+    initials = [(index, row) for index, row in enumerate(rows)
+                if row["event"] == "initial_ue_message"]
+    victim = [(index, row) for index, row in initials
+              if row.get("victim_profile_match") is True
+              and "ran_ue_ngap_id" in row and "amf_ue_ngap_id" in row]
+    target_matches = [(index, row) for index, row in victim
+                      if row.get("target_5g_s_tmsi") == target]
+    candidates = target_matches or [(index, row) for index, row in victim
+                                    if "target_5g_s_tmsi" not in row]
+    released = set()
+    for candidate_index, candidate in candidates:
+        ids = (candidate["ran_ue_ngap_id"], candidate["amf_ue_ngap_id"])
+        candidate_time = candidate.get("realtime_ns")
+        if any(row.get("event") in RELEASE_EVENTS
+               and (row.get("ran_ue_ngap_id"), row.get("amf_ue_ngap_id")) == ids
+               and isinstance(candidate_time, int)
+               and isinstance(row.get("realtime_ns"), int)
+               and row["realtime_ns"] >= candidate_time
+               for row in rows):
+            released.add(candidate_index)
+    survivors = [row for index, row in candidates if index not in released]
+    counts = {
+        "initial": len(initials),
+        "victim": len(victim),
+        "target": len(target_matches),
+        "released": len(released),
+        "surviving": len(survivors),
+    }
+    if len(survivors) != 1:
+        fail("before snapshot needs exactly one live victim InitialUEMessage mapping "
+             + json.dumps(counts, sort_keys=True, separators=(",", ":")))
+    return survivors[0], counts
+
+
 def parse_cu(text):
     rows = []
     for line in text.splitlines():
@@ -279,13 +321,9 @@ def snapshot(args):
     target, amf_set, pointer, m_tmsi, source_line = parse_victim_guti(victim_text)
 
     if args.phase == "before":
-        candidates = [row for row in parse_amf(amf_text, victim_imsi)
-                      if row["event"] == "initial_ue_message"
-                      and row.get("victim_profile_match") is True
-                      and "ran_ue_ngap_id" in row and "amf_ue_ngap_id" in row]
-        if len(candidates) != 1:
-            fail("before snapshot needs exactly one current-run InitialUEMessage mapping")
-        ids = candidates[0]
+        ids, mapping_counts = select_victim_mapping(
+            parse_amf(amf_text, victim_imsi), target
+        )
         material = source_line + "\n" + json.dumps(ids, sort_keys=True)
     else:
         before_path = Path(args.before)
@@ -319,6 +357,7 @@ def snapshot(args):
         "part2": part2,
         "ran_ue_ngap_id": ids["ran_ue_ngap_id"],
         "amf_ue_ngap_id": ids["amf_ue_ngap_id"],
+        "mapping_counts": mapping_counts if args.phase == "before" else before.get("mapping_counts"),
         "captured_realtime_ns": time.time_ns(),
         "source_sha256": sha256(material),
     })

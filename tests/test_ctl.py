@@ -48,16 +48,23 @@ class ControllerTest(unittest.TestCase):
 
     def test_credential_flood_dry_run_maps_to_detection_runner(self):
         result = self.run_ctl(
-            "run", "uplink-credential-flood", "emulation", "test-flood", "--enable", "--dry-run"
+            "run", "uplink-credential-flood", "attack", "test-flood", "--enable", "--dry-run"
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("uplink-credential-flood-run", result.stdout)
-        self.assertIn("emulation", result.stdout)
+        self.assertIn("attack", result.stdout)
 
-    def test_credential_flood_build_does_not_build_oai(self):
-        result = self.run_ctl("build", "uplink-credential-flood")
+    def test_credential_flood_build_requires_ue_marker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tree = pathlib.Path(directory)
+            binary = tree / "cmake_targets/ran_build/build/nr-uesoftmodem"
+            binary.parent.mkdir(parents=True)
+            binary.write_text("UPLINK_DOS_DETECTION event=registration_failure")
+            binary.chmod(0o700)
+            env = dict(os.environ, UPLINK_OAI=str(tree))
+            result = self.run_ctl("build", "uplink-credential-flood", env=env)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("OAI 빌드 없음", result.stdout)
+        self.assertIn("빌드 준비됨", result.stdout)
 
     def test_manifest_scenario_alias_and_generated_campaign_id(self):
         result = self.run_ctl(

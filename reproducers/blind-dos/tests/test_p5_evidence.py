@@ -104,6 +104,52 @@ class P5EvidenceTests(unittest.TestCase):
         )
         self.assertIn("exactly one", result.stderr)
 
+    def test_before_snapshot_ignores_normal_ue_mapping(self):
+        with self.amf.open("a") as output:
+            output.write(
+                "2026-11-02T00:00:02Z InitialUEMessage\n"
+                "2026-11-02T00:00:02Z RAN_UE_NGAP_ID[3] AMF_UE_NGAP_ID[2]\n"
+                "2026-11-02T00:00:02Z "
+                "[suci-0-001-01-0000-0-0-0000000002] known UE by SUCI\n"
+            )
+        _, snapshot = self.snapshot_before()
+        self.assertEqual((snapshot["ran_ue_ngap_id"], snapshot["amf_ue_ngap_id"]), (2, 1))
+        self.assertEqual(snapshot["mapping_counts"]["initial"], 2)
+        self.assertEqual(snapshot["mapping_counts"]["victim"], 1)
+
+    def test_before_snapshot_selects_only_live_victim_retry(self):
+        with self.amf.open("a") as output:
+            output.write(
+                "2026-11-02T00:00:02Z Clear NG Context\n"
+                "2026-11-02T00:00:02Z RAN_UE_NGAP_ID[2] AMF_UE_NGAP_ID[1]\n"
+                "2026-11-02T00:00:03Z InitialUEMessage\n"
+                "2026-11-02T00:00:03Z RAN_UE_NGAP_ID[4] AMF_UE_NGAP_ID[3]\n"
+                "2026-11-02T00:00:03Z "
+                "[suci-0-001-01-0000-0-0-0000000001] known UE by SUCI\n"
+            )
+        _, snapshot = self.snapshot_before()
+        self.assertEqual((snapshot["ran_ue_ngap_id"], snapshot["amf_ue_ngap_id"]), (4, 3))
+        self.assertEqual(snapshot["mapping_counts"]["released"], 1)
+        self.assertEqual(snapshot["mapping_counts"]["surviving"], 1)
+
+    def test_before_snapshot_rejects_explicit_target_mismatch(self):
+        self.amf.write_text(
+            "2026-11-02T00:00:01Z InitialUEMessage\n"
+            "2026-11-02T00:00:01Z "
+            "5G-S_TMSI[AMF_ID:0x000040,M_TMSI:0xc00001ba]\n"
+            "2026-11-02T00:00:01Z RAN_UE_NGAP_ID[2] AMF_UE_NGAP_ID[1]\n"
+            "2026-11-02T00:00:01Z "
+            "[suci-0-001-01-0000-0-0-0000000001] known UE by SUCI\n"
+        )
+        result = self.run_tool(
+            "snapshot", "--victim-log", self.victim, "--amf-raw", self.amf,
+            "--victim-config", self.victim_config,
+            "--output", self.root / "snapshot.json", "--phase", "before",
+            "--run-id", RUN_ID, "--victim-id", VICTIM,
+            "--amf-region-id", "2", ok=False,
+        )
+        self.assertIn('"surviving":0', result.stderr)
+
     def test_after_snapshot_fails_if_victim_guti_changed(self):
         before, _ = self.snapshot_before()
         self.victim.write_text(

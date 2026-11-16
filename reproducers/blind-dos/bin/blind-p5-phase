@@ -81,6 +81,7 @@ SAME_CELL_READY_TIMEOUT_S=${SAME_CELL_READY_TIMEOUT_S:-120}
 SAME_CELL_PRESTART=${SAME_CELL_PRESTART:-0}
 SAME_CELL_RAN_READY_FILE=${SAME_CELL_RAN_READY_FILE:-}
 SAME_CELL_ATTACK_READY_FILE=${SAME_CELL_ATTACK_READY_FILE:-}
+SAME_CELL_VICTIM_TUN=${SAME_CELL_VICTIM_TUN:-oaitun_ue1}
 
 fail() { echo "blind-p5-phase: $*" >&2; exit 2; }
 positive_int() { [[ $2 =~ ^[1-9][0-9]*$ ]] || fail "$1 must be a positive integer"; }
@@ -502,8 +503,12 @@ run_hook capture-start "$CU_CAPTURE_START_CMD" || fail "capture start hook faile
 common_args=(
   --band "$BAND" -C "$DL_FREQ" --numerology "$NUMEROLOGY" -r "$PRB"
   -E --ue-scan-carrier --uecap_file "$UECAP" --device.name "$DEVICE" --num-ues 1
-  --blind.tun_suffix 1
 )
+VICTIM_TUN_SUFFIX=1
+if (( SAME_CELL_PRESTART )); then
+  VICTIM_TUN_SUFFIX=0
+  export P5_VICTIM_TUN=$SAME_CELL_VICTIM_TUN
+fi
 start_ue() {
   local role=$1 config=$2 tx=$3 rx=$4 log=$5
   shift 5
@@ -515,7 +520,8 @@ start_ue() {
 # waits on a private target gate, so control and attack differ only by opening
 # that gate after the current victim snapshot.
 start_ue victim "$VICTIM_UE_CFG" "$VICTIM_TX_ENDPOINT" "$VICTIM_RX_ENDPOINT" \
-  "$WORK/victim.log" --blind.enable 0 --blind.recovery_mode 1
+  "$WORK/victim.log" --blind.enable 0 --blind.recovery_mode 1 \
+  --blind.tun_suffix "$VICTIM_TUN_SUFFIX"
 VICTIM_INDEX=$LAST_CHILD_INDEX
 export BLIND_VICTIM_PID=$LAST_CHILD_PID
 export BLIND_VICTIM_LOG_PATH=$WORK/victim.log
@@ -528,7 +534,8 @@ TARGET_GATE=$WORK/target_5g_s_tmsi
 start_ue attacker "$ATTACKER_UE_CFG" "$ATTACKER_TX_ENDPOINT" "$ATTACKER_RX_ENDPOINT" \
   "$WORK/attacker.log" --blind.enable 1 --blind.amf_region_id "$AMF_REGION_ID" \
   --blind.target_file "$TARGET_GATE" --blind.target_wait_s "$ATTACKER_GATE_TIMEOUT_S" \
-  --blind.run_id "$BLIND_RUN_ID" --blind.log_file "$ATTACKER_EVENTS"
+  --blind.run_id "$BLIND_RUN_ID" --blind.log_file "$ATTACKER_EVENTS" \
+  --blind.tun_suffix 1
 ATTACKER_INDEX=$LAST_CHILD_INDEX
 export BLIND_ATTACKER_PID=$LAST_CHILD_PID
 export BLIND_ENDPOINT_ROLE=attacker BLIND_CHILD_PID=$LAST_CHILD_PID

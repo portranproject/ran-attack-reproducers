@@ -15,13 +15,15 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn("same-cell-run run", result.stdout)
         self.assertIn("same-cell-run status", result.stdout)
         self.assertIn("same-cell-run stop", result.stdout)
-        self.assertIn("blind|uplink|auth-timeout|downlink-imsi|ue-capability", result.stdout)
+        self.assertIn("blind|uplink|uplink-credential-flood|auth-timeout|downlink-imsi|ue-capability", result.stdout)
         self.assertIn("hot-run", result.stdout)
 
     def test_module_runners_have_external_lifecycle_and_readiness_gates(self):
         contracts = {
             ROOT / "reproducers/blind-dos/bin/blind-p5-phase": "BLIND_MANAGE_DU",
             ROOT / "reproducers/uplink-dos/bin/uplink-run": "UPLINK_MANAGE_RAN",
+            ROOT / "reproducers/uplink-dos/bin/uplink-credential-flood-run":
+                "CREDENTIAL_FLOOD_MANAGE_RAN",
             ROOT / "reproducers/authentication-timeout-exhaustion/bin/auth-timeout-p5-phase":
                 "AUTH_TIMEOUT_MANAGE_DU",
             ROOT / "reproducers/downlink-imsi-extractor/bin/downlink-imsi-run":
@@ -79,18 +81,35 @@ class SameCellContractTests(unittest.TestCase):
         )[0]
         self.assertIn("SAME_CELL_PRESTART=1", run_section)
         self.assertIn("NORMAL_UE_BROKER_PERSISTENT_ATTACK=1", run_section)
+        self.assertIn("SAME_CELL_HEALTH_TIMEOUT_S + 30", run_section)
         self.assertIn("select_broker attack", run_section)
+        self.assertIn("SAME_CELL_ATTACK_DONE_FILE", run_section)
+        self.assertIn("SAME_CELL_VICTIM_TUN=oaitun_ue1", run_section)
+        self.assertIn('공격 UE clock 유지 중 normal UE가 $COUNT/$COUNT가 아닙니다', run_section)
+        self.assertIn("normal_healthy_before_attack_teardown", run_section)
         self.assertIn("attack.ready", run_section)
         self.assertIn("clocked_attack_slots", run_section)
         restart = run_section.index('bash -c "$NORMAL_UE_GNB_RESTART_CMD"')
         self.assertLess(run_section.index("start_normal_group"), restart)
         self.assertLess(run_section.index('setsid "${COMMAND[@]}"'), restart)
 
+    def test_credential_flood_starts_managed_du_before_ue(self):
+        source = (ROOT / "reproducers/uplink-dos/bin/uplink-credential-flood-run").read_text()
+        managed = source.index('if (( MANAGE_RAN )); then')
+        ue = source.index('OAI_UPLINK_DOS_REGISTRATION_FAILURE_FLOOD=1')
+        self.assertLess(managed, ue)
+        self.assertIn('TARGET_PER_UE=$((ENABLE == 1 ? 10 : 1))', source)
+        self.assertIn('OAI_UPLINK_DOS_REGISTRATION_FAILURE_TARGET=$TARGET_PER_UE', source)
+        self.assertIn("Received Registration Reject cause", source)
+        self.assertIn("SAME_CELL_RELEASE_FILE", source)
+        self.assertIn('uplink-credential-flood) ATTACK_SLOTS=1', SCRIPT.read_text())
+
     def test_modified_shell_entrypoints_are_syntax_valid(self):
         paths = [
             SCRIPT,
             ROOT / "reproducers/blind-dos/bin/blind-p5-phase",
             ROOT / "reproducers/uplink-dos/bin/uplink-run",
+            ROOT / "reproducers/uplink-dos/bin/uplink-credential-flood-run",
             ROOT / "reproducers/authentication-timeout-exhaustion/bin/auth-timeout-p5-phase",
             ROOT / "reproducers/downlink-imsi-extractor/bin/downlink-imsi-run",
             ROOT / "reproducers/ue-capability-hijacking/bin/ue-capability-run",

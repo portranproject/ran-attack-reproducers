@@ -19,7 +19,7 @@ COUNTERS = {
 def generate(mode: str, session: str, output: Path) -> None:
     if mode not in {"control", "emulation"} or output.is_symlink() or not output.is_dir():
         raise ValueError("mode 또는 출력 디렉터리가 잘못됐습니다")
-    count = 1 if mode == "control" else 5
+    count = 9 if mode == "control" else 10
     events = []
     frame = 1
     for index in range(count):

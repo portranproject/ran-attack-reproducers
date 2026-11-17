@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import json
 import pathlib
 import subprocess
 import tempfile
@@ -17,6 +18,29 @@ class ControllerTest(unittest.TestCase):
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env,
         )
 
+    def profile(self, root, backend="p5", environment=None):
+        value = {
+            "schema": "ran-reproducer.profile.v1", "id": "lab", "backend": backend,
+            "configured": True, "lab_only": True, "run_root": str(root / "runs"),
+            "environment": environment or {},
+            "detector": {"binary": "/tmp/detector", "config": "/tmp/detector.json",
+                         "repository": "local", "commit": "1" * 40},
+            "telemetry": {"binary": "/tmp/portran", "period_ms": 100,
+                          "repository": "local", "commit": "2" * 40},
+            "limits": {"max_duration_s": 300, "max_ues": 20, "max_tx_gain_db": 0},
+            "target_allowlist": ["lab-only"], "rf": None,
+        }
+        if backend == "p5":
+            value["environment"].update({
+                "P5_CU_HOST": "cu.lab", "P5_DU_HOST": "du.lab",
+                "P5_CU_PRIVATE_IP": "10.0.0.10", "P5_DU_PRIVATE_IP": "10.0.0.11",
+            })
+        else:
+            value["rf"] = {"shielding_confirmed": True, "clock_source": "external",
+                           "devices": [{"role": "attacker-ue", "serial": "A"},
+                                       {"role": "o-du", "serial": "B"}]}
+        (root / "lab.json").write_text(json.dumps(value))
+
     def test_list_exposes_every_module_and_reproduction_type(self):
         result = self.run_ctl("list")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -31,6 +55,14 @@ class ControllerTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("ue-capability-run", result.stdout)
         self.assertIn("UE_CAPABILITY_CONF", result.stdout)
+
+    def test_l3_06_dry_run_maps_to_live_runner(self):
+        result = self.run_ctl(
+            "run", "l3-06", "emulation", "test-l3-06", "--enable", "--dry-run"
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("nas-counter-desync-run", result.stdout)
+        self.assertIn("NAS_DESYNC_CONF", result.stdout)
 
     def test_active_run_requires_explicit_enable(self):
         result = self.run_ctl("run", "blind-dos", "attack", "test-run", "--dry-run")
@@ -68,11 +100,36 @@ class ControllerTest(unittest.TestCase):
 
     def test_manifest_scenario_alias_and_generated_campaign_id(self):
         result = self.run_ctl(
-            "campaign", "rrc-context-exhaustion", "--profile", "p5", "--enable", "--dry-run"
+            "campaign", "rrc-context-exhaustion", "--enable", "--dry-run"
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("rss-run", result.stdout)
         self.assertIn("set 1..3", result.stdout)
+
+    def test_explicit_profile_selects_external_module_config(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            config = root / "capability.conf"
+            self.profile(root, environment={"UE_CAPABILITY_CONF": str(config)})
+            env = dict(os.environ, RAN_REPRO_PROFILE_DIR=str(root))
+            result = self.run_ctl(
+                "run", "ue-capability", "control", "profile-control", "--profile", "lab", "--dry-run",
+                env=env,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(str(config), result.stdout)
+
+    def test_ota_protocol_run_fails_until_adapter_exists(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            self.profile(root, backend="ota")
+            env = dict(os.environ, RAN_REPRO_PROFILE_DIR=str(root))
+            result = self.run_ctl(
+                "run", "ue-capability", "control", "ota-control", "--profile", "lab", "--dry-run",
+                env=env,
+            )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("OTA 실행 adapter", result.stderr)
 
     def test_validate_routes_to_manifest_catalog(self):
         result = self.run_ctl("validate")

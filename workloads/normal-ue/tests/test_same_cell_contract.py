@@ -30,6 +30,8 @@ class SameCellContractTests(unittest.TestCase):
                 "DOWNLINK_IMSI_MANAGE_RAN",
             ROOT / "reproducers/ue-capability-hijacking/bin/ue-capability-run":
                 "UE_CAPABILITY_MANAGE_RAN",
+            ROOT / "reproducers/nas-counter-desynchronization/bin/nas-counter-desync-run":
+                "NAS_DESYNC_MANAGE_RAN",
         }
         for path, lifecycle in contracts.items():
             source = path.read_text()
@@ -83,6 +85,7 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn("NORMAL_UE_BROKER_PERSISTENT_ATTACK=1", run_section)
         self.assertIn("SAME_CELL_HEALTH_TIMEOUT_S + 30", run_section)
         self.assertIn("select_broker attack", run_section)
+        self.assertLess(run_section.index("select_broker warmup"), run_section.index("select_broker attack"))
         self.assertIn("SAME_CELL_ATTACK_DONE_FILE", run_section)
         self.assertIn("SAME_CELL_VICTIM_TUN=oaitun_ue1", run_section)
         self.assertIn('공격 UE clock 유지 중 normal UE가 $COUNT/$COUNT가 아닙니다', run_section)
@@ -113,6 +116,7 @@ class SameCellContractTests(unittest.TestCase):
             ROOT / "reproducers/authentication-timeout-exhaustion/bin/auth-timeout-p5-phase",
             ROOT / "reproducers/downlink-imsi-extractor/bin/downlink-imsi-run",
             ROOT / "reproducers/ue-capability-hijacking/bin/ue-capability-run",
+            ROOT / "reproducers/nas-counter-desynchronization/bin/nas-counter-desync-run",
         ]
         for path in paths:
             result = subprocess.run(["bash", "-n", str(path)], text=True, capture_output=True)

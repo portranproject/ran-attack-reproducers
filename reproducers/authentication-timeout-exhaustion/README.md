@@ -1,6 +1,6 @@
 # Authentication Response 미전송형 연결 컨텍스트 고갈 (NAS 고갈)
 
-상태: **2026-11-11 기전·탐지 입력 재현기로 동결 — p5 direct 4-cell ZMQ 기전·6개 동시 컨텍스트 실측, 서비스 거부는 미관측**
+상태: **p5 실제 UE→RAN→TeleRAN→production detector matched 3/3 통과 — 한 셀의 서로 다른 랩 가입자 10명, 서비스 거부는 미관측**
 
 최종 실측 요약과 원격 원문 해시는
 [p5 다중 UE 한계 실측](artifacts/p5-zmq-multiue-limit-20261111/)에 보존했다. 최초 2가입자
@@ -90,6 +90,17 @@ timeout이 발생했다. 프로세스당 4 UICC도 반복 phase timeout으로 �
 별도 ZMQ broker로 프로세스를 분리한 8·14 UE와 3셀 6·9 UE 확장도 정상 대조군 또는 반복
 인증을 통과하지 못했다. 미검증 broker 코드는 운영 도구에서 제외했다.
 
+2026-11-17 자격 검증은 위 4-cell 자원 누적 실험을 억지로 확장하지 않고, 정상 UE 풀에서
+검증된 **UE별 독립 virtual RU** 구조를 재사용했다. `auth-stall-cell-run`이 서로 다른 랩
+가입자 10명을 2개 OAI 프로세스×5 UE로 실행하고, GNU Radio broker가 10개 endpoint를 한
+DU·셀에 합친다. 공격군은 10명 모두 Authentication Response를 미전송하고 대조군은 10명
+모두 정상 제출한다. gNB·코어·detector는 수정하지 않는다.
+
+이 경로로 실제 F1/N2→TeleRAN→production detector→dashboard를 함께 실행한 결과,
+대조군 L3-01-O 경보 0건과 공격군 RAISE 1건을 matched 3/3 반복했다. 입력 보고 주기
+100 ms, sequence 연속, gap 0, KPM 존재, dashboard 거절 0건도 매 실행 확인했다. 공통 결과와
+봉인 해시는 [p5 E2E 자격 요약](../../artifacts/p5-live-e2e-five-20261117/)을 따른다.
+
 ## 완료 판정
 
 숫자 코드 대신 무엇이 확인됐는지 분리해서 기록한다.
@@ -122,8 +133,8 @@ timeout이 발생했다. 프로세스당 4 UICC도 반복 phase timeout으로 �
   비교하는 oracle로 분리한다.
 - 권장 특징과 입력 금지 항목은 [탐지 계약](DETECTION-CONTRACT.md)과 사용 가이드에 고정했다.
 
-실제 detector의 정탐·오탐·탐지 지연 평가는 detector 출력이 생긴 뒤 별도로 수행한다.
-따라서 이 문서는 탐지 성능이 이미 검증됐다고 주장하지 않는다.
+production detector 기본 설정에서 이 변형의 정탐은 3/3, 대조군 예상 공격 경보는 0/3이다.
+이는 해당 p5 표본의 규칙 검증 결과이며 운영망 정확도로 일반화하지 않는다.
 
 ### 선택 효과 판정 — 서비스 거부 미관측
 
@@ -136,12 +147,12 @@ timeout이 발생했다. 프로세스당 4 UICC도 반복 phase timeout으로 �
 `mechanism_reproduced`, 자원 누적은 `resource_accumulation_observed`, 서비스 영향은
 `witness_denial_observed`를 각각 읽는다. 봉인된 스키마와 과거 판정을 소급 변경하지 않는다.
 
-## 동결 결정
+## 운영 경계
 
-기본 사용 범위는 CU 1대+DU 1대의 direct 4-cell 구성이다. 20가입자·5-lane 분산 진단은
-정식 증거로 봉인되지 않았으며 운영 코드와 성능 주장에 포함하지 않는다. 서비스 거부만
-만들기 위한 추가 인스턴스 증설, gNB·코어 timer/capacity 변경과 matched 3세트 반복은
-진행하지 않는다. 탐지 입력 계약에 결함이 발견될 때만 이 모듈을 다시 연다.
+기전·자원 누적 분석은 direct 4-cell, production L3-01-O 자격 검증은 한 셀 10 UE 경로를
+사용한다. 20가입자·5-lane 분산 진단은 정식 증거로 봉인되지 않았으며 운영 코드와 성능
+주장에 포함하지 않는다. 서비스 거부만 만들기 위한 추가 인스턴스 증설이나 gNB·코어
+timer/capacity 변경은 진행하지 않는다.
 
 ## 탐지 관측 계약
 
@@ -192,7 +203,7 @@ RRCSetupComplete
 
 ## 주장 범위
 
-현재 허용 주장은 **p5 direct 4-cell ZMQ에서 Authentication Response 미전송 기전과 서로
-다른 공격 가입자 6명의 동시 pre-auth 컨텍스트를 재현했고, 탐지 평가용 메시지 수명과
-oracle을 분리했다**까지다. witness 5/5가 정상 등록돼 서비스 거부는 성립하지 않았다.
-detector 성능, 실 SDR OTA, 상용망 일반화와 외부 망 영향은 별도 검증 없이는 주장하지 않는다.
+현재 허용 주장은 **p5 한 셀에서 서로 다른 랩 가입자 10명의 Authentication Response
+미전송을 실제 UE 경로로 만들고, 실제 TeleRAN→production detector에서 L3-01-O를
+matched 3/3 검출했다**까지다. 기존 witness 5/5가 정상 등록돼 서비스 거부는 성립하지
+않았다. 실 SDR OTA, 상용망 일반화와 외부 망 영향은 별도 검증 없이는 주장하지 않는다.

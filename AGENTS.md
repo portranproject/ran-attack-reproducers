@@ -1,7 +1,7 @@
 # AGENTS.md — 기지국 공격 재현 도구 모음 (RAN 보안 테스트베드)
 
 > 이 디렉토리에서 작업하는 에이전트/팀원용 컨텍스트. 처음 들어오면 이 파일부터 읽을 것.
-> 최종 갱신 2026-11-16.
+> 최종 갱신 2026-11-17.
 
 ## 이 디렉토리는 무엇인가
 
@@ -9,16 +9,17 @@
 재현 도구 모음이다. 각 공격은 `reproducers/<attack-name>/`의 독립 모듈이며 구현,
 설정, 라벨 계약, 실행 원문을 다른 공격과 섞지 않는다.
 
-- `reproducers/rrc-signaling-storm/`: 구현·실측 완료 후 2026-11-02 동결
-- `reproducers/blind-dos/`: 현재 유효 5G-GUTI 재사용형 구현 완료. p5 direct 2-cell ZMQ의 matched control→attack G5 3/3 통과. same-cell oracle은 다중 InitialUEMessage에서 피해자 IMSI와 live mapping을 고르도록 수정했지만 독립 ZMQ UE의 상향 시간축 불일치로 피해 UE RA가 실패해 결합 자격은 미승인
+- `reproducers/rrc-signaling-storm/`: RRCSetupComplete 미전송형 구현 완료. p5 실제 UE→RAN→TeleRAN→production detector matched control→attack 3/3 통과. 서비스 거부는 별도 효과이며 미관측
+- `reproducers/blind-dos/`: 현재 유효 5G-GUTI 재사용형 구현 완료. p5 direct 2-cell ZMQ의 G5와 실제 TeleRAN→production detector matched control→attack 3/3 통과. same-cell oracle은 다중 InitialUEMessage에서 피해자 IMSI와 live mapping을 고르도록 수정했지만 독립 ZMQ UE의 상향 시간축 불일치로 피해 UE RA가 실패해 결합 자격은 미승인
 - `reproducers/uplink-dos/`: NAS Service Request MAC 단발 변조형 프로토콜 영향 에뮬레이터와 L3-21용 실제 UE 무효·위조 자격증명 실패 플러드. L3-21은 정상 UE 5대와 같은 셀의 UE→ZMQ→DU/CU→TeleRAN→production detector 경로에서 matched control→attack 3/3 통과
 - `ctl.sh`: 공격 선택, 상태 점검, 전용 OAI 준비·빌드, 단일 실행과 matched 캠페인을 기존 모듈 runner에 위임하는 통합 컨트롤러
 - [CONTROL-GUIDE.md](CONTROL-GUIDE.md): 통합 컨트롤러 사용법·자동화 범위·재현/에뮬레이션 표시 기준
-- `reproducers/authentication-timeout-exhaustion/`: 2026-11-11 기전·탐지 입력 재현기로 동결. p5 direct 4-cell ZMQ에서 Authentication Response 미전송과 6개 동시 pre-auth 컨텍스트 확인, 서비스 거부는 미관측
-- `reproducers/downlink-imsi-extractor/`: 5G-Spector 계열 프로토콜 결과 에뮬레이터 구현 완료. p5 direct 1-cell ZMQ에서 예상하지 않은 SUCI Identity Response와 null-scheme fingerprint matched control→emulation 3/3 통과
-- `reproducers/ue-capability-hijacking/`: UE Capability Hijacking 계열의 보안 전 unsolicited UECapabilityInformation F1 관측 에뮬레이터 완료. p5 matched control→emulation 3/3 통과; MITM·내용 변조·강등 수락은 주장하지 않음
-- `reproducers/{nas-counter-desynchronization,authentication-sync-failure,nas-counter-reset,uplink-imsi-extractor,short-connection-repeat,rrc-reject-release-imprisonment,tac-manipulation-return}/`: L3-06·AN-01·AN-06a·AN-02·AN-04·AN-07·AN-08 연구 기반 탐지 입력 에뮬레이터. production detector 고정 commit의 기본 설정에서 각각 matched control→emulation 3/3 통과. p5 live protocol과 RF 원인은 미관측
-- `reproducer.json`, `schemas/`, `profiles/`, `tools/reproctl.py`: 13개 룰 카탈로그, p5/OTA profile, 공통 run/verdict/evidence 계약, production replay·report·verify
+- `reproducers/authentication-timeout-exhaustion/`: 한 셀에서 서로 다른 랩 가입자 10명의 Authentication Response 미전송을 실제 UE 경로로 생성. p5 TeleRAN→production detector matched control→attack 3/3 통과, 서비스 거부는 미관측
+- `reproducers/downlink-imsi-extractor/`: 5G-Spector 계열 프로토콜 결과 에뮬레이터. p5 실제 N2→TeleRAN→production detector matched control→emulation 3/3 통과. RF overshadowing은 미검증
+- `reproducers/ue-capability-hijacking/`: 보안 전 unsolicited UECapabilityInformation F1 관측 에뮬레이터. p5 실제 F1→TeleRAN→production detector matched control→emulation 3/3 통과; MITM·내용 변조·강등 수락은 주장하지 않음
+- `reproducers/nas-counter-desynchronization/`: L3-06 요청되지 않은 NAS SecurityModeReject 결과 에뮬레이터. p5 UE→ZMQ→DU/CU→TeleRAN→production detector matched control→emulation 3/3 통과. MITM·invalid SMC 실제 수신·NAS counter wrap은 미관측. 정상 UE same-cell 공존은 5+1과 4+1 control에서 normal health 실패로 미승인
+- `reproducers/{authentication-sync-failure,nas-counter-reset,uplink-imsi-extractor,short-connection-repeat,rrc-reject-release-imprisonment,tac-manipulation-return}/`: AN-01·AN-06a·AN-02·AN-04·AN-07·AN-08 참고용 탐지 입력 fixture. 공격 플랫폼 1.0 자격 범위에서 제외하며 production detector 회귀에만 사용
+- `reproducer.json`, `schemas/`, `profiles/`, `tools/reproctl.py`: 7개 L3 공격 자격 카탈로그와 6개 AN 참고 fixture, p5/OTA profile, 공통 run/verdict/evidence 계약, production replay·report·verify
 - `workloads/normal-ue/`: 공격 슬롯과 같은 DU·셀의 지속 정상 UE 풀. 한 OAI 프로세스 안에서 UE별 독립 virtual RU/ZMQ endpoint를 broker로 합치는 구조로 p5 cold-start 3회 Registration·PDU·ping 5/5, timeout·crash 0을 통과. RRC storm 두 변형과의 단일 공존 실측에서는 선연결 5/5 유지, 공격 중 신규 접속은 4/5였다. one-shot 단일 셀 경로에서 UE Capability control·emulation 각 1회와 L3-21 control→attack 3/3이 통과했다. Blind DoS는 배경 1대와 2대 모두 피해 UE RA가 실패해 미승인이고, 다른 공격·OTA 공존은 미검증
 
 아래 장문의 실측 기록은 첫 번째 모듈인 RRC signaling storm의 보존 컨텍스트다.
@@ -41,6 +42,8 @@
 - [reproducers/downlink-imsi-extractor/artifacts/p5-zmq-identity-response-20261111/](reproducers/downlink-imsi-extractor/artifacts/p5-zmq-identity-response-20261111/) — p5 matched control→emulation 3/3 판정과 원격 원문 SHA-256
 - [reproducers/ue-capability-hijacking/](reproducers/ue-capability-hijacking/) — 보안 전 Capability Information 주입의 이론·구현·F1 탐지 계약·사용법
 - [reproducers/ue-capability-hijacking/artifacts/p5-zmq-pre-security-information-20261111/](reproducers/ue-capability-hijacking/artifacts/p5-zmq-pre-security-information-20261111/) — p5 matched 3/3 판정과 원격 원문 SHA-256
+- [reproducers/nas-counter-desynchronization/artifacts/p5-live-result-20261117/](reproducers/nas-counter-desynchronization/artifacts/p5-live-result-20261117/) — L3-06 실제 RAN·TeleRAN·production detector matched 3/3과 same-cell 미승인 기록
+- [artifacts/p5-live-e2e-five-20261117/](artifacts/p5-live-e2e-five-20261117/) — L3-01-V·L3-01-O·L3-20·L3-24·L3-14의 실제 TeleRAN→production detector matched 3/3 자격 요약
 - [reproducers/rrc-signaling-storm/docs/CURATED-VALIDATION-20261030.md](reproducers/rrc-signaling-storm/docs/CURATED-VALIDATION-20261030.md) — clean curated 빌드·정상 회귀·Msg4 ACK·독립 broker witness 실측
 - [reproducers/rrc-signaling-storm/docs/LABEL-CONTRACT.md](reproducers/rrc-signaling-storm/docs/LABEL-CONTRACT.md) — UE 정답·탐지·대응·효과 판정·시간 동기 계약
 - [reproducers/rrc-signaling-storm/docs/USAGE-GUIDE.md](reproducers/rrc-signaling-storm/docs/USAGE-GUIDE.md) — 동결된 재현기의 실행·입력 격리·라벨·채점 가이드
@@ -154,19 +157,20 @@
   gNB·코어 timer/capacity 변경은 합격 근거로 사용하지 않는다.
 - 기전 재현·자원 누적·탐지 입력 준비·서비스 영향을 분리 판정한다. 서비스 거부는 재현
   도구 완료의 필수 조건이 아니며, 관측되지 않았으면 그대로 한계로 기록한다.
-- OAI w38 UE 패치, 다중 UICC fingerprint 검사, direct 4-cell ZMQ phase driver,
-  OCUDU·Open5GS 조인 정규화기, fail-closed 단일/캠페인 판정기와 증거 SHA-256 봉인을
-  구현했다. 최종 p5 정상 대조군은 공격자 컨텍스트 30개 exact join과 witness 5/5를
-  통과했다. attack은 Authentication Response 미전송 30건, 공격자 6명의 동시 pre-auth
-  컨텍스트를 확인했지만 witness 등록·PDU·ping이 5/5 성공했으므로 서비스 거부와 matched
-  3세트 공격 성공은 미달이다. 프로세스당 10 UICC는 11/20만 120초 안에 인증했고,
-  프로세스당 4 UICC도 반복 phase timeout으로 무효여서 성능 근거에서 제외한다.
+- 2026-11-11 direct 4-cell 구현은 공격자 6명의 동시 pre-auth 컨텍스트를 확인했지만
+  witness 등록·PDU·ping이 5/5 성공해 서비스 거부에는 미달했다. 프로세스당 10 UICC를
+  하나의 virtual RU에 공유한 확장은 11/20만 인증해 성능 근거에서 제외한다.
+- 2026-11-17에는 정상 UE에서 검증된 UE별 독립 virtual RU 구조를 재사용해, 2개 OAI
+  프로세스×5 UE를 broker로 한 DU·셀에 합쳤다. 공격군은 서로 다른 랩 가입자 10명의
+  Authentication Response 미전송을 만들고 L3-01-O RAISE 1건, 대조군은 경보 0건을
+  matched 3/3 반복했다. 실제 F1/N2→TeleRAN→production detector→dashboard 경로이며
+  gNB·코어·detector 수정과 탐지 입력 주입은 없다.
 - 표준·LTEFuzz·5GSEC/OAI-5G·Buckler의 고정 자료로 이론과 공개 구현 계보를 기록했고,
   `cu.log`·F1/N2 관측은 탐지 입력, UE 마커·Open5GS 로그·정규화 결과는 사후 oracle로
-  분리했다. 실제 detector의 정탐·오탐·지연 평가는 탐지팀 결과가 생긴 뒤 별도 수행한다.
+  분리했다. production detector의 해당 룰 정탐은 3/3, 대조군 예상 공격 경보는 0/3이다.
 - 20가입자·5-lane 분산 진단은 정식 증거로 봉인되지 않았고 새 완료 기준에도 필요하지 않아
   운영 코드와 성능 주장에 포함하지 않는다. 기본 사용 범위는 CU 1대+DU 1대의 검증된
-  direct 4-cell 구성이다. 이 모듈은 2026-11-11 동결하며 서비스 거부를 위한 추가 증설을
+  운영 코드와 서비스 영향 주장에 포함하지 않는다. 서비스 거부만을 위한 추가 증설은
   진행하지 않는다.
 - 상세 범위와 판정은 [모듈 README](reproducers/authentication-timeout-exhaustion/README.md)를 따른다.
 
@@ -189,6 +193,8 @@
 - 원시 N2 pcap에는 null-scheme 가입자 식별자가 있으므로 Git에는 판정과 SHA-256만 둔다.
   일반 탐지 입력은 식별자 원문을 제거한 `observations.jsonl`, 사후 정답은 UE marker와
   fingerprint oracle이다.
+- 실제 N2→TeleRAN→production detector→dashboard matched 3/3에서 control L3-24 경보
+  0건, emulation RAISE 1건을 반복했다.
 - 상세 실행과 판정은 [모듈 README](reproducers/downlink-imsi-extractor/README.md)와
   [사용 가이드](reproducers/downlink-imsi-extractor/USAGE-GUIDE.md)를 따른다.
 
@@ -210,7 +216,8 @@
   없는 상향 Capability Information을 통제 가능한 one-shot으로 재현했다**는 것이다.
   MITM relay, capability 내용 변조·강등 수락, 서비스 저하, 실 SDR OTA는 미검증이다.
 - detector 입력은 same CU/DU UE ID로 exact join한 F1 `observations.jsonl`, 사후 oracle은
-  UE one-shot marker다. 실제 탐지 엔진의 정탐·오탐·지연 평가는 별도 게이트다.
+  UE one-shot marker다. 실제 F1→TeleRAN→production detector→dashboard matched 3/3에서
+  control L3-14 경보 0건, emulation RAISE 1건을 반복했다.
 - 상세 범위와 판정은 [모듈 README](reproducers/ue-capability-hijacking/README.md)와
   [사용 가이드](reproducers/ue-capability-hijacking/USAGE-GUIDE.md)를 따른다.
 

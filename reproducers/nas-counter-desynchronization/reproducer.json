@@ -2,14 +2,19 @@
   "schema": "ran-reproducer.module.v1",
   "id": "nas-counter-desynchronization",
   "module": "nas-counter-desynchronization",
-  "name": "NAS 카운터 비동기화 결과",
+  "name": "요청되지 않은 NAS SecurityModeReject 결과",
   "aliases": ["l3-06"],
   "rule_ids": ["L3-06"],
-  "reproduction_level": "detector-input-emulation",
+  "reproduction_level": "protocol-result-emulation",
   "active_mode": "emulation",
-  "claim": "요청되지 않은 SecurityModeReject 결과 신호를 production 탐지 입력으로 재현하며 카운터 변조와 live 경로는 주장하지 않음",
-  "commands": {"run": "@common-signal", "campaign": "@common-signal"},
-  "environments": {"p5": "pending", "ota": "not-applicable"},
+  "claim": "OAI UE가 요청되지 않은 SecurityModeReject를 실제 UE→RAN→계측 경로로 한 번 송신하며 MITM·실제 invalid SMC 수신·NAS 카운터 랩어라운드는 주장하지 않음",
+  "commands": {
+    "build": "bin/nas-counter-desync-build",
+    "run": "bin/nas-counter-desync-run",
+    "campaign": "bin/nas-counter-desync-campaign",
+    "verify": "analysis/verify_live.py"
+  },
+  "environments": {"p5": "qualified", "ota": "pending"},
   "detection": {
     "expected_signal": "선행 SecurityModeCommand와 짝이 맞지 않는 SecurityModeReject",
     "aggregation_scope": "UE context/node/cell/window",
@@ -17,10 +22,12 @@
     "expected_level": "attack",
     "period_ms": 100
   },
-  "safety": {"requires_enable": true, "max_duration_s": 10, "max_ues": 1},
-  "signal_generator": "L3-06",
+  "safety": {"requires_enable": true, "max_duration_s": 120, "max_ues": 1},
   "provenance": {
-    "references": ["https://www.csl.sri.com/users/gehani/papers/NDSS-2024.5G-Spector.pdf"],
-    "upstream": ["production detector L3-06"]
+    "references": [
+      "https://syed-rafiul-hussain.github.io/wp-content/uploads/2019/10/5GReasoner.pdf",
+      "https://dev.ndss-symposium.org/wp-content/uploads/2024-527-paper.pdf"
+    ],
+    "upstream": ["OAI 6d6782b48484efd935c14e834832032743f9b138", "production detector L3-06"]
   }
 }

@@ -2,6 +2,9 @@
 
 OTA는 장비를 연결했다고 자동으로 qualified가 되지 않는다. 다음 순서를 모두 통과해야 한다.
 
+현재 공통 OTA run adapter는 구현되지 않았다. `./ctl.sh setup|run|campaign --profile ota`는
+p5용 ZMQ 설정을 잘못 실행하지 않도록 실패한다. 아래 항목은 adapter 구현 뒤의 승인 절차다.
+
 1. `profiles/ota.json`에 공격 UE와 O-DU SDR의 서로 다른 serial, clock source, gain 상한을
    기록한다.
 2. RF 케이블·감쇠기·차폐박스가 외부 송신을 막는지 사람이 확인하고 그때만

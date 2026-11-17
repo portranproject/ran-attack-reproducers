@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""아직 live 구현이 없는 7개 룰 계열의 독립적인 탐지 입력을 생성한다."""
+"""공격 1.0 자격 범위 밖인 6개 AN 룰의 독립적인 탐지 입력을 생성한다."""
 
 from __future__ import annotations
 
@@ -162,13 +162,6 @@ def normal_control(session: str, node: str, duration: int = 3_000) -> Signal:
     return signal
 
 
-def l3_06(mode: str, session: str) -> Signal:
-    signal = normal_control(session, "l3-06")
-    if mode != "control":
-        signal.add(1_098, 3, "UL", "NAS", "SecurityModeReject")
-    return signal
-
-
 def an_01(mode: str, session: str) -> Signal:
     if mode == "control":
         return normal_control(session, "an-01")
@@ -263,7 +256,6 @@ def an_08(mode: str, session: str) -> Signal:
 
 
 GENERATORS: dict[str, Callable[[str, str], Signal]] = {
-    "L3-06": l3_06,
     "AN-01": an_01,
     "AN-06a": an_06a,
     "AN-02": an_02,
@@ -273,7 +265,6 @@ GENERATORS: dict[str, Callable[[str, str], Signal]] = {
 }
 
 ATTACK_OFFSET_MS = {
-    "L3-06": 1_098,
     "AN-01": 1_118,
     "AN-06a": 2_250,
     "AN-02": 5_095,

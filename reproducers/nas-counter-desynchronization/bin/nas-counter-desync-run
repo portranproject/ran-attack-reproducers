@@ -1,0 +1,339 @@
+#!/usr/bin/env bash
+# 실제 UE→ZMQ→DU/CU→TeleRAN 계측→production 탐지 경로의 L3-06 결과 재현기.
+set -euo pipefail
+umask 077
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONF=${NAS_DESYNC_CONF:-$ROOT/conf/nas-counter-desync.conf}
+[[ -f $CONF && ! -L $CONF ]] || { echo "안전한 NAS_DESYNC_CONF가 필요합니다: $CONF" >&2; exit 2; }
+# shellcheck source=/dev/null
+. "$CONF"
+
+MODE=${1:-}
+[[ $MODE != control && $MODE != emulation ]] || shift
+ENABLE=0
+RUN_ID=
+while getopts "e:n:h" option; do
+  case $option in
+    e) ENABLE=$OPTARG ;;
+    n) RUN_ID=$OPTARG ;;
+    h) echo "사용법: $0 control|emulation -n RUN_ID [-e 0|1]"; exit 0 ;;
+    *) exit 2 ;;
+  esac
+done
+
+RUN_ROOT=${NAS_DESYNC_RUN_ROOT:-$ROOT/runs}
+RAW_ROOT=${NAS_DESYNC_RAW_ROOT:-${RUN_ROOT}-raw}
+LOCK_FILE=${NAS_DESYNC_LOCK_FILE:-/tmp/nas-counter-desync.lock}
+OAI_BIN=${OAI_BIN:-}
+UE_CFG=${UE_CFG:-}
+UECAP=${UECAP:-}
+DU_CTL=${DU_CTL:-/root/workspace/ctl.sh}
+CU_HOST=${CU_HOST:-}
+SSH_KEY=${SSH_KEY:-}
+KNOWN_HOSTS=${KNOWN_HOSTS:-}
+CU_PLATFORM_ROOT=${CU_PLATFORM_ROOT:-/home/ubuntu/ran-reproducer-platform-766f5569}
+CU_LIVE_RUN_ROOT=${CU_LIVE_RUN_ROOT:-/home/ubuntu/ran-reproducer-live}
+CU_F1_INTERFACE=${CU_F1_INTERFACE:-ens5}
+CU_N2_INTERFACE=${CU_N2_INTERFACE:-br-6afe1528cfa6}
+CU_LOG=${CU_LOG:-/tmp/ocu.log}
+CORE_CONTAINER=${CORE_CONTAINER:-open5gs_5gc}
+CU_DASHBOARD_URL=${CU_DASHBOARD_URL:-https://127.0.0.1/ingest}
+CU_DASHBOARD_CA_FILE=${CU_DASHBOARD_CA_FILE:-/home/ubuntu/portran-e2e-20261113/dashboard/certs/ingest.crt}
+CU_DASHBOARD_ENV=${CU_DASHBOARD_ENV:-p5}
+NAS_DESYNC_PATCH=${NAS_DESYNC_PATCH:-$ROOT/patch/nas-counter-desync-result-w38.patch}
+UE_TX_ENDPOINT=${SAME_CELL_UE_TX_ENDPOINT:-${NAS_DESYNC_UE_TX_ENDPOINT:-tcp://127.0.0.1:4557}}
+UE_RX_ENDPOINT=${SAME_CELL_UE_RX_ENDPOINT:-${NAS_DESYNC_UE_RX_ENDPOINT:-tcp://127.0.0.1:4556}}
+ENDPOINTS_FILE=${SAME_CELL_UE_ENDPOINTS_FILE:-}
+MANAGE_RAN=${SAME_CELL_NAS_DESYNC_MANAGE_RAN:-${NAS_DESYNC_MANAGE_RAN:-1}}
+SAME_CELL_PRESTART=${SAME_CELL_PRESTART:-0}
+SAME_CELL_RAN_READY_FILE=${SAME_CELL_RAN_READY_FILE:-}
+SAME_CELL_READY_FILE=${SAME_CELL_READY_FILE:-}
+SAME_CELL_ATTACK_READY_FILE=${SAME_CELL_ATTACK_READY_FILE:-}
+SAME_CELL_ATTACK_DONE_FILE=${SAME_CELL_ATTACK_DONE_FILE:-}
+SAME_CELL_RELEASE_FILE=${SAME_CELL_RELEASE_FILE:-}
+READY_TIMEOUT_S=${SAME_CELL_READY_TIMEOUT_S:-120}
+UE_TIMEOUT_S=${NAS_DESYNC_UE_TIMEOUT_S:-90}
+POST_EVENT_S=${NAS_DESYNC_POST_EVENT_S:-6}
+TUN=${TUN:-oaitun_ue1}
+PING_TARGET=${PING_TARGET:-10.45.1.1}
+
+fail() { echo "nas-counter-desync-run: $*" >&2; exit 2; }
+[[ $MODE == control || $MODE == emulation ]] || fail "mode는 control 또는 emulation이어야 합니다"
+[[ $ENABLE == 0 || $ENABLE == 1 ]] || fail "-e는 0 또는 1이어야 합니다"
+[[ $MODE == control && $ENABLE == 0 || $MODE == emulation && $ENABLE == 1 ]] \
+  || fail "control은 -e 0, emulation은 명시적 -e 1이 필요합니다"
+[[ $RUN_ID =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$ ]] || fail "안전한 RUN_ID가 필요합니다"
+[[ $CU_HOST =~ ^[A-Za-z_][A-Za-z0-9_-]*@[A-Za-z0-9.-]+$ ]] || fail "CU_HOST는 user@host 형식이어야 합니다"
+[[ $CU_LIVE_RUN_ROOT == /* && $CU_LIVE_RUN_ROOT != / ]] || fail "안전한 CU_LIVE_RUN_ROOT가 필요합니다"
+[[ $RAW_ROOT == /* && $RAW_ROOT != / ]] || fail "안전한 NAS_DESYNC_RAW_ROOT가 필요합니다"
+[[ $CU_DASHBOARD_URL == https://* ]] || fail "CU_DASHBOARD_URL은 https여야 합니다"
+[[ $CU_DASHBOARD_ENV =~ ^[a-z0-9][a-z0-9-]{0,31}$ ]] || fail "CU_DASHBOARD_ENV가 안전하지 않습니다"
+[[ $UE_TX_ENDPOINT == tcp://127.0.0.1:* && $UE_RX_ENDPOINT == tcp://127.0.0.1:* ]] \
+  || fail "UE endpoint는 로컬 tcp ZMQ 주소여야 합니다"
+[[ $MANAGE_RAN == 0 || $MANAGE_RAN == 1 ]] || fail "NAS_DESYNC_MANAGE_RAN은 0 또는 1이어야 합니다"
+[[ $SAME_CELL_PRESTART == 0 || $SAME_CELL_PRESTART == 1 ]] || fail "SAME_CELL_PRESTART는 0 또는 1이어야 합니다"
+(( SAME_CELL_PRESTART == 0 || MANAGE_RAN == 0 )) || fail "same-cell prestart는 외부 RAN lifecycle이 필요합니다"
+for value in "$READY_TIMEOUT_S" "$UE_TIMEOUT_S" "$POST_EVENT_S"; do
+  [[ $value =~ ^[1-9][0-9]*$ ]] || fail "timeout 값은 양의 정수여야 합니다"
+done
+for file in "$OAI_BIN" "$UE_CFG" "$UECAP" "$SSH_KEY" "$NAS_DESYNC_PATCH"; do
+  [[ -f $file && ! -L $file ]] || fail "필수 일반 파일이 없습니다: $file"
+done
+[[ -x $OAI_BIN ]] || fail "OAI_BIN은 실행 가능해야 합니다"
+grep -Faq 'NAS_COUNTER_DESYNC event=unsolicited_security_mode_reject' "$OAI_BIN" \
+  || fail "OAI binary에 L3-06 결과 패치가 없습니다"
+[[ $MANAGE_RAN == 0 || -x $DU_CTL && -f $DU_CTL && ! -L $DU_CTL ]] || fail "DU_CTL이 안전하지 않습니다"
+for command in flock ssh scp python3 setsid stdbuf; do command -v "$command" >/dev/null || fail "$command가 필요합니다"; done
+
+exec 9>"$LOCK_FILE"
+flock -n 9 || fail "다른 L3-06 실행이 진행 중입니다"
+for root in "$RUN_ROOT" "$RAW_ROOT"; do
+  [[ ! -L $root ]] || fail "run root는 심볼릭 링크일 수 없습니다: $root"
+  mkdir -p -m 700 "$root"
+done
+FINAL=$RUN_ROOT/$RUN_ID
+OUT=$RAW_ROOT/$RUN_ID
+[[ ! -e $FINAL && ! -L $FINAL ]] || fail "기존 실행 결과는 덮어쓰지 않습니다: $FINAL"
+mkdir -m 700 "$OUT" || fail "기존 원문 결과는 덮어쓰지 않습니다: $OUT"
+CU_OUT=$CU_LIVE_RUN_ROOT/$RUN_ID
+CU_OWNER=${CU_HOST%@*}
+
+UE_COUNT=1
+UE_CONFIG=$UE_CFG
+UE_ZMQ=('--zmq.[0].tx_channels' "$UE_TX_ENDPOINT" '--zmq.[0].rx_channels' "$UE_RX_ENDPOINT")
+if [[ -n $ENDPOINTS_FILE ]]; then
+  [[ -f $ENDPOINTS_FILE && ! -L $ENDPOINTS_FILE ]] || fail "same-cell endpoint 파일이 안전하지 않습니다"
+  mapfile -t endpoint_rows <"$ENDPOINTS_FILE"
+  (( ${#endpoint_rows[@]} == 1 )) || fail "same-cell L3-06은 공격 endpoint 1개가 필요합니다"
+  read -r tx rx extra <<<"${endpoint_rows[0]}"
+  [[ -z ${extra:-} && $tx == tcp://127.0.0.1:* && $rx == tcp://127.0.0.1:* ]] \
+    || fail "same-cell endpoint 형식이 잘못됐습니다"
+  UE_ZMQ=('--zmq.[0].tx_channels' "$tx" '--zmq.[0].rx_channels' "$rx")
+fi
+ssh_args=(-o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=yes -i "$SSH_KEY")
+scp_args=(-q -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=yes -i "$SSH_KEY")
+[[ -z $KNOWN_HOSTS ]] || { ssh_args+=(-o "UserKnownHostsFile=$KNOWN_HOSTS"); scp_args+=(-o "UserKnownHostsFile=$KNOWN_HOSTS"); }
+cu() {
+  local quoted
+  printf -v quoted '%q' "$1"
+  ssh "${ssh_args[@]}" "$CU_HOST" "sudo bash -lc $quoted"
+}
+
+LIVE_STARTED=0
+LIVE_COLLECTED=0
+DU_STARTED=0
+UE_PID=
+CU_OFFSET=
+CU_START_UTC=
+
+start_live() {
+  ssh "${ssh_args[@]}" "$CU_HOST" sudo bash -s -- \
+    "$CU_PLATFORM_ROOT" "$CU_OUT" "$CU_F1_INTERFACE" "$CU_N2_INTERFACE" "$CU_OWNER" \
+    "$CU_DASHBOARD_URL" "$CU_DASHBOARD_CA_FILE" "$CU_DASHBOARD_ENV" <<'REMOTE'
+set -euo pipefail
+platform=$1 out=$2 f1=$3 n2=$4 owner=$5 dashboard_url=$6 dashboard_ca=$7 dashboard_env=$8
+sock=/run/ran-detect/$(basename "$out").sock
+[[ ! -e $out ]] || { echo "remote run already exists: $out" >&2; exit 2; }
+for file in "$platform/detection/build/detector" "$platform/detection/config/detector.json" \
+            "$platform/detection/tools/dashboard_sender.py" "$platform/telemetry/build/portran" "$dashboard_ca"; do
+  [[ -f $file && ! -L $file ]] || { echo "missing live component: $file" >&2; exit 2; }
+done
+install -d -m 700 -o "$owner" -g "$owner" "$out"
+install -d -m 755 /run/ran-detect
+rm -f "$sock"
+jq --arg sock "$sock" --arg ev "$out/evidence.jsonl" --arg inp "$out/detector-input.jsonl" \
+  '.socket_path=$sock | .evidence.out_path=$ev | .input_record.path=$inp' \
+  "$platform/detection/config/detector.json" >"$out/detector.config.json"
+jq -n --arg url "$dashboard_url" --arg ca "$dashboard_ca" --arg env "$dashboard_env" \
+  --arg evidence "$out/evidence.jsonl" --arg input "$out/detector-input.jsonl" \
+  --arg state "$out/sender-state.json" \
+  '{url:$url,ca_file:$ca,env:$env,inputs:[{path:$evidence,kind:"evidence"},{path:$input,kind:"input"}],state_path:$state,start_at:"beginning",batch_interval_ms:100,batch_max_lines:500,batch_max_bytes:1048576,line_max_bytes:65536,poll_ms:50,timeout_ms:10000,retry_initial_ms:1000,retry_max_ms:60000,stats_interval_ms:0,kpm2_interval_ms:3000,send_ue_evt:false,kpm2_close_lag_ms:2000}' \
+  >"$out/sender.json"
+jq -n \
+  --arg detector_sha "$(sha256sum "$platform/detection/build/detector" | awk '{print $1}')" \
+  --arg detector_config_sha "$(sha256sum "$platform/detection/config/detector.json" | awk '{print $1}')" \
+  --arg detector_commit "$(cat "$platform/detection/.deployed-revision")" \
+  --arg telemetry_sha "$(sha256sum "$platform/telemetry/build/portran" | awk '{print $1}')" \
+  --arg telemetry_commit "$(cat "$platform/telemetry/.deployed-revision")" \
+  --arg sender_sha "$(sha256sum "$platform/detection/tools/dashboard_sender.py" | awk '{print $1}')" \
+  '{detector:{binary_sha256:$detector_sha,config_sha256:$detector_config_sha,commit:$detector_commit},telemetry:{binary_sha256:$telemetry_sha,commit:$telemetry_commit,period_ms:100},dashboard:{sender_sha256:$sender_sha}}' \
+  >"$out/components.json"
+setsid "$platform/detection/build/detector" --socket "$sock" --config "$out/detector.config.json" \
+  >"$out/detector.stdout" 2>"$out/detector.stderr" </dev/null & echo $! >"$out/detector.pid"
+for _ in {1..100}; do [[ -S $sock ]] && break; sleep .1; done
+[[ -S $sock ]] || { echo "detector socket timeout" >&2; exit 2; }
+setsid "$platform/telemetry/build/portran" -g 100 --sock "$sock" --record "$out/telemetry.jsonl" \
+  --node p5-l306 "f1:$f1" "n2:$n2" >"$out/telemetry.stdout" 2>"$out/telemetry.stderr" </dev/null &
+echo $! >"$out/telemetry.pid"
+chown -R "$owner:$owner" "$out"
+REMOTE
+  LIVE_STARTED=1
+}
+
+stop_live() {
+  (( LIVE_STARTED )) || return 0
+  ssh "${ssh_args[@]}" "$CU_HOST" sudo bash -s -- "$CU_OUT" "$CU_OWNER" "$CU_PLATFORM_ROOT" <<'REMOTE' || true
+set -u
+out=$1 owner=$2 platform=$3
+for role in telemetry detector; do
+  [[ -f $out/$role.pid ]] || continue
+  pid=$(cat "$out/$role.pid")
+  kill -INT -- "-$pid" 2>/dev/null || kill -INT "$pid" 2>/dev/null || true
+  for _ in {1..100}; do kill -0 "$pid" 2>/dev/null || break; sleep .1; done
+  kill -0 "$pid" 2>/dev/null && kill -KILL -- "-$pid" 2>/dev/null || true
+done
+set +e
+sudo -u "$owner" python3 "$platform/detection/tools/dashboard_sender.py" --config "$out/sender.json" --once \
+  >"$out/sender.stdout" 2>"$out/sender.log"
+echo $? >"$out/sender.exit"
+set -e
+chown -R "$owner:$owner" "$out"
+REMOTE
+  mkdir -m 700 "$OUT/live"
+  scp "${scp_args[@]}" -r "$CU_HOST:$CU_OUT/." "$OUT/live/"
+  LIVE_COLLECTED=1
+}
+
+stop_ue() {
+  [[ -n $UE_PID ]] || return 0
+  kill -0 "$UE_PID" 2>/dev/null || { wait "$UE_PID" 2>/dev/null || true; return 0; }
+  kill -INT -- "-$UE_PID" 2>/dev/null || true
+  sleep .2
+  kill -INT -- "-$UE_PID" 2>/dev/null || true
+  for _ in {1..200}; do kill -0 "$UE_PID" 2>/dev/null || break; sleep .1; done
+  kill -0 "$UE_PID" 2>/dev/null && kill -KILL -- "-$UE_PID" 2>/dev/null || true
+  wait "$UE_PID" 2>/dev/null || true
+}
+
+collect_network_logs() {
+  [[ -n $CU_OFFSET ]] || return 0
+  cu "tail -c +$((CU_OFFSET + 1)) '$CU_LOG'" >"$OUT/cu.log" 2>/dev/null || : >"$OUT/cu.log"
+  cu "docker logs --timestamps --since '$CU_START_UTC' '$CORE_CONTAINER' 2>&1" >"$OUT/amf.log" 2>/dev/null || : >"$OUT/amf.log"
+  [[ ! -f /tmp/odu.log ]] || cp /tmp/odu.log "$OUT/du.log"
+}
+
+cleanup() {
+  local status=$?
+  trap - EXIT INT TERM
+  set +e
+  stop_ue
+  (( LIVE_STARTED == 0 || LIVE_COLLECTED == 1 )) || stop_live
+  collect_network_logs
+  (( DU_STARTED == 0 )) || "$DU_CTL" stop >/dev/null 2>&1
+  exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+cu "pgrep -x ocu >/dev/null && test \"\$(docker inspect -f '{{.State.Health.Status}}' '$CORE_CONTAINER')\" = healthy" \
+  || fail "CU 또는 코어가 준비되지 않았습니다"
+CU_START_UTC=$(cu 'date -u +%Y-%m-%dT%H:%M:%S.%NZ') || fail "CU 시각을 읽을 수 없습니다"
+CU_OFFSET=$(cu "stat -c %s '$CU_LOG'") || fail "CU 로그 오프셋을 읽을 수 없습니다"
+[[ $CU_OFFSET =~ ^[0-9]+$ ]] || fail "CU 로그 오프셋이 잘못됐습니다"
+start_live
+
+if (( MANAGE_RAN )); then
+  "$DU_CTL" start >"$OUT/du-start.log" 2>&1 9>&- || fail "DU 시작에 실패했습니다"
+  DU_STARTED=1
+elif (( SAME_CELL_PRESTART == 0 )); then
+  pgrep -x odu >/dev/null || fail "external DU가 실행 중이 아닙니다"
+fi
+
+bin_dir=$(dirname "$OAI_BIN")
+(
+  cd "$bin_dir"
+  OAI_NAS_DESYNC_TRACE=1 OAI_NAS_DESYNC_RESULT_EMULATE=$ENABLE \
+    exec setsid stdbuf -oL -eL "$OAI_BIN" \
+    -O "$UE_CONFIG" --band 78 -C 3489420000 --numerology 1 -r 51 -E --ue-scan-carrier \
+    --uecap_file "$UECAP" --device.name oai_zmqdevif --num-ues "$UE_COUNT" "${UE_ZMQ[@]}"
+) >"$OUT/ue.log" 2>&1 </dev/null 9>&- &
+UE_PID=$!
+
+if (( SAME_CELL_PRESTART )); then
+  [[ $SAME_CELL_ATTACK_DONE_FILE == /* && $SAME_CELL_RELEASE_FILE == /* ]] \
+    || fail "same-cell 완료·종료 marker는 절대 경로여야 합니다"
+  started=$SECONDS
+  until [[ -f $SAME_CELL_RAN_READY_FILE && ! -L $SAME_CELL_RAN_READY_FILE ]]; do
+    kill -0 "$UE_PID" 2>/dev/null || fail "UE가 RAN 준비 전에 종료됐습니다"
+    (( SECONDS - started < READY_TIMEOUT_S )) || fail "same-cell RAN readiness가 시간 초과했습니다"
+    sleep .2
+  done
+fi
+
+started=$SECONDS
+until cu "grep -Fq 'client connected' '$CU_OUT/detector.stderr'"; do
+  kill -0 "$UE_PID" 2>/dev/null || fail "UE가 계측 연결 전에 종료됐습니다"
+  (( SECONDS - started < READY_TIMEOUT_S )) || fail "계측기→탐지기 live 연결이 시간 초과했습니다"
+  sleep .2
+done
+if [[ -n $SAME_CELL_READY_FILE ]]; then
+  started=$SECONDS
+  until [[ -f $SAME_CELL_READY_FILE && ! -L $SAME_CELL_READY_FILE ]]; do
+    kill -0 "$UE_PID" 2>/dev/null || fail "UE가 normal UE 준비 전에 종료됐습니다"
+    (( SECONDS - started < READY_TIMEOUT_S )) || fail "same-cell normal UE readiness가 시간 초과했습니다"
+    sleep .2
+  done
+fi
+if (( SAME_CELL_PRESTART )); then
+  ( set -o noclobber; : >"$SAME_CELL_ATTACK_READY_FILE" ) || fail "same-cell attack readiness 게시 실패"
+fi
+
+marker='NAS_COUNTER_DESYNC event=authentication_response_submitted'
+[[ $MODE == control ]] || marker='NAS_COUNTER_DESYNC event=unsolicited_security_mode_reject'
+started=$SECONDS
+until grep -Fq "$marker" "$OUT/ue.log"; do
+  kill -0 "$UE_PID" 2>/dev/null || fail "목표 NAS 메시지 전에 UE가 종료됐습니다"
+  (( SECONDS - started < UE_TIMEOUT_S )) || fail "목표 NAS 메시지를 기다리다 시간 초과했습니다"
+  sleep .2
+done
+
+REGISTRATION_OK=false; PDU_OK=false; PING_OK=false
+if [[ $MODE == control ]]; then
+  started=$SECONDS
+  until ip -4 -o addr show "$TUN" >/dev/null 2>&1; do
+    kill -0 "$UE_PID" 2>/dev/null || fail "control UE가 예정보다 일찍 종료됐습니다"
+    (( SECONDS - started < UE_TIMEOUT_S )) || fail "control PDU session이 시간 초과했습니다"
+    sleep .2
+  done
+  REGISTRATION_OK=true; PDU_OK=true
+  ping -I "$TUN" -c 3 -W 1 "$PING_TARGET" >/dev/null 2>&1 && PING_OK=true
+else
+  sleep "$POST_EVENT_S"
+  grep -Fq 'Received Registration Accept' "$OUT/ue.log" && REGISTRATION_OK=true || true
+  ip -4 -o addr show "$TUN" >/dev/null 2>&1 && PDU_OK=true || true
+  if [[ $PDU_OK == true ]] && ping -I "$TUN" -c 3 -W 1 "$PING_TARGET" >/dev/null 2>&1; then PING_OK=true; fi
+fi
+printf '{"schema":"nas-counter-desync.service.v1","registration_ok":%s,"pdu_session_ok":%s,"ping_ok":%s}\n' \
+  "$REGISTRATION_OK" "$PDU_OK" "$PING_OK" >"$OUT/service.json"
+if (( SAME_CELL_PRESTART )); then
+  ( set -o noclobber; : >"$SAME_CELL_ATTACK_DONE_FILE" ) || fail "same-cell attack 완료 게시 실패"
+  started=$SECONDS
+  until [[ -f $SAME_CELL_RELEASE_FILE && ! -L $SAME_CELL_RELEASE_FILE ]]; do
+    kill -0 "$UE_PID" 2>/dev/null || fail "same-cell 종료 허가 전에 UE가 종료됐습니다"
+    (( SECONDS - started < READY_TIMEOUT_S )) || fail "same-cell 종료 허가가 시간 초과했습니다"
+    sleep .2
+  done
+fi
+kill -INT -- "-$UE_PID" 2>/dev/null || true
+sleep .2
+kill -INT -- "-$UE_PID" 2>/dev/null || true
+for _ in {1..200}; do kill -0 "$UE_PID" 2>/dev/null || break; sleep .1; done
+kill -0 "$UE_PID" 2>/dev/null && kill -KILL -- "-$UE_PID" 2>/dev/null || true
+if wait "$UE_PID"; then UE_STATUS=0; else UE_STATUS=$?; fi
+UE_PID=
+printf '%s\n' "$UE_STATUS" >"$OUT/ue.exit"
+(( UE_STATUS == 0 )) || fail "UE가 비정상 종료했습니다: status=$UE_STATUS"
+stop_live
+collect_network_logs
+cp "$OUT/live/detector-input.jsonl" "$OUT/observations.jsonl"
+python3 "$ROOT/analysis/verify_live.py" "$OUT" "$MODE" "$RUN_ID" \
+  "$OAI_BIN" "$UE_CFG" "$UECAP" "$NAS_DESYNC_PATCH"
+mkdir -m 700 "$FINAL"
+for file in run.json observations.jsonl oracle.jsonl detector.jsonl verdict.json report.md evidence_manifest.json; do
+  install -m 600 "$OUT/$file" "$FINAL/$file"
+done
+trap - EXIT INT TERM
+(( DU_STARTED == 0 )) || "$DU_CTL" stop >/dev/null 2>&1
+echo "완료됨: mode=$MODE live_protocol_path=true output=$FINAL raw=$OUT"

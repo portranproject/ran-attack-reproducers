@@ -4,6 +4,11 @@
 > 운영자는 [사용 가이드](docs/USAGE-GUIDE.md)를 먼저 읽는다.
 > 기본 cleanup에서 지속 기지국 마비는 입증되지 않았다.
 
+2026-11-17에는 동결된 runner를 실제 F1/N2→TeleRAN→production detector→dashboard와
+함께 실행했다. 대조군 L3-01-V 경보 0건, attack RAISE 1건을 matched 3/3 반복했으며
+공통 판정과 봉인 해시는
+[E2E 자격 요약](../../artifacts/p5-live-e2e-five-20261117/)에 있다.
+
 **내가 소유한** 5G NR 기지국을 상대로 **RRC 시그널링 스톰**을 통제된 형태로
 재현하는 도구다. 초기접속 시도를 반복하면서 **의도적으로 끝내지 않아**
 gNB의 미완료 UE 컨텍스트 점유와 거절 로그를 관측한다. 아래 결과는 특정

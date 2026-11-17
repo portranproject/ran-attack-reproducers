@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONF=${NAS_DESYNC_CONF:-$ROOT/conf/nas-counter-desync.conf}
+[[ -f $CONF && ! -L $CONF ]] || { echo "안전한 NAS_DESYNC_CONF가 필요합니다: $CONF" >&2; exit 2; }
+. "$CONF"
+RUN_ROOT=${NAS_DESYNC_RUN_ROOT:-$ROOT/runs}
+CAMPAIGN=
+ENABLE=0
+while getopts "e:n:h" option; do
+  case $option in
+    e) ENABLE=$OPTARG ;;
+    n) CAMPAIGN=$OPTARG ;;
+    h) echo "사용법: $0 -n CAMPAIGN_ID -e 1"; exit 0 ;;
+    *) exit 2 ;;
+  esac
+done
+[[ $ENABLE == 1 ]] || { echo "3세트 캠페인은 명시적 -e 1이 필요합니다" >&2; exit 2; }
+[[ $CAMPAIGN =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,70}$ ]] || { echo "안전한 CAMPAIGN_ID가 필요합니다" >&2; exit 2; }
+
+for set_index in 1 2 3; do
+  "$ROOT/bin/nas-counter-desync-run" control -n "$CAMPAIGN-control-$set_index" -e 0
+  "$ROOT/bin/nas-counter-desync-run" emulation -n "$CAMPAIGN-emulation-$set_index" -e 1
+done
+python3 "$ROOT/analysis/verify_campaign.py" "$RUN_ROOT" "$CAMPAIGN"

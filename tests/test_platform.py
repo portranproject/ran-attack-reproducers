@@ -11,6 +11,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 REPROCTL = ROOT / "tools/reproctl.py"
 GENERATOR = ROOT / "tools/generate_rule_signal.py"
 RULES = ("L3-06", "AN-01", "AN-06a", "AN-02", "AN-04", "AN-07", "AN-08")
+SIGNAL_RULES = ("AN-01", "AN-06a", "AN-02", "AN-04", "AN-07", "AN-08")
 
 
 class PlatformTest(unittest.TestCase):
@@ -25,10 +26,10 @@ class PlatformTest(unittest.TestCase):
         self.assertEqual(set(RULES) - set(coverage), set())
         self.assertTrue(all(len(items) == 1 for items in coverage.values()))
 
-    def test_seven_signal_generators_are_gap_free_and_distinguish_control(self):
+    def test_six_an_signal_generators_are_gap_free_and_distinguish_control(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
-            for rule in RULES:
+            for rule in SIGNAL_RULES:
                 signals = {}
                 for mode in ("control", "emulation"):
                     output = root / f"{rule}-{mode}.jsonl"

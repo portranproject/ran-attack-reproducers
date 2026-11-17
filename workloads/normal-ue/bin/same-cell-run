@@ -21,7 +21,7 @@ PLACEHOLDER_CFG=""
 usage() {
   cat <<'EOF'
 사용법:
-  same-cell-run run blind|uplink|uplink-credential-flood|auth-timeout|downlink-imsi|ue-capability -n RUN_ID [--count 5] [--config FILE] -- COMMAND...
+  same-cell-run run blind|uplink|uplink-credential-flood|auth-timeout|downlink-imsi|ue-capability|nas-counter-desync -n RUN_ID [--count 5] [--config FILE] -- COMMAND...
   same-cell-run start -n SESSION_ID [--count 5] [--config FILE]  # 정상 UE 개발 세션
   same-cell-run hot-run blind|uplink|auth-timeout -n RUN_ID -- COMMAND...  # 미승인 진단용
   same-cell-run status
@@ -92,7 +92,7 @@ SS_CMD=${SS_CMD:-ss}
 if [[ $ACTION == run ]]; then
   case $ATTACK in
     blind) ATTACK_SLOTS=2 ;;
-    uplink|downlink-imsi|ue-capability) ATTACK_SLOTS=1 ;;
+    uplink|downlink-imsi|ue-capability|nas-counter-desync) ATTACK_SLOTS=1 ;;
     uplink-credential-flood) ATTACK_SLOTS=1 ;;
     auth-timeout) ATTACK_SLOTS=4 ;;
     *) fail "지원하지 않는 same-cell 공격: $ATTACK" ;;
@@ -164,7 +164,8 @@ stop_group() {
   kill -INT -- "-$pid" 2>/dev/null || true
   sleep .2
   kill -INT -- "-$pid" 2>/dev/null || true
-  for _ in {1..100}; do is_running "$pid" || return 0; sleep .2; done
+  # runner trap이 UE·원격 telemetry까지 정리할 시간을 준 뒤에만 강제 종료한다.
+  for _ in {1..300}; do is_running "$pid" || return 0; sleep .2; done
   kill -KILL -- "-$pid" 2>/dev/null || true
 }
 port_ready() { "$SS_CMD" -H -ltn 2>/dev/null | awk '{print $4}' | grep -Eq ":$1$"; }
@@ -364,6 +365,7 @@ if [[ $ACTION == run ]]; then
   export SAME_CELL_BLIND_MANAGE_DU=0 SAME_CELL_UPLINK_MANAGE_RAN=0 SAME_CELL_CREDENTIAL_FLOOD_MANAGE_RAN=0
   export SAME_CELL_AUTH_TIMEOUT_MANAGE_DU=0
   export SAME_CELL_DOWNLINK_IMSI_MANAGE_RAN=0 SAME_CELL_UE_CAPABILITY_MANAGE_RAN=0
+  export SAME_CELL_NAS_DESYNC_MANAGE_RAN=0
   export SAME_CELL_VICTIM_TX_ENDPOINT="tcp://127.0.0.1:2101"
   export SAME_CELL_VICTIM_RX_ENDPOINT="tcp://127.0.0.1:2100"
   export SAME_CELL_VICTIM_TUN=oaitun_ue1
@@ -423,12 +425,14 @@ if [[ $ACTION == run ]]; then
   done
   ATTACK_SLOT_IDS=()
   for ((i=1; i<=ATTACK_SLOTS; i++)); do ATTACK_SLOT_IDS+=("$i"); done
+  select_broker warmup "${ATTACK_SLOT_IDS[@]}" || fail "attack slot DL 준비에 실패했습니다"
+  (( SAME_CELL_ATTACK_WARMUP_S == 0 )) || sleep "$SAME_CELL_ATTACK_WARMUP_S"
   select_broker attack "${ATTACK_SLOT_IDS[@]}" || fail "상시 attack slot 활성화에 실패했습니다"
   printf '{"schema":"same-cell.session.v2","run_id":"%s","attack":"%s","normal_ues":%d,"attack_slots":%d,"cell_restarts":1,"cu_restarts":0,"clocked_attack_slots":true}\n' \
     "$RUN_ID" "$ATTACK" "$COUNT" "$ATTACK_SLOTS" >"$RUN_OUT/session.json"
 
   NORMAL_HEALTH_BEFORE_TEARDOWN=null
-  if [[ $ATTACK == uplink-credential-flood ]]; then
+  if [[ $ATTACK == uplink-credential-flood || $ATTACK == nas-counter-desync ]]; then
     until [[ -f $STATE/attack.done && ! -L $STATE/attack.done ]]; do
       is_running "$ATTACK_PID" || fail "공격 runner가 완료 marker 전에 종료됐습니다"
       printf '%s\t%s\n' "$(date +%s%N)" "$(health "$COUNT")" >>"$RUN_OUT/normal-health.tsv"
@@ -440,7 +444,7 @@ if [[ $ACTION == run ]]; then
     ( set -o noclobber; : >"$STATE/attack.release" )
   fi
   while is_running "$ATTACK_PID"; do
-    [[ $ATTACK == uplink-credential-flood ]] \
+    [[ $ATTACK == uplink-credential-flood || $ATTACK == nas-counter-desync ]] \
       || printf '%s\t%s\n' "$(date +%s%N)" "$(health "$COUNT")" >>"$RUN_OUT/normal-health.tsv"
     sleep 1
   done

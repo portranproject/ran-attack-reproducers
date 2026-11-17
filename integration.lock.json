@@ -2,7 +2,7 @@
   "schema": "ran-reproducer.integration-lock.v1",
   "detector": {
     "repository": "https://github.com/portranproject/detection",
-    "commit": "a34b358e585e24aa91b1586da022ad14ef98d3e0"
+    "commit": "766f5569d0ddb425c14bf210a31c38ac60eceef9"
   },
   "telemetry": {
     "repository": "https://github.com/portranproject/telemetry",

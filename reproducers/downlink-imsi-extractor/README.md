@@ -97,6 +97,10 @@ OAI 피해 UE                  OCUDU DU/CU                 Open5GS
 원문 해시와 판정은 [p5 결과](artifacts/p5-zmq-identity-response-20261111/)에 있다.
 실행 절차는 [사용 가이드](USAGE-GUIDE.md)를 따른다.
 
+2026-11-17에는 같은 runner를 실제 N2→TeleRAN→production detector→dashboard와 함께
+실행했다. 대조군 L3-24 경보 0건, emulation RAISE 1건을 matched 3/3 반복했으며 공통
+판정과 봉인 해시는 [E2E 자격 요약](../../artifacts/p5-live-e2e-five-20261117/)에 있다.
+
 ## 완료 판정
 
 | 판정 | 조건 |

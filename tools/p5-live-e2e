@@ -1,0 +1,148 @@
+#!/usr/bin/env bash
+# 기존 공격 runner를 실제 TeleRAN→production detector→dashboard 경로로 감싼다.
+set -euo pipefail
+umask 077
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONF=${LIVE_E2E_CONF:-/root/live-e2e.conf}
+[[ -f $CONF && ! -L $CONF ]] || { echo "안전한 LIVE_E2E_CONF가 필요합니다: $CONF" >&2; exit 2; }
+# shellcheck source=/dev/null
+. "$CONF"
+
+[[ $# -ge 7 && $6 == -- ]] || {
+  echo "사용법: $0 SCENARIO MODE RUN_ID RULE CHILD_DIR -- COMMAND..." >&2; exit 2;
+}
+SCENARIO=$1 MODE=$2 RUN_ID=$3 RULE=$4 CHILD_DIR=$5
+shift 6
+COMMAND=("$@")
+RUN_ROOT=${LIVE_E2E_RUN_ROOT:-/root/ran-live-e2e}
+CU_PLATFORM_ROOT=${CU_PLATFORM_ROOT:-/home/ubuntu/ran-reproducer-platform-766f5569}
+CU_LIVE_RUN_ROOT=${CU_LIVE_RUN_ROOT:-/home/ubuntu/ran-reproducer-live}
+CU_F1_INTERFACE=${CU_F1_INTERFACE:-ens5}
+CU_N2_INTERFACE=${CU_N2_INTERFACE:-br-6afe1528cfa6}
+CU_DASHBOARD_URL=${CU_DASHBOARD_URL:-https://127.0.0.1/ingest}
+CU_DASHBOARD_CA_FILE=${CU_DASHBOARD_CA_FILE:-/home/ubuntu/portran-e2e-20261113/dashboard/certs/ingest.crt}
+CU_DASHBOARD_ENV=${CU_DASHBOARD_ENV:-p5}
+PRE_CHILD_S=${LIVE_E2E_PRE_CHILD_S:-0}
+POST_CHILD_S=${LIVE_E2E_POST_CHILD_S:-4}
+DETECTOR_COMMIT=766f5569d0ddb425c14bf210a31c38ac60eceef9
+
+fail() { echo "p5-live-e2e: $*" >&2; exit 2; }
+[[ $SCENARIO =~ ^[a-z0-9][a-z0-9-]{0,63}$ ]] || fail "안전한 SCENARIO가 필요합니다"
+[[ $MODE == control || $MODE == attack || $MODE == emulation ]] || fail "mode가 잘못됐습니다"
+[[ $RUN_ID =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$ ]] || fail "안전한 RUN_ID가 필요합니다"
+[[ $RULE =~ ^L3-[0-9]{2}(-[A-Z])?$ ]] || fail "안전한 RULE이 필요합니다"
+[[ $CHILD_DIR == /* && $CHILD_DIR != / ]] || fail "CHILD_DIR은 안전한 절대 경로여야 합니다"
+[[ $RUN_ROOT == /* && $RUN_ROOT != / && $CU_LIVE_RUN_ROOT == /* && $CU_LIVE_RUN_ROOT != / ]] || fail "run root가 안전하지 않습니다"
+[[ $CU_HOST =~ ^[A-Za-z_][A-Za-z0-9_-]*@[A-Za-z0-9.-]+$ ]] || fail "CU_HOST는 user@host 형식이어야 합니다"
+[[ $CU_DASHBOARD_URL == https://* ]] || fail "dashboard URL은 https여야 합니다"
+for value in "$PRE_CHILD_S" "$POST_CHILD_S"; do [[ $value =~ ^[0-9]+$ ]] || fail "대기 시간은 0 이상의 정수여야 합니다"; done
+for file in "$SSH_KEY" "$CU_DASHBOARD_CA_FILE" "$ROOT/tools/verify_live_e2e.py"; do
+  [[ $file == "$CU_DASHBOARD_CA_FILE" || -f $file && ! -L $file ]] || fail "필수 일반 파일이 없습니다: $file"
+done
+[[ -f $SSH_KEY && ! -L $SSH_KEY ]] || fail "안전한 SSH_KEY가 필요합니다"
+for command in ssh scp python3 jq sha256sum; do command -v "$command" >/dev/null || fail "$command가 필요합니다"; done
+
+[[ ! -L $RUN_ROOT ]] || fail "run root는 심볼릭 링크일 수 없습니다"
+mkdir -p -m 700 "$RUN_ROOT"
+OUT=$RUN_ROOT/$RUN_ID
+CU_OUT=$CU_LIVE_RUN_ROOT/$RUN_ID
+mkdir -m 700 "$OUT" || fail "기존 실행 결과는 덮어쓰지 않습니다: $OUT"
+CU_OWNER=${CU_HOST%@*}
+ssh_args=(-o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=yes -i "$SSH_KEY")
+scp_args=(-q -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=yes -i "$SSH_KEY")
+[[ -z ${KNOWN_HOSTS:-} ]] || { ssh_args+=(-o "UserKnownHostsFile=$KNOWN_HOSTS"); scp_args+=(-o "UserKnownHostsFile=$KNOWN_HOSTS"); }
+
+LIVE_STARTED=0
+LIVE_COLLECTED=0
+start_live() {
+  ssh "${ssh_args[@]}" "$CU_HOST" sudo bash -s -- \
+    "$CU_PLATFORM_ROOT" "$CU_OUT" "$CU_F1_INTERFACE" "$CU_N2_INTERFACE" "$CU_OWNER" \
+    "$CU_DASHBOARD_URL" "$CU_DASHBOARD_CA_FILE" "$CU_DASHBOARD_ENV" <<'REMOTE'
+set -euo pipefail
+platform=$1 out=$2 f1=$3 n2=$4 owner=$5 dashboard_url=$6 dashboard_ca=$7 dashboard_env=$8
+sock=/run/ran-detect/$(basename "$out").sock
+[[ ! -e $out ]] || { echo "remote run already exists: $out" >&2; exit 2; }
+for file in "$platform/detection/build/detector" "$platform/detection/config/detector.json" \
+            "$platform/detection/tools/dashboard_sender.py" "$platform/telemetry/build/portran" "$dashboard_ca"; do
+  [[ -f $file && ! -L $file ]] || { echo "missing live component: $file" >&2; exit 2; }
+done
+install -d -m 700 -o "$owner" -g "$owner" "$out"
+install -d -m 755 /run/ran-detect
+rm -f "$sock"
+jq --arg sock "$sock" --arg ev "$out/evidence.jsonl" --arg inp "$out/detector-input.jsonl" \
+  '.socket_path=$sock | .evidence.out_path=$ev | .input_record.path=$inp' \
+  "$platform/detection/config/detector.json" >"$out/detector.config.json"
+jq -n --arg url "$dashboard_url" --arg ca "$dashboard_ca" --arg env "$dashboard_env" \
+  --arg evidence "$out/evidence.jsonl" --arg input "$out/detector-input.jsonl" --arg state "$out/sender-state.json" \
+  '{url:$url,ca_file:$ca,env:$env,inputs:[{path:$evidence,kind:"evidence"},{path:$input,kind:"input"}],state_path:$state,start_at:"beginning",batch_interval_ms:100,batch_max_lines:500,batch_max_bytes:1048576,line_max_bytes:65536,poll_ms:50,timeout_ms:10000,retry_initial_ms:1000,retry_max_ms:60000,stats_interval_ms:0,kpm2_interval_ms:3000,send_ue_evt:false,kpm2_close_lag_ms:2000}' \
+  >"$out/sender.json"
+jq -n \
+  --arg detector_sha "$(sha256sum "$platform/detection/build/detector" | awk '{print $1}')" \
+  --arg detector_config_sha "$(sha256sum "$platform/detection/config/detector.json" | awk '{print $1}')" \
+  --arg detector_commit "$(cat "$platform/detection/.deployed-revision")" \
+  --arg telemetry_sha "$(sha256sum "$platform/telemetry/build/portran" | awk '{print $1}')" \
+  --arg telemetry_commit "$(cat "$platform/telemetry/.deployed-revision")" \
+  --arg sender_sha "$(sha256sum "$platform/detection/tools/dashboard_sender.py" | awk '{print $1}')" \
+  '{detector:{binary_sha256:$detector_sha,config_sha256:$detector_config_sha,commit:$detector_commit},telemetry:{binary_sha256:$telemetry_sha,commit:$telemetry_commit,period_ms:100},dashboard:{sender_sha256:$sender_sha}}' \
+  >"$out/components.json"
+setsid "$platform/detection/build/detector" --socket "$sock" --config "$out/detector.config.json" \
+  >"$out/detector.stdout" 2>"$out/detector.stderr" </dev/null & echo $! >"$out/detector.pid"
+for _ in {1..100}; do [[ -S $sock ]] && break; sleep .1; done
+[[ -S $sock ]] || { echo "detector socket timeout" >&2; exit 2; }
+setsid "$platform/telemetry/build/portran" -g 100 --sock "$sock" --record "$out/telemetry.jsonl" \
+  --node p5-e2e "f1:$f1" "n2:$n2" >"$out/telemetry.stdout" 2>"$out/telemetry.stderr" </dev/null &
+echo $! >"$out/telemetry.pid"
+chown -R "$owner:$owner" "$out"
+REMOTE
+  LIVE_STARTED=1
+}
+
+stop_live() {
+  (( LIVE_STARTED )) || return 0
+  ssh "${ssh_args[@]}" "$CU_HOST" sudo bash -s -- "$CU_OUT" "$CU_OWNER" "$CU_PLATFORM_ROOT" <<'REMOTE'
+set -u
+out=$1 owner=$2 platform=$3
+for role in telemetry detector; do
+  [[ -f $out/$role.pid ]] || continue
+  pid=$(cat "$out/$role.pid")
+  kill -INT -- "-$pid" 2>/dev/null || kill -INT "$pid" 2>/dev/null || true
+  for _ in {1..100}; do kill -0 "$pid" 2>/dev/null || break; sleep .1; done
+  kill -0 "$pid" 2>/dev/null && kill -KILL -- "-$pid" 2>/dev/null || true
+done
+set +e
+sudo -u "$owner" python3 "$platform/detection/tools/dashboard_sender.py" --config "$out/sender.json" --once \
+  >"$out/sender.stdout" 2>"$out/sender.log"
+echo $? >"$out/sender.exit"
+set -e
+chown -R "$owner:$owner" "$out"
+REMOTE
+  mkdir -m 700 "$OUT/live"
+  scp "${scp_args[@]}" -r "$CU_HOST:$CU_OUT/." "$OUT/live/"
+  LIVE_COLLECTED=1
+}
+
+cleanup() {
+  local status=$?
+  trap - EXIT INT TERM
+  set +e
+  (( LIVE_STARTED == 0 || LIVE_COLLECTED == 1 )) || stop_live
+  exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+start_live
+(( PRE_CHILD_S == 0 )) || sleep "$PRE_CHILD_S"
+set +e
+"${COMMAND[@]}" >"$OUT/child.stdout" 2>"$OUT/child.stderr"
+child_status=$?
+set -e
+printf '%s\n' "$child_status" >"$OUT/child.exit"
+(( child_status == 0 )) || fail "공격 runner가 실패했습니다: status=$child_status"
+(( POST_CHILD_S == 0 )) || sleep "$POST_CHILD_S"
+stop_live
+python3 "$ROOT/tools/verify_live_e2e.py" "$OUT" "$SCENARIO" "$MODE" "$RUN_ID" "$CHILD_DIR" "$DETECTOR_COMMIT"
+trap - EXIT INT TERM
+echo "완료됨: scenario=$SCENARIO mode=$MODE output=$OUT"

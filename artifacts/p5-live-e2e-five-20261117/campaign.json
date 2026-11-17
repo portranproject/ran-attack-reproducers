@@ -1,0 +1,82 @@
+{
+  "passed": true,
+  "production_detector_commit": "766f5569d0ddb425c14bf210a31c38ac60eceef9",
+  "profile": "p5",
+  "qualified_at": "2026-11-17",
+  "evidence_manifest_sha256": {
+    "authcell-e2e-final-attack-2": "b04898dbf9ec57d9dc658133d34c84639dc2f1d42e41481876c58071c7c151d9",
+    "authcell-e2e-final-attack-3": "a51026092cef89642b5dc00f9662d69284774d39799f0ed4a67cdc12fde2f8a1",
+    "authcell-e2e-final-control-2": "8c88c00ee2a2bc8d81192f52f1c48cbb063c1620a7b589adfcb7ac9519b46572",
+    "authcell-e2e-final-control-3": "d1b3d30e4c9ec9339ffb47c17c5235106d49e2920dd95a28ecdb496b53f84793",
+    "authcell-e2e-smoke-attack1": "b9cd2acf242c246216692708e3f4c0b9d72a13e48a26d96b9eecc7323aa0bd3e",
+    "authcell-e2e-smoke-control9": "74e90c615cb209c99611d01da2dc0e60a3b2ccd9f7b3169cdb0f3b3c535b580a",
+    "blind-e2e-final-attack2": "b68d74c2f409ed620058cdea196ea5e220f79f8857248586cd887bcae0d5195d",
+    "blind-e2e-final-attack3": "b47d8a6586c1d716fffa28dbd4584a6a0980b800441a01259e10a6971fd266fe",
+    "blind-e2e-final-control2": "fc2ec4096db717832788e5e0c1e5166eb4066c85f59598e385bcb5a508032841",
+    "blind-e2e-final-control3": "99615fe8ab8832031b8a57fde2be80aaaa0b404bf425dfcf2e5c414a92392051",
+    "blind-e2e-smoke-attack": "f49685a1c055bf0654d87c1ba010f8b109b599f95d7aa881618fead1fee9258e",
+    "blind-e2e-smoke-control2": "67fba1c16fad0e8c134a938dc63341768567928b5aa01228816c8618002dd30f",
+    "cap-e2e-final-control2q": "a77bc234385e5cbe09939b69ee564e4fe5c52ddc23ee709ef1974fde0586b890",
+    "cap-e2e-final-control3": "00d5dbcf459bb8356ae938384f173b09efb64fb865e464078d7e0525ca0cb689",
+    "cap-e2e-final-emulation2": "d0ec5ce143cbc9fafba5595c8caad3fc4c839b8d58e98919d27033d2aa8655d1",
+    "cap-e2e-final-emulation3": "39010accaa565f89b876245ba33aba15772d1358aa45c0443570cbeb3fca2ae4",
+    "cap-e2e-smoke-control2": "37ce30076b9f4c7e0bfb8ff32ead207f930687c3960d2b1b58f952962484af31",
+    "cap-e2e-smoke-emulation": "443f81213585fd4baba0590de3e8bea79463a17299008313affd8a58c4b7d73a",
+    "dlid-e2e-final-control2": "b91fc324aeb036043b354b811ef3e5861f44d2da27b31a71895a98738f7d9066",
+    "dlid-e2e-final-control3": "509d7958ccc8da8cdad4480def3a4638ee420e6b04416aea8d9edfaaccdc5022",
+    "dlid-e2e-final-emulation2": "3b401ee21cb9df82c5394b9405982c8c2d3fe4f75a123666afbe333edee1eb19",
+    "dlid-e2e-final-emulation3": "a6e981ef95cd06d088eebfed1a838a5a0d9df87fc787bbf4ed6beba0204f8e31",
+    "dlid-e2e-smoke-control": "eeeb4bd0cb3b83698a1f21963a694b214866fcfe35db45d4555faeeea4be65ec",
+    "dlid-e2e-smoke-emulation": "5fc84f4e40533c6091a0bfee6b4c09240da8e37070ccc5d46d9181b033f21574",
+    "rrc-e2e-final-attack2": "e5467f599805d59764e127b8840b72cddf440d03d94780e4dde613b5733506ae",
+    "rrc-e2e-final-attack3": "fe93af9e4253a75b13bc6131a9e497e47a9abb040ef4a93aced39fcaf4827f52",
+    "rrc-e2e-final-attack4": "47277321e88fc9d93a09c064a3d7007f539e1bc11d15cb82cc067ec737f8b2bb",
+    "rrc-e2e-final-control2": "00433b24508a1ad0207520dc8ef54c8b7614a18abcf09dbbebb2cd605d6ae99c",
+    "rrc-e2e-final-control3": "0b3fc894bdf598144f7f081b7b95a3db814609549921743044a11c40c5934aad",
+    "rrc-e2e-final-control4": "c6b2d8efecc93c5aa44e5ac2c7e48229433ff0996f8ac280d57eaa10ded4f327"
+  },
+  "rules": {
+    "L3-01-O": {
+      "pairs": [
+        ["authcell-e2e-smoke-control9", "authcell-e2e-smoke-attack1"],
+        ["authcell-e2e-final-control-2", "authcell-e2e-final-attack-2"],
+        ["authcell-e2e-final-control-3", "authcell-e2e-final-attack-3"]
+      ],
+      "passed": true
+    },
+    "L3-01-V": {
+      "pairs": [
+        ["rrc-e2e-final-control2", "rrc-e2e-final-attack2"],
+        ["rrc-e2e-final-control3", "rrc-e2e-final-attack3"],
+        ["rrc-e2e-final-control4", "rrc-e2e-final-attack4"]
+      ],
+      "passed": true
+    },
+    "L3-14": {
+      "pairs": [
+        ["cap-e2e-smoke-control2", "cap-e2e-smoke-emulation"],
+        ["cap-e2e-final-control2q", "cap-e2e-final-emulation2"],
+        ["cap-e2e-final-control3", "cap-e2e-final-emulation3"]
+      ],
+      "passed": true
+    },
+    "L3-20": {
+      "pairs": [
+        ["blind-e2e-smoke-control2", "blind-e2e-smoke-attack"],
+        ["blind-e2e-final-control2", "blind-e2e-final-attack2"],
+        ["blind-e2e-final-control3", "blind-e2e-final-attack3"]
+      ],
+      "passed": true
+    },
+    "L3-24": {
+      "pairs": [
+        ["dlid-e2e-smoke-control", "dlid-e2e-smoke-emulation"],
+        ["dlid-e2e-final-control2", "dlid-e2e-final-emulation2"],
+        ["dlid-e2e-final-control3", "dlid-e2e-final-emulation3"]
+      ],
+      "passed": true
+    }
+  },
+  "schema": "ran-reproducer.live-e2e-campaign.v1",
+  "telemetry_commit": "7550153a58a993942303bd3d4a6cd635b664468b"
+}

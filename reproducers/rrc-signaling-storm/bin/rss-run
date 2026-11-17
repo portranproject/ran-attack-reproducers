@@ -476,6 +476,9 @@ echo "== self-check"
 (( INVALID )) && echo "   !! every number below is from an invalid or partial run"
 if [[ $ENABLE == 1 ]]; then
   if grep -m1 '\[RSS\]' "$UE_LOG"; then true
+  elif [[ $MSG4_WAIT == 1 ]] \
+       && grep -q '"event":"msg4_rx".*"msg5_action":"skipped"' "$JSONL"; then
+    echo "   UE event contract confirms RRCSetupComplete omission"
   else echo "   !! no [RSS] banner: knobs were NOT parsed, run is invalid"; INVALID=1; STOP_REASON=missing_rss_banner; fi
 fi
 ATTEMPTS=$(grep -c '"event":"attempt_start"' "$JSONL" 2>/dev/null || true); ATTEMPTS=${ATTEMPTS:-0}

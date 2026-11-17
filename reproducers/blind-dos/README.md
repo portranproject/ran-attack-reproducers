@@ -70,6 +70,11 @@ InitialUEMessage 도달, 공격자 자신의 context 정리만으로는 성공�
 따라서 현재 허용 주장은 **p5 ZMQ 환경의 oracle 보조 단발 Blind DoS 재현기 성공**이다.
 비특권 식별자 획득, 지속 차단, 실 SDR OTA, 상용망 일반화는 주장하지 않는다.
 
+2026-11-17에는 같은 direct 2-cell runner를 실제 F1/N2→TeleRAN→production
+detector→dashboard와 함께 실행했다. 대조군 L3-20 경보 0건, attack RAISE 1건을 matched
+3/3 반복했으며 공통 판정과 봉인 해시는
+[E2E 자격 요약](../../artifacts/p5-live-e2e-five-20261117/)에 있다.
+
 ## p5 실측 결과
 
 스택은 OCUDU 26.10 CU/DU, Open5GS, OAI 2026.w38 UE, direct 2-cell ZMQ다.

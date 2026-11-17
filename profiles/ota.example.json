@@ -15,10 +15,10 @@
     "binary": "/srv/detection/build/detector",
     "config": "/srv/detection/config/detector.json",
     "repository": "https://github.com/portranproject/detection",
-    "commit": "a34b358e585e24aa91b1586da022ad14ef98d3e0"
+    "commit": "766f5569d0ddb425c14bf210a31c38ac60eceef9"
   },
   "telemetry": {
-    "binary": "/srv/telemetry/build/telemetry",
+    "binary": "/srv/telemetry/build/portran",
     "period_ms": 100,
     "repository": "https://github.com/portranproject/telemetry",
     "commit": "7550153a58a993942303bd3d4a6cd635b664468b"

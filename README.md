@@ -11,17 +11,21 @@
 ```bash
 ./ctl.sh list
 ./ctl.sh doctor --profile p5
-./ctl.sh campaign an-01 --profile p5 --enable
+./ctl.sh campaign l3-06 --profile p5 --enable
 ./ctl.sh replay <run-id> --profile p5
 ./ctl.sh report <run-id> --profile p5
 ./ctl.sh verify <run-id> --profile p5
 ```
 
-공격 카탈로그는 [13개 탐지 룰 기준표](ATTACK-CATALOG.md), 각 공격에서 참고한 논문·공개
+공격 카탈로그는 [7개 L3 공격 기준표](ATTACK-CATALOG.md), 각 공격에서 참고한 논문·공개
 코드와 자체 구현 범위는 [공격별 레퍼런스와 구현 기여](ATTACK-REFERENCES.md), 새 환경 이관은
 [포팅 가이드](PORTING-GUIDE.md), 새 공격 추가는 [새 모듈 가이드](NEW-MODULE-GUIDE.md)를
 따른다. 실험실 운용은 [p5 운영](P5-OPERATIONS.md)과 [차폐 OTA 운영](OTA-OPERATIONS.md),
 detector·telemetry·dashboard 호환 commit은 `integration.lock.json`에 고정한다.
+
+p5와 같은 OAI·OCUDU·Open5GS ZMQ 환경은 profile과 모듈 conf를 바꿔 포팅할 수 있지만
+자동 설치형은 아니다. Linux 선행조건, 환경별 지원 범위와 미구현 OTA adapter는
+[포팅 가이드](PORTING-GUIDE.md)에서 먼저 확인한다.
 
 Markdown 문서는 한국어를 기본으로 하며 파일명에 언어 접미사를 붙이지 않는다. 봉인된
 증거 원문만 예외로 보존하고 한국어 안내본을 별도로 둔다. 현재 예외 안내본은
@@ -49,15 +53,17 @@ Markdown 문서는 한국어를 기본으로 하며 파일명에 언어 접미�
 
 | 도구 | 상태 |
 |---|---|
-| [RRC signaling storm](reproducers/rrc-signaling-storm/) | 2026-11-02 동결. 분석기 입력·정답 생성기로 사용 |
-| [Blind DoS](reproducers/blind-dos/) | 현재 유효 5G-GUTI 재사용형 구현 완료. p5 direct 2-cell ZMQ에서 matched control→attack G5 3/3 통과 |
+| [RRC signaling storm](reproducers/rrc-signaling-storm/) | RRCSetupComplete 미전송형. p5 실제 UE→RAN→TeleRAN→production detector matched 3/3 통과. 서비스 거부는 필수 조건 아님 |
+| [Blind DoS](reproducers/blind-dos/) | 현재 유효 5G-GUTI 재사용형. p5 direct 2-cell ZMQ의 G5와 실제 TeleRAN→production detector matched 3/3 통과 |
 | [Uplink DoS](reproducers/uplink-dos/) | 단발 NAS 무결성 손상형 프로토콜 영향 에뮬레이션과 L3-21용 실제 UE 실패 플러드. L3-21은 정상 UE 5대와 같은 셀에서 matched control→attack 3/3 통과, RF overshadowing 미검증 |
-| [인증 응답 미전송형 연결 컨텍스트 고갈 (NAS 고갈)](reproducers/authentication-timeout-exhaustion/) | 2026-11-11 기전·탐지 입력 재현기로 동결. p5 direct 4-cell ZMQ에서 6개 동시 pre-auth 컨텍스트 확인, 서비스 거부는 미관측 |
-| [하향 IMSI 추출 계열 식별자 노출](reproducers/downlink-imsi-extractor/) | p5 ZMQ 프로토콜 결과 에뮬레이션 완료. 예상하지 않은 SUCI Identity Response와 null-scheme 랩 가입자 노출 matched 3/3, RF overshadowing 미검증 |
-| [보안 전 UE Capability Information 주입](reproducers/ue-capability-hijacking/) | UE Capability Hijacking 계열 탐지 관측 에뮬레이터 완료. p5 F1 matched control→emulation 3/3, MITM·내용 변조·강등 수락은 범위 밖 |
-| [새 7개 룰 입력 모듈](ATTACK-CATALOG.md) | production detector 기본 설정 matched control→emulation 3/3 통과. p5 live protocol과 RF 원인은 pending |
+| [인증 응답 미전송형 연결 컨텍스트 고갈 (NAS 고갈)](reproducers/authentication-timeout-exhaustion/) | 한 셀에서 서로 다른 랩 가입자 10명의 응답 미전송을 실제 UE 경로로 생성. TeleRAN→production detector matched 3/3 통과, 서비스 거부는 미관측 |
+| [하향 IMSI 추출 계열 식별자 노출](reproducers/downlink-imsi-extractor/) | 예상하지 않은 SUCI Identity Response 결과 에뮬레이션. 실제 N2→TeleRAN→production detector matched 3/3 통과, RF overshadowing 미검증 |
+| [보안 전 UE Capability Information 주입](reproducers/ue-capability-hijacking/) | 보안 전 unsolicited UECapabilityInformation 관측 에뮬레이션. 실제 F1→TeleRAN→production detector matched 3/3 통과, MITM·내용 변조·강등 수락은 범위 밖 |
+| [L3-06 NAS SecurityModeReject 결과](reproducers/nas-counter-desynchronization/) | p5 실제 UE→RAN→TeleRAN→production detector matched control→emulation 3/3 통과. MITM·NAS counter wrap은 범위 밖, 정상 UE same-cell 공존은 미승인 |
+| [AN 이상탐지 fixture 6종](ATTACK-CATALOG.md) | 공격 1.0 자격 범위 밖. production detector 기본 설정 matched control→emulation 3/3 회귀용 |
 
-각 도구는 구현·설정·라벨 계약·실험 출력을 서로 섞지 않는다.
+각 도구는 구현·설정·라벨 계약·실험 출력을 서로 섞지 않는다. 다섯 기존 룰의 공통 E2E
+결과는 [p5 실제 경로 E2E 자격 검증](artifacts/p5-live-e2e-five-20261117/)에서 확인한다.
 
 ```text
 reproducers/
@@ -67,7 +73,7 @@ reproducers/
 ├── authentication-timeout-exhaustion/ # 인증 응답 미전송형(NAS 고갈) 구현·판정기
 ├── downlink-imsi-extractor/ # 하향 Identity Response 유도 결과 에뮬레이션·판정기
 ├── ue-capability-hijacking/ # 보안 전 Capability Information 주입·F1 판정기
-├── nas-counter-desynchronization/ # L3-06 입력 에뮬레이션
+├── nas-counter-desynchronization/ # L3-06 실제 RAN 경로 결과 에뮬레이션
 ├── authentication-sync-failure/  # AN-01 입력 에뮬레이션
 ├── nas-counter-reset/             # AN-06a 입력 에뮬레이션
 ├── uplink-imsi-extractor/         # AN-02 입력 에뮬레이션

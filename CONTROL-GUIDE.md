@@ -2,7 +2,7 @@
 
 `ctl.sh`는 각 공격 모듈을 합치지 않고 기존 빌드기·runner·판정기와 공통 detector replay를
 한 화면에서 호출한다. 실행 원문과 라벨 계약은 계속 각 `reproducers/<attack>/`에 분리된다.
-13개 대표 시나리오는 모듈별 `reproducer.json`에서 자동 검색한다.
+7개 L3 공격은 1.0 자격 대상으로, 6개 AN fixture는 참고용 detector 회귀로 검색한다.
 
 ## 가장 빠른 사용법
 
@@ -69,6 +69,13 @@ runs/<run-id>/
 재생하고 예상 룰의 RAISE 여부를 다시 판정한다. 기존 protocol 모듈은 검증된 runner를 계속
 사용하며 공통 형식 이관 전까지 해당 모듈의 기존 artifact 계약이 우선한다.
 
+p5 자격 검증에서는 `tools/p5-live-e2e`가 기존 runner를 감싸고 TeleRAN과 production
+detector를 같은 실행 시간창에 기동한다. 직접 KPM이나 탐지 이벤트를 생성하지 않으며,
+실제 F1/N2 계측 원문만 detector에 전달한다. 검증기는 100 ms 보고 주기, sequence 연속성,
+gap 0, KPM 존재, 예상 RAISE 수, dashboard 수락과 child 기전 판정을 함께 확인한다.
+2026-11-17 다섯 룰의 matched 3/3 결과는
+[E2E 자격 요약](artifacts/p5-live-e2e-five-20261117/)을 따른다.
+
 ## profile
 
 `profiles/p5.example.json` 또는 `profiles/ota.example.json`을 같은 디렉터리의 `.json`으로
@@ -81,8 +88,15 @@ runs/<run-id>/
 - credential 파일이 있으면 권한 0600 이하
 - OTA는 SDR serial 두 개 이상과 `shielding_confirmed=true`
 
-setup은 module build와 의존 경로를 자동화하지만 credential을 만들거나 RF 케이블·차폐를
-대신 확인하지 않는다.
+명시적으로 `--profile`을 붙인 protocol 실행은 profile의 environment를 runner에 전달한다.
+모듈별 conf를 저장소 밖에 둘 때는 `RSS_CONF`, `BLIND_CONF`, `UPLINK_CONF`,
+`AUTH_TIMEOUT_CONF`, `DOWNLINK_IMSI_CONF`, `UE_CAPABILITY_CONF`, `NAS_DESYNC_CONF` 중
+해당 키에 절대경로를 넣는다. 현재 OTA run adapter는 없으므로 OTA profile의
+`setup|run|campaign`은 실행하지 않고 [포팅 가이드](PORTING-GUIDE.md)를 안내한다.
+
+setup은 module build와 의존 경로를 자동화하지만 시스템 패키지·OCUDU·Open5GS를
+설치하거나 credential을 만들거나 RF 케이블·차폐를 대신 확인하지 않는다. 지원 호스트와
+선행 패키지는 [포팅 가이드](PORTING-GUIDE.md)를 따른다.
 
 ## 환경 준비 범위
 
@@ -106,7 +120,7 @@ BLIND_OAI=/srv/OAI-blind-dos-w38 \
 ```
 
 지원 변수는 `OAI_BASE`, `RRC_OAI`, `BLIND_OAI`, `UPLINK_OAI`,
-`AUTH_TIMEOUT_OAI`, `DOWNLINK_IMSI_OAI`, `UE_CAPABILITY_OAI`다.
+`AUTH_TIMEOUT_OAI`, `DOWNLINK_IMSI_OAI`, `UE_CAPABILITY_OAI`, `NAS_DESYNC_OAI`다.
 
 ## 표시되는 재현 유형
 
@@ -119,7 +133,8 @@ BLIND_OAI=/srv/OAI-blind-dos-w38 \
 | `uplink-credential-flood` | 프로토콜 재현 | 수정 UE가 실제 RAN 경로에 L3-21 등록 거절 10건을 생성 |
 | `downlink-imsi` | 프로토콜 결과 에뮬레이션 | RF overshadowing 이후 식별자 응답 결과를 재현 |
 | `ue-capability` | 프로토콜 관측 에뮬레이션 | 보안 전·선행 질의 없는 Capability Information을 F1에 재현 |
-| `l3-06`, `an-01`, `an-06a`, `an-02`, `an-04`, `an-07`, `an-08` | 탐지 입력 에뮬레이션 | 연구 기반 메시지 순서를 production detector 기본 설정에 재생 |
+| `l3-06` | 프로토콜 결과 에뮬레이션 | UE가 요청되지 않은 NAS SecurityModeReject를 실제 RAN·계측 경로로 송신. MITM·counter wrap은 범위 밖 |
+| `an-01`, `an-06a`, `an-02`, `an-04`, `an-07`, `an-08` | 참고용 탐지 입력 fixture | 공격 1.0 자격 범위 밖. production detector 회귀에만 사용 |
 
 컨트롤러의 유형 표시는 기존 모듈의 주장 범위를 바꾸지 않는다. 상세 성공 조건과 탐지 입력,
 검증 한계는 각 모듈 README와 사용 가이드를 기준으로 한다.

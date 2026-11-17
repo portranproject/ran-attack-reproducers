@@ -43,7 +43,7 @@ attack_label() {
     auth-timeout) echo "인증 응답 미전송형 연결 컨텍스트 고갈 (NAS 고갈)" ;;
     downlink-imsi) echo "하향 IMSI 추출 결과 에뮬레이션" ;;
     ue-capability) echo "보안 전 UE Capability Information 주입" ;;
-    nas-counter-desynchronization) echo "NAS 카운터 비동기화 결과" ;;
+    nas-counter-desynchronization) echo "NAS 카운터 비동기화 결과 에뮬레이션" ;;
     authentication-sync-failure) echo "인증 동기 실패" ;;
     nas-counter-reset) echo "NAS 카운터 reset 계열 재인증" ;;
     uplink-identifier-exposure) echo "GUTI 불일치 후 상향 식별자 요청 결과" ;;
@@ -59,7 +59,8 @@ attack_kind() {
     uplink-dos|downlink-imsi) echo "프로토콜 결과 에뮬레이션" ;;
     uplink-credential-flood) echo "프로토콜 재현" ;;
     ue-capability) echo "프로토콜 관측 에뮬레이션" ;;
-    nas-counter-desynchronization|authentication-sync-failure|nas-counter-reset|uplink-identifier-exposure|short-connection-repeat|rrc-reject-release-imprisonment|tac-manipulation-return)
+    nas-counter-desynchronization) echo "프로토콜 결과 에뮬레이션" ;;
+    authentication-sync-failure|nas-counter-reset|uplink-identifier-exposure|short-connection-repeat|rrc-reject-release-imprisonment|tac-manipulation-return)
       echo "탐지 입력 에뮬레이션" ;;
   esac
 }
@@ -80,7 +81,7 @@ module_dir() {
 
 is_common_signal() {
   case $1 in
-    nas-counter-desynchronization|authentication-sync-failure|nas-counter-reset|uplink-identifier-exposure|short-connection-repeat|rrc-reject-release-imprisonment|tac-manipulation-return) return 0 ;;
+    authentication-sync-failure|nas-counter-reset|uplink-identifier-exposure|short-connection-repeat|rrc-reject-release-imprisonment|tac-manipulation-return) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -91,15 +92,21 @@ load_profile_env() {
   while IFS= read -r line; do export "$line"; done <<<"$output"
 }
 
+require_runnable_backend() {
+  [[ ${RAN_REPRO_BACKEND:-} != ota ]] \
+    || fail "OTA 실행 adapter는 아직 미구현입니다. PORTING-GUIDE.md의 OTA 포팅 절차를 먼저 완료해야 합니다"
+}
+
 config_file() {
   local dir; dir=$(module_dir "$1")
   case $1 in
-    rrc-storm) echo "$dir/conf/rss.conf" ;;
-    blind-dos) echo "$dir/conf/blind.conf" ;;
-    uplink-dos|uplink-credential-flood) echo "$dir/conf/uplink.conf" ;;
-    auth-timeout) echo "$dir/conf/auth-timeout.conf" ;;
-    downlink-imsi) echo "$dir/conf/downlink-imsi.conf" ;;
-    ue-capability) echo "$dir/conf/ue-capability.conf" ;;
+    rrc-storm) echo "${RSS_CONF:-$dir/conf/rss.conf}" ;;
+    blind-dos) echo "${BLIND_CONF:-$dir/conf/blind.conf}" ;;
+    uplink-dos|uplink-credential-flood) echo "${UPLINK_CONF:-$dir/conf/uplink.conf}" ;;
+    auth-timeout) echo "${AUTH_TIMEOUT_CONF:-$dir/conf/auth-timeout.conf}" ;;
+    downlink-imsi) echo "${DOWNLINK_IMSI_CONF:-$dir/conf/downlink-imsi.conf}" ;;
+    ue-capability) echo "${UE_CAPABILITY_CONF:-$dir/conf/ue-capability.conf}" ;;
+    nas-counter-desynchronization) echo "${NAS_DESYNC_CONF:-$dir/conf/nas-counter-desync.conf}" ;;
   esac
 }
 
@@ -112,6 +119,7 @@ config_example() {
     auth-timeout) echo "$dir/conf/auth-timeout.conf.example" ;;
     downlink-imsi) echo "$dir/conf/p5-zmq.conf.example" ;;
     ue-capability) echo "$dir/conf/p5-zmq.conf.example" ;;
+    nas-counter-desynchronization) echo "$dir/conf/nas-counter-desync.conf.example" ;;
   esac
 }
 
@@ -123,6 +131,7 @@ oai_tree() {
     auth-timeout) echo "${AUTH_TIMEOUT_OAI:-/root/OAI-auth-timeout-w38}" ;;
     downlink-imsi) echo "${DOWNLINK_IMSI_OAI:-/root/OAI-downlink-imsi-w38}" ;;
     ue-capability) echo "${UE_CAPABILITY_OAI:-/root/OAI-ue-capability-w38}" ;;
+    nas-counter-desynchronization) echo "${NAS_DESYNC_OAI:-/root/OAI-nas-desync-w38}" ;;
   esac
 }
 
@@ -142,6 +151,7 @@ built_marker() {
     auth-timeout) echo 'AUTH_TIMEOUT_EXHAUSTION event=authentication_request_withheld' ;;
     downlink-imsi) echo 'DOWNLINK_IMSI_EXTRACTOR event=identity_response_substituted' ;;
     ue-capability) echo 'UE_CAPABILITY_INJECTION event=%s' ;;
+    nas-counter-desynchronization) echo 'NAS_COUNTER_DESYNC event=unsolicited_security_mode_reject' ;;
   esac
 }
 
@@ -220,6 +230,7 @@ build_one() {
       auth-timeout) OAI="$tree" "$dir/bin/auth-timeout-build" ;;
       downlink-imsi) OAI="$tree" "$dir/bin/downlink-imsi-build" ;;
       ue-capability) OAI="$tree" "$dir/bin/ue-capability-build" ;;
+      nas-counter-desynchronization) OAI="$tree" "$dir/bin/nas-counter-desync-build" ;;
     esac
   fi
   is_built "$attack" || fail "빌드 산출물에서 모듈 마커를 확인하지 못했습니다"
@@ -263,6 +274,7 @@ config_env() {
     auth-timeout) echo AUTH_TIMEOUT_CONF ;;
     downlink-imsi) echo DOWNLINK_IMSI_CONF ;;
     ue-capability) echo UE_CAPABILITY_CONF ;;
+    nas-counter-desynchronization) echo NAS_DESYNC_CONF ;;
   esac
 }
 
@@ -276,6 +288,7 @@ run_binary() {
     auth-timeout) echo "$dir/bin/auth-timeout-run" ;;
     downlink-imsi) echo "$dir/bin/downlink-imsi-run" ;;
     ue-capability) echo "$dir/bin/ue-capability-run" ;;
+    nas-counter-desynchronization) echo "$dir/bin/nas-counter-desync-run" ;;
   esac
 }
 
@@ -288,6 +301,7 @@ campaign_binary() {
     auth-timeout) echo "$dir/bin/auth-timeout-campaign" ;;
     downlink-imsi) echo "$dir/bin/downlink-imsi-campaign" ;;
     ue-capability) echo "$dir/bin/ue-capability-campaign" ;;
+    nas-counter-desynchronization) echo "$dir/bin/nas-counter-desync-campaign" ;;
     *) return 1 ;;
   esac
 }
@@ -472,7 +486,7 @@ usage() {
   ./ctl.sh coverage
   ./ctl.sh validate
   ./ctl.sh normal-ue setup|doctor|start|status|stop [--profile p5] [--count N]
-  ./ctl.sh same-cell run blind|uplink|uplink-credential-flood|auth-timeout|downlink-imsi|ue-capability -n RUN_ID [--count 5] -- COMMAND...
+  ./ctl.sh same-cell run blind|uplink|uplink-credential-flood|auth-timeout|downlink-imsi|ue-capability|nas-counter-desync -n RUN_ID [--count 5] -- COMMAND...
   ./ctl.sh same-cell start -n SESSION_ID [--count 5]  # 정상 UE 개발 세션
   ./ctl.sh same-cell status|stop
 
@@ -480,7 +494,7 @@ ID 전체 목록: ./ctl.sh list
 MODE: control 또는 목록에 맞는 attack/emulation
 
 setup은 현재 p5 경로를 기본값으로 사용한다. 다른 호스트에서는 OAI_BASE와
-RRC_OAI/BLIND_OAI/UPLINK_OAI/AUTH_TIMEOUT_OAI/DOWNLINK_IMSI_OAI/UE_CAPABILITY_OAI를 지정한다.
+RRC_OAI/BLIND_OAI/UPLINK_OAI/AUTH_TIMEOUT_OAI/DOWNLINK_IMSI_OAI/UE_CAPABILITY_OAI/NAS_DESYNC_OAI를 지정한다.
 EOF
 }
 
@@ -507,7 +521,11 @@ main() {
       while [[ $# -gt 0 ]]; do
         case $1 in --profile) [[ $# -ge 2 ]] || fail "--profile 값이 필요합니다"; profile=$2; profile_given=1; shift 2 ;; *) target=$1; shift ;; esac
       done
-      [[ $profile_given == 0 ]] || python3 "$REPROCTL" doctor --profile "$profile"
+      if [[ $profile_given == 1 ]]; then
+        python3 "$REPROCTL" doctor --profile "$profile"
+        load_profile_env "$profile"
+        require_runnable_backend
+      fi
       doctor_targets "$target" ;;
     setup|build)
       [[ $# -ge 2 ]] || fail "$subcommand는 ID 또는 all이 필요합니다"
@@ -515,7 +533,7 @@ main() {
       while [[ $# -gt 0 ]]; do
         case $1 in --profile) [[ $# -ge 2 ]] || fail "--profile 값이 필요합니다"; profile=$2; profile_given=1; shift 2 ;; *) fail "알 수 없는 옵션: $1" ;; esac
       done
-      [[ $profile_given == 0 ]] || load_profile_env "$profile"
+      if [[ $profile_given == 1 ]]; then load_profile_env "$profile"; require_runnable_backend; fi
       if [[ $subcommand == setup ]]; then for_each_strict setup_one "$target"; else for_each_strict build_one "$target"; fi ;;
     run)
       [[ $# -ge 4 ]] || fail "run은 ID MODE RUN_ID가 필요합니다"
@@ -524,8 +542,12 @@ main() {
       run_id=$4
       shift 4
       while [[ $# -gt 0 ]]; do
-        case $1 in --enable) enabled=1; shift ;; --dry-run) dry_run=1; shift ;; --profile) [[ $# -ge 2 ]] || fail "--profile 값이 필요합니다"; profile=$2; shift 2 ;; *) fail "알 수 없는 옵션: $1" ;; esac
+        case $1 in --enable) enabled=1; shift ;; --dry-run) dry_run=1; shift ;; --profile) [[ $# -ge 2 ]] || fail "--profile 값이 필요합니다"; profile=$2; profile_given=1; shift 2 ;; *) fail "알 수 없는 옵션: $1" ;; esac
       done
+      if [[ $profile_given == 1 ]] && ! is_common_signal "$attack"; then
+        load_profile_env "$profile"
+        require_runnable_backend
+      fi
       run_one "$attack" "$mode" "$run_id" "$enabled" "$dry_run" "$profile"
       ;;
     campaign)
@@ -533,8 +555,12 @@ main() {
       attack=$(attack_id "$2") || fail "알 수 없는 공격 ID: $2"
       if [[ ${3:-} == --* || -z ${3:-} ]]; then target="$attack-campaign-$(date -u +%Y%m%dT%H%M%SZ)"; shift 2; else target=$3; shift 3; fi
       while [[ $# -gt 0 ]]; do
-        case $1 in --enable) enabled=1; shift ;; --dry-run) dry_run=1; shift ;; --profile) [[ $# -ge 2 ]] || fail "--profile 값이 필요합니다"; profile=$2; shift 2 ;; *) fail "알 수 없는 옵션: $1" ;; esac
+        case $1 in --enable) enabled=1; shift ;; --dry-run) dry_run=1; shift ;; --profile) [[ $# -ge 2 ]] || fail "--profile 값이 필요합니다"; profile=$2; profile_given=1; shift 2 ;; *) fail "알 수 없는 옵션: $1" ;; esac
       done
+      if [[ $profile_given == 1 ]] && ! is_common_signal "$attack"; then
+        load_profile_env "$profile"
+        require_runnable_backend
+      fi
       campaign_one "$attack" "$target" "$enabled" "$dry_run" "$profile"
       ;;
     replay)

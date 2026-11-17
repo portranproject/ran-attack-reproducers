@@ -25,6 +25,11 @@
 실행은 `--enable`을 요구한다. 중단·timeout 후 UE·telemetry·detector 잔존 프로세스와 설정
 원복을 확인한다. large raw evidence는 원격 보관하고 Git에는 정제 입력·판정·SHA-256만 둔다.
 
-2026-11-12 inventory 감사에서 기본 CU·DU와 과거 lane 7대는 모두 stopped였고, 기본 두
-대만 짧게 기동해 현재 detection/telemetry 미배포를 확인한 뒤 다시 중지했다. 따라서 새
-7개 룰의 p5 live 자격과 기존 6개 룰의 새 통합 detector 종단 자격은 pending이다.
+2026-11-17 기준 production detector `766f5569...`, TeleRAN `7550153a...`를 사용했다.
+7개 L3 공격은 모두 p5 실제 경로 matched 3/3을 통과했고 6개 AN 입력 fixture는 공격 자격
+범위 밖의 replay 회귀로만 유지한다. L3-01-V·L3-01-O·L3-20·L3-24·L3-14 결과는
+[공통 E2E 기록](artifacts/p5-live-e2e-five-20261117/), L3-21과 L3-06은 각 모듈 artifact를
+따른다. 종료 뒤 CU·DU와 과거 lane 7대가 모두 stopped임을 확인했다.
+
+p5가 아닌 같은 스택의 ZMQ 호스트는 [포팅 가이드](PORTING-GUIDE.md)에 따라 별도 profile과
+module conf를 만든다. p5 자격 결과를 새 환경의 자격으로 그대로 옮겨 적지 않는다.

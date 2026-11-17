@@ -385,6 +385,8 @@ def signal_run(scenario_name: str, mode: str, run_id_value: str, profile_name: s
     if manifest["commands"]["run"] != "@common-signal":
         raise ReproError(f"공통 입력 runner 대상이 아닙니다: {manifest['id']}")
     profile_path_value, profile = load_profile(profile_name)
+    if manifest["environments"].get(profile["backend"]) == "not-applicable":
+        raise ReproError(f"{manifest['id']}은 {profile['backend']} 환경 실행 대상이 아닙니다")
     check_private_credentials(profile)
     binary, config = detector_paths(profile)
     root = run_root(profile)
@@ -610,6 +612,7 @@ def command_env(profile_name: str) -> None:
     _, profile = load_profile(profile_name)
     for key, value in sorted(profile["environment"].items()):
         print(f"{key}={value}")
+    print(f"RAN_REPRO_BACKEND={profile['backend']}")
     print(f"RAN_REPRO_RUN_ROOT={profile['run_root']}")
 
 

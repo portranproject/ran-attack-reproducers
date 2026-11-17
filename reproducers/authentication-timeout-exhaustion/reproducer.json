@@ -28,6 +28,9 @@
       "https://www.ndss-symposium.org/wp-content/uploads/2024-527-paper.pdf",
       "https://syssec.kaist.ac.kr/pub/2019/kim_sp_2019.pdf"
     ],
-    "upstream": ["OAI 6d6782b48484efd935c14e834832032743f9b138"]
+    "upstream": [
+      "OAI 6d6782b48484efd935c14e834832032743f9b138",
+      "OAI 1c2f4d3c2e68181cdef9f426d161163147ad4b77"
+    ]
   }
 }

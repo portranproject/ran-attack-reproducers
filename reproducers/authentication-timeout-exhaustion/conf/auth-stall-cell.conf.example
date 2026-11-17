@@ -1,0 +1,14 @@
+# production L3-01-O 자격시험용. 실제 경로와 가입자 설정 목록은 Git 밖 파일로 둔다.
+AUTH_STALL_CELL_RUN_ROOT=/root/auth-timeout-cell-runs
+AUTH_STALL_CELL_UE_COUNT=10
+AUTH_STALL_CELL_PROCESS_COUNT=2
+AUTH_STALL_CELL_UES_PER_PROCESS=5
+AUTH_STALL_CELL_READY_TIMEOUT_S=120
+AUTH_STALL_CELL_POST_MARKER_S=5
+AUTH_STALL_CELL_START_INTERVAL_MS=50
+OAI_BIN=/root/OAI-auth-multi-ru-e2e/cmake_targets/ran_build/build/nr-uesoftmodem
+UECAP=/root/OAI-auth-multi-ru-e2e/targets/PROJECTS/GENERIC-NR-5GC/CONF/uecap_ports1.xml
+ATTACKER_CONFIGS_FILE=/root/auth-timeout-secrets/attacker-configs-10ue.txt
+BROKER_SCRIPT=/root/ran-attack-reproducers/workloads/normal-ue/tools/same_cell_broker.py
+DU_BIN=/root/OCUDU/build/apps/du/odu
+DU_CONFIG=/root/OCUDU/configs/du-broker-default.yaml

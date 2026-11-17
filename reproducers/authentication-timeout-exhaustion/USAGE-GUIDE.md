@@ -5,8 +5,8 @@
 OAI UE 패치, 다중 UICC 가입자 중복 검사, OCUDU·Open5GS 로그 조인, direct multi-cell ZMQ
 phase driver, 단일·캠페인 판정과 SHA-256 봉인을 구현했다. p5에서 정상 대조군과 인증 응답
 미전송 기전, 공격자 6명의 동시 pre-auth 컨텍스트를 확인했다. 이 부하에서는 witness 서비스
-거부가 발생하지 않았다. 이 모듈은 **기전·탐지 입력 재현기**로 동결하며 서비스 거부를
-완료 조건으로 요구하지 않는다.
+거부가 발생하지 않았다. 별도 한 셀 10 UE 경로는 실제 TeleRAN→production detector
+matched 3/3을 통과했다. 서비스 거부는 완료 조건으로 요구하지 않는다.
 
 ## 2. 전제
 
@@ -116,6 +116,26 @@ AUTH_TIMEOUT_CONF=conf/auth-timeout.conf \
 `max(10초, control 최장 정상 등록시간 × 3)`을 계산해 바로 다음 attack의 `-t` 값으로
 고정한다. attack 결과를 보고 제한시간을 변경하지 않는다.
 
+### production L3-01-O 한 셀 자격 실행
+
+`auth-stall-cell-run`은 UE별 독립 virtual RU 10개를 broker로 한 DU·셀에 합친다. 실제
+가입자 설정 목록은 Git 밖에 두고 예제 설정을 복사해 경로만 채운다.
+
+```bash
+cp conf/auth-stall-cell.conf.example conf/auth-stall-cell.conf
+chmod 600 conf/auth-stall-cell.conf
+
+AUTH_STALL_CELL_CONF=conf/auth-stall-cell.conf \
+  ./bin/auth-stall-cell-run control -n auth-cell-control -e 0
+
+AUTH_STALL_CELL_CONF=conf/auth-stall-cell.conf \
+  ./bin/auth-stall-cell-run attack -n auth-cell-attack -e 1
+```
+
+공격 runner는 gNB·코어·detector를 수정하지 않으며, 공격 모드에서 각 UE의
+Authentication Response 제출만 생략한다. 공통 `tools/p5-live-e2e`로 감싸면 같은 실행
+시간창의 F1/N2를 TeleRAN과 production detector에 전달하고 dashboard 수락까지 채점한다.
+
 ## 7. 판정 읽기
 
 `verdict.json`은 세 수준을 분리한다.
@@ -145,13 +165,14 @@ lifecycle만 입력한다. UE의 `attacker_truth.jsonl`, Open5GS 원문, 가입�
 - control 대비 pre-auth context 피크와 상위 percentile 수명 변화
 
 탐지 출력에는 관측 시작·종료 시각, 경보 시각, threshold, 활성 context 추정치와 입력 원문
-SHA-256을 남긴다. 이후 oracle과 조인해 정탐·오탐·탐지 지연을 채점한다. 현재 모듈은 이
-입력과 정답을 제공하지만 특정 detector의 성능이 이미 검증됐다고 주장하지 않는다.
+SHA-256을 남긴다. 이후 oracle과 조인해 정탐·오탐·탐지 지연을 채점한다. production
+detector 기본 설정의 p5 표본에서는 공격 3/3 정탐, 대조군 예상 공격 경보 0/3이었다.
 
-## 9. 동결 범위
+## 9. 운영 범위
 
 - 검증된 기본 프로필: direct 4-cell, 공격자 3프로세스×2 UICC, witness 1프로세스
 - 확인 결과: Response 억제 30건, exact context 30개, 피크 동시 6개
+- production 자격 프로필: 한 셀 2프로세스×5 UE, L3-01-O matched 3/3
 - 미관측: 정상 witness 서비스 거부, 기지국 전체 마비
 - 제외: 정식 증거로 봉인되지 않은 20가입자·5-lane 분산 진단
 

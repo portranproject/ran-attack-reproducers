@@ -7,7 +7,7 @@
 
 공통 기반인 OAI·OCUDU·Open5GS는 공격 레퍼런스가 아니라 실행 환경이다. 탐지 임계값과
 경보 조건은 논문에서 임의로 가져오지 않고, `integration.lock.json`에 고정한
-[production detector](https://github.com/portranproject/detection/tree/a34b358e585e24aa91b1586da022ad14ef98d3e0)의
+[production detector](https://github.com/portranproject/detection/tree/766f5569d0ddb425c14bf210a31c38ac60eceef9)의
 실제 규칙을 사용한다.
 
 ## 실제 프로토콜 또는 프로토콜 결과를 만드는 모듈
@@ -108,7 +108,7 @@
   [Shaik 등의 UE Capability Hijacking 연구](https://zenodo.org/records/4671828/files/New%20vulnerabilities%20in%204G%20and%205G%20cellular%20access%20networkprotocols%20%20exposing%20device%20capabilities.pdf),
   [3GPP TS 38.331 보관소](https://www.3gpp.org/ftp/Specs/archive/38_series/38.331/),
   [OAI w38 UE RRC 구현](https://gitlab.eurecom.fr/oai/openairinterface5g/-/blob/1c2f4d3c2e68181cdef9f426d161163147ad4b77/openair2/RRC/NR_UE/rrc_UE.c),
-  [팀 L3-14 규칙](https://github.com/portranproject/detection/blob/a34b358e585e24aa91b1586da022ad14ef98d3e0/src/core/rules/cap_hijack.cpp)
+  [팀 L3-14 규칙](https://github.com/portranproject/detection/blob/766f5569d0ddb425c14bf210a31c38ac60eceef9/src/core/rules/cap_hijack.cpp)
 - **참고한 부분**: AS 보안 전 capability 질의·응답이 노출되는 원인, MITM이 응답 내용을
   바꾸는 원형, 표준 메시지 순서와 OAI의 기존 encoder·SRB1 전송 경로를 참고했다.
 - **가져오지 않은 부분**: 조사 범위에서 공개된 원 논문의 MITM 공격 코드를 확인하지
@@ -126,7 +126,7 @@
 
 | 룰·모듈 | 레퍼런스 | 참고한 부분 | 이 저장소가 구현한 부분과 한계 |
 |---|---|---|---|
-| L3-06 NAS 카운터 비동기화 결과 | [5G-Spector 논문](https://www.csl.sri.com/users/gehani/papers/NDSS-2024.5G-Spector.pdf) | NAS 보안 상태가 맞지 않을 때 나타나는 SecurityModeReject 계열 순서 | 선행 SecurityModeCommand와 짝이 없는 Reject 입력, 대조군, replay·판정·봉인. 실제 NAS count 변조와 Reject 원인은 미관측 |
+| L3-06 요청되지 않은 NAS SecurityModeReject 결과 | [5GReasoner](https://syed-rafiul-hussain.github.io/wp-content/uploads/2019/10/5GReasoner.pdf), [5G-SPECTOR](https://dev.ndss-symposium.org/wp-content/uploads/2024-527-paper.pdf) | invalid NAS SMC 반복→UE Reject→MITM drop→UE·AMF 상향 NAS counter divergence 원형과 메시지 관측 계보 | OAI UE가 요청되지 않은 Reject를 one-shot으로 실제 UE→DU/CU→TeleRAN→production detector 경로에 송신. 외부 코드는 복사하지 않음. MITM·invalid SMC 실제 수신·counter wrap·DoS는 미관측 |
 | AN-01 인증 동기 실패 | [LTEInspector 고정 소스](https://github.com/relentless-warrior/LTEInspector/tree/033184ce35f2dee31ed1103c1289a57d48579b2a), [5G-Spector 논문](https://www.csl.sri.com/users/gehani/papers/NDSS-2024.5G-Spector.pdf) | AuthenticationFailure cause 21과 이후 재인증 흐름 | 정상/이상 시퀀스와 production replay. USIM SQN·코어 SQN을 실제로 어긋나게 하지는 않음 |
 | AN-06a NAS 카운터 reset 계열 | [5G-Spector 논문](https://www.csl.sri.com/users/gehani/papers/NDSS-2024.5G-Spector.pdf) | 보안 수립 뒤 같은 UE에 AuthenticationRequest·NAS SMC가 다시 나타나는 상태 | same-context 입력, matched campaign·판정·봉인. 실제 counter reset과 UE·AMF 수락은 미관측 |
 | AN-02 GUTI 불일치 후 상향 식별자 요청 결과 | [5G-Spector 고정 소스](https://github.com/5GSEC/5G-Spector/tree/63e94b9ad8860298894ed7a94e52f00faea02719), [논문](https://www.csl.sri.com/users/gehani/papers/NDSS-2024.5G-Spector.pdf) | GUTI 기반 등록 뒤 IdentityRequest가 반복되는 탐지 상태 | 가명화된 반복 입력과 threshold-bound control. RF 공격과 실제 IMSI/SUPI 획득은 미관측 |

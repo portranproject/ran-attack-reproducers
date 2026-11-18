@@ -680,7 +680,7 @@ usage() {
   ./ctl.sh verify RUN_ID [--profile p5|ota]
   ./ctl.sh coverage
   ./ctl.sh validate
-  ./ctl.sh normal-ue setup|doctor|start|status|stop [--profile p5] [--count N]
+  ./ctl.sh normal-ue setup|build|doctor|start|status|stop [--profile p5] [--count N]
   ./ctl.sh same-cell doctor --profile p5
   ./ctl.sh same-cell run ID --profile p5 --mode control|attack|emulation [--run-id ID] [--enable]
   ./ctl.sh same-cell campaign l3-live --profile p5 --sets 3 --count 5 --enable

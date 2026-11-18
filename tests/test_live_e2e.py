@@ -2,6 +2,7 @@ import hashlib
 import json
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from tools.verify_live_e2e import DETECTOR_COMMIT, verify
@@ -49,10 +50,12 @@ class LiveE2ETest(unittest.TestCase):
             (root / "same-cell-normal-health.jsonl").write_text(
                 "".join(json.dumps(row) + "\n" for row in health)
             )
-            verdict = verify(root, "ue-capability-hijacking", "emulation", "cap-e2e-1", child,
-                             require_same_cell=True)
+            with mock.patch.dict("os.environ", {"RAN_REPRO_PROFILE_ID": "p1"}):
+                verdict = verify(root, "ue-capability-hijacking", "emulation", "cap-e2e-1", child,
+                                 require_same_cell=True)
             self.assertTrue(verdict["passed"])
             self.assertEqual(verdict["observed_alerts"], 1)
+            self.assertEqual(json.loads((root / "run.json").read_text())["profile"], "p1")
             self.assertEqual(json.loads((root / "oracle.jsonl").read_text())["checks"]["same_cell"]["normal_after"], 5)
             self.assertEqual(hashlib.sha256((root / "mechanism.json").read_bytes()).hexdigest(),
                              json.loads((root / "run.json").read_text())["source"]["mechanism_sha256"])

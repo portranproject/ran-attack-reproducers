@@ -40,7 +40,7 @@ diff --git a/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c b/openair2/LAYER2/NR_MA
  
  /* exe */
  #include <common/utils/nr/nr_common.h>
-@@ -2560,6 +2565,65 @@ static bool nr_ue_get_sdu(NR_UE_MAC_INST_t *mac,
+@@ -2560,6 +2565,68 @@ static bool nr_ue_get_sdu(NR_UE_MAC_INST_t *mac,
    return true; // success if we got at least one sdu
  }
  
@@ -109,7 +109,7 @@ diff --git a/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c b/openair2/LAYER2/NR_MA
  void nr_ue_ul_scheduler(NR_UE_MAC_INST_t *mac, nr_uplink_indication_t *ul_info)
  {
    int cc_id = ul_info->cc_id;
-@@ -2567,6 +2631,9 @@ void nr_ue_ul_scheduler(NR_UE_MAC_INST_t *mac, nr_uplink_indication_t *ul_info)
+@@ -2567,6 +2634,9 @@ void nr_ue_ul_scheduler(NR_UE_MAC_INST_t *mac, nr_uplink_indication_t *ul_info)
    slot_t slot_tx = ul_info->slot;
    RA_config_t *ra = &mac->ra;
  

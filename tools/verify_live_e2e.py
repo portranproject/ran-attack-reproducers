@@ -118,6 +118,9 @@ def verify(root: Path, scenario: str, mode: str, run_id: str, child: Path,
     if mode not in {"control", "attack", "emulation"}:
         raise ValueError("mode가 잘못됐습니다")
     active = mode != "control"
+    profile_id = os.environ.get("RAN_REPRO_PROFILE_ID", "p5")
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", profile_id) is None:
+        raise ValueError("profile id가 잘못됐습니다")
 
     telemetry = root / "live/telemetry.jsonl"
     observations = root / "observations.jsonl"
@@ -194,7 +197,7 @@ def verify(root: Path, scenario: str, mode: str, run_id: str, child: Path,
               "mechanism_passed": mechanism_ok, "same_cell": same_cell_summary}
     passed = mechanism_ok and input_ok and detector_ok and delivery_ok and same_cell_ok
     run = {"schema": "ran-reproducer.run.v1", "run_id": run_id, "scenario_id": scenario,
-           "rule_ids": [rule], "mode": mode, "profile": "p5", "reproduction_level": level,
+           "rule_ids": [rule], "mode": mode, "profile": profile_id, "reproduction_level": level,
            "started_at": started_at(hello[0].get("session")), "period_ms": 100,
            "source": {"detector": components["detector"], "telemetry": components["telemetry"],
                       "mechanism_sha256": sha256(root / "mechanism.json")},

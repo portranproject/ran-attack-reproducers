@@ -131,7 +131,7 @@ gap 0, KPM 존재, 예상 RAISE 수, dashboard 수락과 child 기전 판정을 
 
 ## profile
 
-`profiles/p4.example.json`, `profiles/p5.example.json` 또는 `profiles/ota.example.json`을
+`profiles/p1.example.json`, `profiles/p4.example.json`, `profiles/p5.example.json` 또는 `profiles/ota.example.json`을
 같은 디렉터리의 `.json`으로 복사해 실제 경로를 채운다. 실제 profile은 Git에서 제외된다.
 `doctor`는 다음을 fail-closed로 확인한다.
 
@@ -140,6 +140,7 @@ gap 0, KPM 존재, 예상 RAISE 수, dashboard 수락과 child 기전 판정을 
 - detector·telemetry 고정 commit과 실행 파일, detector config SHA-256
 - telemetry `period_ms=100`
 - p5의 경우 `credentials_file`의 `SSH_KEY`·`KNOWN_HOSTS`로 CU production 구성 원격 확인
+- 실제 E2E 설정의 CU platform·dashboard CA·환경/node 라벨과 profile 경로 일치
 - DU의 공통 실행 명령과 L3-24·L3-14 증거 수집에 필요한 `tshark`
 - credential 파일이 있으면 권한 0600 이하
 - OTA는 SDR serial 두 개 이상과 `shielding_confirmed=true`

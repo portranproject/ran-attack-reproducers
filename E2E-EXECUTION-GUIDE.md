@@ -30,16 +30,20 @@ git pull --ff-only
 git status --short
 ```
 
-`git status --short` 출력은 비어 있어야 한다. p4는 다음처럼 profile을 만든다.
+`git status --short` 출력은 비어 있어야 한다. p1은 다음처럼 profile과 실제 E2E 설정을 만든다.
 
 ```bash
-cp profiles/p4.example.json profiles/p4.json
-chmod 600 profiles/p4.json
-# p4의 CU·DU 주소, 허용 대상, credential 경로를 채운다.
-./ctl.sh doctor --profile p4
+cp profiles/p1.example.json profiles/p1.json
+install -m 600 profiles/live-e2e.example.conf /root/.config/ran-reproducer/p1-live-e2e.env
+chmod 600 profiles/p1.json
+# p1의 CU·DU 주소, 허용 대상, credential·E2E 경로와 인터페이스를 채운다.
+./ctl.sh doctor --profile p1
 ```
 
 실제 profile, 가입자 설정, SSH key는 Git 밖에 두고 권한을 `0600` 이하로 둔다.
+`credentials_file`과 `LIVE_E2E_CONF`의 SSH key·known_hosts 경로는 같아야 한다. profile의
+`CU_PLATFORM_ROOT`는 CU에 설치한 detector·telemetry의 공통 상위 경로이며,
+`CU_DASHBOARD_ENV`와 `CU_TELEMETRY_NODE`는 환경 이름(`p1`, `p1-e2e`)을 사용한다.
 
 ## L3 7종 same-cell 통합 경로
 

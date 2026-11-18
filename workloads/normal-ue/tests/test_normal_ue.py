@@ -7,6 +7,7 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / "workloads" / "normal-ue" / "bin" / "normal-ue"
+BUILD_SCRIPT = ROOT / "workloads" / "normal-ue" / "bin" / "normal-ue-build"
 
 
 class NormalUeTests(unittest.TestCase):
@@ -105,7 +106,26 @@ class NormalUeTests(unittest.TestCase):
     def test_help_does_not_require_runtime_config(self):
         result = subprocess.run([str(SCRIPT), "--help"], text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("normal-ue setup|doctor|prepare|start|status|stop", result.stdout)
+        self.assertIn("normal-ue setup|build|doctor|prepare|start|status|stop", result.stdout)
+
+    def test_clean_build_uses_the_complete_ordered_patch_stack(self):
+        source = BUILD_SCRIPT.read_text()
+        expected = [
+            "rss-ue-curated.patch",
+            "oai-stale-rnti-dci.patch",
+            "oai-msg4-ack-rnti.patch",
+            "oai-broker-control-gate.patch",
+            "normal-multi-ru.patch",
+            "normal-probe-phase.patch",
+            "normal-tun-suffix.patch",
+            "normal-reconnect-w38.patch",
+        ]
+        positions = [source.index(name) for name in expected]
+        self.assertEqual(positions, sorted(positions))
+        self.assertIn('git -C "$OAI" apply --cached "$patch"', source)
+        self.assertIn("./build_oai --nrUE -w ZMQ --ninja", source)
+        for marker in ("RSS_SHARE_NUE", "OAI_NORMAL_TUN_SUFFIX", "NORMAL_UE_RECOVERY"):
+            self.assertIn(marker, source)
 
     def test_prepare_writes_private_independent_ru_runtime_config(self):
         state = self.root / "same-cell-state"

@@ -7,8 +7,14 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 python3 "$ROOT/tools/reproctl.py" checkout >/dev/null
 CONF=${LIVE_E2E_CONF:-/root/live-e2e.conf}
 [[ -f $CONF && ! -L $CONF ]] || { echo "안전한 LIVE_E2E_CONF가 필요합니다: $CONF" >&2; exit 2; }
+PROFILE_PLATFORM_ROOT=${CU_PLATFORM_ROOT:-}
+PROFILE_DASHBOARD_ENV=${CU_DASHBOARD_ENV:-}
+PROFILE_TELEMETRY_NODE=${CU_TELEMETRY_NODE:-}
 # shellcheck source=/dev/null
 . "$CONF"
+[[ -z $PROFILE_PLATFORM_ROOT ]] || CU_PLATFORM_ROOT=$PROFILE_PLATFORM_ROOT
+[[ -z $PROFILE_DASHBOARD_ENV ]] || CU_DASHBOARD_ENV=$PROFILE_DASHBOARD_ENV
+[[ -z $PROFILE_TELEMETRY_NODE ]] || CU_TELEMETRY_NODE=$PROFILE_TELEMETRY_NODE
 
 [[ $# -ge 7 && $6 == -- ]] || {
   echo "사용법: $0 SCENARIO MODE RUN_ID RULE CHILD_DIR|auto -- COMMAND..." >&2; exit 2;
@@ -23,7 +29,8 @@ CU_F1_INTERFACE=${CU_F1_INTERFACE:-ens5}
 CU_N2_INTERFACE=${CU_N2_INTERFACE:-br-6afe1528cfa6}
 CU_DASHBOARD_URL=${CU_DASHBOARD_URL:-https://127.0.0.1/ingest}
 CU_DASHBOARD_CA_FILE=${CU_DASHBOARD_CA_FILE:-/home/ubuntu/portran-e2e-20261113/dashboard/certs/ingest.crt}
-CU_DASHBOARD_ENV=${CU_DASHBOARD_ENV:-p5}
+CU_DASHBOARD_ENV=${CU_DASHBOARD_ENV:-${RAN_REPRO_PROFILE_ID:-p5}}
+CU_TELEMETRY_NODE=${CU_TELEMETRY_NODE:-${RAN_REPRO_PROFILE_ID:-p5}-e2e}
 PRE_CHILD_S=${LIVE_E2E_PRE_CHILD_S:-0}
 POST_CHILD_S=${LIVE_E2E_POST_CHILD_S:-4}
 REQUIRE_SAME_CELL=${LIVE_E2E_REQUIRE_SAME_CELL:-0}
@@ -40,6 +47,8 @@ fail() { echo "p5-live-e2e: $*" >&2; exit 2; }
 [[ $RUN_ROOT == /* && $RUN_ROOT != / && $CU_LIVE_RUN_ROOT == /* && $CU_LIVE_RUN_ROOT != / ]] || fail "run root가 안전하지 않습니다"
 [[ $CU_HOST =~ ^[A-Za-z_][A-Za-z0-9_-]*@[A-Za-z0-9.-]+$ ]] || fail "CU_HOST는 user@host 형식이어야 합니다"
 [[ $CU_DASHBOARD_URL == https://* ]] || fail "dashboard URL은 https여야 합니다"
+[[ $CU_DASHBOARD_ENV =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] || fail "dashboard 환경 라벨이 잘못됐습니다"
+[[ $CU_TELEMETRY_NODE =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] || fail "telemetry node 라벨이 잘못됐습니다"
 for value in "$PRE_CHILD_S" "$POST_CHILD_S"; do [[ $value =~ ^[0-9]+$ ]] || fail "대기 시간은 0 이상의 정수여야 합니다"; done
 for file in "$SSH_KEY" "$CU_DASHBOARD_CA_FILE" "$ROOT/tools/verify_live_e2e.py"; do
   [[ $file == "$CU_DASHBOARD_CA_FILE" || -f $file && ! -L $file ]] || fail "필수 일반 파일이 없습니다: $file"
@@ -62,9 +71,9 @@ LIVE_COLLECTED=0
 start_live() {
   ssh "${ssh_args[@]}" "$CU_HOST" sudo bash -s -- \
     "$CU_PLATFORM_ROOT" "$CU_OUT" "$CU_F1_INTERFACE" "$CU_N2_INTERFACE" "$CU_OWNER" \
-    "$CU_DASHBOARD_URL" "$CU_DASHBOARD_CA_FILE" "$CU_DASHBOARD_ENV" <<'REMOTE'
+    "$CU_DASHBOARD_URL" "$CU_DASHBOARD_CA_FILE" "$CU_DASHBOARD_ENV" "$CU_TELEMETRY_NODE" <<'REMOTE'
 set -euo pipefail
-platform=$1 out=$2 f1=$3 n2=$4 owner=$5 dashboard_url=$6 dashboard_ca=$7 dashboard_env=$8
+platform=$1 out=$2 f1=$3 n2=$4 owner=$5 dashboard_url=$6 dashboard_ca=$7 dashboard_env=$8 telemetry_node=$9
 sock=/run/ran-detect/$(basename "$out").sock
 [[ ! -e $out ]] || { echo "remote run already exists: $out" >&2; exit 2; }
 for file in "$platform/detection/build/detector" "$platform/detection/config/detector.json" \
@@ -95,7 +104,7 @@ setsid "$platform/detection/build/detector" --socket "$sock" --config "$out/dete
 for _ in {1..100}; do [[ -S $sock ]] && break; sleep .1; done
 [[ -S $sock ]] || { echo "detector socket timeout" >&2; exit 2; }
 setsid "$platform/telemetry/build/portran" -g 100 --sock "$sock" --record "$out/telemetry.jsonl" \
-  --node p5-e2e "f1:$f1" "n2:$n2" >"$out/telemetry.stdout" 2>"$out/telemetry.stderr" </dev/null &
+  --node "$telemetry_node" "f1:$f1" "n2:$n2" >"$out/telemetry.stdout" 2>"$out/telemetry.stderr" </dev/null &
 echo $! >"$out/telemetry.pid"
 chown -R "$owner:$owner" "$out"
 REMOTE

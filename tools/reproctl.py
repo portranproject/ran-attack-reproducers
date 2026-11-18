@@ -214,6 +214,8 @@ def validate_profile(value: dict[str, Any], path: Path, require_ready: bool) -> 
         raise ReproError(f"profile 필드가 없습니다({','.join(sorted(missing))}): {path}")
     if value["schema"] != "ran-reproducer.profile.v1" or value["backend"] not in {"p5", "ota", "replay"}:
         raise ReproError(f"profile schema/backend가 잘못됐습니다: {path}")
+    if not isinstance(value["id"], str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", value["id"]):
+        raise ReproError(f"profile id가 잘못됐습니다: {path}")
     if value["lab_only"] is not True:
         raise ReproError("lab_only=true인 격리 환경만 허용합니다")
     if require_ready and value["configured"] is not True:
@@ -270,41 +272,93 @@ def check_private_credentials(profile: dict[str, Any]) -> None:
         raise ReproError(f"credentials_file 권한은 0600 이하여야 합니다: {path}")
 
 
-def private_credentials(profile: dict[str, Any]) -> dict[str, str]:
-    check_private_credentials(profile)
-    raw = profile.get("credentials_file")
-    if raw is None:
-        return {}
+def env_file(path: Path, label: str) -> dict[str, str]:
     values: dict[str, str] = {}
-    for number, source in enumerate(regular(Path(raw), "credentials_file").read_text(encoding="utf-8").splitlines(), 1):
+    for number, source in enumerate(regular(path, label).read_text(encoding="utf-8").splitlines(), 1):
         line = source.strip()
         if not line or line.startswith("#"):
             continue
         if line.startswith("export "):
             line = line[7:].lstrip()
         if "=" not in line:
-            raise ReproError(f"credentials_file:{number}는 NAME=VALUE 형식이어야 합니다")
+            raise ReproError(f"{label}:{number}는 NAME=VALUE 형식이어야 합니다")
         name, encoded = line.split("=", 1)
         if not ENV_NAME.fullmatch(name):
-            raise ReproError(f"credentials_file:{number} 변수명이 잘못됐습니다")
+            raise ReproError(f"{label}:{number} 변수명이 잘못됐습니다")
         try:
             tokens = shlex.split(encoded, comments=True, posix=True)
         except ValueError as error:
-            raise ReproError(f"credentials_file:{number} 값이 잘못됐습니다: {error}") from error
+            raise ReproError(f"{label}:{number} 값이 잘못됐습니다: {error}") from error
         if len(tokens) != 1 or "\n" in tokens[0]:
-            raise ReproError(f"credentials_file:{number} 값은 하나여야 합니다")
+            raise ReproError(f"{label}:{number} 값은 하나여야 합니다")
         values[name] = tokens[0]
     return values
+
+
+def private_credentials(profile: dict[str, Any]) -> dict[str, str]:
+    check_private_credentials(profile)
+    raw = profile.get("credentials_file")
+    return {} if raw is None else env_file(Path(raw), "credentials_file")
+
+
+def live_e2e_settings(profile: dict[str, Any]) -> dict[str, str]:
+    environment = profile["environment"]
+    conf = Path(environment.get("LIVE_E2E_CONF", "/root/live-e2e.conf"))
+    if not conf.is_absolute():
+        raise ReproError("LIVE_E2E_CONF는 절대 경로여야 합니다")
+    mode = stat.S_IMODE(regular(conf, "LIVE_E2E_CONF").stat().st_mode)
+    if mode & 0o077:
+        raise ReproError(f"LIVE_E2E_CONF 권한은 0600 이하여야 합니다: {conf}")
+    settings = env_file(conf, "LIVE_E2E_CONF")
+    for name in ("CU_PLATFORM_ROOT", "CU_DASHBOARD_ENV", "CU_TELEMETRY_NODE"):
+        if name in environment:
+            settings[name] = environment[name]
+    required = {
+        "CU_HOST", "SSH_KEY", "KNOWN_HOSTS", "CU_PLATFORM_ROOT", "CU_LIVE_RUN_ROOT",
+        "CU_F1_INTERFACE", "CU_N2_INTERFACE", "CU_DASHBOARD_URL", "CU_DASHBOARD_CA_FILE",
+        "CU_DASHBOARD_ENV", "CU_TELEMETRY_NODE",
+    }
+    missing = required - settings.keys()
+    if missing:
+        raise ReproError(f"LIVE_E2E 설정이 없습니다({','.join(sorted(missing))}): {conf}")
+    for name in ("CU_PLATFORM_ROOT", "CU_LIVE_RUN_ROOT", "CU_DASHBOARD_CA_FILE", "SSH_KEY", "KNOWN_HOSTS"):
+        if not Path(settings[name]).is_absolute() or Path(settings[name]) == Path("/"):
+            raise ReproError(f"{name}은 안전한 절대 경로여야 합니다")
+    if settings["CU_HOST"] != environment.get("P5_CU_HOST"):
+        raise ReproError("LIVE_E2E CU_HOST와 profile P5_CU_HOST가 다릅니다")
+    if not settings["CU_DASHBOARD_URL"].startswith("https://"):
+        raise ReproError("CU_DASHBOARD_URL은 https여야 합니다")
+    for name in ("CU_DASHBOARD_ENV", "CU_TELEMETRY_NODE"):
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", settings[name]):
+            raise ReproError(f"{name} 라벨이 잘못됐습니다")
+    platform = Path(settings["CU_PLATFORM_ROOT"])
+    expected = {
+        "detector binary": platform / "detection/build/detector",
+        "detector config": platform / "detection/config/detector.json",
+        "telemetry binary": platform / "telemetry/build/portran",
+    }
+    actual = {
+        "detector binary": Path(profile["detector"]["binary"]),
+        "detector config": Path(profile["detector"]["config"]),
+        "telemetry binary": Path(profile["telemetry"]["binary"]),
+    }
+    for label, path in expected.items():
+        if actual[label] != path:
+            raise ReproError(f"profile {label}과 LIVE_E2E 실행 경로가 다릅니다: {actual[label]} != {path}")
+    return settings
 
 
 def p5_remote_components(profile: dict[str, Any]) -> dict[str, str]:
     environment = profile["environment"]
     credentials = private_credentials(profile)
+    live = live_e2e_settings(profile)
     host = environment.get("P5_CU_HOST", "")
     if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_-]*@[A-Za-z0-9.-]+", host):
         raise ReproError("P5_CU_HOST는 user@host 형식이어야 합니다")
     key = regular(Path(credentials.get("SSH_KEY", "")), "SSH_KEY")
     known_hosts = regular(Path(credentials.get("KNOWN_HOSTS", "")), "KNOWN_HOSTS")
+    if Path(live["SSH_KEY"]) != key or Path(live["KNOWN_HOSTS"]) != known_hosts:
+        raise ReproError("LIVE_E2E와 profile credentials의 SSH 경로가 다릅니다")
     if stat.S_IMODE(key.stat().st_mode) & 0o077:
         raise ReproError(f"SSH_KEY 권한은 0600 이하여야 합니다: {key}")
     detector = profile["detector"]
@@ -313,6 +367,8 @@ def p5_remote_components(profile: dict[str, Any]) -> dict[str, str]:
         "detector": detector["binary"],
         "detector_config": detector["config"],
         "telemetry": telemetry["binary"],
+        "dashboard_sender": str(Path(live["CU_PLATFORM_ROOT"]) / "detection/tools/dashboard_sender.py"),
+        "dashboard_ca": live["CU_DASHBOARD_CA_FILE"],
     }
     if any(not Path(value).is_absolute() for value in paths.values()):
         raise ReproError("p5 production component 경로는 절대 경로여야 합니다")
@@ -326,7 +382,7 @@ request=json.loads(sys.argv[1]); result={}
 for name,raw in request["paths"].items():
     path=pathlib.Path(raw)
     if path.is_symlink() or not path.is_file(): raise SystemExit(f"missing production component: {name}")
-    if name != "detector_config" and not os.access(path, os.X_OK): raise SystemExit(f"component is not executable: {name}")
+    if name in ("detector","telemetry") and not os.access(path, os.X_OK): raise SystemExit(f"component is not executable: {name}")
     result[name+"_sha256"]=hashlib.sha256(path.read_bytes()).hexdigest()
 for name,expected in (("detector",request["detector_commit"]),("telemetry",request["telemetry_commit"])):
     revision=pathlib.Path(request["paths"][name]).parent.parent/".deployed-revision"
@@ -345,7 +401,8 @@ print(json.dumps(result,sort_keys=True))'''
         verified = json.loads(result.stdout)
     except json.JSONDecodeError as error:
         raise ReproError("CU production component 응답이 JSON이 아닙니다") from error
-    expected = {"detector_sha256", "detector_config_sha256", "telemetry_sha256"}
+    expected = {"detector_sha256", "detector_config_sha256", "telemetry_sha256",
+                "dashboard_sender_sha256", "dashboard_ca_sha256"}
     if set(verified) != expected or any(not SHA256.fullmatch(str(verified[name])) for name in expected):
         raise ReproError("CU production component 해시 응답이 잘못됐습니다")
     return {name: str(value) for name, value in verified.items()}
@@ -721,10 +778,12 @@ def command_doctor(profile_name: str) -> None:
     print(f"OK manifest: {manifest_count}개")
     print(f"OK profile: {profile_path_value}")
     if profile["backend"] == "p5":
+        live = live_e2e_settings(profile)
         verified = p5_remote_components(profile)
         print(f"OK detector(CU): {profile['detector']['binary']} ({verified['detector_sha256']})")
         print(f"OK detector config(CU): {profile['detector']['config']} ({verified['detector_config_sha256']})")
         print(f"OK telemetry(CU): {profile['telemetry']['binary']} ({verified['telemetry_sha256']}) period_ms=100")
+        print(f"OK live E2E: {live['CU_PLATFORM_ROOT']} env={live['CU_DASHBOARD_ENV']} node={live['CU_TELEMETRY_NODE']}")
     else:
         binary, config = detector_paths(profile)
         telemetry_binary = regular(Path(profile["telemetry"]["binary"]), "telemetry binary")
@@ -744,6 +803,7 @@ def command_env(profile_name: str) -> None:
     for key, value in sorted(profile["environment"].items()):
         print(f"{key}={value}")
     print(f"RAN_REPRO_BACKEND={profile['backend']}")
+    print(f"RAN_REPRO_PROFILE_ID={profile['id']}")
     print(f"RAN_REPRO_RUN_ROOT={profile['run_root']}")
 
 

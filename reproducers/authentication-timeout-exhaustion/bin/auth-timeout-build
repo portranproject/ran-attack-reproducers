@@ -10,23 +10,30 @@ NORMAL_MULTI_RU_PATCH=${NORMAL_MULTI_RU_PATCH:-$ROOT/../../workloads/normal-ue/p
 SAME_CELL_GATE_PATCH=${SAME_CELL_GATE_PATCH:-$ROOT/patch/same-cell-ra-gate-w38.patch}
 BUILD=$OAI/cmake_targets/ran_build/build
 BIN=$BUILD/nr-uesoftmodem
+PATCHES=("$RU_SHARE_PATCH" "$NORMAL_MULTI_RU_PATCH" "$PATCH" "$SAME_CELL_GATE_PATCH")
 
 fail() { echo "auth-timeout-build: $*" >&2; exit 1; }
 git -C "$OAI" rev-parse --is-inside-work-tree >/dev/null 2>&1 || fail "OAI 작업 트리가 아닙니다: $OAI"
-for patch in "$RU_SHARE_PATCH" "$NORMAL_MULTI_RU_PATCH" "$PATCH" "$SAME_CELL_GATE_PATCH"; do
+for patch in "${PATCHES[@]}"; do
   [[ -f $patch && ! -L $patch ]] || fail "패치가 없거나 심볼릭 링크입니다: $patch"
 done
 [[ $(git -C "$OAI" rev-parse HEAD) == "$EXPECT_COMMIT" ]] || fail "OAI 기준 커밋이 다릅니다"
 [[ -z $(git -C "$OAI" status --porcelain --untracked-files=all --ignore-submodules=none) ]] \
   || fail "OAI 작업 트리가 깨끗하지 않습니다"
 
-git -C "$OAI" apply --check "$RU_SHARE_PATCH"
+PREFLIGHT_INDEX=$(mktemp)
+rm -f "$PREFLIGHT_INDEX"
+trap 'rm -f "$PREFLIGHT_INDEX"' EXIT
+GIT_INDEX_FILE="$PREFLIGHT_INDEX" git -C "$OAI" read-tree HEAD
+for patch in "${PATCHES[@]}"; do
+  GIT_INDEX_FILE="$PREFLIGHT_INDEX" git -C "$OAI" apply --cached "$patch" \
+    || fail "패치 스택을 적용할 수 없습니다: $patch"
+done
+rm -f "$PREFLIGHT_INDEX"
+trap - EXIT
 git -C "$OAI" apply "$RU_SHARE_PATCH"
-git -C "$OAI" apply --check "$NORMAL_MULTI_RU_PATCH"
 git -C "$OAI" apply "$NORMAL_MULTI_RU_PATCH"
-git -C "$OAI" apply --check "$PATCH"
 git -C "$OAI" apply "$PATCH"
-git -C "$OAI" apply --check "$SAME_CELL_GATE_PATCH"
 git -C "$OAI" apply "$SAME_CELL_GATE_PATCH"
 grep -Fq 'return NB_UE_INST > nrue_get_ru_count();' "$OAI/executables/nr-ue-ru.c" \
   || fail "독립 virtual RU에서 RU sharing이 비활성화되지 않았습니다"

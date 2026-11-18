@@ -4,6 +4,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 SELF="$ROOT/workloads/normal-ue/bin/normal-ue"
+BUILD_SCRIPT="$ROOT/workloads/normal-ue/bin/normal-ue-build"
 ACTION=${1:-help}
 [[ $# == 0 ]] || shift
 PROFILE=p5
@@ -26,7 +27,7 @@ CONF=${CONF:-$ROOT/workloads/normal-ue/conf/p5.conf}
 EXAMPLE=$ROOT/workloads/normal-ue/conf/p5.conf.example
 
 if [[ $ACTION == help || $ACTION == -h || $ACTION == --help ]]; then
-  echo "사용법: normal-ue setup|doctor|prepare|start|status|stop [--profile p5] [--count N] [--config FILE]"
+  echo "사용법: normal-ue setup|build|doctor|prepare|start|status|stop [--profile p5] [--count N] [--config FILE]"
   exit 0
 fi
 
@@ -43,6 +44,11 @@ fi
 [[ -f $CONF && ! -L $CONF ]] || { echo "설정이 없습니다: $CONF (먼저 normal-ue setup)" >&2; exit 1; }
 # shellcheck source=/dev/null
 . "$CONF"
+
+if [[ $ACTION == build ]]; then
+  [[ -x $BUILD_SCRIPT ]] || { echo "빌드 스크립트가 없습니다: $BUILD_SCRIPT" >&2; exit 1; }
+  OAI="${NORMAL_UE_OAI:-/root/OAI-normal-ue-w38}" exec "$BUILD_SCRIPT"
+fi
 
 NORMAL_UE_DEFAULT_COUNT=${NORMAL_UE_DEFAULT_COUNT:-5}
 NORMAL_UE_MAX_COUNT=${NORMAL_UE_MAX_COUNT:-10}

@@ -31,21 +31,53 @@ class PlatformTest(unittest.TestCase):
             key.write_text("fixture")
             known.write_text("fixture")
             credentials.write_text(f"SSH_KEY={key}\nKNOWN_HOSTS={known}\n")
+            live = root / "live-e2e.conf"
+            live.write_text(
+                f"CU_HOST=ubuntu@cu.lab\nSSH_KEY={key}\nKNOWN_HOSTS={known}\n"
+                "CU_LIVE_RUN_ROOT=/srv/live-runs\nCU_F1_INTERFACE=ens5\nCU_N2_INTERFACE=core0\n"
+                "CU_DASHBOARD_URL=https://dashboard.invalid/ingest\n"
+                "CU_DASHBOARD_CA_FILE=/srv/platform/dashboard/ingest.crt\n"
+            )
             key.chmod(0o600)
             credentials.chmod(0o600)
+            live.chmod(0o600)
             profile = {
-                "environment": {"P5_CU_HOST": "ubuntu@cu.lab"},
+                "environment": {"P5_CU_HOST": "ubuntu@cu.lab", "LIVE_E2E_CONF": str(live),
+                                "CU_PLATFORM_ROOT": "/srv/platform", "CU_DASHBOARD_ENV": "p1",
+                                "CU_TELEMETRY_NODE": "p1-e2e"},
                 "credentials_file": str(credentials),
-                "detector": {"binary": "/srv/detection/build/detector", "config": "/srv/detection/config/detector.json", "commit": "1" * 40},
-                "telemetry": {"binary": "/srv/telemetry/build/portran", "commit": "2" * 40},
+                "detector": {"binary": "/srv/platform/detection/build/detector", "config": "/srv/platform/detection/config/detector.json", "commit": "1" * 40},
+                "telemetry": {"binary": "/srv/platform/telemetry/build/portran", "commit": "2" * 40},
             }
-            hashes = {"detector_sha256": "a" * 64, "detector_config_sha256": "b" * 64, "telemetry_sha256": "c" * 64}
+            hashes = {"detector_sha256": "a" * 64, "detector_config_sha256": "b" * 64,
+                      "telemetry_sha256": "c" * 64, "dashboard_sender_sha256": "d" * 64,
+                      "dashboard_ca_sha256": "e" * 64}
             completed = subprocess.CompletedProcess([], 0, json.dumps(hashes), "")
             with mock.patch.object(REPROCTL_MODULE.subprocess, "run", return_value=completed) as run:
                 self.assertEqual(REPROCTL_MODULE.p5_remote_components(profile), hashes)
             command = run.call_args.args[0]
             self.assertIn("ubuntu@cu.lab", command)
             self.assertIn(f"UserKnownHostsFile={known}", command)
+
+    def test_live_e2e_settings_reject_mismatched_execution_tree(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            conf = root / "live.conf"
+            conf.write_text(
+                "CU_HOST=ubuntu@cu.lab\nSSH_KEY=/tmp/key\nKNOWN_HOSTS=/tmp/known\n"
+                "CU_LIVE_RUN_ROOT=/srv/runs\nCU_F1_INTERFACE=f1\nCU_N2_INTERFACE=n2\n"
+                "CU_DASHBOARD_URL=https://dashboard.invalid/ingest\nCU_DASHBOARD_CA_FILE=/srv/ca.pem\n"
+            )
+            conf.chmod(0o600)
+            profile = {
+                "environment": {"P5_CU_HOST": "ubuntu@cu.lab", "LIVE_E2E_CONF": str(conf),
+                                "CU_PLATFORM_ROOT": "/srv/platform", "CU_DASHBOARD_ENV": "p1",
+                                "CU_TELEMETRY_NODE": "p1-e2e"},
+                "detector": {"binary": "/wrong/detector", "config": "/srv/platform/detection/config/detector.json"},
+                "telemetry": {"binary": "/srv/platform/telemetry/build/portran"},
+            }
+            with self.assertRaisesRegex(REPROCTL_MODULE.ReproError, "실행 경로가 다릅니다"):
+                REPROCTL_MODULE.live_e2e_settings(profile)
 
     def test_qualified_checkout_rejects_modified_deployment(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -6,6 +6,7 @@ OAI 프로세스 안에서 UE별 독립 virtual RU/ZMQ endpoint 5개를 사용�
 
 ```bash
 ./ctl.sh normal-ue setup --profile p5
+./ctl.sh normal-ue build --profile p5             # 고정 OAI 기준선에서 최초 1회
 ./ctl.sh normal-ue doctor --profile p5             # 기본 5대
 ./ctl.sh normal-ue start --profile p5 --count 5
 ./ctl.sh normal-ue status --profile p5

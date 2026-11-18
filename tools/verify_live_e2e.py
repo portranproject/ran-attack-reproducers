@@ -147,7 +147,7 @@ def verify(root: Path, scenario: str, mode: str, run_id: str, child: Path,
 
     alerts = parse_alerts(root / "live/detector.stdout")
     raises = [row for row in alerts if row["action"] == "RAISE" and row["rule"] == rule]
-    detector_ok = len(raises) == (0 if not active else 1)
+    detector_ok = len(raises) == 0 if not active else len(raises) >= 1
     components = load_object(root / "live/components.json")
     if components.get("detector", {}).get("commit") != DETECTOR_COMMIT:
         raise ValueError("검증된 production detector 커밋이 아닙니다")

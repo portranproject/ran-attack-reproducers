@@ -66,6 +66,13 @@ class LiveE2ETest(unittest.TestCase):
                                  require_same_cell=True)
             self.assertTrue(verdict["passed"])
             self.assertEqual(verdict["observed_alerts"], 1)
+            with (live / "detector.stdout").open("a") as output:
+                output.write("ALERT RAISE rule=L3-14 cell=0 t=200 branch=1\n")
+            with mock.patch.dict("os.environ", {"RAN_REPRO_PROFILE_ID": "p1"}):
+                repeated = verify(root, "ue-capability-hijacking", "emulation", "cap-e2e-1", child,
+                                  require_same_cell=True)
+            self.assertTrue(repeated["passed"])
+            self.assertEqual(repeated["observed_alerts"], 2)
             self.assertEqual(json.loads((root / "run.json").read_text())["profile"], "p1")
             self.assertEqual(json.loads((root / "oracle.jsonl").read_text())["checks"]["same_cell"]["normal_after"], 5)
             self.assertEqual(hashlib.sha256((root / "mechanism.json").read_bytes()).hexdigest(),

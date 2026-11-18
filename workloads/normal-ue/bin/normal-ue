@@ -22,12 +22,13 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ $PROFILE == p5 ]] || { echo "현재 normal-ue backend는 p5만 지원합니다" >&2; exit 2; }
-CONF=${CONF:-$ROOT/workloads/normal-ue/conf/p5.conf}
+[[ $PROFILE =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] \
+  || { echo "안전하지 않은 profile 이름입니다: $PROFILE" >&2; exit 2; }
+CONF=${CONF:-$ROOT/workloads/normal-ue/conf/$PROFILE.conf}
 EXAMPLE=$ROOT/workloads/normal-ue/conf/p5.conf.example
 
 if [[ $ACTION == help || $ACTION == -h || $ACTION == --help ]]; then
-  echo "사용법: normal-ue setup|build|doctor|prepare|start|status|stop [--profile p5] [--count N] [--config FILE]"
+  echo "사용법: normal-ue setup|build|doctor|prepare|start|status|stop [--profile NAME] [--count N] [--config FILE]"
   exit 0
 fi
 
@@ -37,7 +38,7 @@ if [[ $ACTION == setup ]]; then
   install -d -m 700 "$(dirname "$CONF")"
   install -m 600 "$EXAMPLE" "$CONF"
   echo "설정 생성: $CONF"
-  echo "p5 경로와 가입자 설정을 확인한 뒤 doctor를 실행하세요."
+  echo "$PROFILE 경로와 가입자 설정을 확인한 뒤 doctor를 실행하세요."
   exit 0
 fi
 
@@ -185,7 +186,7 @@ supervise() {
 case $ACTION in
   doctor)
     validate
-    echo "OK p5 same-cell backend: normal_ues=$COUNT attack_slot=1 broker=$(basename "$NORMAL_UE_BROKER_PY")"
+    echo "OK $PROFILE same-cell backend: normal_ues=$COUNT attack_slot=1 broker=$(basename "$NORMAL_UE_BROKER_PY")"
     ;;
   prepare)
     validate

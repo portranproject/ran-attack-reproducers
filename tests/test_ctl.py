@@ -178,6 +178,15 @@ class ControllerTest(unittest.TestCase):
             for line in rrc_lines
         ))
 
+    def test_same_cell_p1_dry_run_uses_p1_normal_ue_config(self):
+        result = self.run_ctl(
+            "same-cell", "run", "blind-dos", "--profile", "p1",
+            "--mode", "control", "--dry-run",
+            env=dict(os.environ, RAN_REPRO_PROFILE_ID="p1"),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("workloads/normal-ue/conf/p1.conf", result.stdout)
+
     def test_same_cell_active_run_requires_enable(self):
         result = self.run_ctl(
             "same-cell", "run", "blind-dos", "--mode", "attack", "--dry-run",

@@ -472,7 +472,7 @@ same_cell_run_one() {
     enable_value=1
   fi
   config=$(config_file "$attack")
-  normal_conf=${NORMAL_UE_CONF:-$ROOT/workloads/normal-ue/conf/p5.conf}
+  normal_conf=${NORMAL_UE_CONF:-$ROOT/workloads/normal-ue/conf/${RAN_REPRO_PROFILE_ID:-p5}.conf}
   if [[ $attack == rrc-storm ]]; then
     run_root=${RAN_REPRO_RUN_ROOT:-/var/lib/ran-reproducer/runs}/rrc-same-cell
     child_dir=$run_root/$run_id
@@ -607,7 +607,7 @@ same_cell_cli() {
       load_profile_env "$profile"
       require_runnable_backend
       require_same_cell_dependencies
-      local normal_conf=${NORMAL_UE_CONF:-$ROOT/workloads/normal-ue/conf/p5.conf}
+      local normal_conf=${NORMAL_UE_CONF:-$ROOT/workloads/normal-ue/conf/${RAN_REPRO_PROFILE_ID:-p5}.conf}
       "$NORMAL_UE" doctor --config "$normal_conf" --count 5
       for attack in rrc-storm auth-timeout blind-dos uplink-credential-flood downlink-imsi ue-capability nas-counter-desynchronization; do
         doctor_one "$attack"
@@ -676,17 +676,17 @@ usage() {
   ./ctl.sh doctor [ID|all]         설정·빌드 상태 확인
   ./ctl.sh setup ID|all            설정 생성 + 전용 OAI 준비 + 빌드
   ./ctl.sh build ID|all            이미 준비된 OAI에서 빌드
-  ./ctl.sh run ID MODE RUN_ID [--profile p5|ota] [--enable] [--dry-run]
-  ./ctl.sh campaign ID [CAMPAIGN_ID] [--profile p5|ota] --enable [--dry-run]
-  ./ctl.sh replay RUN_ID --profile p5|ota
-  ./ctl.sh report RUN_ID [--profile p5|ota]
-  ./ctl.sh verify RUN_ID [--profile p5|ota]
+  ./ctl.sh run ID MODE RUN_ID [--profile NAME] [--enable] [--dry-run]
+  ./ctl.sh campaign ID [CAMPAIGN_ID] [--profile NAME] --enable [--dry-run]
+  ./ctl.sh replay RUN_ID --profile NAME
+  ./ctl.sh report RUN_ID [--profile NAME]
+  ./ctl.sh verify RUN_ID [--profile NAME]
   ./ctl.sh coverage
   ./ctl.sh validate
-  ./ctl.sh normal-ue setup|build|doctor|start|status|stop [--profile p5] [--count N]
-  ./ctl.sh same-cell doctor --profile p5
-  ./ctl.sh same-cell run ID --profile p5 --mode control|attack|emulation [--run-id ID] [--enable]
-  ./ctl.sh same-cell campaign l3-live --profile p5 --sets 3 --count 5 --enable
+  ./ctl.sh normal-ue setup|build|doctor|start|status|stop [--profile NAME] [--count N]
+  ./ctl.sh same-cell doctor --profile NAME
+  ./ctl.sh same-cell run ID --profile NAME --mode control|attack|emulation [--run-id ID] [--enable]
+  ./ctl.sh same-cell campaign l3-live --profile NAME --sets 3 --count 5 --enable
   ./ctl.sh same-cell start -n SESSION_ID [--count 5]  # 정상 UE 개발 세션
   ./ctl.sh same-cell status|stop
 

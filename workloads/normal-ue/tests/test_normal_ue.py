@@ -80,6 +80,15 @@ class NormalUeTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("normal_ues=5 attack_slot=1", result.stdout)
 
+    def test_doctor_accepts_another_zmq_profile(self):
+        result = subprocess.run(
+            [str(SCRIPT), "doctor", "--profile", "p1", "--config", str(self.conf), "--count", "5"],
+            text=True,
+            capture_output=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("OK p1 same-cell backend", result.stdout)
+
     def test_doctor_rejects_duplicate_subscribers(self):
         self.write_subscribers(["001010000000001"] * 5)
         result = self.run_doctor()

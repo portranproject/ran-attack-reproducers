@@ -5,8 +5,8 @@
     "required_files": {
       "ctl.sh": "8e336fb9670811e5fadbc7b01b47bef2e31af728ba29a69e864468fc7d1cca59",
       "tools/reproctl.py": "e74294dd395c6d6f8226e54eba4c153bf4bd94b72deff9f5cafcd5bec29b6223",
-      "tools/p5-live-e2e": "e70276c07efafcb3f2e1c3326e2c2fe1ea2edd9060dd702024034799f51f55a9",
-      "tools/verify_live_e2e.py": "55960005522588ec38c088c1f76a635c00c063d49c134769b1ac7c2bd7e99c87",
+      "tools/p5-live-e2e": "d1a651b458d77f972e8a5975a543cb03d5a0e4ec99cfb1780ff3d6c215be320d",
+      "tools/verify_live_e2e.py": "67a0c2eaf7239404e6a66f997261b623cb3880abf943d8eb67ba0b4d6b70fc78",
       "workloads/normal-ue/bin/normal-ue": "77a6897311ef9f87e9446542cee66cb7a6dc642f85abd848de397451cf37cee5",
       "workloads/normal-ue/bin/normal-ue-build": "bb05c53717dc3d0f2eea9033ef0b5be55970b53a5b81cc7fd04ea8c45022199e",
       "workloads/normal-ue/bin/same-cell-run": "40016ab82a1a51ab595c25766081074ead30f198e5be35cd741e58faa4d391a4",

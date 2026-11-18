@@ -128,6 +128,33 @@ REMOTE
   LIVE_STARTED=1
 }
 
+reset_detector_after_baseline() {
+  ssh "${ssh_args[@]}" "$CU_HOST" sudo bash -s -- "$CU_OUT" "$CU_OWNER" "$CU_PLATFORM_ROOT" <<'REMOTE'
+set -euo pipefail
+out=$1 owner=$2 platform=$3
+sock=/run/ran-detect/$(basename "$out").sock
+pid=$(cat "$out/detector.pid")
+kill -INT -- "-$pid" 2>/dev/null || kill -INT "$pid" 2>/dev/null || true
+for _ in {1..100}; do kill -0 "$pid" 2>/dev/null || break; sleep .1; done
+kill -0 "$pid" 2>/dev/null && kill -KILL -- "-$pid" 2>/dev/null || true
+for file in evidence.jsonl detector-input.jsonl detector.stdout detector.stderr; do
+  [[ ! -e $out/$file ]] || mv "$out/$file" "$out/warmup-$file"
+done
+rm -f "$sock"
+setsid "$platform/detection/build/detector" --socket "$sock" --config "$out/detector.config.json" \
+  >"$out/detector.stdout" 2>"$out/detector.stderr" </dev/null & echo $! >"$out/detector.pid"
+for _ in {1..100}; do [[ -S $sock ]] && break; sleep .1; done
+[[ -S $sock ]] || { echo "detector restart socket timeout" >&2; exit 2; }
+for _ in {1..200}; do
+  grep -q '"type":"hello"' "$out/detector-input.jsonl" 2>/dev/null && break
+  sleep .1
+done
+grep -q '"type":"hello"' "$out/detector-input.jsonl" 2>/dev/null \
+  || { echo "telemetry reconnect hello timeout" >&2; exit 2; }
+chown -R "$owner:$owner" "$out"
+REMOTE
+}
+
 stop_live() {
   (( LIVE_STARTED )) || return 0
   ssh "${ssh_args[@]}" "$CU_HOST" sudo bash -s -- "$CU_OUT" "$CU_OWNER" "$CU_PLATFORM_ROOT" <<'REMOTE'
@@ -178,6 +205,7 @@ if (( WAIT_FOR_BASELINE )); then
   export LIVE_E2E_BASELINE_READY_FILE=$MARKER_DIR/baseline.ready
   export LIVE_E2E_OBSERVATION_READY_FILE=$MARKER_DIR/observation.ready
 fi
+start_live
 setsid "${COMMAND[@]}" >"$OUT/child.stdout" 2>"$OUT/child.stderr" &
 CHILD_PID=$!
 if (( WAIT_FOR_BASELINE )); then
@@ -187,8 +215,8 @@ if (( WAIT_FOR_BASELINE )); then
     (( SECONDS - baseline_started < BASELINE_TIMEOUT_S )) || fail "정상 UE 기준선 준비가 시간 초과했습니다"
     sleep .2
   done
+  reset_detector_after_baseline
 fi
-start_live
 (( PRE_CHILD_S == 0 )) || sleep "$PRE_CHILD_S"
 if (( WAIT_FOR_BASELINE )); then
   ( set -o noclobber; date +%s%N >"$LIVE_E2E_OBSERVATION_READY_FILE" ) \

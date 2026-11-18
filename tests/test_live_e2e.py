@@ -11,9 +11,11 @@ from tools.verify_live_e2e import DETECTOR_COMMIT, verify
 class LiveE2ETest(unittest.TestCase):
     def test_live_wrapper_waits_for_normal_baseline_before_observation(self):
         wrapper = (Path(__file__).resolve().parents[1] / "tools" / "p5-live-e2e").read_text()
-        self.assertLess(wrapper.index('until [[ -f $LIVE_E2E_BASELINE_READY_FILE'),
-                        wrapper.index("start_live\n"))
         self.assertLess(wrapper.index("start_live\n"),
+                        wrapper.index('until [[ -f $LIVE_E2E_BASELINE_READY_FILE'))
+        self.assertLess(wrapper.index('until [[ -f $LIVE_E2E_BASELINE_READY_FILE'),
+                        wrapper.index("reset_detector_after_baseline\n"))
+        self.assertLess(wrapper.index("reset_detector_after_baseline\n"),
                         wrapper.index('date +%s%N >"$LIVE_E2E_OBSERVATION_READY_FILE"'))
 
     def test_active_run_requires_mechanism_live_input_alert_and_dashboard(self):
@@ -29,6 +31,7 @@ class LiveE2ETest(unittest.TestCase):
                 {"type": "kpm2", "seq": 2, "t_start_ms": 0, "t_end_ms": 100},
             ]
             (live / "telemetry.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
+            (live / "detector-input.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
             digest = "a" * 64
             (live / "components.json").write_text(json.dumps({
                 "detector": {"commit": DETECTOR_COMMIT, "binary_sha256": digest},

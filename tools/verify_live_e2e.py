@@ -122,7 +122,7 @@ def verify(root: Path, scenario: str, mode: str, run_id: str, child: Path,
     if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", profile_id) is None:
         raise ValueError("profile id가 잘못됐습니다")
 
-    telemetry = root / "live/telemetry.jsonl"
+    telemetry = root / "live/detector-input.jsonl"
     observations = root / "observations.jsonl"
     shutil.copyfile(regular(telemetry), observations)
     rows = load_jsonl(observations)
@@ -132,9 +132,11 @@ def verify(root: Path, scenario: str, mode: str, run_id: str, child: Path,
     rrc_setup_requests = [row for row in rows if row.get("type") == "ue_evt"
                           and row.get("msg") == "RRCSetupRequest"]
     sequence = [row.get("seq") for row in rows]
+    sequence_ok = (bool(sequence) and all(isinstance(value, int) for value in sequence)
+                   and sequence == list(range(sequence[0], sequence[0] + len(sequence))))
     scenario_input_ok = not (scenario == "rrc-context-exhaustion" and active) or bool(rrc_setup_requests)
     input_ok = (len(hello) == 1 and hello[0].get("period_ms") == 100 and hello[0].get("ue_evt") is True
-                and sequence == list(range(1, len(rows) + 1)) and not gaps and bool(kpm)
+                and sequence_ok and not gaps and bool(kpm)
                 and scenario_input_ok)
 
     alerts = parse_alerts(root / "live/detector.stdout")
@@ -189,7 +191,7 @@ def verify(root: Path, scenario: str, mode: str, run_id: str, child: Path,
                              "ue_to_ran_path_required": wrapper.get("ue_to_ran_path_required")}
 
     checks = {"hello_period_100ms": len(hello) == 1 and hello[0].get("period_ms") == 100,
-              "sequence_contiguous": sequence == list(range(1, len(rows) + 1)), "gap_count": len(gaps),
+              "sequence_contiguous": sequence_ok, "gap_count": len(gaps),
               "kpm2_count": len(kpm), "rrc_setup_request_count": len(rrc_setup_requests),
               "target_raise_count": len(raises),
               "dashboard_sender_exit_status": sender_status, "dashboard_accepted_lines": accepted,

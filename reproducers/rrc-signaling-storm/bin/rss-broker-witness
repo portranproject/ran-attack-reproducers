@@ -110,6 +110,7 @@ BROKER_WITNESS_PHASE_MS=${BROKER_WITNESS_PHASE_MS:-0}
 BROKER_WITNESS_RETRY_MS=${BROKER_WITNESS_RETRY_MS:-1000}
 BROKER_WITNESS_HONOR_REJECT=${BROKER_WITNESS_HONOR_REJECT:-0}
 BROKER_START_GNB_LAST=${BROKER_START_GNB_LAST:-0}
+MULTI_RU_CONFIG=${MULTI_RU_CONFIG:-$HERE/../authentication-timeout-exhaustion/analysis/multi_ru_config.py}
 if (( BROKER_NORMAL_POOL_QUALIFICATION )); then
   BROKER_ATTACK_UE_BIN=${NORMAL_UE_ATTACK_BIN:-$BROKER_ATTACK_UE_BIN}
   GNB_CONFIG=${NORMAL_UE_GNB_CONFIG:-$GNB_CONFIG}
@@ -201,9 +202,9 @@ NORMAL_RECOVERY_DEADLINE_S=90
 NORMAL_REQUIRED_DURATION_MS=0
 if (( BROKER_NORMAL_POOL_QUALIFICATION )); then
   [[ $BROKER_ATTACK_PROCESSES == 6 && $BROKER_ATTACK_UES_PER_PROCESS == 2
-     && $BROKER_WITNESS_MULTI_RU == 0 && $BROKER_WITNESS_UES == 5
+     && $BROKER_WITNESS_MULTI_RU == 1 && $BROKER_WITNESS_UES == 5
      && $BROKER_WITNESS_RSS == 1 ]] \
-    || { echo "normal-pool qualification requires 6x2 load UEs and one 5-UE shared-RU witness" >&2; exit 1; }
+    || { echo "normal-pool qualification requires 6x2 load UEs and one 5-UE independent-RU witness" >&2; exit 1; }
   [[ $BROKER_NORMAL_HEALTH_TIMEOUT_S =~ ^[1-9][0-9]*$ ]] \
     || { echo "BROKER_NORMAL_HEALTH_TIMEOUT_S must be a positive integer" >&2; exit 1; }
   [[ $BROKER_NORMAL_ATTACK_DURATION_S =~ ^[1-9][0-9]*$ ]] && (( BROKER_NORMAL_ATTACK_DURATION_S <= 300 )) \
@@ -274,6 +275,8 @@ done
 [[ -f $BROKER_ATTACK_UE_CFG && -f $BROKER_WITNESS_UE_CFG && -f $BROKER_ATTACK_UECAP \
    && -f $BROKER_WITNESS_UECAP && -f $BROKER_PY && -f $GNB_CONFIG ]] \
   || { echo "missing UE config, capability, broker, or gNB config" >&2; exit 1; }
+(( BROKER_WITNESS_MULTI_RU == 0 )) || [[ -f $MULTI_RU_CONFIG && ! -L $MULTI_RU_CONFIG ]] \
+  || { echo "missing multi-RU runtime config generator" >&2; exit 1; }
 BROKER_LAST_TX=$((2001 + 100 * BROKER_ENDPOINTS))
 BROKER_LAST_RX=$((2000 + 100 * BROKER_ENDPOINTS))
 if ! { grep -q ":$BROKER_LAST_TX" "$BROKER_PY" && grep -q ":$BROKER_LAST_RX" "$BROKER_PY"; } \
@@ -366,6 +369,7 @@ CHILD_FORCED_KILL=()
 BROKER_INDEX=-1
 STOPPED=0
 PING_PID=""
+MULTI_RU_RUNTIME_CFG=""
 
 start_child() {
   local log=$1
@@ -632,6 +636,7 @@ cleanup() {
   trap - EXIT INT TERM
   stop_children
   stop_gnb
+  [[ -z $MULTI_RU_RUNTIME_CFG ]] || unlink "$MULTI_RU_RUNTIME_CFG" 2>/dev/null || true
   exit "$status"
 }
 trap cleanup EXIT
@@ -692,6 +697,12 @@ RSS_COMMON=(--rss.enable 1 --rss.interval_ms 0 --rss.completion_pct 0
 # Keep control load UEs quiet across both the startup gate and observation.
 QUIET_DELAY_MS=$(((BROKER_SYNC_TIMEOUT_S + DURATION_S + 60) * 1000))
 
+if (( BROKER_WITNESS_MULTI_RU )); then
+  MULTI_RU_RUNTIME_CFG="$OUT/witness-runtime.conf"
+  python3 "$MULTI_RU_CONFIG" "$BROKER_WITNESS_UE_CFG" "$MULTI_RU_RUNTIME_CFG" \
+    "$BROKER_WITNESS_UES" "$((WITNESS_INDEX - 1))"
+fi
+
 echo "== launching $BROKER_ATTACK_PROCESSES $MODE processes and $WITNESS_PROCESSES ordinary witness process(es)"
 UE_LAUNCH_STARTED=$SECONDS
 for ((i=1; i<=TOTAL_UE_PROCESSES; i++)); do
@@ -709,6 +720,7 @@ for ((i=1; i<=TOTAL_UE_PROCESSES; i++)); do
     ROLE_BIN=$BROKER_WITNESS_UE_BIN
     ROLE_UECAP=$BROKER_WITNESS_UECAP
     ROLE_USES_RSS=$BROKER_WITNESS_RSS
+    [[ -z $MULTI_RU_RUNTIME_CFG ]] || ROLE_CFG=$MULTI_RU_RUNTIME_CFG
     if (( ROLE_USES_RSS )); then
       ROLE_ARGS=(--num-ues "$ROLE_NUM_UES" --rss.max_duration_s 0 --rss.honor_reject "$BROKER_WITNESS_HONOR_REJECT"
                  --rss.msg4_wait 1 --rss.probe_ues "$ROLE_NUM_UES" --rss.probe_delay_ms "$WITNESS_DELAY_MS"
@@ -757,14 +769,7 @@ for ((i=1; i<=TOTAL_UE_PROCESSES; i++)); do
   else
     : >"$OUT/ue${i}.jsonl"
   fi
-  if (( BROKER_WITNESS_MULTI_RU && i == WITNESS_INDEX )); then
-    ROLE_ZMQ_ARGS=()
-    for ((ru=0; ru<ROLE_NUM_UES; ru++)); do
-      endpoint=$((i + ru))
-      ROLE_ZMQ_ARGS+=("--zmq.[$ru].tx_channels" "tcp://127.0.0.1:$((2001 + 100 * endpoint))"
-                      "--zmq.[$ru].rx_channels" "tcp://127.0.0.1:$((2000 + 100 * endpoint))")
-    done
-  fi
+  (( BROKER_WITNESS_MULTI_RU == 0 || i != WITNESS_INDEX )) || ROLE_ZMQ_ARGS=()
   ROLE_ENV=(env RSS_SHARE_NUE="$ROLE_NUM_UES")
   if (( BROKER_NORMAL_POOL_QUALIFICATION && i <= BROKER_ATTACK_PROCESSES )); then
     ROLE_ENV+=(RSS_BROKER_CONTROL_FILE="$BROKER_CONTROL_FILE")
@@ -1178,6 +1183,8 @@ done
 
 stop_children
 stop_gnb
+[[ -z $MULTI_RU_RUNTIME_CFG ]] || unlink "$MULTI_RU_RUNTIME_CFG"
+MULTI_RU_RUNTIME_CFG=""
 trap - EXIT
 
 SYNC=$SYNC_AT_GATE
@@ -1400,10 +1407,10 @@ EOF
 
 if (( BROKER_NORMAL_POOL_QUALIFICATION )); then
   cat >"$OUT/same-cell-session.json" <<EOF
-{"schema":"same-cell.session.v2","run_id":"$RUN_ID","attack":"rrc-storm","mode":"$MODE","normal_ues":5,"normal_shared_ru":true,"attack_slots":6,"cell_restarts":1,"cu_restarts":0,"clocked_attack_slots":true}
+{"schema":"same-cell.session.v2","run_id":"$RUN_ID","attack":"rrc-storm","mode":"$MODE","normal_ues":5,"normal_shared_ru":false,"attack_slots":6,"cell_restarts":1,"cu_restarts":0,"clocked_attack_slots":true}
 EOF
   cat >"$OUT/same-cell-run.json" <<EOF
-{"schema":"same-cell.run.v3","run_id":"$RUN_ID","attack":"rrc-storm","mode":"$MODE","normal_ues":5,"normal_shared_ru":true,"attack_slots":6,"du_restarted_during_attack":false,"normal_healthy_before_attack_teardown":$(bool "$NORMAL_RECOVERY_HEALTHY"),"direct_detector_input":false,"ue_to_ran_path_required":true,"attack_exit_status":$((VALID ? 0 : 1)),"result":"result.json"}
+{"schema":"same-cell.run.v3","run_id":"$RUN_ID","attack":"rrc-storm","mode":"$MODE","normal_ues":5,"normal_shared_ru":false,"attack_slots":6,"du_restarted_during_attack":false,"normal_healthy_before_attack_teardown":$(bool "$NORMAL_RECOVERY_HEALTHY"),"direct_detector_input":false,"ue_to_ran_path_required":true,"attack_exit_status":$((VALID ? 0 : 1)),"result":"result.json"}
 EOF
 fi
 

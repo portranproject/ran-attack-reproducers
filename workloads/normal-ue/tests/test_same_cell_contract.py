@@ -126,12 +126,12 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn("normal_healthy_before_attack_teardown", run_section)
         self.assertIn('if [[ $ATTACK != uplink ]]; then', run_section)
         self.assertIn("TOTAL_ENDPOINTS <= 15", run_section)
-        self.assertIn("TOTAL_ENDPOINTS=$((ATTACK_SLOTS + 1))", source)
-        self.assertIn("auth-timeout) ATTACK_SLOTS=2", source)
+        self.assertIn("TOTAL_ENDPOINTS=$((ATTACK_SLOTS + COUNT))", source)
+        self.assertIn("auth-timeout) ATTACK_SLOTS=10", source)
         normal_group = source.split("start_normal_group()", 1)[1].split("start_placeholder_group()", 1)[0]
         self.assertIn("RSS_SHARE_NUE=\"$COUNT\"", normal_group)
-        self.assertIn("--zmq.[0].tx_channels", normal_group)
-        self.assertNotIn("--zmq.[$ru]", normal_group)
+        self.assertNotIn("--zmq.", normal_group)
+        self.assertIn('NORMAL_UE_ZMQ_ENDPOINT_OFFSET="$ATTACK_SLOTS"', run_section)
         self.assertIn("attack.ready", run_section)
         self.assertIn("clocked_attack_slots", run_section)
         self.assertIn("embed_self_live_evidence", run_section)
@@ -164,13 +164,21 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn("SAME_CELL_RELEASE_FILE", source)
         self.assertIn('uplink-credential-flood) ATTACK_SLOTS=1', SCRIPT.read_text())
 
-    def test_auth_timeout_uses_two_shared_ru_attack_slots(self):
+    def test_auth_timeout_uses_ten_independent_ru_attack_slots(self):
         source = (ROOT / "reproducers/authentication-timeout-exhaustion/bin/auth-stall-cell-run").read_text()
-        self.assertIn("${#endpoint_rows[@]} == PROCESS_COUNT", source)
-        same_cell = source.split("if (( SAME_CELL_PRESTART )); then", 2)[2].split("else", 1)[0]
-        self.assertIn('endpoint_rows[$i]', same_cell)
-        self.assertIn('"--zmq.[0].tx_channels"', same_cell)
-        self.assertNotIn('"--zmq.[$ru].tx_channels"', same_cell)
+        self.assertIn("${#endpoint_rows[@]} == UE_COUNT", source)
+        self.assertIn("endpoint_offset=$((i * UES_PER_PROCESS))", source)
+        self.assertIn('endpoint_rows[$((i * UES_PER_PROCESS + ru))]', source)
+        self.assertNotIn('"--zmq.[0].tx_channels"', source)
+        self.assertNotIn('"--zmq.[$ru].tx_channels"', source)
+
+    def test_auth_build_disables_ru_sharing_when_each_ue_has_a_ru(self):
+        build = (ROOT / "reproducers/authentication-timeout-exhaustion/bin/auth-timeout-build").read_text()
+        patch = (ROOT / "workloads/normal-ue/patch/normal-multi-ru.patch").read_text()
+        self.assertIn("NORMAL_MULTI_RU_PATCH", build)
+        self.assertLess(build.index('apply "$RU_SHARE_PATCH"'), build.index('apply "$NORMAL_MULTI_RU_PATCH"'))
+        self.assertLess(build.index('apply "$NORMAL_MULTI_RU_PATCH"'), build.index('apply "$PATCH"'))
+        self.assertIn("return NB_UE_INST > nrue_get_ru_count();", patch)
 
     def test_modified_shell_entrypoints_are_syntax_valid(self):
         paths = [

@@ -90,11 +90,11 @@ timeout이 발생했다. 프로세스당 4 UICC도 반복 phase timeout으로 �
 별도 ZMQ broker로 프로세스를 분리한 8·14 UE와 3셀 6·9 UE 확장도 정상 대조군 또는 반복
 인증을 통과하지 못했다. 미검증 broker 코드는 운영 도구에서 제외했다.
 
-2026-11-17 자격 검증은 위 4-cell 자원 누적 실험을 억지로 확장하지 않고, 정상 UE 풀에서
-검증된 **shared virtual RU** 구조를 사용한다. `auth-stall-cell-run`이 서로 다른 랩
-가입자 10명을 2개 OAI 프로세스×5 UE로 실행하고, GNU Radio broker가 프로세스별 2개 endpoint를 한
-DU·셀에 합친다. 공격군은 10명 모두 Authentication Response를 미전송하고 대조군은 10명
-모두 정상 제출한다. gNB·코어·detector는 수정하지 않는다.
+정상 UE 5대 same-cell 자격 경로의 `auth-stall-cell-run`은 서로 다른 랩 가입자 10명을
+2개 OAI 프로세스×5 UE로 실행한다. 각 프로세스는 config 배열로 독립 virtual RU/ZMQ
+endpoint 5개를 만들며, GNU Radio broker가 총 10개 endpoint를 한 DU·셀에 합친다. 공격군은
+10명 모두 Authentication Response를 미전송하고 대조군은 모두 정상 제출한다.
+gNB·코어·detector는 수정하지 않는다. 이 복원 경로는 p5 재자격 전까지 미자격이다.
 
 이 경로로 실제 F1/N2→TeleRAN→production detector→dashboard를 함께 실행한 결과,
 대조군 L3-01-O 경보 0건과 공격군 RAISE 1건을 matched 3/3 반복했다. 입력 보고 주기

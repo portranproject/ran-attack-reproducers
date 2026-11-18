@@ -35,8 +35,11 @@ class BrokerWitnessTests(unittest.TestCase):
         self.uecap = self.root / "uecap.xml"
         self.broker_py = self.root / "broker.py"
         self.gnb_cfg = self.root / "du.yaml"
-        for path in (self.ue_cfg, self.witness_ue_cfg, self.uecap, self.broker_py):
+        for path in (self.ue_cfg, self.uecap, self.broker_py):
             path.write_text("fixture\n")
+        self.witness_ue_cfg.write_text(
+            "".join(f'uicc{i} = {{ imsi = "{i}"; }};\n' for i in range(5))
+        )
         self.broker_py.write_text(
             "tcp://127.0.0.1:2501 tcp://127.0.0.1:2500 "
             "tcp://127.0.0.1:2601 tcp://127.0.0.1:2600 "
@@ -70,6 +73,10 @@ class BrokerWitnessTests(unittest.TestCase):
             "    *) shift;;\n"
             "  esac\n"
             "done\n"
+            "if (( ${#txs[@]} == 0 )) && [[ -f $cfg ]]; then\n"
+            "  while IFS= read -r endpoint; do txs+=(\"$endpoint\"); done < <(grep -oE 'tcp://127\\.0\\.0\\.1:[0-9]+' \"$cfg\" | awk 'NR % 2 == 1')\n"
+            "  (( ${#txs[@]} == 0 )) || tx=${txs[$((${#txs[@]} - 1))]}\n"
+            "fi\n"
             "trap 'exit 0' INT TERM\n"
             "printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\\n' \"$tx\" \"$probe\" \"$delay\" \"$run\" \"$max_duration\" \"$honor_reject\" \"$msg4_wait\" \"$num_ues\" \"$RSS_SHARE_NUE\" \"$probe_ra_only\" \"$probe_interval\" \"$phase\" \"$cfg\" >> \"$FAKE_TRACE\"\n"
             "printf '%s\\n' '[RSS] fixture'\n"
@@ -352,12 +359,12 @@ class BrokerWitnessTests(unittest.TestCase):
             BROKER_ATTACK_UES_PER_PROCESS="2",
             BROKER_NORMAL_ATTACK_DURATION_S="1",
             BROKER_WITNESS_UES="5",
-            BROKER_WITNESS_MULTI_RU="0",
+            BROKER_WITNESS_MULTI_RU="1",
             BROKER_NORMAL_POOL_QUALIFICATION="1",
             BROKER_NORMAL_PDU_SESSION_ID="1",
             BROKER_NORMAL_CONF=str(self.normal_conf),
             BROKER_PY=str(DYNAMIC_BROKER),
-            FAKE_WITNESS_TX_PORT="2701",
+            FAKE_WITNESS_TX_PORT="3101",
             FAKE_DELAYED_MSG3="1",
         )
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
@@ -417,12 +424,12 @@ class BrokerWitnessTests(unittest.TestCase):
             BROKER_ATTACK_UES_PER_PROCESS="2",
             BROKER_NORMAL_ATTACK_DURATION_S="1",
             BROKER_WITNESS_UES="5",
-            BROKER_WITNESS_MULTI_RU="0",
+            BROKER_WITNESS_MULTI_RU="1",
             BROKER_NORMAL_POOL_QUALIFICATION="1",
             BROKER_NORMAL_PDU_SESSION_ID="1",
             BROKER_WITNESS_UE_CFG=str(self.witness_ue_cfg),
             BROKER_PY=str(DYNAMIC_BROKER),
-            FAKE_WITNESS_TX_PORT="2701",
+            FAKE_WITNESS_TX_PORT="3101",
         )
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         verdict = self.result("bw-normal-pool-control")
@@ -441,12 +448,12 @@ class BrokerWitnessTests(unittest.TestCase):
             BROKER_ATTACK_UES_PER_PROCESS="2",
             BROKER_NORMAL_ATTACK_DURATION_S="1",
             BROKER_WITNESS_UES="5",
-            BROKER_WITNESS_MULTI_RU="0",
+            BROKER_WITNESS_MULTI_RU="1",
             BROKER_NORMAL_POOL_QUALIFICATION="1",
             BROKER_NORMAL_PDU_SESSION_ID="1",
             BROKER_WITNESS_UE_CFG=str(self.witness_ue_cfg),
             BROKER_PY=str(DYNAMIC_BROKER),
-            FAKE_WITNESS_TX_PORT="2701",
+            FAKE_WITNESS_TX_PORT="3101",
         )
         self.assertNotEqual(result.returncode, 0)
         verdict = self.result("bw-normal-pool-no-ran")
@@ -477,7 +484,7 @@ class BrokerWitnessTests(unittest.TestCase):
                     BROKER_ATTACK_UES_PER_PROCESS="2",
                     BROKER_NORMAL_ATTACK_DURATION_S=attack_duration,
                     BROKER_WITNESS_UES="5",
-                    BROKER_WITNESS_MULTI_RU="0",
+                    BROKER_WITNESS_MULTI_RU="1",
                     BROKER_NORMAL_POOL_QUALIFICATION="1",
                     BROKER_NORMAL_PDU_SESSION_ID="1",
                     BROKER_PY=str(DYNAMIC_BROKER),

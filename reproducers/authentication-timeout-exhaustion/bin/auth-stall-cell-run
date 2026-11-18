@@ -68,7 +68,7 @@ fi
 if (( SAME_CELL_PRESTART )); then
   [[ -f $ENDPOINTS_FILE && ! -L $ENDPOINTS_FILE ]] || fail "same-cell endpoint 파일이 안전하지 않습니다"
   mapfile -t endpoint_rows <"$ENDPOINTS_FILE"
-  (( ${#endpoint_rows[@]} == PROCESS_COUNT )) || fail "same-cell 인증 미응답형은 공유 RU endpoint 2개가 필요합니다"
+  (( ${#endpoint_rows[@]} == UE_COUNT )) || fail "same-cell 인증 미응답형은 독립 RU endpoint 10개가 필요합니다"
   for path in "$SAME_CELL_RAN_READY_FILE" "$SAME_CELL_READY_FILE" "$SAME_CELL_ATTACK_READY_FILE" \
               "$SAME_CELL_ATTACK_DONE_FILE" "$SAME_CELL_RELEASE_FILE"; do
     [[ $path == /* ]] || fail "same-cell marker는 절대 경로여야 합니다"
@@ -86,7 +86,7 @@ mkdir -p -m 700 "$RUN_ROOT"
 OUT=$RUN_ROOT/$RUN_ID
 mkdir -m 700 "$OUT" || fail "기존 실행 결과는 덮어쓰지 않습니다: $OUT"
 
-PIDS=() EARLY_EXIT=0 FORCED_KILL=0 BROKER_PID= DU_PID=
+PIDS=() RUNTIME_CONFIGS=() EARLY_EXIT=0 FORCED_KILL=0 BROKER_PID= DU_PID=
 running() { kill -0 "$1" 2>/dev/null && [[ $(ps -o stat= -p "$1" 2>/dev/null | tr -d ' ') != Z* ]]; }
 stop_group() {
   local pid=$1
@@ -102,6 +102,7 @@ cleanup() {
   for ((i=${#PIDS[@]}-1; i>=0; i--)); do stop_group "${PIDS[$i]}"; done
   [[ -z $DU_PID ]] || stop_group "$DU_PID"
   [[ -z $BROKER_PID ]] || stop_group "$BROKER_PID"
+  for file in "${RUNTIME_CONFIGS[@]}"; do unlink "$file" 2>/dev/null || true; done
   exit "$status"
 }
 trap cleanup EXIT
@@ -112,29 +113,31 @@ marker='AUTH_TIMEOUT_EXHAUSTION event=authentication_response_submitted'
 [[ $MODE == control ]] || marker='AUTH_TIMEOUT_EXHAUSTION event=authentication_request_withheld'
 for ((i=0; i<PROCESS_COUNT; i++)); do
   runtime_config="$OUT/ue-$((i + 1)).conf"
-  python3 "$ROOT/analysis/multi_ru_config.py" "${CONFIGS[$i]}" "$runtime_config" "$UES_PER_PROCESS"
-  zmq=()
-  for ((ru=0; ru<UES_PER_PROCESS; ru++)); do
-    if (( SAME_CELL_PRESTART )); then
-      if (( ru == 0 )); then
-        read -r tx rx extra <<<"${endpoint_rows[$i]}"
-        [[ -z ${extra:-} && $tx == tcp://127.0.0.1:* && $rx == tcp://127.0.0.1:* ]] \
-          || fail "same-cell endpoint 형식이 잘못됐습니다"
-        zmq+=("--zmq.[0].tx_channels" "$tx" "--zmq.[0].rx_channels" "$rx")
-      fi
-    else
-      (( i == 0 )) && endpoint=$((UES_PER_PROCESS + ru + 1)) || endpoint=$((ru + 1))
-      tx="tcp://127.0.0.1:$((2001 + 100 * endpoint))"
-      rx="tcp://127.0.0.1:$((2000 + 100 * endpoint))"
-      zmq+=("--zmq.[$ru].tx_channels" "$tx" "--zmq.[$ru].rx_channels" "$rx")
-    fi
-  done
+  if (( SAME_CELL_PRESTART )); then
+    endpoint_offset=$((i * UES_PER_PROCESS))
+  elif (( i == 0 )); then
+    endpoint_offset=$UES_PER_PROCESS
+  else
+    endpoint_offset=0
+  fi
+  if (( SAME_CELL_PRESTART )); then
+    for ((ru=0; ru<UES_PER_PROCESS; ru++)); do
+      endpoint=$((endpoint_offset + ru + 1))
+      read -r tx rx extra <<<"${endpoint_rows[$((i * UES_PER_PROCESS + ru))]}"
+      [[ -z ${extra:-} && $tx == "tcp://127.0.0.1:$((2001 + 100 * endpoint))" \
+         && $rx == "tcp://127.0.0.1:$((2000 + 100 * endpoint))" ]] \
+        || fail "same-cell endpoint 순서가 독립 RU 계획과 다릅니다"
+    done
+  fi
+  python3 "$ROOT/analysis/multi_ru_config.py" \
+    "${CONFIGS[$i]}" "$runtime_config" "$UES_PER_PROCESS" "$endpoint_offset"
+  RUNTIME_CONFIGS+=("$runtime_config")
   setsid env OAI_AUTH_TIMEOUT_TRACE=1 OAI_AUTH_TIMEOUT_WITHHOLD=$ENABLE RSS_SHARE_NUE=$UES_PER_PROCESS \
     "$OAI_BIN" -O "$runtime_config" --band 78 -C 3489420000 --numerology 1 -r 51 -E \
     --ue-scan-carrier --uecap_file "$UECAP" --device.name oai_zmqdevif \
     --rss.enable 1 --rss.interval_ms 0 --rss.completion_pct 0 --rss.ack_gate 1 --rss.ra_gate 1 \
     --rss.gate_timeout_ms 500 --rss.target_occupancy 0 --rss.hold_ms 2000 --rss.msg4_ack 1 \
-    "${zmq[@]}" --num-ues "$UES_PER_PROCESS" \
+    --num-ues "$UES_PER_PROCESS" \
     --rss.max_duration_s 0 --rss.honor_reject 0 --rss.msg4_wait 1 --rss.probe_ues "$UES_PER_PROCESS" \
     --rss.probe_delay_ms 0 --rss.probe_ra_only 0 --rss.probe_interval_ms 5000 --rss.phase_ms 1000 \
     --rss.run_id "authcell-$RUN_ID-$((i + 1))" --rss.log_file "$OUT/rss-$((i + 1)).jsonl" \
@@ -228,6 +231,8 @@ if (( MANAGE_RAN )); then
   stop_group "$DU_PID"; DU_PID=
   stop_group "$BROKER_PID"; BROKER_PID=
 fi
+for file in "${RUNTIME_CONFIGS[@]}"; do unlink "$file"; done
+RUNTIME_CONFIGS=()
 printf '{"schema":"auth-timeout.cell-flood-process.v1","early_exit_count":%s,"forced_kill_count":%s}\n' \
   "$EARLY_EXIT" "$FORCED_KILL" >"$OUT/process.json"
 python3 - "$OUT/run.json" "$RUN_ID" "$MODE" "$ENABLE" "$UE_COUNT" "$PROCESS_COUNT" "$UES_PER_PROCESS" "$START_INTERVAL_MS" <<'PY'

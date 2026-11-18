@@ -94,13 +94,13 @@ if [[ $ACTION == run ]]; then
     blind) ATTACK_SLOTS=2 ;;
     uplink|downlink-imsi|ue-capability|nas-counter-desync) ATTACK_SLOTS=1 ;;
     uplink-credential-flood) ATTACK_SLOTS=1 ;;
-    auth-timeout) ATTACK_SLOTS=2 ;;
+    auth-timeout) ATTACK_SLOTS=10 ;;
     *) fail "지원하지 않는 same-cell 공격: $ATTACK" ;;
   esac
 else
-  ATTACK_SLOTS=1
+  ATTACK_SLOTS=4
 fi
-TOTAL_ENDPOINTS=$((ATTACK_SLOTS + 1))
+TOTAL_ENDPOINTS=$((ATTACK_SLOTS + COUNT))
 
 for command in flock python3 setsid "$IP_CMD" "$PING_CMD" "$SS_CMD"; do
   command -v "$command" >/dev/null || fail "$command가 필요합니다"
@@ -301,39 +301,38 @@ PY
   printf '%s\n' "$NORMAL_UE_PDU_SESSION_ID" >"$STATE/pdu_session_id"
 }
 start_normal_group() {
-  local runtime_cfg=$1 endpoint_offset=$2 run_id=$3 endpoint
+  local runtime_cfg=$1 run_id=$2
   normal_args; rss_args
-  endpoint=$((endpoint_offset + 1))
   setsid env RSS_SHARE_NUE="$COUNT" OAI_NORMAL_TUN_SUFFIX=1 "$NORMAL_UE_BIN" -O "$runtime_cfg" \
     "${NORMAL_ARGS[@]}" "${RSS_ARGS[@]}" --num-ues "$COUNT" --rss.max_duration_s 0 \
     --rss.honor_reject 0 --rss.msg4_wait 1 --rss.probe_ues "$COUNT" --rss.probe_delay_ms 0 \
     --rss.probe_ra_only 0 --rss.probe_interval_ms "$NORMAL_UE_RETRY_MS" \
     --rss.phase_ms "$NORMAL_UE_PHASE_MS" --rss.run_id "n-$run_id" --rss.log_file "$RUN_OUT/normal.jsonl" \
-    '--zmq.[0].tx_channels' "tcp://127.0.0.1:$((2001 + 100 * endpoint))" \
-    '--zmq.[0].rx_channels' "tcp://127.0.0.1:$((2000 + 100 * endpoint))" \
     >"$RUN_OUT/normal.log" 2>&1 </dev/null 9>&- &
   record_pid normal "$!"
 }
 start_placeholder_group() {
   local generation=${1:-1} pid endpoint
   normal_args; rss_args
-  endpoint=1
   setsid env RSS_SHARE_NUE="$ATTACK_SLOTS" "$NORMAL_UE_ATTACK_BIN" -O "$PLACEHOLDER_CFG" \
     "${NORMAL_ARGS[@]}" "${RSS_ARGS[@]}" --num-ues "$ATTACK_SLOTS" --rss.max_duration_s 0 \
     --rss.honor_reject 0 --rss.msg4_wait 1 --rss.probe_ues "$ATTACK_SLOTS" --rss.probe_delay_ms 86400000 \
     --rss.probe_ra_only 0 --rss.probe_interval_ms 1000 --rss.phase_ms 0 \
     --rss.run_id "pg-$generation" --rss.log_file "$RUN_OUT/placeholders/group-$generation.jsonl" \
-    '--zmq.[0].tx_channels' "tcp://127.0.0.1:2101" '--zmq.[0].rx_channels' "tcp://127.0.0.1:2100" \
     >>"$RUN_OUT/placeholders/group.log" 2>&1 </dev/null 9>&- &
   pid=$!
   record_pid placeholder-group "$pid"
-  wait_port 2101 || fail "placeholder group endpoint 1이 준비되지 않았습니다"
+  for ((endpoint=1; endpoint<=ATTACK_SLOTS; endpoint++)); do
+    wait_port "$((2001 + 100 * endpoint))" || fail "placeholder group endpoint $endpoint가 준비되지 않았습니다"
+  done
 }
 stop_placeholder_group() {
   local pid endpoint
   pid=$(owned_pid placeholder-group) || fail "placeholder group 소유 PID가 없습니다"
   stop_group "$pid"
-  wait_port_free 2101 || fail "placeholder group endpoint 1이 해제되지 않았습니다"
+  for ((endpoint=1; endpoint<=ATTACK_SLOTS; endpoint++)); do
+    wait_port_free "$((2001 + 100 * endpoint))" || fail "placeholder group endpoint $endpoint가 해제되지 않았습니다"
+  done
   unlink "$STATE/placeholder-group.pid"
   unlink "$STATE/placeholder-group.starttime"
 }
@@ -372,7 +371,8 @@ if [[ $ACTION == run ]]; then
   printf '%s\n' "$COUNT" >"$STATE/count"
   printf '%s\n' "$RUN_ID" >"$STATE/session_id"
   printf '%s\n' "$RUN_OUT" >"$STATE/run_root"
-  RUNTIME_CFG=$(SAME_CELL_NORMAL_STATE_DIR="$STATE" "$NORMAL_CTL" prepare --config "$CONF" --count "$COUNT")
+  RUNTIME_CFG=$(SAME_CELL_NORMAL_STATE_DIR="$STATE" NORMAL_UE_ZMQ_ENDPOINT_OFFSET="$ATTACK_SLOTS" \
+    "$NORMAL_CTL" prepare --config "$CONF" --count "$COUNT")
   resolve_pdu_session_id
 
   ENDPOINTS_FILE="$STATE/attack-endpoints.txt"
@@ -423,7 +423,7 @@ if [[ $ACTION == run ]]; then
   export SAME_CELL_UE_TX_ENDPOINT="$SAME_CELL_VICTIM_TX_ENDPOINT"
   export SAME_CELL_UE_RX_ENDPOINT="$SAME_CELL_VICTIM_RX_ENDPOINT"
 
-  start_normal_group "$RUNTIME_CFG" "$ATTACK_SLOTS" "$RUN_ID"
+  start_normal_group "$RUNTIME_CFG" "$RUN_ID"
   NORMAL_PID=$(owned_pid normal) || fail "normal UE PID를 기록하지 못했습니다"
   setsid "${COMMAND[@]}" >"$RUN_OUT/attack.stdout" 2>"$RUN_OUT/attack.stderr" </dev/null 9>&- &
   ATTACK_PID=$!
@@ -478,7 +478,7 @@ if [[ $ACTION == run ]]; then
   select_broker warmup "${ATTACK_SLOT_IDS[@]}" || fail "attack slot DL 준비에 실패했습니다"
   (( SAME_CELL_ATTACK_WARMUP_S == 0 )) || sleep "$SAME_CELL_ATTACK_WARMUP_S"
   select_broker attack "${ATTACK_SLOT_IDS[@]}" || fail "상시 attack slot 활성화에 실패했습니다"
-  printf '{"schema":"same-cell.session.v2","run_id":"%s","attack":"%s","normal_ues":%d,"normal_shared_ru":true,"attack_slots":%d,"cell_restarts":1,"cu_restarts":0,"clocked_attack_slots":true}\n' \
+  printf '{"schema":"same-cell.session.v2","run_id":"%s","attack":"%s","normal_ues":%d,"normal_shared_ru":false,"attack_slots":%d,"cell_restarts":1,"cu_restarts":0,"clocked_attack_slots":true}\n' \
     "$RUN_ID" "$ATTACK" "$COUNT" "$ATTACK_SLOTS" >"$RUN_OUT/session.json"
 
   NORMAL_HEALTH_BEFORE_TEARDOWN=null
@@ -519,7 +519,7 @@ PY
   [[ -n $CHILD_OUTPUT && -d $CHILD_OUTPUT && ! -L $CHILD_OUTPUT ]] \
     || fail "공격 runner가 안전한 output 경로를 남기지 않았습니다"
   printf '%s\n' "$CHILD_OUTPUT" >"$RUN_OUT/child-output.txt"
-  printf '{"schema":"same-cell.run.v3","run_id":"%s","attack":"%s","normal_ues":%d,"normal_shared_ru":true,"attack_slots":%d,"du_restarted_during_attack":false,"normal_healthy_before_attack_teardown":%s,"direct_detector_input":false,"ue_to_ran_path_required":true,"attack_exit_status":%d}\n' \
+  printf '{"schema":"same-cell.run.v3","run_id":"%s","attack":"%s","normal_ues":%d,"normal_shared_ru":false,"attack_slots":%d,"du_restarted_during_attack":false,"normal_healthy_before_attack_teardown":%s,"direct_detector_input":false,"ue_to_ran_path_required":true,"attack_exit_status":%d}\n' \
     "$RUN_ID" "$ATTACK" "$COUNT" "$ATTACK_SLOTS" \
     "$NORMAL_HEALTH_BEFORE_TEARDOWN" "$ATTACK_STATUS" >"$RUN_OUT/run.json"
   (( ATTACK_STATUS == 0 )) || fail "공격 runner가 실패했습니다: status=$ATTACK_STATUS"
@@ -559,12 +559,14 @@ if [[ $ACTION == start ]]; then
   mkdir -m 700 -p "$RUN_OUT"
   mkdir -m 700 "$RUN_OUT/placeholders"
   printf '%s\n' "$RUN_OUT" >"$STATE/run_root"
-  RUNTIME_CFG=$(SAME_CELL_NORMAL_STATE_DIR="$STATE" "$NORMAL_CTL" prepare --config "$CONF" --count "$COUNT")
-  PLACEHOLDER_CFG=$(SAME_CELL_NORMAL_STATE_DIR="$STATE/placeholders" "$NORMAL_CTL" prepare --config "$CONF" --count "$ATTACK_SLOTS")
+  RUNTIME_CFG=$(SAME_CELL_NORMAL_STATE_DIR="$STATE" NORMAL_UE_ZMQ_ENDPOINT_OFFSET="$ATTACK_SLOTS" \
+    "$NORMAL_CTL" prepare --config "$CONF" --count "$COUNT")
+  PLACEHOLDER_CFG=$(SAME_CELL_NORMAL_STATE_DIR="$STATE/placeholders" NORMAL_UE_ZMQ_ENDPOINT_OFFSET=0 \
+    "$NORMAL_CTL" prepare --config "$CONF" --count "$ATTACK_SLOTS")
   printf '%s\n' "$PLACEHOLDER_CFG" >"$STATE/placeholder_config"
   printf 'placeholder\n' >"$STATE/broker-control"
   resolve_pdu_session_id
-  start_normal_group "$RUNTIME_CFG" "$ATTACK_SLOTS" "$RUN_ID"
+  start_normal_group "$RUNTIME_CFG" "$RUN_ID"
   start_placeholder_group 1
   for ((i=1; i<=TOTAL_ENDPOINTS; i++)); do wait_port "$((2001 + 100 * i))" || fail "UE endpoint $i 준비가 시간 초과했습니다"; done
   setsid env NORMAL_UE_BROKER_ENDPOINTS="$TOTAL_ENDPOINTS" NORMAL_UE_BROKER_ATTACK_SLOTS="$ATTACK_SLOTS" \

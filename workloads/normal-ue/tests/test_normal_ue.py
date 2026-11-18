@@ -86,11 +86,14 @@ class NormalUeTests(unittest.TestCase):
         self.assertIn("서로 다른 가입자 설정이 5개 필요합니다", result.stderr)
 
     def test_doctor_rejects_radio_sections_in_subscriber_config(self):
-        with self.normal_cfg.open("a") as stream:
-            stream.write("RUs = ( { nb_tx=1; } );\n")
-        result = self.run_doctor()
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("RUs/cells를 넣지 마세요", result.stderr)
+        for section in ("RUs", "cells", "zmq"):
+            with self.subTest(section=section):
+                self.write_subscribers([f"00101000000000{i}" for i in range(5)])
+                with self.normal_cfg.open("a") as stream:
+                    stream.write(f"{section} = ();\n")
+                result = self.run_doctor()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("RUs/cells/zmq를 넣지 마세요", result.stderr)
 
     def test_doctor_rejects_counts_above_broker_limit(self):
         with self.conf.open("a") as stream:
@@ -104,11 +107,15 @@ class NormalUeTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("normal-ue setup|doctor|prepare|start|status|stop", result.stdout)
 
-    def test_prepare_writes_private_shared_ru_runtime_config(self):
+    def test_prepare_writes_private_independent_ru_runtime_config(self):
         state = self.root / "same-cell-state"
         result = subprocess.run(
             [str(SCRIPT), "prepare", "--config", str(self.conf), "--count", "5"],
-            env={**os.environ, "SAME_CELL_NORMAL_STATE_DIR": str(state)},
+            env={
+                **os.environ,
+                "SAME_CELL_NORMAL_STATE_DIR": str(state),
+                "NORMAL_UE_ZMQ_ENDPOINT_OFFSET": "2",
+            },
             text=True,
             capture_output=True,
         )
@@ -117,8 +124,12 @@ class NormalUeTests(unittest.TestCase):
         self.assertEqual(runtime, state / "normal-ue-runtime.conf")
         self.assertEqual(runtime.stat().st_mode & 0o777, 0o600)
         payload = runtime.read_text()
-        self.assertEqual(payload, self.normal_cfg.read_text())
-        self.assertNotIn("RUs =", payload)
+        self.assertIn(self.normal_cfg.read_text().strip(), payload)
+        self.assertEqual(payload.count('sdr_addrs = "type=zmq"'), 5)
+        self.assertEqual(payload.count("ru_id = "), 5)
+        self.assertEqual(payload.count("tx_channels = "), 5)
+        self.assertIn("tcp://127.0.0.1:2301", payload)
+        self.assertIn("tcp://127.0.0.1:2701", payload)
 
 
 if __name__ == "__main__":

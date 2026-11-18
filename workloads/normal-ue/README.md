@@ -1,8 +1,8 @@
 # 정상 UE 워크로드
 
 공격 슬롯과 같은 DU·셀 ID를 사용하는 지속 정상 UE 풀이다. 기본 5 logical UE는 하나의
-OAI 프로세스와 하나의 shared virtual RU/ZMQ endpoint를 사용한다. GNU Radio broker가 이
-endpoint와 공격 OAI 프로세스별 endpoint의 하향 신호를 복제하고 상향 신호를 합친다.
+OAI 프로세스 안에서 UE별 독립 virtual RU/ZMQ endpoint 5개를 사용한다. GNU Radio broker가
+이 endpoint들과 공격 endpoint의 하향 신호를 복제하고 상향 신호를 합친다.
 
 ```bash
 ./ctl.sh normal-ue setup --profile p5
@@ -44,8 +44,8 @@ cold-start한다. 따라서 한 실행 중 RF stream을 갈아 끼우는 방식�
 - `start` 뒤 supervisor는 수동 `stop` 전까지 계속 실행한다.
 - UE·broker·runner가 종료되면 5초 뒤 새 generation으로 다시 시작한다.
 - logical UE는 1초 위상차로 첫 접속하고, 실패 시 5초 주기로 계속 재시도한다.
-- `start`는 가입자 설정을 권한 `0600` 임시 파일로 복사한다. logical UE들은 OAI의 검증된
-  RU-sharing 경로에서 같은 RF clock을 사용한다. 가입자 원문과 임시 설정은 Git에 넣지 않는다.
+- `start`는 권한 `0600` 임시 설정에 UE 수와 같은 `RUs`·`cells`·`zmq` 항목을 만든다.
+  각 UE는 독립 endpoint를 쓰고 broker에서만 합쳐진다. 가입자 원문과 임시 설정은 Git에 넣지 않는다.
 - 정상 워크로드용 OAI에는 `patch/normal-probe-phase.patch`를 적용한다. 공격 UE와 TUN 이름이 충돌하지 않도록 same-cell
   실행용 binary에는 `patch/normal-tun-suffix.patch`도 적용한다.
 - `status`의 `healthy`는 요청 수만큼 TUN과 gateway ping이 모두 성공한 경우다.
@@ -60,9 +60,10 @@ cold-start한다. 따라서 한 실행 중 RF stream을 갈아 끼우는 방식�
 
 ## p5 자격 현황
 
-2026-11-18 실측에서 current p5 OAI가 `--zmq.[1]...` 이상 indexed endpoint를 unknown option으로
-거부함을 확인했다. 따라서 과거 문서의 독립 virtual RU 자격 설명은 현재 통합 경로의 근거로
-사용하지 않는다. shared virtual RU 경로의 새 p5 결과만 1.0 자격 근거로 사용한다.
+2026-11-18 실측에서 current p5 OAI가 `--zmq.[1]...` indexed CLI option을 거부했지만,
+OAI config의 `RUs`·`cells`·`zmq` 배열은 독립 virtual RU socket 5/5를 만들었다. 반대로
+단일 shared RU는 channel timeout 약 9만 건과 서비스 1/5로 실패했다. 따라서 독립 RU
+구조로 복원하며 Registration·PDU·ping 5/5와 전체 캠페인을 다시 봉인한다.
 L3-21은 2026-11-16 정상 UE 5대가 모든 attack 표본에서 5/5를 유지한 채 matched 3/3을
 통과했다. Blind DoS는 같은 날 배경 1대·2대 모두 정상 풀은 유지했지만 피해 UE가 180초
 안에 등록하지 못해 미승인이다. Blind DoS·L3-01-O·L3-06을 포함한 새 L3 7종 cold-start

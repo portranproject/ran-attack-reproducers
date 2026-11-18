@@ -88,8 +88,8 @@ count = int(sys.argv[2])
 if stat.S_IMODE(path.stat().st_mode) & 0o077:
     raise SystemExit(f"가입자 설정 권한은 0600 이하여야 합니다: {path}")
 text = path.read_text(encoding="utf-8")
-if re.search(r"(?m)^\s*(RUs|cells)\s*=", text):
-    raise SystemExit("가입자 설정에는 RUs/cells를 넣지 마세요; normal-ue가 대수에 맞게 생성합니다")
+if re.search(r"(?m)^\s*(RUs|cells|zmq)\s*=", text):
+    raise SystemExit("가입자 설정에는 RUs/cells/zmq를 넣지 마세요; normal-ue가 대수에 맞게 생성합니다")
 blocks = re.findall(r"(?ms)^\s*uicc\d+\s*=\s*\{.*?(?=^\s*uicc\d+\s*=|\Z)", text)
 values = []
 for block in blocks[:count]:
@@ -103,16 +103,8 @@ PY
 
 runtime_config() {
   local target=$NORMAL_UE_STATE_DIR/normal-ue-runtime.conf
-  python3 - "$NORMAL_UE_CFG" "$target" "$COUNT" <<'PY'
-import os, pathlib, sys
-source = pathlib.Path(sys.argv[1])
-target = pathlib.Path(sys.argv[2])
-payload = source.read_text(encoding="utf-8")
-temporary = target.with_suffix(".tmp")
-temporary.write_text(payload, encoding="utf-8")
-temporary.chmod(0o600)
-os.replace(temporary, target)
-PY
+  python3 "$ROOT/reproducers/authentication-timeout-exhaustion/analysis/multi_ru_config.py" \
+    "$NORMAL_UE_CFG" "$target" "$COUNT" "${NORMAL_UE_ZMQ_ENDPOINT_OFFSET:-0}"
   echo "$target"
 }
 
@@ -133,16 +125,16 @@ active_pid() {
 
 run_segment() {
   local run_id=$1 witness_cfg
-  witness_cfg=$(runtime_config)
+  witness_cfg=$NORMAL_UE_CFG
   exec env RSS_CONF=/dev/null OAI="$NORMAL_UE_OAI" UE_BIN="$NORMAL_UE_ATTACK_BIN" \
     BROKER_ATTACK_UE_BIN="$NORMAL_UE_ATTACK_BIN" BROKER_WITNESS_UE_BIN="$NORMAL_UE_BIN" \
     UECAP="$NORMAL_UE_UECAP" BROKER_ATTACK_PROCESSES=1 BROKER_ATTACK_UES_PER_PROCESS=1 \
-    BROKER_WITNESS_UES="$COUNT" BROKER_WITNESS_RSS=1 BROKER_WITNESS_MULTI_RU=0 \
+    BROKER_WITNESS_UES="$COUNT" BROKER_WITNESS_RSS=1 BROKER_WITNESS_MULTI_RU=1 \
     BROKER_WITNESS_PHASE_MS="$NORMAL_UE_PHASE_MS" \
     BROKER_WITNESS_RETRY_MS="$NORMAL_UE_RETRY_MS" BROKER_START_GNB_LAST=1 \
     BROKER_ATTACK_UE_CFG="$NORMAL_UE_ATTACK_CFG" BROKER_WITNESS_UE_CFG="$witness_cfg" \
     BROKER_PY="$NORMAL_UE_BROKER_PY" \
-    BROKER_CMD="exec env NORMAL_UE_BROKER_ENDPOINTS=2 python3 '$NORMAL_UE_BROKER_PY'" \
+    BROKER_CMD="exec env NORMAL_UE_BROKER_ENDPOINTS=$((COUNT + 1)) python3 '$NORMAL_UE_BROKER_PY'" \
     BROKER_LOGDIR="$NORMAL_UE_RUN_ROOT/runs" \
     GNB_CONFIG="$NORMAL_UE_GNB_CONFIG" GNB_STOP_CMD="$NORMAL_UE_GNB_STOP_CMD" \
     GNB_RESTART_CMD="$NORMAL_UE_GNB_RESTART_CMD" GNB_READY_CMD="$NORMAL_UE_GNB_READY_CMD" \

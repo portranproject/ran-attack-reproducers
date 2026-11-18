@@ -80,6 +80,10 @@ CU·코어·production dashboard는 유지한다. 정상 UE 5대와 공격 슬�
 broker에 연결하며, 정상 UE의 공격 전과 종료 직전 Registration·PDU·gateway ping 상태를
 실행 증거에 남긴다.
 
+정상 UE 5대는 OAI 설정의 `RUs`·`cells`·`zmq` 배열로 만든 독립 virtual RU/ZMQ endpoint
+5개를 사용한다. indexed CLI ZMQ 옵션은 사용하지 않는다. 단일 shared RU 경로는 p5에서
+channel timeout 약 9만 건과 서비스 1/5로 실패했으므로 자격 경로가 아니다.
+
 이 경로는 직접 KPM이나 detector 입력을 만들지 않는다. 실제
 `UE → ZMQ → DU/CU → TeleRAN → production detector → dashboard` 경로만 자격으로 인정한다.
 다만 에뮬레이션 모듈의 주장 범위는 바뀌지 않는다. L3-24는 RF overshadowing 이후 결과,

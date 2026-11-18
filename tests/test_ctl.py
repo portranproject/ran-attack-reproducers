@@ -91,7 +91,7 @@ class ControllerTest(unittest.TestCase):
             tree = pathlib.Path(directory)
             binary = tree / "cmake_targets/ran_build/build/nr-uesoftmodem"
             binary.parent.mkdir(parents=True)
-            binary.write_text("UPLINK_DOS_DETECTION event=registration_failure")
+            binary.write_text("UPLINK_DOS_DETECTION event=registration_failure\nOAI_SAME_CELL_GATE_FILE")
             binary.chmod(0o700)
             env = dict(os.environ, UPLINK_OAI=str(tree))
             result = self.run_ctl("build", "uplink-credential-flood", env=env)
@@ -136,6 +136,12 @@ class ControllerTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("13 modules", result.stdout)
 
+    def test_common_signal_doctor_accepts_python_entrypoint_without_execute_bit(self):
+        self.assertFalse(os.access(ROOT / "tools/reproctl.py", os.X_OK))
+        result = self.run_ctl("doctor", "an-01")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("OK 공통 탐지 입력 runner", result.stdout)
+
     def test_control_rejects_enable(self):
         result = self.run_ctl(
             "run", "auth-timeout", "control", "test-run", "--enable", "--dry-run"
@@ -151,17 +157,86 @@ class ControllerTest(unittest.TestCase):
         self.assertEqual(result.stdout.count("auth-stall-cell-run"), 6)
         self.assertNotIn("auth-timeout-run", result.stdout)
 
+    def test_same_cell_suite_dry_run_uses_seven_live_ran_paths(self):
+        result = self.run_ctl(
+            "same-cell", "campaign", "l3-live", "--campaign-id", "suite",
+            "--sets", "3", "--count", "5", "--enable", "--dry-run",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.count("실행 예정:"), 42)
+        self.assertEqual(result.stdout.count("timeout --signal=TERM --kill-after=60s 900s"), 42)
+        self.assertEqual(result.stdout.count("LIVE_E2E_WAIT_FOR_BASELINE=1"), 30)
+        for runner in (
+            "rss-broker-witness", "auth-stall-cell-run", "blind-run",
+            "uplink-credential-flood-run", "downlink-imsi-run",
+            "ue-capability-run", "nas-counter-desync-run",
+        ):
+            self.assertIn(runner, result.stdout)
+        self.assertNotIn("generate_rule_signal.py", result.stdout)
+        rrc_lines = [line for line in result.stdout.splitlines() if "rss-broker-witness" in line]
+        self.assertEqual(len(rrc_lines), 6)
+        self.assertTrue(all(
+            "BROKER_NORMAL_CONF=" in line
+            and "BROKER_WITNESS_MULTI_RU=1" in line
+            and "BROKER_WITNESS_PHASE_MS=3000" in line
+            and "NORMAL_UE_BROKER_ENDPOINTS=11" in line
+            and "-d 240" in line
+            for line in rrc_lines
+        ))
+
+    def test_same_cell_p1_dry_run_uses_p1_normal_ue_config(self):
+        result = self.run_ctl(
+            "same-cell", "run", "blind-dos", "--profile", "p1",
+            "--mode", "control", "--dry-run",
+            env=dict(os.environ, RAN_REPRO_PROFILE_ID="p1"),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("workloads/normal-ue/conf/p1.conf", result.stdout)
+
+    def test_self_live_runners_use_profile_telemetry_identity(self):
+        for relative, old_node in (
+            ("reproducers/uplink-dos/bin/uplink-credential-flood-run", "p5-l321"),
+            ("reproducers/nas-counter-desynchronization/bin/nas-counter-desync-run", "p5-l306"),
+        ):
+            source = (ROOT / relative).read_text()
+            self.assertIn("PROFILE_TELEMETRY_NODE=${CU_TELEMETRY_NODE:-}", source)
+            self.assertIn('--node "$telemetry_node"', source)
+            self.assertNotIn(f"--node {old_node}", source)
+
+    def test_same_cell_active_run_requires_enable(self):
+        result = self.run_ctl(
+            "same-cell", "run", "blind-dos", "--mode", "attack", "--dry-run",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("--enable", result.stderr)
+
+    def test_same_cell_phase_timeout_is_bounded(self):
+        for value in ("0", "1801"):
+            result = self.run_ctl(
+                "same-cell", "run", "blind-dos", "--mode", "control", "--dry-run",
+                env=dict(os.environ, SAME_CELL_PHASE_TIMEOUT_S=value),
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("1..1800", result.stderr)
+
     def test_build_reuses_binary_with_module_marker(self):
         with tempfile.TemporaryDirectory() as directory:
             tree = pathlib.Path(directory)
             binary = tree / "cmake_targets/ran_build/build/nr-uesoftmodem"
             binary.parent.mkdir(parents=True)
-            binary.write_text("UPLINK_DOS_EMULATION event=service_request_mac_corrupted")
+            binary.write_text("UPLINK_DOS_EMULATION event=service_request_mac_corrupted\nOAI_SAME_CELL_GATE_FILE")
             binary.chmod(0o700)
             env = dict(os.environ, UPLINK_OAI=str(tree))
             result = self.run_ctl("build", "uplink-dos", env=env)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("빌드 준비됨", result.stdout)
+
+    def test_non_upstream_oai_baseline_is_rebuilt_from_tracked_patch(self):
+        source = (ROOT / "ctl.sh").read_text()
+        self.assertIn("materialize_local_oai_commit", source)
+        self.assertIn("oai-pucch-null-fix.patch", source)
+        self.assertIn("로컬 OAI 기준 커밋 재생성 해시가 다릅니다", source)
+        self.assertIn("6d6782b48484efd935c14e834832032743f9b138", source)
 
 
 if __name__ == "__main__":

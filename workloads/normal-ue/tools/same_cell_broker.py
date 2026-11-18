@@ -23,8 +23,11 @@ class SameCellBroker(gr.top_block):
         self.slot_dl_selectors = []
         self.slot_ul_gates = []
         self.slot_dl_gates = []
+        self.slot_ul_retire_selectors = []
+        self.slot_ul_zero_sources = []
         self.warm_slots = set()
         self.persistent_attack = persistent_attack
+        self.attack_retired = False
         self.connect((du_dl, 0), (throttle, 0))
         self.connect((self.uplink, 0), (du_ul, 0))
         for index in range(endpoint_count):
@@ -38,11 +41,18 @@ class SameCellBroker(gr.top_block):
                 self.connect((throttle, 0), (dl, 0))
                 continue
             if persistent_attack:
+                ul_selector = blocks.selector(gr.sizeof_gr_complex, 0, 0)
+                ul_zero = blocks.null_source(gr.sizeof_gr_complex)
                 ul_gate = blocks.multiply_const_cc(0.0)
-                dl_gate = blocks.multiply_const_cc(0.0)
+                # Keep the UE sample clock aligned while suppressing only its uplink.
+                dl_gate = blocks.multiply_const_cc(1.0)
+                self.slot_ul_retire_selectors.append(ul_selector)
+                self.slot_ul_zero_sources.append(ul_zero)
                 self.slot_ul_gates.append(ul_gate)
                 self.slot_dl_gates.append(dl_gate)
-                self.connect((ul, 0), (ul_gate, 0))
+                self.connect((ul, 0), (ul_selector, 0))
+                self.connect((ul_zero, 0), (ul_selector, 1))
+                self.connect((ul_selector, 0), (ul_gate, 0))
                 self.connect((ul_gate, 0), (self.uplink, index))
                 self.connect((throttle, 0), (dl_gate, 0))
                 self.connect((dl_gate, 0), (dl, 0))
@@ -71,14 +81,17 @@ class SameCellBroker(gr.top_block):
 
     def select_attack_slots(self, mode, slots):
         if self.persistent_attack:
-            if mode not in {"standby", "attack"}:
-                raise ValueError("persistent attack slots accept standby or attack")
-            for index, (ul_gate, dl_gate) in enumerate(
-                zip(self.slot_ul_gates, self.slot_dl_gates), start=1
-            ):
+            if mode not in {"standby", "warmup", "attack", "retire"}:
+                raise ValueError("persistent attack slots accept standby, warmup, attack, or retire")
+            if self.attack_retired and mode != "retire":
+                raise ValueError("retired attack slots cannot be re-enabled")
+            if mode == "retire":
+                for selector in self.slot_ul_retire_selectors:
+                    selector.set_input_index(1)
+                self.attack_retired = True
+            for index, ul_gate in enumerate(self.slot_ul_gates, start=1):
                 gain = 1.0 if mode == "attack" and index in slots else 0.0
                 ul_gate.set_k(gain)
-                dl_gate.set_k(gain)
             return
         if mode == "warmup":
             for index, selector in enumerate(self.slot_dl_selectors, start=1):
@@ -104,8 +117,8 @@ def main():
     attack_slots = int(os.environ.get("NORMAL_UE_BROKER_ATTACK_SLOTS", "0"))
     control_path = os.environ.get("NORMAL_UE_BROKER_CONTROL", "")
     persistent_attack = os.environ.get("NORMAL_UE_BROKER_PERSISTENT_ATTACK", "0") == "1"
-    if endpoint_count < 2 or endpoint_count > 11:
-        raise SystemExit("NORMAL_UE_BROKER_ENDPOINTS must be 2..11")
+    if endpoint_count < 2 or endpoint_count > 15:
+        raise SystemExit("NORMAL_UE_BROKER_ENDPOINTS must be 2..15")
     if attack_slots < 0 or attack_slots >= endpoint_count:
         raise SystemExit("NORMAL_UE_BROKER_ATTACK_SLOTS must be 0..endpoint_count-1")
     if persistent_attack and attack_slots == 0:
@@ -131,7 +144,7 @@ def main():
             reset_attack.clear()
             try:
                 raw = open(control_path, encoding="utf-8").read().strip()
-                if raw in {"placeholder", "standby"}:
+                if raw in {"placeholder", "standby", "retire"}:
                     slots = set()
                     mode = raw
                 elif raw.startswith("warmup ") or raw.startswith("attack "):

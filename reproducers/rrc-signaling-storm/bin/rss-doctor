@@ -96,7 +96,8 @@ if [[ -x $UE_BIN ]]; then
   miss=()
   for n in target_occupancy msg4_wait phase_ms msg4_ack msg4_ack_withheld \
            probe_ues probe_delay_ms probe_ra_only probe_interval_ms \
-           rss_reject_reset_skipped RSS_SHARE_LOCKSTEP RSS_SHARE_NUE; do
+           rss_reject_reset_skipped RSS_SHARE_LOCKSTEP RSS_SHARE_NUE \
+           RSS_BROKER_CONTROL_FILE; do
     c=$(strings "$UE_BIN" 2>/dev/null | grep -c "$n" || true)
     (( c > 0 )) || miss+=("$n")
   done

@@ -52,6 +52,11 @@ Markdown 문서는 한국어를 기본으로 하며 파일명에 언어 접미�
 
 ## 재현 도구 상태
 
+2026-11-19에는 AWS origin snapshot에서 복원한 p1에 현재 저장소를 새로 설치하고, 아래 L3
+7종을 정상 UE 5대와 같은 DU·셀에서 `control → active` 3세트씩 총 42회 실행했다. 42/42가
+production detector와 dashboard까지 통과했다. 상세 조건과 manifest 해시는
+[p1 clean-origin E2E 자격](artifacts/p1-clean-origin-live-e2e-20261119/)에 있다.
+
 | 도구 | 상태 |
 |---|---|
 | [RRC signaling storm](reproducers/rrc-signaling-storm/) | RRCSetupComplete 미전송형. p5 실제 UE→RAN→TeleRAN→production detector matched 3/3 통과. 서비스 거부는 필수 조건 아님 |
@@ -60,11 +65,13 @@ Markdown 문서는 한국어를 기본으로 하며 파일명에 언어 접미�
 | [인증 응답 미전송형 연결 컨텍스트 고갈 (NAS 고갈)](reproducers/authentication-timeout-exhaustion/) | 한 셀에서 서로 다른 랩 가입자 10명의 응답 미전송을 실제 UE 경로로 생성. TeleRAN→production detector matched 3/3 통과, 서비스 거부는 미관측 |
 | [하향 IMSI 추출 계열 식별자 노출](reproducers/downlink-imsi-extractor/) | 예상하지 않은 SUCI Identity Response 결과 에뮬레이션. 실제 N2→TeleRAN→production detector matched 3/3 통과, RF overshadowing 미검증 |
 | [보안 전 UE Capability Information 주입](reproducers/ue-capability-hijacking/) | 보안 전 unsolicited UECapabilityInformation 관측 에뮬레이션. 실제 F1→TeleRAN→production detector matched 3/3 통과, MITM·내용 변조·강등 수락은 범위 밖 |
-| [L3-06 NAS SecurityModeReject 결과](reproducers/nas-counter-desynchronization/) | p5 실제 UE→RAN→TeleRAN→production detector matched control→emulation 3/3 통과. MITM·NAS counter wrap은 범위 밖, 정상 UE same-cell 공존은 미승인 |
+| [L3-06 NAS SecurityModeReject 결과](reproducers/nas-counter-desynchronization/) | 실제 UE→RAN→TeleRAN→production detector matched control→emulation 3/3 통과. p1 정상 UE 5대 same-cell도 3/3 통과. MITM·NAS counter wrap은 범위 밖 |
 | [AN 이상탐지 fixture 6종](ATTACK-CATALOG.md) | 공격 1.0 자격 범위 밖. production detector 기본 설정 matched control→emulation 3/3 회귀용 |
 
-각 도구는 구현·설정·라벨 계약·실험 출력을 서로 섞지 않는다. 다섯 기존 룰의 공통 E2E
-결과는 [p5 실제 경로 E2E 자격 검증](artifacts/p5-live-e2e-five-20261117/)에서 확인한다.
+각 도구는 구현·설정·라벨 계약·실험 출력을 서로 섞지 않는다. 전체 7종의 새 환경 이식과
+same-cell E2E 결과는 [p1 clean-origin E2E 자격](artifacts/p1-clean-origin-live-e2e-20261119/)에서
+확인한다. 과거 다섯 룰의 p5 결과는
+[p5 실제 경로 E2E 자격 검증](artifacts/p5-live-e2e-five-20261117/)에 보존한다.
 
 ```text
 reproducers/

@@ -6,22 +6,37 @@ OAI=${OAI:-/root/OAI-auth-timeout-w38}
 EXPECT_COMMIT=${EXPECT_COMMIT:-6d6782b48484efd935c14e834832032743f9b138}
 PATCH=${PATCH:-$ROOT/patch/auth-timeout-ue-w38.patch}
 RU_SHARE_PATCH=${RU_SHARE_PATCH:-$ROOT/patch/ru-sharing-w38.patch}
+NORMAL_MULTI_RU_PATCH=${NORMAL_MULTI_RU_PATCH:-$ROOT/../../workloads/normal-ue/patch/normal-multi-ru.patch}
+SAME_CELL_GATE_PATCH=${SAME_CELL_GATE_PATCH:-$ROOT/patch/same-cell-ra-gate-w38.patch}
 BUILD=$OAI/cmake_targets/ran_build/build
 BIN=$BUILD/nr-uesoftmodem
+PATCHES=("$RU_SHARE_PATCH" "$NORMAL_MULTI_RU_PATCH" "$PATCH" "$SAME_CELL_GATE_PATCH")
 
 fail() { echo "auth-timeout-build: $*" >&2; exit 1; }
 git -C "$OAI" rev-parse --is-inside-work-tree >/dev/null 2>&1 || fail "OAI 작업 트리가 아닙니다: $OAI"
-for patch in "$RU_SHARE_PATCH" "$PATCH"; do
+for patch in "${PATCHES[@]}"; do
   [[ -f $patch && ! -L $patch ]] || fail "패치가 없거나 심볼릭 링크입니다: $patch"
 done
 [[ $(git -C "$OAI" rev-parse HEAD) == "$EXPECT_COMMIT" ]] || fail "OAI 기준 커밋이 다릅니다"
 [[ -z $(git -C "$OAI" status --porcelain --untracked-files=all --ignore-submodules=none) ]] \
   || fail "OAI 작업 트리가 깨끗하지 않습니다"
 
-git -C "$OAI" apply --check "$RU_SHARE_PATCH"
+PREFLIGHT_INDEX=$(mktemp)
+rm -f "$PREFLIGHT_INDEX"
+trap 'rm -f "$PREFLIGHT_INDEX"' EXIT
+GIT_INDEX_FILE="$PREFLIGHT_INDEX" git -C "$OAI" read-tree HEAD
+for patch in "${PATCHES[@]}"; do
+  GIT_INDEX_FILE="$PREFLIGHT_INDEX" git -C "$OAI" apply --cached "$patch" \
+    || fail "패치 스택을 적용할 수 없습니다: $patch"
+done
+rm -f "$PREFLIGHT_INDEX"
+trap - EXIT
 git -C "$OAI" apply "$RU_SHARE_PATCH"
-git -C "$OAI" apply --check "$PATCH"
+git -C "$OAI" apply "$NORMAL_MULTI_RU_PATCH"
 git -C "$OAI" apply "$PATCH"
+git -C "$OAI" apply "$SAME_CELL_GATE_PATCH"
+grep -Fq 'return NB_UE_INST > nrue_get_ru_count();' "$OAI/executables/nr-ue-ru.c" \
+  || fail "독립 virtual RU에서 RU sharing이 비활성화되지 않았습니다"
 (
   cd "$OAI/cmake_targets"
   ./build_oai --nrUE -w ZMQ --ninja
@@ -35,6 +50,10 @@ grep -Faq 'AUTH_TIMEOUT_EXHAUSTION event=authentication_response_submitted' "$BI
 grep -Faq 'OAI_ZMQ_TX_WAIT_US' "$BUILD/liboai_zmqdevif.so" \
   || fail "빌드된 UE에 다중 UE ZMQ queue wakeup이 없습니다"
 grep -Faq 'RSS_SHARE_NUE' "$BIN" || fail "빌드된 UE에 다중 UE 공유 무선 지원이 없습니다"
-printf 'auth-timeout-build: ok\nsource_commit=%s\nru_sharing_patch_sha256=%s\nattack_patch_sha256=%s\nbinary_sha256=%s\nwithholding_default=off\n' \
+grep -Faq 'OAI_AUTH_TIMEOUT_GATE_FILE' "$BIN" || fail "빌드된 UE에 same-cell RA gate가 없습니다"
+printf 'auth-timeout-build: ok\nsource_commit=%s\nru_sharing_patch_sha256=%s\nnormal_multi_ru_patch_sha256=%s\nattack_patch_sha256=%s\nsame_cell_gate_patch_sha256=%s\nbinary_sha256=%s\nwithholding_default=off\n' \
   "$EXPECT_COMMIT" "$(sha256sum "$RU_SHARE_PATCH" | awk '{print $1}')" \
-  "$(sha256sum "$PATCH" | awk '{print $1}')" "$(sha256sum "$BIN" | awk '{print $1}')"
+  "$(sha256sum "$NORMAL_MULTI_RU_PATCH" | awk '{print $1}')" \
+  "$(sha256sum "$PATCH" | awk '{print $1}')" \
+  "$(sha256sum "$SAME_CELL_GATE_PATCH" | awk '{print $1}')" \
+  "$(sha256sum "$BIN" | awk '{print $1}')"

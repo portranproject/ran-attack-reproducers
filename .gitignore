@@ -11,6 +11,7 @@
 # Local run and build output
 /logs/
 /runs/
+/nrL1_UE_stats-*.log
 /reproducers/*/runs/
 /reproducers/*/logs/
 /reproducers/*/build/

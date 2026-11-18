@@ -25,10 +25,19 @@ RUN_ROOT=${AUTH_STALL_CELL_RUN_ROOT:-$ROOT/runs-cell}
 UE_COUNT=${AUTH_STALL_CELL_UE_COUNT:-10}
 PROCESS_COUNT=${AUTH_STALL_CELL_PROCESS_COUNT:-2}
 UES_PER_PROCESS=${AUTH_STALL_CELL_UES_PER_PROCESS:-5}
-READY_TIMEOUT_S=${AUTH_STALL_CELL_READY_TIMEOUT_S:-120}
+READY_TIMEOUT_S=${SAME_CELL_AUTH_READY_TIMEOUT_S:-${AUTH_STALL_CELL_READY_TIMEOUT_S:-120}}
 POST_MARKER_S=${AUTH_STALL_CELL_POST_MARKER_S:-5}
 START_INTERVAL_MS=${AUTH_STALL_CELL_START_INTERVAL_MS:-50}
 LOCK_FILE=${AUTH_STALL_CELL_LOCK_FILE:-/tmp/auth-stall-cell.lock}
+ENDPOINTS_FILE=${SAME_CELL_UE_ENDPOINTS_FILE:-}
+MANAGE_RAN=${SAME_CELL_AUTH_TIMEOUT_MANAGE_DU:-1}
+SAME_CELL_PRESTART=${SAME_CELL_PRESTART:-0}
+SAME_CELL_RAN_READY_FILE=${SAME_CELL_RAN_READY_FILE:-}
+SAME_CELL_READY_FILE=${SAME_CELL_READY_FILE:-}
+SAME_CELL_ATTACK_READY_FILE=${SAME_CELL_ATTACK_READY_FILE:-}
+SAME_CELL_ATTACK_DONE_FILE=${SAME_CELL_ATTACK_DONE_FILE:-}
+SAME_CELL_RELEASE_FILE=${SAME_CELL_RELEASE_FILE:-}
+SAME_CELL_UE_GATE_FILE=${SAME_CELL_UE_GATE_FILE:-}
 
 fail() { echo "auth-stall-cell-run: $*" >&2; exit 2; }
 [[ $MODE == control || $MODE == attack ]] || fail "mode는 control 또는 attack이어야 합니다"
@@ -43,11 +52,33 @@ done
 (( UE_COUNT == 10 )) || fail "production L3-01-O 자격시험은 UE 10개로 고정합니다"
 (( PROCESS_COUNT * UES_PER_PROCESS == UE_COUNT )) || fail "프로세스×UE 수가 10이어야 합니다"
 (( PROCESS_COUNT == 2 && UES_PER_PROCESS == 5 )) || fail "자격시험 실행 모양은 2×5로 고정합니다"
-for file in "$OAI_BIN" "$UECAP" "$ATTACKER_CONFIGS_FILE" "$BROKER_SCRIPT" "$DU_BIN" "$DU_CONFIG" \
+[[ $MANAGE_RAN == 0 || $MANAGE_RAN == 1 ]] || fail "SAME_CELL_AUTH_TIMEOUT_MANAGE_DU는 0 또는 1이어야 합니다"
+[[ $SAME_CELL_PRESTART == 0 || $SAME_CELL_PRESTART == 1 ]] || fail "SAME_CELL_PRESTART는 0 또는 1이어야 합니다"
+(( SAME_CELL_PRESTART == 0 || MANAGE_RAN == 0 )) || fail "same-cell prestart는 외부 RAN lifecycle이 필요합니다"
+for file in "$OAI_BIN" "$UECAP" "$ATTACKER_CONFIGS_FILE" \
             "$ROOT/analysis/multi_ru_config.py" "$ROOT/analysis/verify_cell_flood.py"; do
   [[ -f $file && ! -L $file ]] || fail "필수 일반 파일이 없습니다: $file"
 done
-[[ -x $OAI_BIN && -x $DU_BIN ]] || fail "OAI·DU 바이너리는 실행 가능해야 합니다"
+[[ -x $OAI_BIN ]] || fail "OAI 바이너리는 실행 가능해야 합니다"
+if (( MANAGE_RAN )); then
+  for file in "$BROKER_SCRIPT" "$DU_BIN" "$DU_CONFIG"; do
+    [[ -f $file && ! -L $file ]] || fail "필수 RAN 파일이 없습니다: $file"
+  done
+  [[ -x $DU_BIN ]] || fail "DU 바이너리는 실행 가능해야 합니다"
+fi
+if (( SAME_CELL_PRESTART )); then
+  [[ -f $ENDPOINTS_FILE && ! -L $ENDPOINTS_FILE ]] || fail "same-cell endpoint 파일이 안전하지 않습니다"
+  mapfile -t endpoint_rows <"$ENDPOINTS_FILE"
+  (( ${#endpoint_rows[@]} == UE_COUNT )) || fail "same-cell 인증 미응답형은 독립 RU endpoint 10개가 필요합니다"
+  for path in "$SAME_CELL_RAN_READY_FILE" "$SAME_CELL_READY_FILE" "$SAME_CELL_ATTACK_READY_FILE" \
+              "$SAME_CELL_ATTACK_DONE_FILE" "$SAME_CELL_RELEASE_FILE" "$SAME_CELL_UE_GATE_FILE"; do
+    [[ $path == /* ]] || fail "same-cell marker는 절대 경로여야 합니다"
+  done
+  [[ -f $SAME_CELL_UE_GATE_FILE && ! -L $SAME_CELL_UE_GATE_FILE ]] \
+    || fail "same-cell UE gate가 안전하지 않습니다"
+  grep -Faq OAI_AUTH_TIMEOUT_GATE_FILE "$OAI_BIN" \
+    || fail "same-cell 인증 UE 바이너리에 RA gate가 없습니다"
+fi
 for command in flock python3 setsid stdbuf; do command -v "$command" >/dev/null || fail "$command가 필요합니다"; done
 mapfile -t CONFIGS < <(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$ATTACKER_CONFIGS_FILE" | head -n "$PROCESS_COUNT")
 (( ${#CONFIGS[@]} == PROCESS_COUNT )) || fail "UE 프로세스별 설정이 필요합니다"
@@ -60,7 +91,7 @@ mkdir -p -m 700 "$RUN_ROOT"
 OUT=$RUN_ROOT/$RUN_ID
 mkdir -m 700 "$OUT" || fail "기존 실행 결과는 덮어쓰지 않습니다: $OUT"
 
-PIDS=() EARLY_EXIT=0 FORCED_KILL=0 BROKER_PID= DU_PID=
+PIDS=() RUNTIME_CONFIGS=() EARLY_EXIT=0 FORCED_KILL=0 RECOVERY_SIGNAL_COUNT=0 BROKER_PID= DU_PID=
 running() { kill -0 "$1" 2>/dev/null && [[ $(ps -o stat= -p "$1" 2>/dev/null | tr -d ' ') != Z* ]]; }
 stop_group() {
   local pid=$1
@@ -69,13 +100,32 @@ stop_group() {
   for _ in {1..100}; do running "$pid" || return 0; sleep .1; done
   FORCED_KILL=$((FORCED_KILL + 1)); kill -KILL -- "-$pid" 2>/dev/null || true
 }
+stop_groups() {
+  local pid deadline running_count
+  for pid in "$@"; do running "$pid" && kill -INT -- "-$pid" 2>/dev/null || true; done
+  sleep .2
+  for pid in "$@"; do running "$pid" && kill -INT -- "-$pid" 2>/dev/null || true; done
+  deadline=$((SECONDS + 10))
+  while (( SECONDS < deadline )); do
+    running_count=0
+    for pid in "$@"; do running "$pid" && running_count=$((running_count + 1)); done
+    (( running_count == 0 )) && return 0
+    sleep .1
+  done
+  for pid in "$@"; do
+    if running "$pid"; then
+      FORCED_KILL=$((FORCED_KILL + 1)); kill -KILL -- "-$pid" 2>/dev/null || true
+    fi
+  done
+}
 cleanup() {
-  local status=$? i
+  local status=$?
   trap - EXIT INT TERM
   set +e
-  for ((i=${#PIDS[@]}-1; i>=0; i--)); do stop_group "${PIDS[$i]}"; done
+  stop_groups "${PIDS[@]}"
   [[ -z $DU_PID ]] || stop_group "$DU_PID"
   [[ -z $BROKER_PID ]] || stop_group "$BROKER_PID"
+  for file in "${RUNTIME_CONFIGS[@]}"; do unlink "$file" 2>/dev/null || true; done
   exit "$status"
 }
 trap cleanup EXIT
@@ -86,27 +136,38 @@ marker='AUTH_TIMEOUT_EXHAUSTION event=authentication_response_submitted'
 [[ $MODE == control ]] || marker='AUTH_TIMEOUT_EXHAUSTION event=authentication_request_withheld'
 for ((i=0; i<PROCESS_COUNT; i++)); do
   runtime_config="$OUT/ue-$((i + 1)).conf"
-  python3 "$ROOT/analysis/multi_ru_config.py" "${CONFIGS[$i]}" "$runtime_config" "$UES_PER_PROCESS"
-  zmq=()
-  for ((ru=0; ru<UES_PER_PROCESS; ru++)); do
-    (( i == 0 )) && endpoint=$((UES_PER_PROCESS + ru + 1)) || endpoint=$((ru + 1))
-    zmq+=("--zmq.[$ru].tx_channels" "tcp://127.0.0.1:$((2001 + 100 * endpoint))"
-          "--zmq.[$ru].rx_channels" "tcp://127.0.0.1:$((2000 + 100 * endpoint))")
-  done
-  setsid env OAI_AUTH_TIMEOUT_TRACE=1 OAI_AUTH_TIMEOUT_WITHHOLD=$ENABLE RSS_SHARE_NUE=$UES_PER_PROCESS \
+  if (( SAME_CELL_PRESTART )); then
+    endpoint_offset=$((i * UES_PER_PROCESS))
+  elif (( i == 0 )); then
+    endpoint_offset=$UES_PER_PROCESS
+  else
+    endpoint_offset=0
+  fi
+  if (( SAME_CELL_PRESTART )); then
+    for ((ru=0; ru<UES_PER_PROCESS; ru++)); do
+      endpoint=$((endpoint_offset + ru + 1))
+      read -r tx rx extra <<<"${endpoint_rows[$((i * UES_PER_PROCESS + ru))]}"
+      [[ -z ${extra:-} && $tx == "tcp://127.0.0.1:$((2001 + 100 * endpoint))" \
+         && $rx == "tcp://127.0.0.1:$((2000 + 100 * endpoint))" ]] \
+        || fail "same-cell endpoint 순서가 독립 RU 계획과 다릅니다"
+    done
+  fi
+  python3 "$ROOT/analysis/multi_ru_config.py" \
+    "${CONFIGS[$i]}" "$runtime_config" "$UES_PER_PROCESS" "$endpoint_offset"
+  RUNTIME_CONFIGS+=("$runtime_config")
+  gate_base_ms=0; gate_step_ms=0
+  if (( SAME_CELL_PRESTART )); then gate_base_ms=$((i * 250)); gate_step_ms=500; fi
+  setsid env OAI_AUTH_TIMEOUT_TRACE=1 OAI_AUTH_TIMEOUT_WITHHOLD=$ENABLE \
+    OAI_AUTH_TIMEOUT_GATE_FILE="$SAME_CELL_UE_GATE_FILE" RSS_SHARE_NUE=$UES_PER_PROCESS \
+    OAI_AUTH_TIMEOUT_GATE_BASE_MS="$gate_base_ms" OAI_AUTH_TIMEOUT_GATE_STEP_MS="$gate_step_ms" \
     "$OAI_BIN" -O "$runtime_config" --band 78 -C 3489420000 --numerology 1 -r 51 -E \
     --ue-scan-carrier --uecap_file "$UECAP" --device.name oai_zmqdevif \
-    --rss.enable 1 --rss.interval_ms 0 --rss.completion_pct 0 --rss.ack_gate 1 --rss.ra_gate 1 \
-    --rss.gate_timeout_ms 500 --rss.target_occupancy 0 --rss.hold_ms 2000 --rss.msg4_ack 1 \
-    "${zmq[@]}" --num-ues "$UES_PER_PROCESS" \
-    --rss.max_duration_s 0 --rss.honor_reject 0 --rss.msg4_wait 1 --rss.probe_ues "$UES_PER_PROCESS" \
-    --rss.probe_delay_ms 0 --rss.probe_ra_only 0 --rss.probe_interval_ms 5000 --rss.phase_ms 1000 \
-    --rss.run_id "authcell-$RUN_ID-$((i + 1))" --rss.log_file "$OUT/rss-$((i + 1)).jsonl" \
+    --num-ues "$UES_PER_PROCESS" \
     >"$OUT/ue-$((i + 1)).log" 2>&1 </dev/null &
   PIDS+=("$!")
   python3 -c 'import sys,time; time.sleep(int(sys.argv[1])/1000)' "$START_INTERVAL_MS"
 done
-if (( PROCESS_COUNT > 1 )); then
+if (( MANAGE_RAN && PROCESS_COUNT > 1 )); then
   printf 'standby\n' >"$OUT/broker-control"
   NORMAL_UE_BROKER_ENDPOINTS=$UE_COUNT NORMAL_UE_BROKER_ATTACK_SLOTS=$UES_PER_PROCESS \
     NORMAL_UE_BROKER_PERSISTENT_ATTACK=1 \
@@ -115,17 +176,32 @@ if (( PROCESS_COUNT > 1 )); then
   sleep 2
   running "$BROKER_PID" || fail "same-cell broker가 조기 종료됐습니다"
 fi
-setsid stdbuf -oL -eL "$DU_BIN" -c "$DU_CONFIG" >"$OUT/du.log" 2>&1 </dev/null &
-DU_PID=$!
-started=$SECONDS
-until grep -Eqi 'F1 Setup procedure successful|E2 Setup procedure successful|==== DU started ===' "$OUT/du.log"; do
-  running "$DU_PID" || fail "DU가 조기 종료됐습니다"
-  (( SECONDS - started < READY_TIMEOUT_S )) || fail "DU 준비가 시간 초과했습니다"
-  sleep .2
-done
+if (( MANAGE_RAN )); then
+  setsid stdbuf -oL -eL "$DU_BIN" -c "$DU_CONFIG" >"$OUT/du.log" 2>&1 </dev/null &
+  DU_PID=$!
+  started=$SECONDS
+  until grep -Eqi 'F1 Setup procedure successful|E2 Setup procedure successful|==== DU started ===' "$OUT/du.log"; do
+    running "$DU_PID" || fail "DU가 조기 종료됐습니다"
+    (( SECONDS - started < READY_TIMEOUT_S )) || fail "DU 준비가 시간 초과했습니다"
+    sleep .2
+  done
+else
+  started=$SECONDS
+  until [[ -f $SAME_CELL_RAN_READY_FILE && ! -L $SAME_CELL_RAN_READY_FILE ]]; do
+    for pid in "${PIDS[@]}"; do running "$pid" || fail "UE가 RAN 준비 전에 종료됐습니다"; done
+    (( SECONDS - started < READY_TIMEOUT_S )) || fail "same-cell RAN 준비가 시간 초과했습니다"
+    sleep .2
+  done
+  until [[ -f $SAME_CELL_READY_FILE && ! -L $SAME_CELL_READY_FILE ]]; do
+    for pid in "${PIDS[@]}"; do running "$pid" || fail "UE가 정상 UE 준비 전에 종료됐습니다"; done
+    (( SECONDS - started < READY_TIMEOUT_S )) || fail "same-cell 정상 UE 준비가 시간 초과했습니다"
+    sleep .2
+  done
+  ( set -o noclobber; : >"$SAME_CELL_ATTACK_READY_FILE" ) || fail "same-cell attack readiness 게시 실패"
+fi
 
 for ((i=0; i<PROCESS_COUNT; i++)); do
-  if (( PROCESS_COUNT > 1 && i == 1 )); then
+  if (( MANAGE_RAN && PROCESS_COUNT > 1 && i == 1 )); then
     before=$(grep -c '^SAME_CELL_SLOT_SELECTION ' "$OUT/broker.log" 2>/dev/null || true)
     printf 'attack 1,2,3,4,5\n' >"$OUT/broker-control"
     kill -USR1 "$BROKER_PID"
@@ -162,20 +238,35 @@ while :; do
 done
 sleep "$POST_MARKER_S"
 for pid in "${PIDS[@]}"; do running "$pid" || EARLY_EXIT=$((EARLY_EXIT + 1)); done
-for ((i=${#PIDS[@]}-1; i>=0; i--)); do stop_group "${PIDS[$i]}"; done
+if (( SAME_CELL_PRESTART )); then
+  ( set -o noclobber; : >"$SAME_CELL_ATTACK_DONE_FILE" ) || fail "same-cell attack 완료 게시 실패"
+  started=$SECONDS
+  until [[ -f $SAME_CELL_RELEASE_FILE && ! -L $SAME_CELL_RELEASE_FILE ]]; do
+    for pid in "${PIDS[@]}"; do running "$pid" || fail "same-cell 종료 허가 전에 UE가 종료됐습니다"; done
+    (( SECONDS - started < READY_TIMEOUT_S )) || fail "same-cell 종료 허가가 시간 초과했습니다"
+    sleep .2
+  done
+fi
+stop_groups "${PIDS[@]}"
 PIDS=()
-stop_group "$DU_PID"; DU_PID=
-stop_group "$BROKER_PID"; BROKER_PID=
-printf '{"schema":"auth-timeout.cell-flood-process.v1","early_exit_count":%s,"forced_kill_count":%s}\n' \
-  "$EARLY_EXIT" "$FORCED_KILL" >"$OUT/process.json"
-python3 - "$OUT/run.json" "$RUN_ID" "$MODE" "$ENABLE" "$UE_COUNT" "$PROCESS_COUNT" "$UES_PER_PROCESS" "$START_INTERVAL_MS" <<'PY'
+if (( MANAGE_RAN )); then
+  stop_group "$DU_PID"; DU_PID=
+  stop_group "$BROKER_PID"; BROKER_PID=
+fi
+for file in "${RUNTIME_CONFIGS[@]}"; do unlink "$file"; done
+RUNTIME_CONFIGS=()
+printf '{"schema":"auth-timeout.cell-flood-process.v1","early_exit_count":%s,"forced_kill_count":%s,"recovery_signal_count":%s}\n' \
+  "$EARLY_EXIT" "$FORCED_KILL" "$RECOVERY_SIGNAL_COUNT" >"$OUT/process.json"
+python3 - "$OUT/run.json" "$RUN_ID" "$MODE" "$ENABLE" "$UE_COUNT" "$PROCESS_COUNT" "$UES_PER_PROCESS" "$START_INTERVAL_MS" "$SAME_CELL_PRESTART" <<'PY'
 import json,sys
-path,run_id,mode,enabled,count,processes,per_process,interval=sys.argv[1:]
+path,run_id,mode,enabled,count,processes,per_process,interval,same_cell=sys.argv[1:]
 with open(path,"x") as f:
  json.dump({"schema":"auth-timeout.cell-flood-run.v1","run_id":run_id,"mode":mode,
             "withholding_enabled":enabled=="1","logical_ues":int(count),
             "process_count":int(processes),"ues_per_process":int(per_process),
-            "start_interval_ms":int(interval),"single_cell":True},f,sort_keys=True,separators=(",",":")); f.write("\n")
+            "start_interval_ms":int(interval),"same_cell_ra_base_ms":[0,250] if same_cell=="1" else [0,0],
+            "same_cell_ra_step_ms":500 if same_cell=="1" else 0,
+            "single_cell":True},f,sort_keys=True,separators=(",",":")); f.write("\n")
 PY
 python3 "$ROOT/analysis/verify_cell_flood.py" "$OUT" "$MODE" "$RUN_ID" "$UE_COUNT"
 trap - EXIT INT TERM

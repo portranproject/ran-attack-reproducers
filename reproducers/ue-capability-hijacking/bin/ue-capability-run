@@ -40,6 +40,9 @@ SAME_CELL_RAN_READY_FILE=${SAME_CELL_RAN_READY_FILE:-}
 SAME_CELL_READY_TIMEOUT_S=${SAME_CELL_READY_TIMEOUT_S:-120}
 SAME_CELL_PRESTART=${SAME_CELL_PRESTART:-0}
 SAME_CELL_ATTACK_READY_FILE=${SAME_CELL_ATTACK_READY_FILE:-}
+SAME_CELL_ATTACK_DONE_FILE=${SAME_CELL_ATTACK_DONE_FILE:-}
+SAME_CELL_RELEASE_FILE=${SAME_CELL_RELEASE_FILE:-}
+SAME_CELL_UE_GATE_FILE=${SAME_CELL_UE_GATE_FILE:-}
 
 fail() { echo "ue-capability-run: $*" >&2; exit 2; }
 [[ $MODE == control || $MODE == emulation ]] || fail "mode는 control 또는 emulation이어야 합니다"
@@ -55,10 +58,18 @@ for value in "$ATTACH_TIMEOUT_S" "$OBSERVE_TIMEOUT_S"; do [[ $value =~ ^[1-9][0-
 [[ -z $SAME_CELL_READY_FILE || $SAME_CELL_READY_FILE == /* ]] || fail "SAME_CELL_READY_FILE은 절대 경로여야 합니다"
 [[ $SAME_CELL_PRESTART == 0 || $SAME_CELL_RAN_READY_FILE == /* ]] || fail "prestart에는 절대 RAN ready 경로가 필요합니다"
 [[ $SAME_CELL_PRESTART == 0 || $SAME_CELL_ATTACK_READY_FILE == /* ]] || fail "prestart에는 절대 attack ready 경로가 필요합니다"
+[[ $SAME_CELL_PRESTART == 0 || $SAME_CELL_ATTACK_DONE_FILE == /* ]] || fail "prestart에는 절대 attack done 경로가 필요합니다"
+[[ $SAME_CELL_PRESTART == 0 || $SAME_CELL_RELEASE_FILE == /* ]] || fail "prestart에는 절대 release 경로가 필요합니다"
 for file in "$OAI_BIN" "$UE_CFG" "$UECAP" "$DU_CFG" "$SSH_KEY" "$ROOT/patch/ue-capability-injection-w38.patch"; do
   [[ -f $file && ! -L $file ]] || fail "필수 일반 파일이 없습니다: $file"
 done
 [[ -x $OAI_BIN ]] || fail "OAI_BIN은 실행 가능해야 합니다"
+if (( SAME_CELL_PRESTART )); then
+  [[ $SAME_CELL_UE_GATE_FILE == /* && -f $SAME_CELL_UE_GATE_FILE && ! -L $SAME_CELL_UE_GATE_FILE ]] \
+    || fail "prestart에는 절대 일반 비심볼릭 링크 UE gate 파일이 필요합니다"
+  grep -Faq 'OAI_SAME_CELL_GATE_FILE' "$OAI_BIN" \
+    || fail "OAI binary에 same-cell RA gate 패치가 없습니다"
+fi
 if (( UE_CAPABILITY_MANAGE_RAN )); then
   [[ -f $DU_CTL && ! -L $DU_CTL && -x $DU_CTL ]] || fail "DU_CTL은 실행 가능한 일반 파일이어야 합니다"
 fi
@@ -129,7 +140,8 @@ fi
 bin_dir=$(dirname "$OAI_BIN")
 (
   cd "$bin_dir"
-  OAI_UE_CAPABILITY_TRACE=1 OAI_UE_CAPABILITY_INJECT=$ENABLE exec setsid stdbuf -oL -eL "$OAI_BIN" \
+  OAI_SAME_CELL_GATE_FILE="$SAME_CELL_UE_GATE_FILE" \
+    OAI_UE_CAPABILITY_TRACE=1 OAI_UE_CAPABILITY_INJECT=$ENABLE exec setsid stdbuf -oL -eL "$OAI_BIN" \
     -O "$UE_CFG" --band 78 -C 3489420000 --numerology 1 -r 51 -E --ue-scan-carrier \
     --uecap_file "$UECAP" --device.name oai_zmqdevif --num-ues 1 \
     '--zmq.[0].tx_channels' "$UE_TX_ENDPOINT" '--zmq.[0].rx_channels' "$UE_RX_ENDPOINT"
@@ -183,6 +195,15 @@ fi
 sleep "$OBSERVE_TIMEOUT_S"
 
 kill -0 "$UE_PID" 2>/dev/null || UNEXPECTED_EXIT=1
+if (( SAME_CELL_PRESTART )); then
+  ( set -o noclobber; : >"$SAME_CELL_ATTACK_DONE_FILE" ) || fail "same-cell attack 완료 게시 실패"
+  started=$SECONDS
+  until [[ -f $SAME_CELL_RELEASE_FILE && ! -L $SAME_CELL_RELEASE_FILE ]]; do
+    kill -0 "$UE_PID" 2>/dev/null || fail "same-cell 종료 허가 전에 UE가 종료됐습니다"
+    (( SECONDS - started < SAME_CELL_READY_TIMEOUT_S )) || fail "same-cell 종료 허가가 시간 초과했습니다"
+    sleep .2
+  done
+fi
 stop_ue
 if (( UE_CAPABILITY_MANAGE_RAN )); then
   "$DU_CTL" stop >/dev/null 2>&1
@@ -223,3 +244,4 @@ output.write_text(json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n
 PY
 python3 "$ROOT/analysis/verify_run.py" "$OUT"
 FINISHED=1
+echo "완료됨: mode=$MODE output=$OUT"

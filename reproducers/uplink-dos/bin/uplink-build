@@ -6,12 +6,13 @@ OAI=${OAI:-/root/OAI-uplink-dos-w38}
 EXPECT_COMMIT=${EXPECT_COMMIT:-6d6782b48484efd935c14e834832032743f9b138}
 PATCH=${PATCH:-$ROOT/patch/uplink-dos-emulator-w38.patch}
 FLOOD_PATCH=${FLOOD_PATCH:-$ROOT/patch/uplink-credential-flood-w38.patch}
+SAME_CELL_GATE_PATCH=${SAME_CELL_GATE_PATCH:-$ROOT/../../workloads/normal-ue/patch/same-cell-ra-gate-w38.patch}
 BUILD=$OAI/cmake_targets/ran_build/build
 BIN=$BUILD/nr-uesoftmodem
 
 fail() { echo "uplink-build: $*" >&2; exit 1; }
 git -C "$OAI" rev-parse --is-inside-work-tree >/dev/null 2>&1 || fail "OAI 작업 트리가 아닙니다: $OAI"
-for file in "$PATCH" "$FLOOD_PATCH"; do
+for file in "$PATCH" "$FLOOD_PATCH" "$SAME_CELL_GATE_PATCH"; do
   [[ -f $file && ! -L $file ]] || fail "패치가 없거나 심볼릭 링크입니다: $file"
 done
 [[ $(git -C "$OAI" rev-parse HEAD) == "$EXPECT_COMMIT" ]] || fail "OAI 기준 커밋이 다릅니다"
@@ -22,6 +23,8 @@ git -C "$OAI" apply --check "$PATCH"
 git -C "$OAI" apply "$PATCH"
 git -C "$OAI" apply --check "$FLOOD_PATCH"
 git -C "$OAI" apply "$FLOOD_PATCH"
+git -C "$OAI" apply --check "$SAME_CELL_GATE_PATCH"
+git -C "$OAI" apply "$SAME_CELL_GATE_PATCH"
 (
   cd "$OAI/cmake_targets"
   ./build_oai --nrUE -w ZMQ --ninja
@@ -32,6 +35,9 @@ grep -Faq 'UPLINK_DOS_EMULATION event=service_request_mac_corrupted' "$BIN" \
   || fail "빌드된 UE에 에뮬레이션 마커가 없습니다"
 grep -Faq 'UPLINK_DOS_DETECTION event=registration_failure' "$BIN" \
   || fail "빌드된 UE에 자격증명 실패 플러드 마커가 없습니다"
-printf 'uplink-build: ok\nsource_commit=%s\nimpact_patch_sha256=%s\nflood_patch_sha256=%s\nbinary_sha256=%s\nemulation_default=off\n' \
+grep -Faq 'OAI_SAME_CELL_GATE_FILE' "$BIN" \
+  || fail "빌드된 UE에 same-cell RA gate가 없습니다"
+printf 'uplink-build: ok\nsource_commit=%s\nimpact_patch_sha256=%s\nflood_patch_sha256=%s\nsame_cell_gate_patch_sha256=%s\nbinary_sha256=%s\nemulation_default=off\n' \
   "$EXPECT_COMMIT" "$(sha256sum "$PATCH" | awk '{print $1}')" \
-  "$(sha256sum "$FLOOD_PATCH" | awk '{print $1}')" "$(sha256sum "$BIN" | awk '{print $1}')"
+  "$(sha256sum "$FLOOD_PATCH" | awk '{print $1}')" \
+  "$(sha256sum "$SAME_CELL_GATE_PATCH" | awk '{print $1}')" "$(sha256sum "$BIN" | awk '{print $1}')"

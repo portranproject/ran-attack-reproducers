@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import sys
 from datetime import datetime, timezone
@@ -92,6 +93,9 @@ def verify(root: Path, mode: str, run_id: str, binary: Path, ue_config: Path, ue
     commands_before_reject = len(rejects) - len(unsolicited)
     auth_responses = [row for row in events if row.get("msg") == "AuthenticationResponse"]
 
+    profile_id = os.environ.get("RAN_REPRO_PROFILE_ID", "p5")
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", profile_id) is None:
+        raise ValueError("profile id가 잘못됐습니다")
     alerts = parse_alerts(root / "live/detector.stdout")
     raises = [row for row in alerts if row["action"] == "RAISE" and row["rule"] == "L3-06"]
     ue_log = regular(root / "ue.log").read_text(encoding="utf-8", errors="replace")
@@ -141,7 +145,7 @@ def verify(root: Path, mode: str, run_id: str, binary: Path, ue_config: Path, ue
     passed = mechanism_ok and input_ok and detector_ok and process_ok and control_service_ok and delivery_ok
     run = {
         "schema": "ran-reproducer.run.v1", "run_id": run_id, "scenario_id": "nas-counter-desynchronization",
-        "rule_ids": ["L3-06"], "mode": mode, "profile": "p5", "reproduction_level": "protocol-result-emulation",
+        "rule_ids": ["L3-06"], "mode": mode, "profile": profile_id, "reproduction_level": "protocol-result-emulation",
         "started_at": session_started_at(hello[0].get("session")), "period_ms": 100,
         "source": {"ue_binary_sha256": sha256(binary), "ue_config_sha256": sha256(ue_config),
                    "uecap_sha256": sha256(uecap), "ue_patch_sha256": sha256(patch),

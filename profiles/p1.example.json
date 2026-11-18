@@ -1,0 +1,37 @@
+{
+  "schema": "ran-reproducer.profile.v1",
+  "id": "p1",
+  "backend": "p5",
+  "configured": false,
+  "lab_only": true,
+  "run_root": "/var/lib/ran-reproducer/runs",
+  "environment": {
+    "OAI_BASE": "/root/OAI",
+    "DETECTOR_BIN": "/home/ubuntu/ran-reproducer-platform/detection/build/detector",
+    "DETECTOR_CONFIG": "/home/ubuntu/ran-reproducer-platform/detection/config/detector.json",
+    "LIVE_E2E_CONF": "/root/.config/ran-reproducer/p1-live-e2e.env",
+    "CU_PLATFORM_ROOT": "/home/ubuntu/ran-reproducer-platform",
+    "CU_DASHBOARD_ENV": "p1",
+    "CU_TELEMETRY_NODE": "p1-e2e",
+    "P5_CU_HOST": "replace-with-p1-cu-ssh-host",
+    "P5_DU_HOST": "replace-with-p1-du-ssh-host",
+    "P5_CU_PRIVATE_IP": "replace-with-p1-cu-private-ip",
+    "P5_DU_PRIVATE_IP": "replace-with-p1-du-private-ip"
+  },
+  "credentials_file": "/root/.config/ran-reproducer/p1.env",
+  "detector": {
+    "binary": "/home/ubuntu/ran-reproducer-platform/detection/build/detector",
+    "config": "/home/ubuntu/ran-reproducer-platform/detection/config/detector.json",
+    "repository": "https://github.com/portranproject/detection",
+    "commit": "766f5569d0ddb425c14bf210a31c38ac60eceef9"
+  },
+  "telemetry": {
+    "binary": "/home/ubuntu/ran-reproducer-platform/telemetry/build/portran",
+    "period_ms": 100,
+    "repository": "https://github.com/portranproject/telemetry",
+    "commit": "7550153a58a993942303bd3d4a6cd635b664468b"
+  },
+  "limits": {"max_duration_s": 300, "max_ues": 20, "max_tx_gain_db": null},
+  "target_allowlist": ["replace-with-p1-lab-target"],
+  "rf": null
+}

@@ -35,8 +35,11 @@ class BrokerWitnessTests(unittest.TestCase):
         self.uecap = self.root / "uecap.xml"
         self.broker_py = self.root / "broker.py"
         self.gnb_cfg = self.root / "du.yaml"
-        for path in (self.ue_cfg, self.witness_ue_cfg, self.uecap, self.broker_py):
+        for path in (self.ue_cfg, self.uecap, self.broker_py):
             path.write_text("fixture\n")
+        self.witness_ue_cfg.write_text(
+            "".join(f'uicc{i} = {{ imsi = "{i}"; }};\n' for i in range(5))
+        )
         self.broker_py.write_text(
             "tcp://127.0.0.1:2501 tcp://127.0.0.1:2500 "
             "tcp://127.0.0.1:2601 tcp://127.0.0.1:2600 "
@@ -46,10 +49,10 @@ class BrokerWitnessTests(unittest.TestCase):
             "device_args: tx_port=tcp://127.0.0.1:2000,"
             "rx_port=tcp://127.0.0.1:2001,base_srate=23.04e6\n"
         )
-
         self.ue = self.root / "nr-uesoftmodem"
         self.ue.write_text(
             "#!/bin/bash\n"
+            "# OAI_NORMAL_TUN_SUFFIX fixture marker\n"
             "tx= probe= delay= log= run= max_duration= honor_reject= msg4_wait= num_ues= probe_ra_only= probe_interval= phase= cfg=\n"
             "txs=()\n"
             "while (( $# )); do\n"
@@ -70,6 +73,10 @@ class BrokerWitnessTests(unittest.TestCase):
             "    *) shift;;\n"
             "  esac\n"
             "done\n"
+            "if (( ${#txs[@]} == 0 )) && [[ -f $cfg ]]; then\n"
+            "  while IFS= read -r endpoint; do txs+=(\"$endpoint\"); done < <(grep -oE 'tcp://127\\.0\\.0\\.1:[0-9]+' \"$cfg\" | awk 'NR % 2 == 1')\n"
+            "  (( ${#txs[@]} == 0 )) || tx=${txs[$((${#txs[@]} - 1))]}\n"
+            "fi\n"
             "trap 'exit 0' INT TERM\n"
             "printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\\n' \"$tx\" \"$probe\" \"$delay\" \"$run\" \"$max_duration\" \"$honor_reject\" \"$msg4_wait\" \"$num_ues\" \"$RSS_SHARE_NUE\" \"$probe_ra_only\" \"$probe_interval\" \"$phase\" \"$cfg\" >> \"$FAKE_TRACE\"\n"
             "printf '%s\\n' '[RSS] fixture'\n"
@@ -113,6 +120,7 @@ class BrokerWitnessTests(unittest.TestCase):
             "  if [[ ${FAKE_CONTROL_EXTRA_QUIET_ATTEMPT:-0} == 1 ]]; then printf '%s\\n' '{\"event\":\"attempt_start\"}' >> \"$log\"; fi\n"
             "elif [[ $probe_ra_only == 1 || $probe == 0 ]]; then\n"
             "  printf '%s\\n' '{\"event\":\"attempt_start\"}' '{\"event\":\"msg3_tx\",\"t_ns\":1,\"tc_rnti\":\"0x1111\"}' '{\"event\":\"msg5_skip\"}' >> \"$log\"\n"
+            "  if [[ ${FAKE_DELAYED_MSG3:-0} == 1 ]]; then ( until grep -q '^attack' \"$RSS_BROKER_CONTROL_FILE\"; do sleep .05; done; printf '%s\\n' '{\"event\":\"msg3_tx\",\"t_ns\":2,\"tc_rnti\":\"0x2222\"}' >> \"$log\" ) & fi\n"
             "  if (( max_duration > 0 )) && [[ -z ${FAKE_NO_KILL_SWITCH_PORT:-} || $tx != *:${FAKE_NO_KILL_SWITCH_PORT} ]]; then\n"
             "    sleep ${FAKE_ATTACK_KILL_DELAY_S:-0}; printf '%s\\n' '{\"event\":\"kill_switch\"}' >> \"$log\"\n"
             "    if [[ -n ${FAKE_ATTACK_POST_BOUNDARY_PORT:-} && $tx == *:${FAKE_ATTACK_POST_BOUNDARY_PORT} ]]; then sleep 2; printf '%s\\n' '{\"event\":\"attempt_start\"}' >> \"$log\"; fi\n"
@@ -146,6 +154,12 @@ class BrokerWitnessTests(unittest.TestCase):
             "exec python3 -c 'import os,signal,time; n=[0]; signal.signal(signal.SIGINT, lambda *_: (n.__setitem__(0,n[0]+1), os._exit(0) if n[0] > 1 else None)); time.sleep(20)'\n"
         )
         self.ue.chmod(0o755)
+        self.normal_conf = self.root / "normal.conf"
+        self.normal_conf.write_text(
+            f"NORMAL_UE_BIN={shlex.quote(str(self.ue))}\n"
+            f"NORMAL_UE_CFG={shlex.quote(str(self.witness_ue_cfg))}\n"
+            f"NORMAL_UE_UECAP={shlex.quote(str(self.uecap))}\n"
+        )
 
         self.broker = self.root / "fake-broker"
         self.broker.write_text(
@@ -156,7 +170,11 @@ class BrokerWitnessTests(unittest.TestCase):
             "def stop(_signum, _frame):\n"
             "    raise SystemExit(int(os.environ.get('FAKE_BROKER_STOP_STATUS', '0')))\n"
             "def reset_witness(_signum, _frame):\n"
-            "    if os.environ.get('FAKE_BROKER_NO_RESET_ACK', '0') != '1':\n"
+            "    control = os.environ.get('NORMAL_UE_BROKER_CONTROL', '')\n"
+            "    if control:\n"
+            "        raw = open(control, encoding='utf-8').read().strip()\n"
+            "        print('SAME_CELL_SLOT_SELECTION mode=' + raw.replace(' ', ' slots='), flush=True)\n"
+            "    elif os.environ.get('FAKE_BROKER_NO_RESET_ACK', '0') != '1':\n"
             "        print('RSS_BROKER_WITNESS_UPLINK_RESET port=' + os.environ.get('FAKE_WITNESS_TX_PORT', '2501'), flush=True)\n"
             "signal.signal(signal.SIGINT, stop)\n"
             "signal.signal(signal.SIGUSR1, reset_witness)\n"
@@ -322,7 +340,7 @@ class BrokerWitnessTests(unittest.TestCase):
             BROKER_WITNESS_MULTI_RU="1",
             BROKER_WITNESS_UE_CFG=str(self.witness_ue_cfg),
             BROKER_PY=str(DYNAMIC_BROKER),
-            FAKE_WITNESS_TX_PORT="2701",
+            FAKE_WITNESS_TX_PORT="3101",
         )
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         verdict = self.result("bw-six-attack-five-witness")
@@ -331,6 +349,160 @@ class BrokerWitnessTests(unittest.TestCase):
         self.assertEqual(verdict["topology"]["attack_or_quiet_ues"], 12)
         self.assertEqual(verdict["topology"]["witness_ues"], 5)
         self.assertEqual(verdict["topology"]["zmq_endpoints"], 11)
+
+    def test_normal_pool_qualification_records_before_during_and_recovery(self):
+        result = self.run_script(
+            mode="attack",
+            run_id="bw-normal-pool-qualified",
+            duration=211,
+            BROKER_ATTACK_PROCESSES="6",
+            BROKER_ATTACK_UES_PER_PROCESS="2",
+            BROKER_NORMAL_ATTACK_DURATION_S="1",
+            BROKER_WITNESS_UES="5",
+            BROKER_WITNESS_MULTI_RU="1",
+            BROKER_NORMAL_POOL_QUALIFICATION="1",
+            BROKER_NORMAL_PDU_SESSION_ID="1",
+            BROKER_NORMAL_CONF=str(self.normal_conf),
+            BROKER_PY=str(DYNAMIC_BROKER),
+            FAKE_WITNESS_TX_PORT="3101",
+            FAKE_DELAYED_MSG3="1",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        verdict = self.result("bw-normal-pool-qualified")
+        self.assertTrue(verdict["valid"])
+        self.assertEqual(verdict["attacker_attempts"], 6)
+        pool = verdict["normal_pool"]
+        self.assertEqual(pool["expected_ues"], 5)
+        self.assertEqual(pool["before"], {"healthy_ues": 5, "all_healthy": True})
+        self.assertGreater(pool["during"]["samples"], 0)
+        self.assertEqual(pool["during"]["min_healthy_ues"], 5)
+        self.assertEqual(pool["recovery"]["deadline_s"], 90)
+        self.assertEqual(pool["recovery"]["healthy_ues"], 5)
+        self.assertTrue(pool["recovery"]["all_healthy"])
+        self.assertFalse(pool["direct_detector_input"])
+        self.assertTrue(pool["ue_to_ran_path_required"])
+        self.assertTrue(pool["broker_gate"]["activated"])
+        self.assertGreater(pool["broker_gate"]["standby_ns"], pool["broker_gate"]["attack_ns"])
+        self.assertGreater(pool["attacker_ue_msg3_during_gate"]["delta"], 0)
+        phases = {
+            json.loads(line)["phase"]
+            for line in (self.runs / "bw-normal-pool-qualified" / "normal-health.jsonl")
+            .read_text()
+            .splitlines()
+        }
+        self.assertEqual(phases, {"before", "during", "after"})
+        self.assertTrue(
+            all(
+                json.loads(line)["schema"] == "same-cell.normal-health.v1"
+                for line in (
+                    self.runs / "bw-normal-pool-qualified" / "normal-health.jsonl"
+                )
+                .read_text()
+                .splitlines()
+            )
+        )
+        session = json.loads(
+            (self.runs / "bw-normal-pool-qualified" / "same-cell-session.json").read_text()
+        )
+        self.assertEqual(session["run_id"], "bw-normal-pool-qualified")
+        self.assertEqual(session["normal_ues"], 5)
+        self.assertTrue(session["clocked_attack_slots"])
+        standard_run = json.loads(
+            (self.runs / "bw-normal-pool-qualified" / "same-cell-run.json").read_text()
+        )
+        self.assertEqual(standard_run["attack_exit_status"], 0)
+        self.assertTrue(standard_run["normal_healthy_before_attack_teardown"])
+        self.assertFalse(standard_run["direct_detector_input"])
+        self.assertTrue(standard_run["ue_to_ran_path_required"])
+
+    def test_normal_pool_control_requires_five_healthy_ues_without_attack(self):
+        result = self.run_script(
+            mode="control",
+            run_id="bw-normal-pool-control",
+            duration=211,
+            BROKER_ATTACK_PROCESSES="6",
+            BROKER_ATTACK_UES_PER_PROCESS="2",
+            BROKER_NORMAL_ATTACK_DURATION_S="1",
+            BROKER_WITNESS_UES="5",
+            BROKER_WITNESS_MULTI_RU="1",
+            BROKER_NORMAL_POOL_QUALIFICATION="1",
+            BROKER_NORMAL_PDU_SESSION_ID="1",
+            BROKER_WITNESS_UE_CFG=str(self.witness_ue_cfg),
+            BROKER_PY=str(DYNAMIC_BROKER),
+            FAKE_WITNESS_TX_PORT="3101",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        verdict = self.result("bw-normal-pool-control")
+        self.assertTrue(verdict["valid"])
+        self.assertEqual(verdict["attacker_attempts"], 0)
+        self.assertTrue(verdict["normal_pool"]["before"]["all_healthy"])
+        self.assertGreater(verdict["normal_pool"]["during"]["samples"], 0)
+        self.assertTrue(verdict["normal_pool"]["recovery"]["all_healthy"])
+
+    def test_normal_pool_attack_rejects_missing_ue_oracle_during_gate(self):
+        result = self.run_script(
+            mode="attack",
+            run_id="bw-normal-pool-no-ran",
+            duration=211,
+            BROKER_ATTACK_PROCESSES="6",
+            BROKER_ATTACK_UES_PER_PROCESS="2",
+            BROKER_NORMAL_ATTACK_DURATION_S="1",
+            BROKER_WITNESS_UES="5",
+            BROKER_WITNESS_MULTI_RU="1",
+            BROKER_NORMAL_POOL_QUALIFICATION="1",
+            BROKER_NORMAL_PDU_SESSION_ID="1",
+            BROKER_WITNESS_UE_CFG=str(self.witness_ue_cfg),
+            BROKER_PY=str(DYNAMIC_BROKER),
+            FAKE_WITNESS_TX_PORT="3101",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        verdict = self.result("bw-normal-pool-no-ran")
+        self.assertEqual(verdict["reason"], "normal_pool_ue_attack_oracle_missing")
+        self.assertEqual(verdict["normal_pool"]["attacker_ue_msg3_during_gate"]["delta"], 0)
+
+    def test_normal_pool_qualification_requires_duration_and_recovery_budget(self):
+        for run_id, attack_duration, duration, expected in (
+            (
+                "bw-normal-pool-invalid-duration",
+                "0",
+                240,
+                "BROKER_NORMAL_ATTACK_DURATION_S must be 1..300",
+            ),
+            (
+                "bw-normal-pool-short",
+                "30",
+                239,
+                "requires -d >= 240 seconds",
+            ),
+        ):
+            with self.subTest(run_id=run_id):
+                result = self.run_script(
+                    mode="attack",
+                    run_id=run_id,
+                    duration=duration,
+                    BROKER_ATTACK_PROCESSES="6",
+                    BROKER_ATTACK_UES_PER_PROCESS="2",
+                    BROKER_NORMAL_ATTACK_DURATION_S=attack_duration,
+                    BROKER_WITNESS_UES="5",
+                    BROKER_WITNESS_MULTI_RU="1",
+                    BROKER_NORMAL_POOL_QUALIFICATION="1",
+                    BROKER_NORMAL_PDU_SESSION_ID="1",
+                    BROKER_PY=str(DYNAMIC_BROKER),
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(expected, result.stderr)
+                self.assertFalse((self.runs / run_id).exists())
+
+    def test_normal_pool_config_rejects_a_symlink(self):
+        link = self.root / "normal-link.conf"
+        link.symlink_to(self.normal_conf)
+        result = self.run_script(
+            run_id="bw-normal-config-link",
+            BROKER_NORMAL_CONF=str(link),
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("absolute readable regular non-symlink", result.stderr)
+        self.assertFalse((self.runs / "bw-normal-config-link").exists())
 
     def test_primary_witness_can_use_an_unpatched_normal_ue_binary(self):
         result = self.run_script(
@@ -1038,6 +1210,32 @@ class BrokerWitnessTests(unittest.TestCase):
         )
         for fragment in required:
             self.assertIn(fragment, source)
+
+    def test_owned_gnb_is_stopped_on_success_and_failure(self):
+        source = SCRIPT.read_text()
+        self.assertIn("cleanup()", source)
+
+        successful_trace = self.root / "gnb-success.trace"
+        stop = f"echo stop >> {shlex.quote(str(successful_trace))}"
+        result = self.run_script(run_id="bw-gnb-cleanup", GNB_STOP_CMD=stop)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertEqual(successful_trace.read_text().splitlines(), ["stop", "stop"])
+
+        failed_trace = self.root / "gnb-failed-ready.trace"
+        stop = f"echo stop >> {shlex.quote(str(failed_trace))}"
+        result = self.run_script(
+            run_id="bw-gnb-ready-fail", GNB_STOP_CMD=stop,
+            GNB_READY_CMD="false", GNB_READY_TIMEOUT_S="1",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(failed_trace.read_text().splitlines(), ["stop", "stop"])
+
+    def test_normal_pool_uses_the_normal_configuration_gnb_lifecycle(self):
+        source = SCRIPT.read_text()
+        block = source.split("if (( BROKER_NORMAL_POOL_QUALIFICATION )); then", 1)[1].split("fi", 1)[0]
+        for name in ("GNB_CONFIG", "GNB_STOP_CMD", "GNB_RESTART_CMD", "GNB_READY_CMD"):
+            self.assertIn(f"NORMAL_UE_{name}", block)
+        self.assertIn("NORMAL_UE_ATTACK_BIN", block)
 
     def test_harness_launches_ue_endpoints_before_the_broker(self):
         source = SCRIPT.read_text()

@@ -1,3 +1,4 @@
+import json
 import os
 import pathlib
 import subprocess
@@ -7,6 +8,7 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / "workloads" / "normal-ue" / "bin" / "normal-ue"
+BUILD_SCRIPT = ROOT / "workloads" / "normal-ue" / "bin" / "normal-ue-build"
 
 
 class NormalUeTests(unittest.TestCase):
@@ -79,6 +81,15 @@ class NormalUeTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("normal_ues=5 attack_slot=1", result.stdout)
 
+    def test_doctor_accepts_another_zmq_profile(self):
+        result = subprocess.run(
+            [str(SCRIPT), "doctor", "--profile", "p1", "--config", str(self.conf), "--count", "5"],
+            text=True,
+            capture_output=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("OK p1 same-cell backend", result.stdout)
+
     def test_doctor_rejects_duplicate_subscribers(self):
         self.write_subscribers(["001010000000001"] * 5)
         result = self.run_doctor()
@@ -86,11 +97,14 @@ class NormalUeTests(unittest.TestCase):
         self.assertIn("서로 다른 가입자 설정이 5개 필요합니다", result.stderr)
 
     def test_doctor_rejects_radio_sections_in_subscriber_config(self):
-        with self.normal_cfg.open("a") as stream:
-            stream.write("RUs = ( { nb_tx=1; } );\n")
-        result = self.run_doctor()
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("RUs/cells를 넣지 마세요", result.stderr)
+        for section in ("RUs", "cells", "zmq"):
+            with self.subTest(section=section):
+                self.write_subscribers([f"00101000000000{i}" for i in range(5)])
+                with self.normal_cfg.open("a") as stream:
+                    stream.write(f"{section} = ();\n")
+                result = self.run_doctor()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("RUs/cells/zmq를 넣지 마세요", result.stderr)
 
     def test_doctor_rejects_counts_above_broker_limit(self):
         with self.conf.open("a") as stream:
@@ -102,13 +116,74 @@ class NormalUeTests(unittest.TestCase):
     def test_help_does_not_require_runtime_config(self):
         result = subprocess.run([str(SCRIPT), "--help"], text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("normal-ue setup|doctor|prepare|start|status|stop", result.stdout)
+        self.assertIn("normal-ue setup|build|doctor|prepare|start|status|stop", result.stdout)
 
-    def test_prepare_writes_private_runtime_config_to_requested_state_dir(self):
+    def test_setup_materializes_private_lab_du_config(self):
+        profile_dir = self.root / "profiles"
+        profile_dir.mkdir()
+        profile = {
+            "schema": "ran-reproducer.profile.v1", "id": "clean", "backend": "p5",
+            "configured": True, "lab_only": True, "run_root": str(self.root / "runs"),
+            "environment": {
+                "P5_CU_HOST": "cu", "P5_DU_HOST": "du",
+                "P5_CU_PRIVATE_IP": "172.31.1.10", "P5_DU_PRIVATE_IP": "172.31.1.11",
+            },
+            "detector": {"commit": "1" * 40},
+            "telemetry": {"commit": "2" * 40, "period_ms": 100},
+            "limits": {"max_duration_s": 300, "max_ues": 20},
+            "target_allowlist": ["clean-lab"],
+        }
+        (profile_dir / "clean.json").write_text(json.dumps(profile))
+        target = self.root / "ocudu" / "du-broker-default.yaml"
+        setup_conf = self.root / "clean.conf"
+        setup_conf.write_text(f"NORMAL_UE_GNB_CONFIG={target}\n")
+        setup_conf.chmod(0o600)
+        result = subprocess.run(
+            [str(SCRIPT), "setup", "--profile", "clean", "--config", str(setup_conf)],
+            env={**os.environ, "RAN_REPRO_PROFILE_DIR": str(profile_dir)},
+            text=True,
+            capture_output=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(target.stat().st_mode & 0o777, 0o600)
+        payload = target.read_text()
+        self.assertIn("addrs: 172.31.1.10, bind_addrs: 172.31.1.11", payload)
+        self.assertIn("tx_port=tcp://127.0.0.1:2000,rx_port=tcp://127.0.0.1:2001", payload)
+        self.assertNotIn("__", payload)
+
+    def test_clean_build_uses_the_complete_ordered_patch_stack(self):
+        source = BUILD_SCRIPT.read_text()
+        expected = [
+            "rss-ue-curated.patch",
+            "oai-stale-rnti-dci.patch",
+            "oai-msg4-ack-rnti.patch",
+            "oai-broker-control-gate.patch",
+            "normal-multi-ru.patch",
+            "normal-probe-phase.patch",
+            "normal-tun-suffix.patch",
+            "normal-reconnect-w38.patch",
+            "normal-safe-initial-ra.patch",
+        ]
+        positions = [source.index(name) for name in expected]
+        self.assertEqual(positions, sorted(positions))
+        self.assertIn('git -C "$OAI" apply --cached "$patch"', source)
+        self.assertIn("./build_oai --nrUE -w ZMQ --ninja", source)
+        for marker in ("RSS_SHARE_NUE", "OAI_NORMAL_TUN_SUFFIX", "NORMAL_UE_RECOVERY"):
+            self.assertIn(marker, source)
+        safe = (ROOT / "workloads/normal-ue/patch/normal-safe-initial-ra.patch").read_text()
+        self.assertIn("mac && mac->current_UL_BWP", safe)
+        self.assertIn("normal_reconnect_pending[rrc->ue_id]", safe)
+        self.assertNotIn("if (NR_RRC_MAC_RA_IND(msg_p).RA_succeeded)", safe)
+
+    def test_prepare_writes_private_independent_ru_runtime_config(self):
         state = self.root / "same-cell-state"
         result = subprocess.run(
             [str(SCRIPT), "prepare", "--config", str(self.conf), "--count", "5"],
-            env={**os.environ, "SAME_CELL_NORMAL_STATE_DIR": str(state)},
+            env={
+                **os.environ,
+                "SAME_CELL_NORMAL_STATE_DIR": str(state),
+                "NORMAL_UE_ZMQ_ENDPOINT_OFFSET": "2",
+            },
             text=True,
             capture_output=True,
         )
@@ -117,8 +192,12 @@ class NormalUeTests(unittest.TestCase):
         self.assertEqual(runtime, state / "normal-ue-runtime.conf")
         self.assertEqual(runtime.stat().st_mode & 0o777, 0o600)
         payload = runtime.read_text()
+        self.assertIn(self.normal_cfg.read_text().strip(), payload)
         self.assertEqual(payload.count('sdr_addrs = "type=zmq"'), 5)
-        self.assertEqual(payload.count("ru_id ="), 5)
+        self.assertEqual(payload.count("ru_id = "), 5)
+        self.assertEqual(payload.count("tx_channels = "), 5)
+        self.assertIn("tcp://127.0.0.1:2301", payload)
+        self.assertIn("tcp://127.0.0.1:2701", payload)
 
 
 if __name__ == "__main__":

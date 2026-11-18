@@ -7,11 +7,17 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 python3 "$ROOT/tools/reproctl.py" checkout >/dev/null
 CONF=${LIVE_E2E_CONF:-/root/live-e2e.conf}
 [[ -f $CONF && ! -L $CONF ]] || { echo "안전한 LIVE_E2E_CONF가 필요합니다: $CONF" >&2; exit 2; }
+PROFILE_PLATFORM_ROOT=${CU_PLATFORM_ROOT:-}
+PROFILE_DASHBOARD_ENV=${CU_DASHBOARD_ENV:-}
+PROFILE_TELEMETRY_NODE=${CU_TELEMETRY_NODE:-}
 # shellcheck source=/dev/null
 . "$CONF"
+[[ -z $PROFILE_PLATFORM_ROOT ]] || CU_PLATFORM_ROOT=$PROFILE_PLATFORM_ROOT
+[[ -z $PROFILE_DASHBOARD_ENV ]] || CU_DASHBOARD_ENV=$PROFILE_DASHBOARD_ENV
+[[ -z $PROFILE_TELEMETRY_NODE ]] || CU_TELEMETRY_NODE=$PROFILE_TELEMETRY_NODE
 
 [[ $# -ge 7 && $6 == -- ]] || {
-  echo "사용법: $0 SCENARIO MODE RUN_ID RULE CHILD_DIR -- COMMAND..." >&2; exit 2;
+  echo "사용법: $0 SCENARIO MODE RUN_ID RULE CHILD_DIR|auto -- COMMAND..." >&2; exit 2;
 }
 SCENARIO=$1 MODE=$2 RUN_ID=$3 RULE=$4 CHILD_DIR=$5
 shift 6
@@ -23,9 +29,13 @@ CU_F1_INTERFACE=${CU_F1_INTERFACE:-ens5}
 CU_N2_INTERFACE=${CU_N2_INTERFACE:-br-6afe1528cfa6}
 CU_DASHBOARD_URL=${CU_DASHBOARD_URL:-https://127.0.0.1/ingest}
 CU_DASHBOARD_CA_FILE=${CU_DASHBOARD_CA_FILE:-/home/ubuntu/portran-e2e-20261113/dashboard/certs/ingest.crt}
-CU_DASHBOARD_ENV=${CU_DASHBOARD_ENV:-p5}
+CU_DASHBOARD_ENV=${CU_DASHBOARD_ENV:-${RAN_REPRO_PROFILE_ID:-p5}}
+CU_TELEMETRY_NODE=${CU_TELEMETRY_NODE:-${RAN_REPRO_PROFILE_ID:-p5}-e2e}
 PRE_CHILD_S=${LIVE_E2E_PRE_CHILD_S:-0}
 POST_CHILD_S=${LIVE_E2E_POST_CHILD_S:-4}
+REQUIRE_SAME_CELL=${LIVE_E2E_REQUIRE_SAME_CELL:-0}
+WAIT_FOR_BASELINE=${LIVE_E2E_WAIT_FOR_BASELINE:-0}
+BASELINE_TIMEOUT_S=${LIVE_E2E_BASELINE_TIMEOUT_S:-180}
 DETECTOR_COMMIT=766f5569d0ddb425c14bf210a31c38ac60eceef9
 
 fail() { echo "p5-live-e2e: $*" >&2; exit 2; }
@@ -33,10 +43,17 @@ fail() { echo "p5-live-e2e: $*" >&2; exit 2; }
 [[ $MODE == control || $MODE == attack || $MODE == emulation ]] || fail "mode가 잘못됐습니다"
 [[ $RUN_ID =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$ ]] || fail "안전한 RUN_ID가 필요합니다"
 [[ $RULE =~ ^L3-[0-9]{2}(-[A-Z])?$ ]] || fail "안전한 RULE이 필요합니다"
-[[ $CHILD_DIR == /* && $CHILD_DIR != / ]] || fail "CHILD_DIR은 안전한 절대 경로여야 합니다"
+[[ $REQUIRE_SAME_CELL == 0 || $REQUIRE_SAME_CELL == 1 ]] || fail "LIVE_E2E_REQUIRE_SAME_CELL은 0 또는 1이어야 합니다"
+[[ $WAIT_FOR_BASELINE == 0 || $WAIT_FOR_BASELINE == 1 ]] || fail "LIVE_E2E_WAIT_FOR_BASELINE은 0 또는 1이어야 합니다"
+[[ $BASELINE_TIMEOUT_S =~ ^[1-9][0-9]*$ && $BASELINE_TIMEOUT_S -le 600 ]] \
+  || fail "LIVE_E2E_BASELINE_TIMEOUT_S는 1..600초여야 합니다"
+[[ $CHILD_DIR == auto || $CHILD_DIR == /* && $CHILD_DIR != / ]] \
+  || fail "CHILD_DIR은 auto 또는 안전한 절대 경로여야 합니다"
 [[ $RUN_ROOT == /* && $RUN_ROOT != / && $CU_LIVE_RUN_ROOT == /* && $CU_LIVE_RUN_ROOT != / ]] || fail "run root가 안전하지 않습니다"
 [[ $CU_HOST =~ ^[A-Za-z_][A-Za-z0-9_-]*@[A-Za-z0-9.-]+$ ]] || fail "CU_HOST는 user@host 형식이어야 합니다"
 [[ $CU_DASHBOARD_URL == https://* ]] || fail "dashboard URL은 https여야 합니다"
+[[ $CU_DASHBOARD_ENV =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] || fail "dashboard 환경 라벨이 잘못됐습니다"
+[[ $CU_TELEMETRY_NODE =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] || fail "telemetry node 라벨이 잘못됐습니다"
 for value in "$PRE_CHILD_S" "$POST_CHILD_S"; do [[ $value =~ ^[0-9]+$ ]] || fail "대기 시간은 0 이상의 정수여야 합니다"; done
 for file in "$SSH_KEY" "$CU_DASHBOARD_CA_FILE" "$ROOT/tools/verify_live_e2e.py"; do
   [[ $file == "$CU_DASHBOARD_CA_FILE" || -f $file && ! -L $file ]] || fail "필수 일반 파일이 없습니다: $file"
@@ -56,12 +73,24 @@ scp_args=(-q -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=yes -
 
 LIVE_STARTED=0
 LIVE_COLLECTED=0
+CHILD_PID=
+MARKER_DIR=
+child_running() {
+  [[ -n $CHILD_PID ]] && kill -0 "$CHILD_PID" 2>/dev/null \
+    && [[ $(ps -o stat= -p "$CHILD_PID" 2>/dev/null | tr -d ' ') != Z* ]]
+}
+stop_child() {
+  child_running || return 0
+  kill -TERM -- "-$CHILD_PID" 2>/dev/null || true
+  for _ in {1..150}; do child_running || return 0; sleep .2; done
+  kill -KILL -- "-$CHILD_PID" 2>/dev/null || true
+}
 start_live() {
   ssh "${ssh_args[@]}" "$CU_HOST" sudo bash -s -- \
     "$CU_PLATFORM_ROOT" "$CU_OUT" "$CU_F1_INTERFACE" "$CU_N2_INTERFACE" "$CU_OWNER" \
-    "$CU_DASHBOARD_URL" "$CU_DASHBOARD_CA_FILE" "$CU_DASHBOARD_ENV" <<'REMOTE'
+    "$CU_DASHBOARD_URL" "$CU_DASHBOARD_CA_FILE" "$CU_DASHBOARD_ENV" "$CU_TELEMETRY_NODE" <<'REMOTE'
 set -euo pipefail
-platform=$1 out=$2 f1=$3 n2=$4 owner=$5 dashboard_url=$6 dashboard_ca=$7 dashboard_env=$8
+platform=$1 out=$2 f1=$3 n2=$4 owner=$5 dashboard_url=$6 dashboard_ca=$7 dashboard_env=$8 telemetry_node=$9
 sock=/run/ran-detect/$(basename "$out").sock
 [[ ! -e $out ]] || { echo "remote run already exists: $out" >&2; exit 2; }
 for file in "$platform/detection/build/detector" "$platform/detection/config/detector.json" \
@@ -92,11 +121,46 @@ setsid "$platform/detection/build/detector" --socket "$sock" --config "$out/dete
 for _ in {1..100}; do [[ -S $sock ]] && break; sleep .1; done
 [[ -S $sock ]] || { echo "detector socket timeout" >&2; exit 2; }
 setsid "$platform/telemetry/build/portran" -g 100 --sock "$sock" --record "$out/telemetry.jsonl" \
-  --node p5-e2e "f1:$f1" "n2:$n2" >"$out/telemetry.stdout" 2>"$out/telemetry.stderr" </dev/null &
+  --node "$telemetry_node" "f1:$f1" "n2:$n2" >"$out/telemetry.stdout" 2>"$out/telemetry.stderr" </dev/null &
 echo $! >"$out/telemetry.pid"
 chown -R "$owner:$owner" "$out"
 REMOTE
   LIVE_STARTED=1
+}
+
+reset_detector_after_baseline() {
+  ssh "${ssh_args[@]}" "$CU_HOST" sudo bash -s -- "$CU_OUT" "$CU_OWNER" "$CU_PLATFORM_ROOT" <<'REMOTE'
+set -euo pipefail
+out=$1 owner=$2 platform=$3
+sock=/run/ran-detect/$(basename "$out").sock
+pid=$(cat "$out/detector.pid")
+kill -INT -- "-$pid" 2>/dev/null || kill -INT "$pid" 2>/dev/null || true
+for _ in {1..100}; do kill -0 "$pid" 2>/dev/null || break; sleep .1; done
+kill -0 "$pid" 2>/dev/null && kill -KILL -- "-$pid" 2>/dev/null || true
+for stem in evidence.jsonl detector-input.jsonl; do
+  for file in "$out/$stem" "$out/$stem".*; do
+    [[ -e $file ]] || continue
+    [[ -f $file && ! -L $file ]] || { echo "unsafe warmup artifact: $file" >&2; exit 2; }
+    base=${file##*/}
+    mv "$file" "$out/warmup-$base"
+  done
+done
+for file in detector.stdout detector.stderr; do
+  [[ ! -e $out/$file ]] || mv "$out/$file" "$out/warmup-$file"
+done
+rm -f "$sock"
+setsid "$platform/detection/build/detector" --socket "$sock" --config "$out/detector.config.json" \
+  >"$out/detector.stdout" 2>"$out/detector.stderr" </dev/null & echo $! >"$out/detector.pid"
+for _ in {1..100}; do [[ -S $sock ]] && break; sleep .1; done
+[[ -S $sock ]] || { echo "detector restart socket timeout" >&2; exit 2; }
+for _ in {1..200}; do
+  grep -q '"type":"hello"' "$out/detector-input.jsonl" 2>/dev/null && break
+  sleep .1
+done
+grep -q '"type":"hello"' "$out/detector-input.jsonl" 2>/dev/null \
+  || { echo "telemetry reconnect hello timeout" >&2; exit 2; }
+chown -R "$owner:$owner" "$out"
+REMOTE
 }
 
 stop_live() {
@@ -127,23 +191,90 @@ cleanup() {
   local status=$?
   trap - EXIT INT TERM
   set +e
+  stop_child
   (( LIVE_STARTED == 0 || LIVE_COLLECTED == 1 )) || stop_live
+  if [[ -n $MARKER_DIR && -d $MARKER_DIR && ! -L $MARKER_DIR ]]; then
+    unlink "$MARKER_DIR/baseline.ready" 2>/dev/null || true
+    unlink "$MARKER_DIR/observation.ready" 2>/dev/null || true
+    rmdir "$MARKER_DIR" 2>/dev/null || true
+  fi
   exit "$status"
 }
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
+if (( WAIT_FOR_BASELINE )); then
+  marker_root=/run/ran-reproducer/live-e2e
+  [[ ! -L $marker_root ]] || fail "live E2E marker root는 심볼릭 링크일 수 없습니다"
+  mkdir -p -m 700 "$marker_root"
+  MARKER_DIR=$marker_root/$RUN_ID
+  mkdir -m 700 "$MARKER_DIR" || fail "기존 live E2E marker가 있습니다: $MARKER_DIR"
+  export LIVE_E2E_BASELINE_READY_FILE=$MARKER_DIR/baseline.ready
+  export LIVE_E2E_OBSERVATION_READY_FILE=$MARKER_DIR/observation.ready
+fi
 start_live
+setsid "${COMMAND[@]}" >"$OUT/child.stdout" 2>"$OUT/child.stderr" &
+CHILD_PID=$!
+if (( WAIT_FOR_BASELINE )); then
+  baseline_started=$SECONDS
+  until [[ -f $LIVE_E2E_BASELINE_READY_FILE && ! -L $LIVE_E2E_BASELINE_READY_FILE ]]; do
+    child_running || { wait "$CHILD_PID" || true; fail "공격 runner가 정상 UE 기준선 전에 종료됐습니다"; }
+    (( SECONDS - baseline_started < BASELINE_TIMEOUT_S )) || fail "정상 UE 기준선 준비가 시간 초과했습니다"
+    sleep .2
+  done
+  reset_detector_after_baseline
+fi
 (( PRE_CHILD_S == 0 )) || sleep "$PRE_CHILD_S"
+if (( WAIT_FOR_BASELINE )); then
+  ( set -o noclobber; date +%s%N >"$LIVE_E2E_OBSERVATION_READY_FILE" ) \
+    || fail "관측 시작 marker를 게시하지 못했습니다"
+fi
 set +e
-"${COMMAND[@]}" >"$OUT/child.stdout" 2>"$OUT/child.stderr"
+wait "$CHILD_PID"
 child_status=$?
 set -e
+CHILD_PID=
 printf '%s\n' "$child_status" >"$OUT/child.exit"
 (( child_status == 0 )) || fail "공격 runner가 실패했습니다: status=$child_status"
+SAME_CELL_OUTPUT=
+if [[ $CHILD_DIR == auto ]]; then
+  SAME_CELL_OUTPUT=$(python3 - "$OUT/child.stdout" <<'PY'
+import pathlib, re, sys
+text = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+matches = re.findall(r"(?:^|\s)output=(/[^\s]+)", text)
+print(matches[-1] if matches else "")
+PY
+  ) || fail "same-cell 출력 경로를 읽지 못했습니다"
+  [[ -d $SAME_CELL_OUTPUT && ! -L $SAME_CELL_OUTPUT \
+     && -f $SAME_CELL_OUTPUT/child-output.txt && ! -L $SAME_CELL_OUTPUT/child-output.txt ]] \
+    || fail "same-cell 실행이 안전한 child output 참조를 남기지 않았습니다"
+  read -r CHILD_DIR <"$SAME_CELL_OUTPUT/child-output.txt"
+  [[ $CHILD_DIR == /* && $CHILD_DIR != / && -d $CHILD_DIR && ! -L $CHILD_DIR ]] \
+    || fail "same-cell child output 경로가 안전하지 않습니다"
+  for item in run.json session.json normal-health.jsonl broker.log; do
+    [[ -f $SAME_CELL_OUTPUT/$item && ! -L $SAME_CELL_OUTPUT/$item ]] || fail "same-cell 증거가 없습니다: $item"
+    install -m 600 "$SAME_CELL_OUTPUT/$item" "$OUT/same-cell-$item"
+  done
+elif [[ -f $CHILD_DIR/same-cell-run.json && ! -L $CHILD_DIR/same-cell-run.json ]]; then
+  SAME_CELL_OUTPUT=$CHILD_DIR
+  for item in run.json session.json; do
+    [[ -f $CHILD_DIR/same-cell-$item && ! -L $CHILD_DIR/same-cell-$item ]] || fail "same-cell 증거가 없습니다: $item"
+    install -m 600 "$CHILD_DIR/same-cell-$item" "$OUT/same-cell-$item"
+  done
+  for item in normal-health.jsonl broker.log; do
+    [[ -f $CHILD_DIR/$item && ! -L $CHILD_DIR/$item ]] || fail "same-cell 증거가 없습니다: $item"
+    install -m 600 "$CHILD_DIR/$item" "$OUT/same-cell-$item"
+  done
+fi
+[[ $REQUIRE_SAME_CELL == 0 || -n $SAME_CELL_OUTPUT ]] || fail "필수 same-cell 증거가 없습니다"
 (( POST_CHILD_S == 0 )) || sleep "$POST_CHILD_S"
 stop_live
-python3 "$ROOT/tools/verify_live_e2e.py" "$OUT" "$SCENARIO" "$MODE" "$RUN_ID" "$CHILD_DIR" "$DETECTOR_COMMIT"
+if (( WAIT_FOR_BASELINE )); then
+  install -m 600 "$LIVE_E2E_BASELINE_READY_FILE" "$OUT/baseline.ready"
+  install -m 600 "$LIVE_E2E_OBSERVATION_READY_FILE" "$OUT/observation.ready"
+fi
+LIVE_E2E_REQUIRE_SAME_CELL=$REQUIRE_SAME_CELL \
+  python3 "$ROOT/tools/verify_live_e2e.py" "$OUT" "$SCENARIO" "$MODE" "$RUN_ID" "$CHILD_DIR" "$DETECTOR_COMMIT"
 trap - EXIT INT TERM
 echo "완료됨: scenario=$SCENARIO mode=$MODE output=$OUT"

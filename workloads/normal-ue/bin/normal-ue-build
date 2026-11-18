@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# Build the five-UE same-cell workload from the pinned clean OAI baseline.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+OAI=${OAI:-/root/OAI-normal-ue-w38}
+EXPECT_COMMIT=1c2f4d3c2e68181cdef9f426d161163147ad4b77
+BUILD="$OAI/cmake_targets/ran_build/build"
+BIN="$BUILD/nr-uesoftmodem"
+DEVLIB="$BUILD/liboai_zmqdevif.so"
+PATCHES=(
+  "$ROOT/reproducers/rrc-signaling-storm/patch/rss-ue-curated.patch"
+  "$ROOT/reproducers/rrc-signaling-storm/patch/oai-stale-rnti-dci.patch"
+  "$ROOT/reproducers/rrc-signaling-storm/patch/oai-msg4-ack-rnti.patch"
+  "$ROOT/reproducers/rrc-signaling-storm/patch/oai-broker-control-gate.patch"
+  "$ROOT/workloads/normal-ue/patch/normal-multi-ru.patch"
+  "$ROOT/workloads/normal-ue/patch/normal-probe-phase.patch"
+  "$ROOT/workloads/normal-ue/patch/normal-tun-suffix.patch"
+  "$ROOT/workloads/normal-ue/patch/normal-reconnect-w38.patch"
+  "$ROOT/workloads/normal-ue/patch/normal-safe-initial-ra.patch"
+)
+
+[[ -n $OAI && $OAI != / ]] || { echo "안전하지 않은 OAI 경로입니다: $OAI" >&2; exit 1; }
+for patch in "${PATCHES[@]}"; do
+  [[ -f $patch && ! -L $patch ]] || { echo "패치가 없거나 심볼릭 링크입니다: $patch" >&2; exit 1; }
+done
+command -v ninja >/dev/null || { echo "ninja가 필요합니다" >&2; exit 1; }
+
+RSS_CONF=/dev/null OAI="$OAI" EXPECT_COMMIT="$EXPECT_COMMIT" \
+  "$ROOT/reproducers/rrc-signaling-storm/bin/rss-bootstrap"
+
+head=$(git -C "$OAI" rev-parse HEAD)
+[[ $head == "$EXPECT_COMMIT" ]] || { echo "OAI HEAD가 기준 커밋과 다릅니다: $head" >&2; exit 1; }
+tree_state=$(git -C "$OAI" status --porcelain --untracked-files=all --ignore-submodules=none)
+[[ -z $tree_state ]] || { echo "OAI 트리에 로컬 변경이 있습니다. 별도 clean 트리를 사용하세요" >&2; exit 1; }
+
+# Check the complete ordered stack before changing the real source or index.
+index_dir=$(mktemp -d)
+index_file="$index_dir/index"
+cleanup() { rm -f -- "$index_file"; rmdir -- "$index_dir" 2>/dev/null || true; }
+trap cleanup EXIT
+GIT_INDEX_FILE="$index_file" git -C "$OAI" read-tree HEAD
+for patch in "${PATCHES[@]}"; do
+  GIT_INDEX_FILE="$index_file" git -C "$OAI" apply --cached "$patch" \
+    || { echo "정상 UE 패치 스택이 clean 기준선에 적용되지 않습니다. 실제 트리는 변경하지 않았습니다" >&2; exit 1; }
+done
+
+for patch in "${PATCHES[@]}"; do
+  git -C "$OAI" apply "$patch"
+done
+git -C "$OAI" diff --check
+
+( cd "$OAI/cmake_targets" && ./build_oai --nrUE -w ZMQ --ninja )
+
+[[ -x $BIN && -f $DEVLIB ]] || { echo "정상 UE 빌드 산출물이 없습니다" >&2; exit 1; }
+for marker in RSS_SHARE_NUE RSS_BROKER_CONTROL_FILE OAI_NORMAL_TUN_SUFFIX NORMAL_UE_RECOVERY; do
+  grep -aFq "$marker" "$BIN" || { echo "정상 UE 바이너리에 마커가 없습니다: $marker" >&2; exit 1; }
+done
+grep -aFq RSS_ZMQ_TX_WAIT_US "$DEVLIB" \
+  || { echo "ZMQ 장치 라이브러리에 RSS_ZMQ_TX_WAIT_US가 없습니다" >&2; exit 1; }
+grep -Fq 'return NB_UE_INST > nrue_get_ru_count();' \
+  "$OAI/executables/nr-ue-ru.c" \
+  || { echo "독립 virtual RU 소스 검사가 실패했습니다" >&2; exit 1; }
+for forbidden in 'UICC simulation: IMSI=' 'milenage output ik:'; do
+  ! grep -aFq "$forbidden" "$BIN" \
+    || { echo "바이너리에 가입자 또는 인증 비밀 로그가 남아 있습니다" >&2; exit 1; }
+done
+
+echo "정상 UE 5대용 OAI 빌드 완료: $BIN"

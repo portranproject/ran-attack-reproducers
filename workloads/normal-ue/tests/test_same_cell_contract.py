@@ -15,22 +15,18 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn("same-cell-run run", result.stdout)
         self.assertIn("same-cell-run status", result.stdout)
         self.assertIn("same-cell-run stop", result.stdout)
-        self.assertIn("uplink|uplink-credential-flood|downlink-imsi|ue-capability", result.stdout)
-        self.assertNotIn("same-cell-run run blind|", result.stdout)
-        self.assertIn("hot-run", result.stdout)
+        self.assertIn("blind|uplink|uplink-credential-flood|auth-timeout", result.stdout)
+        self.assertIn("downlink-imsi|ue-capability|nas-counter-desync", result.stdout)
+        self.assertNotIn("hot-run", result.stdout)
 
-    def test_unqualified_same_cell_paths_fail_before_configuration(self):
-        for attack, message in (
-            ("blind", "direct 2-cell"),
-            ("auth-timeout", "auth-stall-cell-run"),
-            ("nas-counter-desync", "direct 1-cell"),
-        ):
+    def test_live_l3_paths_reach_configuration_validation(self):
+        for attack in ("blind", "auth-timeout", "nas-counter-desync"):
             result = subprocess.run(
                 [str(SCRIPT), "run", attack, "-n", "blocked", "--", "true"],
                 text=True, capture_output=True,
             )
             self.assertNotEqual(result.returncode, 0)
-            self.assertIn(message, result.stderr)
+            self.assertIn("normal UE 설정", result.stderr)
 
     def test_module_runners_have_external_lifecycle_and_readiness_gates(self):
         contracts = {
@@ -40,6 +36,8 @@ class SameCellContractTests(unittest.TestCase):
                 "CREDENTIAL_FLOOD_MANAGE_RAN",
             ROOT / "reproducers/authentication-timeout-exhaustion/bin/auth-timeout-p5-phase":
                 "AUTH_TIMEOUT_MANAGE_DU",
+            ROOT / "reproducers/authentication-timeout-exhaustion/bin/auth-stall-cell-run":
+                "SAME_CELL_AUTH_TIMEOUT_MANAGE_DU",
             ROOT / "reproducers/downlink-imsi-extractor/bin/downlink-imsi-run":
                 "DOWNLINK_IMSI_MANAGE_RAN",
             ROOT / "reproducers/ue-capability-hijacking/bin/ue-capability-run":
@@ -54,12 +52,33 @@ class SameCellContractTests(unittest.TestCase):
             self.assertIn("SAME_CELL_RAN_READY_FILE", source)
             self.assertIn("SAME_CELL_PRESTART", source)
             self.assertIn("SAME_CELL_ATTACK_READY_FILE", source)
+            if path.name not in {"auth-timeout-p5-phase", "uplink-run"}:
+                self.assertIn("SAME_CELL_ATTACK_DONE_FILE", source)
+                self.assertIn("SAME_CELL_RELEASE_FILE", source)
+
+    def test_wrapped_runners_publish_their_evidence_directory(self):
+        for path in (
+            ROOT / "reproducers/blind-dos/bin/blind-run",
+            ROOT / "reproducers/authentication-timeout-exhaustion/bin/auth-stall-cell-run",
+            ROOT / "reproducers/downlink-imsi-extractor/bin/downlink-imsi-run",
+            ROOT / "reproducers/ue-capability-hijacking/bin/ue-capability-run",
+        ):
+            self.assertIn("output=$OUT", path.read_text(), str(path))
+
+    def test_blind_same_cell_uses_the_current_checkout(self):
+        runner = (ROOT / "reproducers/blind-dos/bin/blind-run").read_text()
+        phase = (ROOT / "reproducers/blind-dos/bin/blind-p5-phase").read_text()
+        example = (ROOT / "reproducers/blind-dos/conf/p5-zmq.conf.example").read_text()
+        self.assertIn('PHASE_CMD \'exec %q\' "$HERE/bin/blind-p5-phase"', runner)
+        self.assertIn("P5_HOOK=$HERE/bin/blind-p5-hook", phase)
+        self.assertNotIn("/root/blind-dos-tool", example)
 
     def test_normal_tun_suffix_is_opt_in(self):
         patch = (ROOT / "workloads/normal-ue/patch/normal-tun-suffix.patch").read_text()
         self.assertIn("OAI_NORMAL_TUN_SUFFIX", patch)
         self.assertIn('strcmp(normal_tun_suffix, "1") == 0', patch)
         self.assertIn("normal UE PDU session id를 읽지 못했습니다", SCRIPT.read_text())
+        self.assertIn("NORMAL_UE_RECOVERY", SCRIPT.read_text())
 
     def test_persistent_session_owns_du_and_never_restarts_it_per_attack(self):
         source = SCRIPT.read_text()
@@ -80,8 +99,9 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn("blocks.selector", broker)
         self.assertIn("blocks.multiply_const_cc(0.0)", broker)
         self.assertIn("ul_gate.set_k", broker)
-        self.assertIn("dl_gate.set_k", broker)
+        self.assertIn("dl_gate = blocks.multiply_const_cc(1.0)", broker)
         self.assertIn("NORMAL_UE_BROKER_PERSISTENT_ATTACK", broker)
+        self.assertIn("endpoint_count > 15", broker)
         self.assertIn('mode == "warmup"', broker)
         self.assertIn("attack slots must be warmed first", broker)
         method = broker.split("def select_attack_slots", 1)[1].split("\n\n", 1)[0]
@@ -89,6 +109,20 @@ class SameCellContractTests(unittest.TestCase):
         self.assertNotIn("self.connect(", method)
         self.assertIn("signal.SIGUSR1", broker)
         self.assertIn("SAME_CELL_SLOT_SELECTION", broker)
+        self.assertIn('mode not in {"standby", "warmup", "attack", "retire"}', broker)
+        self.assertIn("selector.set_input_index(1)", broker)
+        self.assertIn("retired attack slots cannot be re-enabled", broker)
+
+    def test_rrc_attack_ue_waits_for_the_broker_gate(self):
+        patch = (ROOT / "reproducers/rrc-signaling-storm/patch/oai-broker-control-gate.patch").read_text()
+        runner = (ROOT / "reproducers/rrc-signaling-storm/bin/rss-broker-witness").read_text()
+        self.assertIn('getenv("RSS_BROKER_CONTROL_FILE")', patch)
+        self.assertIn('memcmp(mode, "attack"', patch)
+        self.assertIn("if (!rss_broker_attack_enabled())", patch)
+        self.assertIn('grep -Faq RSS_BROKER_CONTROL_FILE "$BROKER_ATTACK_UE_BIN"', runner)
+        gate = runner.split("select_persistent_attack()", 1)[1].split("\n}\n", 1)[0]
+        open_gate = 'printf \'attack\\n\' >"$ATTACK_UE_GATE_FILE"'
+        self.assertLess(gate.index('count > before'), gate.index(open_gate))
 
     def test_default_run_cold_starts_clocked_attack_slots(self):
         source = SCRIPT.read_text()
@@ -96,19 +130,58 @@ class SameCellContractTests(unittest.TestCase):
             "if [[ $ACTION == start ]]; then", 1
         )[0]
         self.assertIn("SAME_CELL_PRESTART=1", run_section)
-        self.assertIn("NORMAL_UE_BROKER_PERSISTENT_ATTACK=1", run_section)
+        self.assertIn("NORMAL_UE_BROKER_PERSISTENT_ATTACK=1", source)
         self.assertIn("SAME_CELL_HEALTH_TIMEOUT_S + 30", run_section)
         self.assertIn("select_broker attack", run_section)
         self.assertLess(run_section.index("select_broker warmup"), run_section.index("select_broker attack"))
         self.assertIn("SAME_CELL_ATTACK_DONE_FILE", run_section)
         self.assertIn("SAME_CELL_VICTIM_TUN=oaitun_ue1", run_section)
         self.assertIn('공격 UE clock 유지 중 normal UE가 $COUNT/$COUNT가 아닙니다', run_section)
+        broker = source.split("select_broker()", 1)[1].split("if [[ $ACTION == run ]]", 1)[0]
+        self.assertNotIn("recover", broker)
         self.assertIn("normal_healthy_before_attack_teardown", run_section)
+        placeholder_group = source.split("start_placeholder_group()", 1)[1].split("stop_placeholder_group()", 1)[0]
+        self.assertIn('wait_process_port "$pid"', placeholder_group)
+        self.assertIn('if [[ $ATTACK != uplink ]]; then', run_section)
+        self.assertIn("TOTAL_ENDPOINTS <= 15", run_section)
+        self.assertIn("TOTAL_ENDPOINTS=$((ATTACK_SLOTS + COUNT))", source)
+        self.assertIn("auth-timeout) ATTACK_SLOTS=10", source)
+        self.assertIn("SAME_CELL_AUTH_RECOVERY_TIMEOUT_S:-240", source)
+        self.assertIn("SAME_CELL_AUTH_READY_TIMEOUT_S:-300", source)
+        normal_group = source.split("start_normal_group()", 1)[1].split("start_placeholder_group()", 1)[0]
+        self.assertIn("RSS_SHARE_NUE=\"$COUNT\"", normal_group)
+        self.assertNotIn("--zmq.", normal_group)
+        self.assertIn('NORMAL_UE_ZMQ_ENDPOINT_OFFSET="$ATTACK_SLOTS"', run_section)
         self.assertIn("attack.ready", run_section)
+        self.assertIn("until record_healthy before", run_section)
+        self.assertIn("until record_healthy after", run_section)
+        self.assertIn("record_health during || true", run_section)
+        self.assertIn("next_recovery_signal=$((SECONDS + 15))", run_section)
+        self.assertIn("NORMAL_RECOVERY_SIGNAL_COUNT=$((NORMAL_RECOVERY_SIGNAL_COUNT + 1))", run_section)
+        done = run_section.index('SAME_CELL_ATTACK_DONE_FILE')
+        recover = run_section.index('until record_healthy after')
+        self.assertLess(done, run_section.index("select_broker retire", done, recover))
         self.assertIn("clocked_attack_slots", run_section)
+        self.assertIn("embed_self_live_evidence", run_section)
+        self.assertIn("SAME_CELL_ATTACK_TIMEOUT_S", run_section)
+        self.assertIn("공격 runner 완료가", run_section)
+        self.assertIn("공격 runner 종료가", run_section)
+        self.assertLess(run_section.index('ATTACK_STATUS == 0'), run_section.index('CHILD_OUTPUT=$('))
+        self.assertIn('"normal_ue_coexistence"', source)
         restart = run_section.index('bash -c "$NORMAL_UE_GNB_RESTART_CMD"')
         self.assertLess(run_section.index("start_normal_group"), restart)
         self.assertLess(run_section.index('setsid "${COMMAND[@]}"'), restart)
+
+    def test_stop_recovers_a_partial_cold_run_without_placeholder_state(self):
+        source = SCRIPT.read_text()
+        self.assertEqual(source.count('stop_group "$ATTACK_PID" TERM'), 2)
+        stop = source.index("if [[ $ACTION == stop ]]; then")
+        placeholder = source.index('read -r PLACEHOLDER_CFG <"$STATE/placeholder_config"')
+        self.assertLess(stop, placeholder)
+        stop_section = source[stop:placeholder]
+        self.assertIn("for role in attack placeholder-group broker normal", stop_section)
+        self.assertIn('bash -c "$NORMAL_UE_GNB_STOP_CMD"', stop_section)
+        self.assertIn("상태를 보존합니다", stop_section)
 
     def test_credential_flood_starts_managed_du_before_ue(self):
         source = (ROOT / "reproducers/uplink-dos/bin/uplink-credential-flood-run").read_text()
@@ -119,7 +192,76 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn('OAI_UPLINK_DOS_REGISTRATION_FAILURE_TARGET=$TARGET_PER_UE', source)
         self.assertIn("Received Registration Reject cause", source)
         self.assertIn("SAME_CELL_RELEASE_FILE", source)
-        self.assertIn('uplink-credential-flood) ATTACK_SLOTS=1', SCRIPT.read_text())
+
+    def test_auth_withholding_closes_with_same_cell_gate(self):
+        patch = (ROOT / "reproducers/authentication-timeout-exhaustion/patch/auth-timeout-ue-w38.patch").read_text()
+        self.assertIn("static bool auth_timeout_gate_open(void)", patch)
+        self.assertIn('memcmp(mode, "attack", sizeof(mode)) == 0', patch)
+        self.assertLess(patch.index("if (!auth_timeout_gate_open())"),
+                        patch.index('auth_timeout_enabled("OAI_AUTH_TIMEOUT_WITHHOLD")'))
+        runner = (ROOT / "reproducers/authentication-timeout-exhaustion/bin/auth-stall-cell-run").read_text()
+        self.assertNotIn("SAME_CELL_RECOVERY_FILE", runner)
+        self.assertNotIn('kill -USR1 "$pid"', runner)
+        self.assertIn("gate_base_ms=$((i * 250)); gate_step_ms=500", runner)
+        wrapper = SCRIPT.read_text()
+        self.assertIn('uplink-credential-flood) ATTACK_SLOTS=1', wrapper)
+        self.assertNotIn('select_broker recover', wrapper)
+        retire = wrapper.index('select_broker retire || fail "완료된 공격 slot 분리에 실패했습니다"')
+        signal = wrapper.index('kill -USR1 "$NORMAL_PID"', retire)
+        health = wrapper.index('until record_healthy after', retire)
+        release = wrapper.index(': >"$STATE/attack.release"', health)
+        self.assertLess(retire, health)
+        self.assertLess(health, signal)
+        self.assertLess(signal, release)
+        self.assertLess(health, release)
+        self.assertNotIn('wait_healthy "$COUNT" 15', wrapper)
+        self.assertIn('"normal_recovery_signal_count":%d', wrapper)
+        self.assertNotIn('wait_process_port "$BROKER_PID" 2000', wrapper)
+        self.assertNotIn('wait_port_free 2000', wrapper)
+
+    def test_auth_timeout_uses_ten_independent_ru_attack_slots(self):
+        source = (ROOT / "reproducers/authentication-timeout-exhaustion/bin/auth-stall-cell-run").read_text()
+        self.assertIn("${#endpoint_rows[@]} == UE_COUNT", source)
+        self.assertIn("endpoint_offset=$((i * UES_PER_PROCESS))", source)
+        self.assertIn('endpoint_rows[$((i * UES_PER_PROCESS + ru))]', source)
+        self.assertNotIn('"--zmq.[0].tx_channels"', source)
+        self.assertNotIn('"--zmq.[$ru].tx_channels"', source)
+        self.assertIn('OAI_AUTH_TIMEOUT_GATE_FILE="$SAME_CELL_UE_GATE_FILE"', source)
+        self.assertIn('OAI_AUTH_TIMEOUT_GATE_BASE_MS="$gate_base_ms"', source)
+        self.assertIn('OAI_AUTH_TIMEOUT_GATE_STEP_MS="$gate_step_ms"', source)
+        self.assertIn('gate_base_ms=$((i * 250))', source)
+        self.assertNotIn("--rss.", source)
+        self.assertIn('"same_cell_ra_base_ms":[0,250]', source)
+        self.assertIn('"same_cell_ra_step_ms":500', source)
+        gate_patch = (ROOT / "reproducers/authentication-timeout-exhaustion/patch/same-cell-ra-gate-w38.patch").read_text()
+        self.assertIn('auth_timeout_same_cell_ms("OAI_AUTH_TIMEOUT_GATE_STEP_MS", 10000)', gate_patch)
+
+    def test_auth_build_disables_ru_sharing_when_each_ue_has_a_ru(self):
+        build = (ROOT / "reproducers/authentication-timeout-exhaustion/bin/auth-timeout-build").read_text()
+        patch = (ROOT / "workloads/normal-ue/patch/normal-multi-ru.patch").read_text()
+        gate = (ROOT / "reproducers/authentication-timeout-exhaustion/patch/same-cell-ra-gate-w38.patch").read_text()
+        self.assertIn("NORMAL_MULTI_RU_PATCH", build)
+        self.assertLess(build.index('apply "$RU_SHARE_PATCH"'), build.index('apply "$NORMAL_MULTI_RU_PATCH"'))
+        self.assertLess(build.index('apply "$NORMAL_MULTI_RU_PATCH"'), build.index('apply "$PATCH"'))
+        self.assertLess(build.index('apply "$PATCH"'), build.index('apply "$SAME_CELL_GATE_PATCH"'))
+        self.assertIn("return NB_UE_INST > nrue_get_ru_count();", patch)
+        self.assertIn('auth_timeout_same_cell_ms("OAI_AUTH_TIMEOUT_GATE_BASE_MS", 10000)', gate)
+        self.assertIn('auth_timeout_same_cell_ms("OAI_AUTH_TIMEOUT_GATE_STEP_MS", 10000)', gate)
+        self.assertIn("auth_timeout_same_cell_ra_allowed(mac->ue_id)", gate)
+        self.assertIn("mac->state == UE_RECEIVING_SIB && mac->current_UL_BWP", gate)
+        self.assertIn("pthread_mutex_lock(&auth_timeout_gate_mutex)", gate)
+        self.assertIn("else if (!open)", gate)
+        self.assertIn("auth_timeout_gate_open_ms = 0", gate)
+        self.assertIn("AUTH_TIMEOUT_RA_GATE event=released", gate)
+        self.assertIn("if (!same_cell_gate || same_cell_gate[0] == '\\0')", gate)
+        self.assertNotIn("usleep", gate)
+
+    def test_common_broker_opens_the_ue_gate_only_after_attack_ack(self):
+        source = SCRIPT.read_text()
+        select = source.split("select_broker()", 1)[1].split("\n}\n", 1)[0]
+        open_gate = 'printf \'attack\\n\' >"$STATE/attack-ue-gate"'
+        self.assertLess(select.index('count > before'), select.index(open_gate))
+        self.assertIn('SAME_CELL_UE_GATE_FILE="$STATE/attack-ue-gate"', source)
 
     def test_modified_shell_entrypoints_are_syntax_valid(self):
         paths = [

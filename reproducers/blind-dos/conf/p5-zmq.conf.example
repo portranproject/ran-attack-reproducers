@@ -15,10 +15,12 @@ BASELINE_PING_COUNT=20
 LOSS_CONSECUTIVE_PINGS=5
 RECOVERY_PING_COUNT=20
 
-PHASE_CMD='exec /root/blind-dos-tool/bin/blind-p5-phase'
-VERIFY_CMD='exec python3 /root/blind-dos-tool/analysis/export_labels.py "$BLIND_RUN_DIR" "$BLIND_HOOK_RESULT"'
-ARTIFACT_SCANNER=/root/ran-attack-reproducers/reproducers/rrc-signaling-storm/analysis/check_sensitive_artifacts.py
-EVIDENCE_TOOL=/root/blind-dos-tool/analysis/evidence_manifest.py
+BLIND_REPRO_ROOT=/root/ran-attack-reproducers/reproducers/blind-dos
+export BLIND_REPRO_ROOT
+PHASE_CMD='exec "$BLIND_REPRO_ROOT/bin/blind-p5-phase"'
+VERIFY_CMD='exec python3 "$BLIND_REPRO_ROOT/analysis/export_labels.py" "$BLIND_RUN_DIR" "$BLIND_HOOK_RESULT"'
+ARTIFACT_SCANNER="$BLIND_REPRO_ROOT/../rrc-signaling-storm/analysis/check_sensitive_artifacts.py"
+EVIDENCE_TOOL="$BLIND_REPRO_ROOT/analysis/evidence_manifest.py"
 
 # Replace these with the reviewed G0 inventory and generated profile fingerprints.
 CLOCK_SYNC_METHOD=chrony
@@ -46,11 +48,11 @@ VICTIM_RX_ENDPOINT=tcp://127.0.0.1:4556
 ATTACKER_TX_ENDPOINT=tcp://127.0.0.1:4559
 ATTACKER_RX_ENDPOINT=tcp://127.0.0.1:4558
 
-P5_HOOK=/root/blind-dos-tool/bin/blind-p5-hook
+P5_HOOK="$BLIND_REPRO_ROOT/bin/blind-p5-hook"
 P5_CU_HOST=ubuntu@172.31.5.10
 P5_SSH_KEY=/root/blind-dos-secrets-v2/p5-key.pem
 P5_KNOWN_HOSTS=/root/blind-dos-secrets-v2/known_hosts
-P5_EVIDENCE_PY=/root/blind-dos-tool/tools/p5_evidence.py
+P5_EVIDENCE_PY="$BLIND_REPRO_ROOT/tools/p5_evidence.py"
 P5_DU_BIN=/root/OCUDU/build/apps/du/odu
 P5_DU_CFG=/root/blind-dos-secrets/du-2cell-zmq.yaml
 P5_DU_LOG=/tmp/odu2.log

@@ -1,8 +1,8 @@
 # Git 밖의 p5 실제 경로만 지정한다. 가입자 원문은 이 파일에 넣지 않는다.
-NORMAL_UE_OAI=/root/OAI-rss-rate-v2-20261030
-NORMAL_UE_ATTACK_BIN=/root/OAI-rss-rate-v2-20261030/cmake_targets/ran_build/build/nr-uesoftmodem
-NORMAL_UE_BIN=/root/OAI-rss-rate-v2-20261030/cmake_targets/ran_build/build/nr-uesoftmodem
-NORMAL_UE_UECAP=/root/OAI-rss-rate-v2-20261030/targets/PROJECTS/GENERIC-NR-5GC/CONF/uecap_ports1.xml
+NORMAL_UE_OAI=/root/OAI-normal-ue-w38
+NORMAL_UE_ATTACK_BIN=/root/OAI-normal-ue-w38/cmake_targets/ran_build/build/nr-uesoftmodem
+NORMAL_UE_BIN=/root/OAI-normal-ue-w38/cmake_targets/ran_build/build/nr-uesoftmodem
+NORMAL_UE_UECAP=/root/OAI-normal-ue-w38/targets/PROJECTS/GENERIC-NR-5GC/CONF/uecap_ports1.xml
 NORMAL_UE_ATTACK_CFG=/root/auth-timeout-secrets/witness.conf
 NORMAL_UE_CFG=/root/normal-ue-secrets/p5-5ue.conf
 NORMAL_UE_GNB_CONFIG=/root/OCUDU/configs/du-broker-default.yaml

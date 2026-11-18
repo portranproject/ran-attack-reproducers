@@ -29,6 +29,7 @@ class CellFloodVerifierTest(unittest.TestCase):
             self.assertTrue(verdict["passed"])
             self.assertTrue(verdict["mechanism_reproduced"])
             self.assertEqual(verdict["checks"]["marker_count"], 10)
+            self.assertEqual(verdict["checks"]["recovery_signal_count"], 0)
 
     def test_one_process_ten_ues_passes(self):
         with tempfile.TemporaryDirectory() as directory:

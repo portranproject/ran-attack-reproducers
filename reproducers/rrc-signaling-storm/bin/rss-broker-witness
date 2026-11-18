@@ -10,6 +10,13 @@ if [[ -f $CONF ]]; then
   # shellcheck source=/dev/null
   . "$CONF" || { echo "cannot load $CONF" >&2; exit 1; }
 fi
+if [[ -n ${BROKER_NORMAL_CONF:-} ]]; then
+  [[ $BROKER_NORMAL_CONF == /* && -r $BROKER_NORMAL_CONF && -f $BROKER_NORMAL_CONF \
+     && ! -L $BROKER_NORMAL_CONF ]] \
+    || { echo "BROKER_NORMAL_CONF must be an absolute readable regular non-symlink file" >&2; exit 1; }
+  # shellcheck source=/dev/null
+  . "$BROKER_NORMAL_CONF" || { echo "cannot load $BROKER_NORMAL_CONF" >&2; exit 1; }
+fi
 
 MODE=${1:-}
 [[ $MODE == control || $MODE == attack ]] || {
@@ -37,11 +44,13 @@ esac; done
 OAI=${OAI:-/root/OAI}
 UE_BIN=${UE_BIN:-$OAI/cmake_targets/ran_build/build/nr-uesoftmodem}
 BROKER_ATTACK_UE_BIN=${BROKER_ATTACK_UE_BIN:-$UE_BIN}
-BROKER_WITNESS_UE_BIN=${BROKER_WITNESS_UE_BIN:-$UE_BIN}
+BROKER_WITNESS_UE_BIN=${BROKER_WITNESS_UE_BIN:-${NORMAL_UE_BIN:-$UE_BIN}}
 UE_CFG=${UE_CFG:-/root/oai_nrue.conf}
 BROKER_ATTACK_UE_CFG=${BROKER_ATTACK_UE_CFG:-$UE_CFG}
-BROKER_WITNESS_UE_CFG=${BROKER_WITNESS_UE_CFG:-$UE_CFG}
+BROKER_WITNESS_UE_CFG=${BROKER_WITNESS_UE_CFG:-${NORMAL_UE_CFG:-$UE_CFG}}
 UECAP=${UECAP:-$OAI/targets/PROJECTS/GENERIC-NR-5GC/CONF/uecap_ports1.xml}
+BROKER_ATTACK_UECAP=${BROKER_ATTACK_UECAP:-$UECAP}
+BROKER_WITNESS_UECAP=${BROKER_WITNESS_UECAP:-${NORMAL_UE_UECAP:-$UECAP}}
 BROKER_ATTACK_PROCESSES=${BROKER_ATTACK_PROCESSES:-4}
 BROKER_RECOVERY_WITNESS_DELAY_MS=${BROKER_RECOVERY_WITNESS_DELAY_MS:-}
 BROKER_CONTROL_EXTRA_QUIET_WITNESS=${BROKER_CONTROL_EXTRA_QUIET_WITNESS:-0}
@@ -93,10 +102,24 @@ BROKER_ATTACK_UES_PER_PROCESS=${BROKER_ATTACK_UES_PER_PROCESS:-1}
 BROKER_WITNESS_UES=${BROKER_WITNESS_UES:-1}
 BROKER_WITNESS_RSS=${BROKER_WITNESS_RSS:-1}
 BROKER_WITNESS_MULTI_RU=${BROKER_WITNESS_MULTI_RU:-0}
+BROKER_NORMAL_POOL_QUALIFICATION=${BROKER_NORMAL_POOL_QUALIFICATION:-0}
+BROKER_NORMAL_HEALTH_TIMEOUT_S=${BROKER_NORMAL_HEALTH_TIMEOUT_S:-120}
+BROKER_NORMAL_ATTACK_DURATION_S=${BROKER_NORMAL_ATTACK_DURATION_S:-30}
+BROKER_NORMAL_PDU_SESSION_ID=${BROKER_NORMAL_PDU_SESSION_ID:-}
 BROKER_WITNESS_PHASE_MS=${BROKER_WITNESS_PHASE_MS:-0}
 BROKER_WITNESS_RETRY_MS=${BROKER_WITNESS_RETRY_MS:-1000}
 BROKER_WITNESS_HONOR_REJECT=${BROKER_WITNESS_HONOR_REJECT:-0}
 BROKER_START_GNB_LAST=${BROKER_START_GNB_LAST:-0}
+BASELINE_READY_FILE=${LIVE_E2E_BASELINE_READY_FILE:-}
+OBSERVATION_READY_FILE=${LIVE_E2E_OBSERVATION_READY_FILE:-}
+MULTI_RU_CONFIG=${MULTI_RU_CONFIG:-$HERE/../authentication-timeout-exhaustion/analysis/multi_ru_config.py}
+if (( BROKER_NORMAL_POOL_QUALIFICATION )); then
+  BROKER_ATTACK_UE_BIN=${NORMAL_UE_ATTACK_BIN:-$BROKER_ATTACK_UE_BIN}
+  GNB_CONFIG=${NORMAL_UE_GNB_CONFIG:-$GNB_CONFIG}
+  GNB_STOP_CMD=${NORMAL_UE_GNB_STOP_CMD:-$GNB_STOP_CMD}
+  GNB_RESTART_CMD=${NORMAL_UE_GNB_RESTART_CMD:-$GNB_RESTART_CMD}
+  GNB_READY_CMD=${NORMAL_UE_GNB_READY_CMD:-$GNB_READY_CMD}
+fi
 UE_BEFORE_BROKER_S=${UE_BEFORE_BROKER_S:-3}
 BROKER_ENDPOINT_READY_TIMEOUT_S=${BROKER_ENDPOINT_READY_TIMEOUT_S:-30}
 BROKER_SYNC_TIMEOUT_S=${BROKER_SYNC_TIMEOUT_S:-30}
@@ -123,10 +146,13 @@ done
 for value in BROKER_ATTACK_MSG4_WAIT BROKER_WITNESS_HONOR_REJECT BROKER_START_GNB_LAST; do
   [[ ${!value} == 0 || ${!value} == 1 ]] || { echo "$value must be 0 or 1" >&2; exit 1; }
 done
-for value in BROKER_WITNESS_RSS BROKER_WITNESS_MULTI_RU; do
+for value in BROKER_WITNESS_RSS BROKER_WITNESS_MULTI_RU BROKER_NORMAL_POOL_QUALIFICATION; do
   [[ ${!value} == 0 || ${!value} == 1 ]] \
     || { echo "$value must be 0 or 1" >&2; exit 1; }
 done
+[[ -z $BASELINE_READY_FILE && -z $OBSERVATION_READY_FILE \
+   || $BASELINE_READY_FILE == /* && $OBSERVATION_READY_FILE == /* ]] \
+  || { echo "live E2E baseline markers must both be absolute paths" >&2; exit 1; }
 (( BROKER_ATTACK_MAX_DURATION_S <= 86400 )) \
   || { echo "BROKER_ATTACK_MAX_DURATION_S must be 0..86400" >&2; exit 1; }
 [[ $BROKER_ATTACK_PHASE_MS =~ ^[0-9]+$ ]] && (( BROKER_ATTACK_PHASE_MS <= 5000 )) \
@@ -172,10 +198,40 @@ if (( !BROKER_WITNESS_RSS && (RECOVERY_WITNESS_ENABLED || BROKER_CONTROL_EXTRA_Q
   exit 1
 fi
 if (( BROKER_WITNESS_MULTI_RU )); then
-  [[ $MODE == attack || $BROKER_ATTACK_PROCESSES == 1 ]] \
+  [[ $MODE == attack || $BROKER_ATTACK_PROCESSES == 1 || $BROKER_NORMAL_POOL_QUALIFICATION == 1 ]] \
     || { echo "BROKER_WITNESS_MULTI_RU control mode requires one quiet load process" >&2; exit 1; }
   (( RECOVERY_WITNESS_ENABLED == 0 && BROKER_CONTROL_EXTRA_QUIET_WITNESS == 0 && BROKER_SAME_WITNESS_CYCLE == 0 )) \
     || { echo "BROKER_WITNESS_MULTI_RU supports only the primary normal-UE pool" >&2; exit 1; }
+fi
+NORMAL_RECOVERY_DEADLINE_S=90
+NORMAL_REQUIRED_DURATION_MS=0
+if (( BROKER_NORMAL_POOL_QUALIFICATION )); then
+  [[ $BROKER_ATTACK_PROCESSES == 6 && $BROKER_ATTACK_UES_PER_PROCESS == 2
+     && $BROKER_WITNESS_MULTI_RU == 1 && $BROKER_WITNESS_UES == 5
+     && $BROKER_WITNESS_RSS == 1 ]] \
+    || { echo "normal-pool qualification requires 6x2 load UEs and one 5-UE independent-RU witness" >&2; exit 1; }
+  [[ $BROKER_NORMAL_HEALTH_TIMEOUT_S =~ ^[1-9][0-9]*$ ]] \
+    || { echo "BROKER_NORMAL_HEALTH_TIMEOUT_S must be a positive integer" >&2; exit 1; }
+  [[ $BROKER_NORMAL_ATTACK_DURATION_S =~ ^[1-9][0-9]*$ ]] && (( BROKER_NORMAL_ATTACK_DURATION_S <= 300 )) \
+    || { echo "BROKER_NORMAL_ATTACK_DURATION_S must be 1..300" >&2; exit 1; }
+  grep -Faq OAI_NORMAL_TUN_SUFFIX "$BROKER_WITNESS_UE_BIN" \
+    || { echo "normal-pool qualification requires normal-tun-suffix.patch in the witness UE binary" >&2; exit 1; }
+  grep -Faq RSS_BROKER_CONTROL_FILE "$BROKER_ATTACK_UE_BIN" \
+    || { echo "normal-pool qualification requires the broker control gate in the attack UE binary" >&2; exit 1; }
+  NORMAL_REQUIRED_DURATION_MS=$(((BROKER_NORMAL_HEALTH_TIMEOUT_S + BROKER_NORMAL_ATTACK_DURATION_S + NORMAL_RECOVERY_DEADLINE_S) * 1000))
+  (( DURATION_S * 1000 >= NORMAL_REQUIRED_DURATION_MS )) || {
+    required_s=$(((NORMAL_REQUIRED_DURATION_MS + 999) / 1000))
+    echo "normal-pool qualification requires -d >= $required_s seconds for 5/5 startup, attack, and 90-second recovery" >&2
+    exit 1
+  }
+fi
+ROLE_ATTACK_MAX_DURATION_S=$BROKER_ATTACK_MAX_DURATION_S
+ROLE_ATTACK_START_DELAY_MS=$BROKER_ATTACK_START_DELAY_MS
+ROLE_ATTACK_START_STRIDE_MS=$BROKER_ATTACK_START_STRIDE_MS
+if (( BROKER_NORMAL_POOL_QUALIFICATION )); then
+  ROLE_ATTACK_MAX_DURATION_S=0
+  ROLE_ATTACK_START_DELAY_MS=0
+  ROLE_ATTACK_START_STRIDE_MS=0
 fi
 WITNESS_PROCESSES=$((1 + RECOVERY_WITNESS_ENABLED + BROKER_CONTROL_EXTRA_QUIET_WITNESS))
 TOTAL_UE_PROCESSES=$((BROKER_ATTACK_PROCESSES + WITNESS_PROCESSES))
@@ -223,8 +279,11 @@ done
   || { echo "DEVICE=$DEVICE is unsupported: the broker witness is ZMQ-only" >&2; exit 1; }
 [[ -x $BROKER_ATTACK_UE_BIN && -x $BROKER_WITNESS_UE_BIN ]] \
   || { echo "missing attack or witness UE binary" >&2; exit 1; }
-[[ -f $BROKER_ATTACK_UE_CFG && -f $BROKER_WITNESS_UE_CFG && -f $UECAP && -f $BROKER_PY && -f $GNB_CONFIG ]] \
+[[ -f $BROKER_ATTACK_UE_CFG && -f $BROKER_WITNESS_UE_CFG && -f $BROKER_ATTACK_UECAP \
+   && -f $BROKER_WITNESS_UECAP && -f $BROKER_PY && -f $GNB_CONFIG ]] \
   || { echo "missing UE config, capability, broker, or gNB config" >&2; exit 1; }
+(( BROKER_WITNESS_MULTI_RU == 0 )) || [[ -f $MULTI_RU_CONFIG && ! -L $MULTI_RU_CONFIG ]] \
+  || { echo "missing multi-RU runtime config generator" >&2; exit 1; }
 BROKER_LAST_TX=$((2001 + 100 * BROKER_ENDPOINTS))
 BROKER_LAST_RX=$((2000 + 100 * BROKER_ENDPOINTS))
 if ! { grep -q ":$BROKER_LAST_TX" "$BROKER_PY" && grep -q ":$BROKER_LAST_RX" "$BROKER_PY"; } \
@@ -251,12 +310,44 @@ grep -Eq "tx_port=tcp://[^, ]*:${GNB_TX_PORT}([, ]|$)" "$GNB_CONFIG" \
 grep -Eq "rx_port=tcp://[^, ]*:${GNB_RX_PORT}([, ]|$)" "$GNB_CONFIG" \
   || { echo "gNB RX must use broker port $GNB_RX_PORT" >&2; exit 1; }
 
+if (( BROKER_NORMAL_POOL_QUALIFICATION )); then
+  if [[ -z $BROKER_NORMAL_PDU_SESSION_ID ]]; then
+    BROKER_NORMAL_PDU_SESSION_ID=$(python3 - "$BROKER_WITNESS_UE_CFG" "$BROKER_WITNESS_UES" <<'PY'
+import pathlib
+import re
+import sys
+
+text = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+blocks = re.findall(r"(?ms)^\s*uicc\d+\s*=\s*\{.*?(?=^\s*uicc\d+\s*=|\Z)", text)[:int(sys.argv[2])]
+ids = []
+for block in blocks:
+    sessions = re.search(r"(?s)pdu_sessions\s*=\s*\((.*?)\)\s*;", block)
+    match = sessions and re.search(r"\bid\s*=\s*(\d+)", sessions.group(1))
+    if not match:
+        raise SystemExit("normal UE PDU session id를 읽지 못했습니다")
+    ids.append(int(match.group(1)))
+if len(ids) != int(sys.argv[2]) or len(set(ids)) != 1:
+    raise SystemExit("normal UE 5대의 PDU session id가 없거나 서로 다릅니다")
+print(ids[0])
+PY
+    ) || { echo "normal UE PDU session id 검증에 실패했습니다" >&2; exit 1; }
+  fi
+  [[ $BROKER_NORMAL_PDU_SESSION_ID =~ ^[1-9][0-9]*$ && $BROKER_NORMAL_PDU_SESSION_ID -le 255 ]] \
+    || { echo "BROKER_NORMAL_PDU_SESSION_ID must be 1..255" >&2; exit 1; }
+fi
+
 mkdir -p -- "$BROKER_LOGDIR"
 exec 9>"$LOCK_FILE"
 "$FLOCK_BIN" -n 9 || { echo "another broker witness run is active" >&2; exit 1; }
 OUT="$BROKER_LOGDIR/$RUN_ID"
 mkdir -- "$OUT" \
   || { echo "cannot create $OUT — existing results are never overwritten" >&2; exit 1; }
+BROKER_CONTROL_FILE=$OUT/broker-control
+ATTACK_UE_GATE_FILE=$OUT/attack-ue-gate
+if (( BROKER_NORMAL_POOL_QUALIFICATION )); then
+  printf 'standby\n' >"$BROKER_CONTROL_FILE"
+  printf 'standby\n' >"$ATTACK_UE_GATE_FILE"
+fi
 
 RECOVERY_ROLE_JSON=""
 if (( RECOVERY_WITNESS_ENABLED )); then
@@ -272,6 +363,10 @@ if (( BROKER_SAME_WITNESS_CYCLE )); then
 fi
 MULTI_RU_TOPOLOGY_JSON=""
 (( BROKER_WITNESS_MULTI_RU == 0 )) || MULTI_RU_TOPOLOGY_JSON=",\"zmq_endpoints\":$BROKER_ENDPOINTS"
+NORMAL_POOL_ROLE_JSON=""
+if (( BROKER_NORMAL_POOL_QUALIFICATION )); then
+  NORMAL_POOL_ROLE_JSON=",\"normal_pool\":{\"enabled\":true,\"ues\":5,\"same_du_cell\":true,\"pdu_session_id\":$BROKER_NORMAL_PDU_SESSION_ID,\"health_timeout_s\":$BROKER_NORMAL_HEALTH_TIMEOUT_S,\"attack_duration_s\":$BROKER_NORMAL_ATTACK_DURATION_S,\"recovery_deadline_s\":$NORMAL_RECOVERY_DEADLINE_S,\"required_duration_ms\":$NORMAL_REQUIRED_DURATION_MS,\"clocked_attack_slots\":true,\"uplink_gate\":\"broker\",\"direct_detector_input\":false,\"ue_to_ran_path_required\":true}"
+fi
 
 PIDS=()
 GROUPED=()
@@ -283,6 +378,7 @@ CHILD_FORCED_KILL=()
 BROKER_INDEX=-1
 STOPPED=0
 PING_PID=""
+MULTI_RU_RUNTIME_CFG=""
 
 start_child() {
   local log=$1
@@ -398,6 +494,58 @@ count_attacker_msg3() {
   echo "$msg3"
 }
 
+normal_pool_health() {
+  local i iface ok=0
+  for ((i=1; i<=BROKER_WITNESS_UES; i++)); do
+    iface="oaitun_ue${i}p${BROKER_NORMAL_PDU_SESSION_ID}"
+    "$IP_CMD" -4 -o addr show "$iface" >/dev/null 2>&1 \
+      && "$PING_CMD" -n -I "$iface" -c 1 -W 1 "$GW" >/dev/null 2>&1 \
+      && ok=$((ok + 1)) || true
+  done
+  echo "$ok"
+}
+
+record_normal_pool_health() {
+  local phase=$1 i iface tun_ok ping_ok timestamp
+  timestamp=$(date +%s%N)
+  for ((i=1; i<=BROKER_WITNESS_UES; i++)); do
+    iface="oaitun_ue${i}p${BROKER_NORMAL_PDU_SESSION_ID}"
+    tun_ok=false
+    ping_ok=false
+    if "$IP_CMD" -4 -o addr show "$iface" >/dev/null 2>&1; then
+      tun_ok=true
+      "$PING_CMD" -n -I "$iface" -c 1 -W 1 "$GW" >/dev/null 2>&1 && ping_ok=true || true
+    fi
+    printf '{"schema":"same-cell.normal-health.v1","run_id":"%s","phase":"%s","realtime_ns":%s,"ue":%d,"interface":"%s","tun_ok":%s,"ping_ok":%s}\n' \
+      "$RUN_ID" "$phase" "$timestamp" "$i" "$iface" "$tun_ok" "$ping_ok" \
+      >>"$OUT/normal-health.jsonl"
+  done
+}
+
+select_persistent_attack() {
+  local mode=$1 before started=$SECONDS count slots="1,2,3,4,5,6"
+  [[ $mode == standby || $mode == warmup || $mode == attack ]] || return 1
+  if [[ $mode == standby ]]; then
+    printf 'standby\n' >"$ATTACK_UE_GATE_FILE"
+    printf 'standby\n' >"$BROKER_CONTROL_FILE"
+  else
+    printf '%s %s\n' "$mode" "$slots" >"$BROKER_CONTROL_FILE"
+  fi
+  before=$(count '^SAME_CELL_SLOT_SELECTION ' "$OUT/broker.log")
+  kill -USR1 "$BROKER_PID" || return 1
+  while :; do
+    grep -q '^SAME_CELL_SLOT_SELECTION_FAILED ' "$OUT/broker.log" 2>/dev/null && return 1
+    count=$(count '^SAME_CELL_SLOT_SELECTION ' "$OUT/broker.log")
+    if (( count > before )); then
+      [[ $mode != attack ]] || printf 'attack\n' >"$ATTACK_UE_GATE_FILE"
+      return 0
+    fi
+    is_running "$BROKER_PID" || return 1
+    (( SECONDS - started < BROKER_ENDPOINT_READY_TIMEOUT_S )) || return 1
+    sleep .1
+  done
+}
+
 ping_received_now() {
   local file=$1 received
   received=$(awk '/packets transmitted/{value=$4} END{print value}' "$file" 2>/dev/null || true)
@@ -430,6 +578,12 @@ all_active_ues_running() {
   done
 }
 
+GNB_RESTARTED=0
+stop_gnb() {
+  (( GNB_RESTARTED )) || return 0
+  bash -c "$GNB_STOP_CMD" 9>&- >>"$OUT/gnb_stop.txt" 2>&1 </dev/null || true
+  GNB_RESTARTED=0
+}
 stop_children() {
   (( STOPPED == 0 )) || return 0
   STOPPED=1
@@ -490,7 +644,15 @@ stop_children() {
     CHILD_REAPED[$i]=1
   done
 }
-trap stop_children EXIT
+cleanup() {
+  local status=$?
+  trap - EXIT INT TERM
+  stop_children
+  stop_gnb
+  [[ -z $MULTI_RU_RUNTIME_CFG ]] || unlink "$MULTI_RU_RUNTIME_CFG" 2>/dev/null || true
+  exit "$status"
+}
+trap cleanup EXIT
 trap 'exit 130' INT TERM
 
 if pgrep -x nr-uesoftmodem >/dev/null 2>&1; then
@@ -502,9 +664,9 @@ cat >"$OUT/run.json" <<EOF
 {"type":"broker_witness_run","run_id":"$RUN_ID","mode":"$MODE",
  "duration_s":$DURATION_S,"witness_delay_ms":$WITNESS_DELAY_MS,"broker_sync_timeout_s":$BROKER_SYNC_TIMEOUT_S,
  "topology":{"attack_or_quiet_processes":$BROKER_ATTACK_PROCESSES,"attack_or_quiet_ues":$ATTACK_LOGICAL_UES,"witness_processes":$WITNESS_PROCESSES,"witness_ues":$WITNESS_LOGICAL_UES,"ue_processes":$TOTAL_UE_PROCESSES,"planned_ue_process_starts":$PLANNED_UE_PROCESS_STARTS$MULTI_RU_TOPOLOGY_JSON,"gnb_tx_port":$GNB_TX_PORT,"gnb_rx_port":$GNB_RX_PORT},
- "roles":{"attacker":{"processes":$BROKER_ATTACK_PROCESSES,"ues_per_process":$BROKER_ATTACK_UES_PER_PROCESS,"msg4_wait":$BROKER_ATTACK_MSG4_WAIT,"max_duration_s":$BROKER_ATTACK_MAX_DURATION_S,"start_delay_ms":$BROKER_ATTACK_START_DELAY_MS,"start_stride_ms":$BROKER_ATTACK_START_STRIDE_MS,"phase_ms":$BROKER_ATTACK_PHASE_MS,"honor_reject":0},
+ "roles":{"attacker":{"processes":$BROKER_ATTACK_PROCESSES,"ues_per_process":$BROKER_ATTACK_UES_PER_PROCESS,"msg4_wait":$BROKER_ATTACK_MSG4_WAIT,"max_duration_s":$ROLE_ATTACK_MAX_DURATION_S,"start_delay_ms":$ROLE_ATTACK_START_DELAY_MS,"start_stride_ms":$ROLE_ATTACK_START_STRIDE_MS,"phase_ms":$BROKER_ATTACK_PHASE_MS,"honor_reject":0},
           "control_load":{"processes":$BROKER_ATTACK_PROCESSES,"ues_per_process":$BROKER_ATTACK_UES_PER_PROCESS,"msg4_wait":1,"max_duration_s":0,"phase_ms":0,"honor_reject":0},
-          "witness":{"processes":1,"ues_per_process":$BROKER_WITNESS_UES,"msg4_wait":1,"max_duration_s":0,"phase_ms":0,"honor_reject":$BROKER_WITNESS_HONOR_REJECT}$RECOVERY_ROLE_JSON$CONTROL_EXTRA_ROLE_JSON$SAME_WITNESS_ROLE_JSON},
+          "witness":{"processes":1,"ues_per_process":$BROKER_WITNESS_UES,"msg4_wait":1,"max_duration_s":0,"phase_ms":0,"honor_reject":$BROKER_WITNESS_HONOR_REJECT}$RECOVERY_ROLE_JSON$CONTROL_EXTRA_ROLE_JSON$SAME_WITNESS_ROLE_JSON$NORMAL_POOL_ROLE_JSON},
  "t_start_utc":"$(date -u +%FT%TZ)"}
 EOF
 
@@ -523,6 +685,7 @@ restart_gnb() {
     echo "gNB restart failed" >&2
     return 1
   fi
+  GNB_RESTARTED=1
   local ready=0 ready_started=$SECONDS
   : >"$OUT/gnb_ready.txt"
   while (( SECONDS - ready_started < GNB_READY_TIMEOUT_S )); do
@@ -539,13 +702,19 @@ restart_gnb() {
 (( BROKER_START_GNB_LAST )) || restart_gnb || exit 1
 
 COMMON=(--band "$BAND" -C "$DL_FREQ" --numerology "$NUMEROLOGY" -r "$PRB"
-        -E --ue-scan-carrier --uecap_file "$UECAP" --device.name "$DEVICE")
+        -E --ue-scan-carrier --device.name "$DEVICE")
 RSS_COMMON=(--rss.enable 1 --rss.interval_ms 0 --rss.completion_pct 0
         --rss.ack_gate 1 --rss.ra_gate 1 --rss.gate_timeout_ms 500
         --rss.target_occupancy 0 --rss.hold_ms 2000 --rss.msg4_ack 1
         )
 # Keep control load UEs quiet across both the startup gate and observation.
 QUIET_DELAY_MS=$(((BROKER_SYNC_TIMEOUT_S + DURATION_S + 60) * 1000))
+
+if (( BROKER_WITNESS_MULTI_RU )); then
+  MULTI_RU_RUNTIME_CFG="$OUT/witness-runtime.conf"
+  python3 "$MULTI_RU_CONFIG" "$BROKER_WITNESS_UE_CFG" "$MULTI_RU_RUNTIME_CFG" \
+    "$BROKER_WITNESS_UES" "$((WITNESS_INDEX - 1))"
+fi
 
 echo "== launching $BROKER_ATTACK_PROCESSES $MODE processes and $WITNESS_PROCESSES ordinary witness process(es)"
 UE_LAUNCH_STARTED=$SECONDS
@@ -556,12 +725,15 @@ for ((i=1; i<=TOTAL_UE_PROCESSES; i++)); do
   ROLE_NUM_UES=$BROKER_ATTACK_UES_PER_PROCESS
   ROLE_CFG=$BROKER_ATTACK_UE_CFG
   ROLE_BIN=$BROKER_ATTACK_UE_BIN
+  ROLE_UECAP=$BROKER_ATTACK_UECAP
   ROLE_USES_RSS=1
   if (( i == WITNESS_INDEX )); then
     ROLE_NUM_UES=$BROKER_WITNESS_UES
     ROLE_CFG=$BROKER_WITNESS_UE_CFG
     ROLE_BIN=$BROKER_WITNESS_UE_BIN
+    ROLE_UECAP=$BROKER_WITNESS_UECAP
     ROLE_USES_RSS=$BROKER_WITNESS_RSS
+    [[ -z $MULTI_RU_RUNTIME_CFG ]] || ROLE_CFG=$MULTI_RU_RUNTIME_CFG
     if (( ROLE_USES_RSS )); then
       ROLE_ARGS=(--num-ues "$ROLE_NUM_UES" --rss.max_duration_s 0 --rss.honor_reject "$BROKER_WITNESS_HONOR_REJECT"
                  --rss.msg4_wait 1 --rss.probe_ues "$ROLE_NUM_UES" --rss.probe_delay_ms "$WITNESS_DELAY_MS"
@@ -574,6 +746,7 @@ for ((i=1; i<=TOTAL_UE_PROCESSES; i++)); do
     ROLE_NUM_UES=1
     ROLE_CFG=$BROKER_WITNESS_UE_CFG
     ROLE_BIN=$BROKER_WITNESS_UE_BIN
+    ROLE_UECAP=$BROKER_WITNESS_UECAP
     ROLE_ARGS=(--num-ues 1 --rss.max_duration_s 0 --rss.honor_reject 1
                --rss.msg4_wait 1 --rss.probe_ues 1 --rss.probe_delay_ms "$BROKER_RECOVERY_WITNESS_DELAY_MS"
                --rss.probe_ra_only 0 --rss.probe_interval_ms 1000 --rss.phase_ms 0)
@@ -581,6 +754,7 @@ for ((i=1; i<=TOTAL_UE_PROCESSES; i++)); do
     ROLE_NUM_UES=1
     ROLE_CFG=$BROKER_WITNESS_UE_CFG
     ROLE_BIN=$BROKER_WITNESS_UE_BIN
+    ROLE_UECAP=$BROKER_WITNESS_UECAP
     ROLE_ARGS=(--num-ues 1 --rss.max_duration_s 0 --rss.honor_reject 0 --rss.msg4_wait 1
                --rss.probe_ues 1 --rss.probe_delay_ms "$QUIET_DELAY_MS"
                --rss.probe_ra_only 0 --rss.probe_interval_ms 1000 --rss.phase_ms 0)
@@ -589,8 +763,8 @@ for ((i=1; i<=TOTAL_UE_PROCESSES; i++)); do
                --rss.probe_ues "$ROLE_NUM_UES" --rss.probe_delay_ms "$QUIET_DELAY_MS"
                --rss.probe_ra_only 0 --rss.probe_interval_ms 1000 --rss.phase_ms 0)
   else
-    ATTACK_DELAY_MS=$((BROKER_ATTACK_START_DELAY_MS + (i - 1) * BROKER_ATTACK_START_STRIDE_MS))
-    ROLE_ARGS=(--num-ues "$ROLE_NUM_UES" --rss.max_duration_s "$BROKER_ATTACK_MAX_DURATION_S" --rss.honor_reject 0
+    ATTACK_DELAY_MS=$((ROLE_ATTACK_START_DELAY_MS + (i - 1) * ROLE_ATTACK_START_STRIDE_MS))
+    ROLE_ARGS=(--num-ues "$ROLE_NUM_UES" --rss.max_duration_s "$ROLE_ATTACK_MAX_DURATION_S" --rss.honor_reject 0
                --rss.msg4_wait "$BROKER_ATTACK_MSG4_WAIT" --rss.probe_ues "$ROLE_NUM_UES"
                --rss.probe_delay_ms "$ATTACK_DELAY_MS" --rss.probe_ra_only 1 --rss.probe_interval_ms 10
                --rss.phase_ms "$BROKER_ATTACK_PHASE_MS")
@@ -608,15 +782,16 @@ for ((i=1; i<=TOTAL_UE_PROCESSES; i++)); do
   else
     : >"$OUT/ue${i}.jsonl"
   fi
-  if (( BROKER_WITNESS_MULTI_RU && i == WITNESS_INDEX )); then
-    ROLE_ZMQ_ARGS=()
-    for ((ru=0; ru<ROLE_NUM_UES; ru++)); do
-      endpoint=$((i + ru))
-      ROLE_ZMQ_ARGS+=("--zmq.[$ru].tx_channels" "tcp://127.0.0.1:$((2001 + 100 * endpoint))"
-                      "--zmq.[$ru].rx_channels" "tcp://127.0.0.1:$((2000 + 100 * endpoint))")
-    done
+  (( BROKER_WITNESS_MULTI_RU == 0 || i != WITNESS_INDEX )) || ROLE_ZMQ_ARGS=()
+  ROLE_ENV=(env RSS_SHARE_NUE="$ROLE_NUM_UES")
+  if (( BROKER_NORMAL_POOL_QUALIFICATION && i <= BROKER_ATTACK_PROCESSES )); then
+    ROLE_ENV+=(RSS_BROKER_CONTROL_FILE="$ATTACK_UE_GATE_FILE")
   fi
-  start_child "$OUT/ue${i}.log" env RSS_SHARE_NUE="$ROLE_NUM_UES" "$ROLE_BIN" -O "$ROLE_CFG" "${COMMON[@]}" \
+  if (( BROKER_NORMAL_POOL_QUALIFICATION && i == WITNESS_INDEX )); then
+    ROLE_ENV+=(OAI_NORMAL_TUN_SUFFIX=1)
+  fi
+  start_child "$OUT/ue${i}.log" "${ROLE_ENV[@]}" "$ROLE_BIN" -O "$ROLE_CFG" "${COMMON[@]}" \
+    --uecap_file "$ROLE_UECAP" \
     "${ROLE_RSS_ARGS[@]}" "${ROLE_ZMQ_ARGS[@]}" "${ROLE_ARGS[@]}" "${ROLE_TAIL[@]}"
   INITIAL_UE_PIDS+=("$LAST_PID")
   UE_CHILD_INDEXES+=("$LAST_CHILD_INDEX")
@@ -649,7 +824,13 @@ while :; do
   sleep 0.2
 done
 echo "== starting the broker after all $TOTAL_UE_PROCESSES OAI endpoints"
-start_child "$OUT/broker.log" bash -c "$BROKER_CMD"
+if (( BROKER_NORMAL_POOL_QUALIFICATION )); then
+  start_child "$OUT/broker.log" env NORMAL_UE_BROKER_ATTACK_SLOTS=6 \
+    NORMAL_UE_BROKER_PERSISTENT_ATTACK=1 NORMAL_UE_BROKER_CONTROL="$BROKER_CONTROL_FILE" \
+    bash -c "$BROKER_CMD"
+else
+  start_child "$OUT/broker.log" bash -c "$BROKER_CMD"
+fi
 BROKER_PID=$LAST_PID
 BROKER_INDEX=$((${#PIDS[@]} - 1))
 
@@ -733,8 +914,110 @@ ATTACK_MSG3_AT_BOUNDARY=0
 SAME_WITNESS_RECOVERY_ATTACH_S=-1
 SAME_WITNESS_RECOVERY_WINDOW_CLOSED=0
 SAME_WITNESS_BOUNDARY_GATE_OK=0
+NORMAL_BEFORE_HEALTHY=0
+NORMAL_BEFORE_HEALTHY_UES=0
+NORMAL_DURING_SAMPLES=0
+NORMAL_DURING_MIN_HEALTHY=$BROKER_WITNESS_UES
+NORMAL_DURING_LAST_HEALTHY=0
+NORMAL_RECOVERY_HEALTHY=0
+NORMAL_RECOVERY_HEALTHY_UES=0
+NORMAL_RECOVERY_ELAPSED_S=-1
+NORMAL_PRE_ATTACK_FAILED=0
+NORMAL_GATE_OK=0
+NORMAL_GATE_ATTACK_NS=0
+NORMAL_GATE_STANDBY_NS=0
+NORMAL_UE_MSG3_BEFORE=0
+NORMAL_UE_MSG3_AFTER=0
+NORMAL_UE_MSG3_DELTA=0
 
-if (( SYNC_READY && !BROKER_EARLY_EXIT && !EARLY_EXIT )); then
+if (( BROKER_NORMAL_POOL_QUALIFICATION && SYNC_READY && !BROKER_EARLY_EXIT && !EARLY_EXIT )); then
+  NORMAL_HEALTH_STARTED=$SECONDS
+  while :; do
+    NORMAL_BEFORE_HEALTHY_UES=$(normal_pool_health)
+    if (( NORMAL_BEFORE_HEALTHY_UES == BROKER_WITNESS_UES )); then
+      NORMAL_BEFORE_HEALTHY=1
+      record_normal_pool_health before
+      break
+    fi
+    if (( SECONDS - NORMAL_HEALTH_STARTED >= BROKER_NORMAL_HEALTH_TIMEOUT_S )); then
+      NORMAL_PRE_ATTACK_FAILED=1
+      break
+    fi
+    sleep 1
+  done
+fi
+
+if (( BROKER_NORMAL_POOL_QUALIFICATION && NORMAL_BEFORE_HEALTHY )) && [[ -n $BASELINE_READY_FILE ]]; then
+  ( set -o noclobber; date +%s%N >"$BASELINE_READY_FILE" ) \
+    || { echo "failed to publish normal UE baseline marker" >&2; exit 1; }
+  OBSERVATION_WAIT_STARTED=$SECONDS
+  until [[ -f $OBSERVATION_READY_FILE && ! -L $OBSERVATION_READY_FILE ]]; do
+    is_running "$BROKER_PID" || { BROKER_EARLY_EXIT=1; break; }
+    all_active_ues_running || { EARLY_EXIT=1; break; }
+    (( SECONDS - OBSERVATION_WAIT_STARTED < BROKER_NORMAL_HEALTH_TIMEOUT_S )) \
+      || { echo "live E2E observation start timed out" >&2; exit 1; }
+    sleep .2
+  done
+fi
+
+if (( BROKER_NORMAL_POOL_QUALIFICATION && SYNC_READY && !BROKER_EARLY_EXIT
+      && !EARLY_EXIT && !NORMAL_PRE_ATTACK_FAILED )); then
+  if [[ $MODE == attack ]]; then
+    NORMAL_UE_MSG3_BEFORE=$(count_attacker_msg3)
+    if select_persistent_attack warmup && select_persistent_attack attack; then
+      NORMAL_GATE_OK=1
+      NORMAL_GATE_ATTACK_NS=$(date +%s%N)
+      NORMAL_ATTACK_STARTED=$SECONDS
+      while (( SECONDS - NORMAL_ATTACK_STARTED < BROKER_NORMAL_ATTACK_DURATION_S )); do
+        is_running "$BROKER_PID" || { BROKER_EARLY_EXIT=1; break; }
+        all_active_ues_running || { EARLY_EXIT=1; break; }
+        NORMAL_CURRENT_HEALTHY=$(normal_pool_health)
+        NORMAL_DURING_SAMPLES=$((NORMAL_DURING_SAMPLES + 1))
+        NORMAL_DURING_LAST_HEALTHY=$NORMAL_CURRENT_HEALTHY
+        (( NORMAL_CURRENT_HEALTHY >= NORMAL_DURING_MIN_HEALTHY )) \
+          || NORMAL_DURING_MIN_HEALTHY=$NORMAL_CURRENT_HEALTHY
+        record_normal_pool_health during
+        sleep 1
+      done
+      if (( !BROKER_EARLY_EXIT && !EARLY_EXIT )) && select_persistent_attack standby; then
+        NORMAL_GATE_STANDBY_NS=$(date +%s%N)
+        PRIMARY_ATTACK_WINDOW_FROZEN=1
+        PRIMARY_ATTACK_WINDOW_END_S=$((SECONDS - STARTED))
+        ATTACK_ATTEMPTS_AT_BOUNDARY=$(count_attacker_attempts)
+        ATTACK_MSG3_AT_BOUNDARY=$(count_attacker_msg3)
+        NORMAL_UE_MSG3_AFTER=$(count_attacker_msg3)
+        NORMAL_UE_MSG3_DELTA=$((NORMAL_UE_MSG3_AFTER - NORMAL_UE_MSG3_BEFORE))
+        NORMAL_RECOVERY_STARTED=$SECONDS
+        while (( SECONDS - NORMAL_RECOVERY_STARTED <= NORMAL_RECOVERY_DEADLINE_S )); do
+          NORMAL_CURRENT_HEALTHY=$(normal_pool_health)
+          NORMAL_RECOVERY_HEALTHY_UES=$NORMAL_CURRENT_HEALTHY
+          if (( NORMAL_CURRENT_HEALTHY == BROKER_WITNESS_UES )); then
+            NORMAL_RECOVERY_HEALTHY=1
+            NORMAL_RECOVERY_ELAPSED_S=$((SECONDS - NORMAL_RECOVERY_STARTED))
+            record_normal_pool_health after
+            break
+          fi
+          (( SECONDS < DEADLINE )) || break
+          sleep 1
+        done
+        (( NORMAL_RECOVERY_HEALTHY )) || record_normal_pool_health after
+      fi
+    fi
+  else
+    NORMAL_CONTROL_STARTED=$SECONDS
+    while (( SECONDS - NORMAL_CONTROL_STARTED < BROKER_NORMAL_ATTACK_DURATION_S )); do
+      is_running "$BROKER_PID" || { BROKER_EARLY_EXIT=1; break; }
+      all_active_ues_running || { EARLY_EXIT=1; break; }
+      NORMAL_CURRENT_HEALTHY=$(normal_pool_health)
+      NORMAL_DURING_SAMPLES=$((NORMAL_DURING_SAMPLES + 1))
+      NORMAL_DURING_LAST_HEALTHY=$NORMAL_CURRENT_HEALTHY
+      (( NORMAL_CURRENT_HEALTHY >= NORMAL_DURING_MIN_HEALTHY )) \
+        || NORMAL_DURING_MIN_HEALTHY=$NORMAL_CURRENT_HEALTHY
+      record_normal_pool_health during
+      sleep 1
+    done
+  fi
+elif (( SYNC_READY && !BROKER_EARLY_EXIT && !EARLY_EXIT && !NORMAL_PRE_ATTACK_FAILED )); then
   while (( SECONDS < DEADLINE )); do
     if ! is_running "$BROKER_PID"; then
       BROKER_EARLY_EXIT=1
@@ -744,7 +1027,8 @@ if (( SYNC_READY && !BROKER_EARLY_EXIT && !EARLY_EXIT )); then
       EARLY_EXIT=1
       break
     fi
-    if (( (RECOVERY_WITNESS_ENABLED || BROKER_SAME_WITNESS_CYCLE) && !PRIMARY_ATTACK_WINDOW_FROZEN
+    if (( (RECOVERY_WITNESS_ENABLED || BROKER_SAME_WITNESS_CYCLE || BROKER_NORMAL_POOL_QUALIFICATION)
+          && !PRIMARY_ATTACK_WINDOW_FROZEN
           && $(count_quiet_attackers) == BROKER_ATTACK_PROCESSES )); then
       PRIMARY_ATTACK_WINDOW_FROZEN=1
       PRIMARY_ATTACK_WINDOW_END_S=$((SECONDS - STARTED))
@@ -782,6 +1066,36 @@ if (( SYNC_READY && !BROKER_EARLY_EXIT && !EARLY_EXIT )); then
               && PRIMARY_ATTACK_WINDOW_PING_RX == 0 )); then
           SAME_WITNESS_BOUNDARY_GATE_OK=1
         else
+          break
+        fi
+      fi
+    fi
+    if (( BROKER_NORMAL_POOL_QUALIFICATION )); then
+      NORMAL_CURRENT_HEALTHY=$(normal_pool_health)
+      if [[ $MODE == control ]] || (( $(count_attacker_attempts) > 0 && !PRIMARY_ATTACK_WINDOW_FROZEN )); then
+        NORMAL_DURING_SAMPLES=$((NORMAL_DURING_SAMPLES + 1))
+        NORMAL_DURING_LAST_HEALTHY=$NORMAL_CURRENT_HEALTHY
+        (( NORMAL_CURRENT_HEALTHY >= NORMAL_DURING_MIN_HEALTHY )) \
+          || NORMAL_DURING_MIN_HEALTHY=$NORMAL_CURRENT_HEALTHY
+        record_normal_pool_health during
+      fi
+      if [[ $MODE == attack ]] && (( PRIMARY_ATTACK_WINDOW_FROZEN )); then
+        (( NORMAL_DURING_SAMPLES > 0 )) || {
+          NORMAL_DURING_SAMPLES=1
+          NORMAL_DURING_LAST_HEALTHY=$NORMAL_CURRENT_HEALTHY
+          NORMAL_DURING_MIN_HEALTHY=$NORMAL_CURRENT_HEALTHY
+          record_normal_pool_health during
+        }
+        if (( NORMAL_CURRENT_HEALTHY == BROKER_WITNESS_UES )); then
+          NORMAL_RECOVERY_HEALTHY=1
+          NORMAL_RECOVERY_HEALTHY_UES=$NORMAL_CURRENT_HEALTHY
+          NORMAL_RECOVERY_ELAPSED_S=$((SECONDS - STARTED - PRIMARY_ATTACK_WINDOW_END_S))
+          record_normal_pool_health after
+          break
+        fi
+        if (( SECONDS - STARTED - PRIMARY_ATTACK_WINDOW_END_S >= NORMAL_RECOVERY_DEADLINE_S )); then
+          NORMAL_RECOVERY_HEALTHY_UES=$NORMAL_CURRENT_HEALTHY
+          record_normal_pool_health after
           break
         fi
       fi
@@ -877,6 +1191,12 @@ if (( SYNC_READY && !BROKER_EARLY_EXIT && !EARLY_EXIT )); then
   done
 fi
 
+if (( BROKER_NORMAL_POOL_QUALIFICATION )) && [[ $MODE == control ]]; then
+  NORMAL_RECOVERY_HEALTHY_UES=$(normal_pool_health)
+  (( NORMAL_RECOVERY_HEALTHY_UES != BROKER_WITNESS_UES )) || NORMAL_RECOVERY_HEALTHY=1
+  record_normal_pool_health after
+fi
+
 is_running "$BROKER_PID" || BROKER_EARLY_EXIT=1
 all_active_ues_running || EARLY_EXIT=1
 
@@ -888,6 +1208,9 @@ for ((i=1; i<=TOTAL_UE_PROCESSES; i++)); do
 done
 
 stop_children
+stop_gnb
+[[ -z $MULTI_RU_RUNTIME_CFG ]] || unlink "$MULTI_RU_RUNTIME_CFG"
+MULTI_RU_RUNTIME_CFG=""
 trap - EXIT
 
 SYNC=$SYNC_AT_GATE
@@ -931,7 +1254,8 @@ PRIMARY_POST_BOUNDARY_REG=0
 PRIMARY_POST_BOUNDARY_PDU=0
 PRIMARY_POST_BOUNDARY_ACTIVITY=0
 RECOVERY_PING_ISOLATED=0
-if (( (RECOVERY_WITNESS_ENABLED || BROKER_SAME_WITNESS_CYCLE) && PRIMARY_ATTACK_WINDOW_FROZEN )); then
+if (( (RECOVERY_WITNESS_ENABLED || BROKER_SAME_WITNESS_CYCLE || BROKER_NORMAL_POOL_QUALIFICATION)
+      && PRIMARY_ATTACK_WINDOW_FROZEN )); then
   PRIMARY_POST_BOUNDARY_RRC=$((WITNESS_RRC - PRIMARY_ATTACK_WINDOW_RRC))
   PRIMARY_POST_BOUNDARY_REG=$((WITNESS_REG - PRIMARY_ATTACK_WINDOW_REG))
   PRIMARY_POST_BOUNDARY_PDU=$((WITNESS_PDU - PRIMARY_ATTACK_WINDOW_PDU))
@@ -989,10 +1313,24 @@ if (( !SYNC_READY || BROKER_EARLY_EXIT || EARLY_EXIT || SYNC != BROKER_ENDPOINTS
       || RECOVERY_WITNESS_ENABLED && (!RECOVERY_STARTED || RECOVERY_QUIET_MISSING
          || RECOVERY_PRE_ATTACK_ATTEMPTS != 0 || RECOVERY_PRE_PHASE_ATTEMPTS != 0) )); then
   VALID=0; REASON=infrastructure_failure
+elif (( BROKER_NORMAL_POOL_QUALIFICATION && !NORMAL_BEFORE_HEALTHY )); then
+  VALID=0; REASON=normal_pool_not_healthy_before_attack
+elif (( BROKER_NORMAL_POOL_QUALIFICATION )) && [[ $MODE == attack ]] && (( !NORMAL_GATE_OK )); then
+  VALID=0; REASON=normal_pool_attack_gate_failed
 elif [[ $MODE == attack ]] && (( ATTACK_MSG5 != 0 )); then
   VALID=0; REASON=attacker_msg5_observed
 elif [[ $MODE == attack ]] && (( ATTACK_ATTEMPTS == 0 )); then
   VALID=0; REASON=zero_attack_attempts
+elif (( BROKER_NORMAL_POOL_QUALIFICATION && NORMAL_DURING_SAMPLES == 0 )); then
+  VALID=0; REASON=normal_pool_during_attack_missing
+elif (( BROKER_NORMAL_POOL_QUALIFICATION )) && [[ $MODE == attack ]] \
+     && (( !PRIMARY_ATTACK_WINDOW_FROZEN )); then
+  VALID=0; REASON=normal_pool_attack_boundary_missing
+elif (( BROKER_NORMAL_POOL_QUALIFICATION )) && [[ $MODE == attack ]] \
+     && (( NORMAL_UE_MSG3_DELTA <= 0 )); then
+  VALID=0; REASON=normal_pool_ue_attack_oracle_missing
+elif (( BROKER_NORMAL_POOL_QUALIFICATION && !NORMAL_RECOVERY_HEALTHY )); then
+  VALID=0; REASON=normal_pool_recovery_missing
 elif (( BROKER_SAME_WITNESS_CYCLE && !PRIMARY_ATTACK_WINDOW_FROZEN )); then
   VALID=0; REASON=same_witness_boundary_missing
 elif (( BROKER_SAME_WITNESS_CYCLE
@@ -1006,7 +1344,8 @@ elif [[ $MODE == control ]] && (( ATTACK_ATTEMPTS > BROKER_ATTACK_PROCESSES )); 
   VALID=0; REASON=control_load_ue_activity_unexpected
 elif [[ $MODE == control ]] && (( CONTROL_EXTRA_QUIET_ATTEMPTS != 0 )); then
   VALID=0; REASON=control_extra_quiet_witness_activity_unexpected
-elif [[ $MODE == control ]] && (( WITNESS_ATTACHED == 0 || WITNESS_RRC == 0 || WITNESS_REG == 0 || WITNESS_PDU == 0 || WITNESS_PING_OK == 0 )); then
+elif [[ $MODE == control ]] && (( !BROKER_NORMAL_POOL_QUALIFICATION \
+     && (WITNESS_ATTACHED == 0 || WITNESS_RRC == 0 || WITNESS_REG == 0 || WITNESS_PDU == 0 || WITNESS_PING_OK == 0) )); then
   VALID=0; REASON=control_witness_service_missing
 fi
 
@@ -1055,8 +1394,14 @@ RECOVERY_RESULT_JSON=""
 CONTROL_EXTRA_RESULT_JSON=""
 ATTACK_WINDOW_RESULT_JSON=""
 SAME_WITNESS_RESULT_JSON=""
-if (( RECOVERY_WITNESS_ENABLED || BROKER_SAME_WITNESS_CYCLE )); then
-  ATTACK_WINDOW_RESULT_JSON=",\"attack_window\":{\"boundary\":\"all_attacker_kill_switches_observed\",\"frozen\":$(bool "$PRIMARY_ATTACK_WINDOW_FROZEN"),\"end_s\":$PRIMARY_ATTACK_WINDOW_END_S,\"attempts\":$PRIMARY_ATTACK_WINDOW_ATTEMPTS,\"distinct_fresh_identities\":$PRIMARY_ATTACK_WINDOW_DISTINCT_IDENTITIES,\"first_attempt_ns\":$PRIMARY_ATTACK_WINDOW_FIRST_ATTEMPT_NS,\"last_attempt_ns\":$PRIMARY_ATTACK_WINDOW_LAST_ATTEMPT_NS,\"attempt_span_ms\":$PRIMARY_ATTACK_WINDOW_ATTEMPT_SPAN_MS,\"msg3_tx\":$PRIMARY_ATTACK_WINDOW_MSG3_TX,\"distinct_nonzero_tc_rnti\":$PRIMARY_ATTACK_WINDOW_DISTINCT_TC_RNTI,\"first_msg3_tx_ns\":$PRIMARY_ATTACK_WINDOW_FIRST_MSG3_NS,\"last_msg3_tx_ns\":$PRIMARY_ATTACK_WINDOW_LAST_MSG3_NS,\"msg3_span_ms\":$PRIMARY_ATTACK_WINDOW_MSG3_SPAN_MS,\"attached\":$(bool "$PRIMARY_ATTACK_WINDOW_ATTACHED"),\"rrc_setup_complete\":$PRIMARY_ATTACK_WINDOW_RRC,\"registration_accept\":$PRIMARY_ATTACK_WINDOW_REG,\"pdu_accept\":$PRIMARY_ATTACK_WINDOW_PDU,\"rrc_reject\":$PRIMARY_ATTACK_WINDOW_REJECT,\"ping_ok\":$(bool "$((PRIMARY_ATTACK_WINDOW_PING_RX > 0))"),\"ping_received\":$PRIMARY_ATTACK_WINDOW_PING_RX,\"service_ok\":$(bool "$PRIMARY_ATTACK_WINDOW_SERVICE")},\"post_boundary_activity\":{\"observed\":$(bool "$PRIMARY_POST_BOUNDARY_ACTIVITY"),\"rrc_setup_complete\":$PRIMARY_POST_BOUNDARY_RRC,\"registration_accept\":$PRIMARY_POST_BOUNDARY_REG,\"pdu_accept\":$PRIMARY_POST_BOUNDARY_PDU}"
+NORMAL_POOL_RESULT_JSON=""
+if (( RECOVERY_WITNESS_ENABLED || BROKER_SAME_WITNESS_CYCLE || BROKER_NORMAL_POOL_QUALIFICATION )); then
+  ATTACK_WINDOW_BOUNDARY=all_attacker_kill_switches_observed
+  (( BROKER_NORMAL_POOL_QUALIFICATION == 0 )) || ATTACK_WINDOW_BOUNDARY=broker_uplink_gate_standby
+  ATTACK_WINDOW_RESULT_JSON=",\"attack_window\":{\"boundary\":\"$ATTACK_WINDOW_BOUNDARY\",\"frozen\":$(bool "$PRIMARY_ATTACK_WINDOW_FROZEN"),\"end_s\":$PRIMARY_ATTACK_WINDOW_END_S,\"attempts\":$PRIMARY_ATTACK_WINDOW_ATTEMPTS,\"distinct_fresh_identities\":$PRIMARY_ATTACK_WINDOW_DISTINCT_IDENTITIES,\"first_attempt_ns\":$PRIMARY_ATTACK_WINDOW_FIRST_ATTEMPT_NS,\"last_attempt_ns\":$PRIMARY_ATTACK_WINDOW_LAST_ATTEMPT_NS,\"attempt_span_ms\":$PRIMARY_ATTACK_WINDOW_ATTEMPT_SPAN_MS,\"msg3_tx\":$PRIMARY_ATTACK_WINDOW_MSG3_TX,\"distinct_nonzero_tc_rnti\":$PRIMARY_ATTACK_WINDOW_DISTINCT_TC_RNTI,\"first_msg3_tx_ns\":$PRIMARY_ATTACK_WINDOW_FIRST_MSG3_NS,\"last_msg3_tx_ns\":$PRIMARY_ATTACK_WINDOW_LAST_MSG3_NS,\"msg3_span_ms\":$PRIMARY_ATTACK_WINDOW_MSG3_SPAN_MS,\"attached\":$(bool "$PRIMARY_ATTACK_WINDOW_ATTACHED"),\"rrc_setup_complete\":$PRIMARY_ATTACK_WINDOW_RRC,\"registration_accept\":$PRIMARY_ATTACK_WINDOW_REG,\"pdu_accept\":$PRIMARY_ATTACK_WINDOW_PDU,\"rrc_reject\":$PRIMARY_ATTACK_WINDOW_REJECT,\"ping_ok\":$(bool "$((PRIMARY_ATTACK_WINDOW_PING_RX > 0))"),\"ping_received\":$PRIMARY_ATTACK_WINDOW_PING_RX,\"service_ok\":$(bool "$PRIMARY_ATTACK_WINDOW_SERVICE")},\"post_boundary_activity\":{\"observed\":$(bool "$PRIMARY_POST_BOUNDARY_ACTIVITY"),\"rrc_setup_complete\":$PRIMARY_POST_BOUNDARY_RRC,\"registration_accept\":$PRIMARY_POST_BOUNDARY_REG,\"pdu_accept\":$PRIMARY_POST_BOUNDARY_PDU}"
+fi
+if (( BROKER_NORMAL_POOL_QUALIFICATION )); then
+  NORMAL_POOL_RESULT_JSON=",\"normal_pool\":{\"enabled\":true,\"same_du_cell\":true,\"expected_ues\":$BROKER_WITNESS_UES,\"health_evidence\":\"normal-health.jsonl\",\"before\":{\"healthy_ues\":$NORMAL_BEFORE_HEALTHY_UES,\"all_healthy\":$(bool "$NORMAL_BEFORE_HEALTHY")},\"during\":{\"samples\":$NORMAL_DURING_SAMPLES,\"min_healthy_ues\":$NORMAL_DURING_MIN_HEALTHY,\"last_healthy_ues\":$NORMAL_DURING_LAST_HEALTHY},\"recovery\":{\"deadline_s\":$NORMAL_RECOVERY_DEADLINE_S,\"elapsed_s\":$NORMAL_RECOVERY_ELAPSED_S,\"healthy_ues\":$NORMAL_RECOVERY_HEALTHY_UES,\"all_healthy\":$(bool "$NORMAL_RECOVERY_HEALTHY")},\"broker_gate\":{\"attack_ns\":$NORMAL_GATE_ATTACK_NS,\"standby_ns\":$NORMAL_GATE_STANDBY_NS,\"activated\":$(bool "$NORMAL_GATE_OK")},\"attacker_ue_msg3_during_gate\":{\"before\":$NORMAL_UE_MSG3_BEFORE,\"after\":$NORMAL_UE_MSG3_AFTER,\"delta\":$NORMAL_UE_MSG3_DELTA},\"direct_detector_input\":false,\"ue_to_ran_path_required\":true}"
 fi
 if (( RECOVERY_WITNESS_ENABLED )); then
   RECOVERY_RESULT_JSON=",\"recovery_witness\":{\"prelaunched\":true,\"endpoint_index\":$RECOVERY_WITNESS_INDEX,\"started\":$(bool "$RECOVERY_STARTED"),\"start_s\":$RECOVERY_START_S,\"sync_ready\":$(bool "$SYNC_READY"),\"sync_wait_s\":$SYNC_WAIT_S,\"pre_attack_attempts\":$RECOVERY_PRE_ATTACK_ATTEMPTS,\"pre_phase_attempts\":$RECOVERY_PRE_PHASE_ATTEMPTS,\"attackers_quiet\":$(bool "$RECOVERY_ATTACKERS_QUIET"),\"attached\":$(bool "$RECOVERY_ATTACHED"),\"attach_s\":$RECOVERY_ATTACH_S,\"rrc_setup_complete\":$RECOVERY_RRC,\"registration_accept\":$RECOVERY_REG,\"pdu_accept\":$RECOVERY_PDU,\"rrc_reject\":$RECOVERY_REJECT,\"ping_ok\":$(bool "$RECOVERY_PING_OK"),\"ping_isolated\":$(bool "$RECOVERY_PING_ISOLATED"),\"ping\":{\"transmitted\":$RECOVERY_PING_TX,\"received\":$RECOVERY_PING_RX,\"loss_pct\":$RECOVERY_PING_LOSS_PCT,\"rtt_avg_ms\":$RECOVERY_PING_RTT_AVG_MS},\"service_ok\":$(bool "$RECOVERY_SERVICE")}"
@@ -1078,7 +1423,7 @@ cat >"$OUT/result.json" <<EOF
             "registration_accept":$WITNESS_REG,"pdu_accept":$WITNESS_PDU,
             "rrc_reject":$WITNESS_REJECT,"ping_ok":$(bool "$WITNESS_PING_OK"),
             "ping":{"transmitted":$PING_TX,"received":$PING_RX,"loss_pct":$PING_LOSS_PCT,"rtt_avg_ms":$PING_RTT_AVG_MS},
-            "service_ok":$(bool "$SERVICE")$ATTACK_WINDOW_RESULT_JSON}$RECOVERY_RESULT_JSON$SAME_WITNESS_RESULT_JSON$CONTROL_EXTRA_RESULT_JSON,
+            "service_ok":$(bool "$SERVICE")$ATTACK_WINDOW_RESULT_JSON}$RECOVERY_RESULT_JSON$SAME_WITNESS_RESULT_JSON$CONTROL_EXTRA_RESULT_JSON$NORMAL_POOL_RESULT_JSON,
  "teardown":{"ue_exit_statuses":$UE_EXIT_JSON,"broker_exit_status":$BROKER_EXIT_STATUS,
              "ue_stop_signal":"INTx2","broker_stop_signal":"INT","grace_s":5,
              "ue_sigsegv_count":$UE_SIGSEGV_COUNT,"broker_sigsegv":$(bool "$BROKER_SIGSEGV"),
@@ -1086,5 +1431,15 @@ cat >"$OUT/result.json" <<EOF
  "t_stop_utc":"$(date -u +%FT%TZ)"}
 EOF
 
+if (( BROKER_NORMAL_POOL_QUALIFICATION )); then
+  cat >"$OUT/same-cell-session.json" <<EOF
+{"schema":"same-cell.session.v2","run_id":"$RUN_ID","attack":"rrc-storm","mode":"$MODE","normal_ues":5,"normal_shared_ru":false,"attack_slots":6,"cell_restarts":1,"cu_restarts":0,"clocked_attack_slots":true}
+EOF
+  cat >"$OUT/same-cell-run.json" <<EOF
+{"schema":"same-cell.run.v3","run_id":"$RUN_ID","attack":"rrc-storm","mode":"$MODE","normal_ues":5,"normal_shared_ru":false,"attack_slots":6,"du_restarted_during_attack":false,"normal_healthy_before_attack_teardown":$(bool "$NORMAL_RECOVERY_HEALTHY"),"direct_detector_input":false,"ue_to_ran_path_required":true,"attack_exit_status":$((VALID ? 0 : 1)),"result":"result.json"}
+EOF
+fi
+
 cat "$OUT/result.json"
 (( VALID ))
+echo "완료됨: mode=$MODE same_cell=true normal=$BROKER_WITNESS_UES output=$OUT"

@@ -909,7 +909,7 @@ diff --git a/openair2/RRC/NR_UE/rrc_timers_and_constants.c b/openair2/RRC/NR_UE/
 index 0addfe5..6e28e39 100644
 --- a/openair2/RRC/NR_UE/rrc_timers_and_constants.c
 +++ b/openair2/RRC/NR_UE/rrc_timers_and_constants.c
-@@ -4,6 +4,591 @@
+@@ -4,6 +4,593 @@
  
  #include "openair2/RRC/NR_UE/rrc_proto.h"
  #include "executables/softmodem-common.h"
@@ -1386,6 +1386,8 @@ index 0addfe5..6e28e39 100644
 +        nr_rss_log(pu, "probe_connected", "\"tries\":%u,\"ms\":%llu",
 +                   rss_probe_tries[pu], (unsigned long long)((now - t0) / 1000000ULL));
 +      }
++      nr_timer_setup(t, 10, 10);
++      nr_timer_start(t);
 +      return;
 +    }
 +    if (rss_probe_done[pu]) {

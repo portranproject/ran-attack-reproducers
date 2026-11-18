@@ -1,0 +1,121 @@
+diff --git a/openair2/RRC/NR_UE/rrc_UE.c b/openair2/RRC/NR_UE/rrc_UE.c
+--- a/openair2/RRC/NR_UE/rrc_UE.c
++++ b/openair2/RRC/NR_UE/rrc_UE.c
+@@ -22,6 +22,7 @@
+ #include "NR_UL-DCCH-Message.h"
+ #include "uper_encoder.h"
+ #include "uper_decoder.h"
++#include <stdlib.h>
+ 
+ #include "rrc_defs.h"
+ #include "rrc_proto.h"
+@@ -537,1 +538,4 @@ static void nr_rrc_process_sib1(NR_UE_RRC_INST_t *rrc, NR_UE_RRC_SI_INFO *SI_in
++  const char *same_cell_gate = getenv("OAI_AUTH_TIMEOUT_GATE_FILE");
++  if (same_cell_gate && same_cell_gate[0] != '\0')
++    config_sib1->can_start_ra = false;
+   nr_rrc_send_msg_to_mac(rrc, &rrc_msg);
+@@ -3452,3 +3456,6 @@ static void *rrc_nrue_task(void *args_p)
+-        nr_rrc_trigger_mac_ra(rrc, NR_MAC_RA_START_SETUP);
+-        RRCLOG_I("Triggering MAC RA for RRCSetupComplete pending NAS (prev_trigger=%d)\n", prev_trigger);
++        const char *same_cell_gate = getenv("OAI_AUTH_TIMEOUT_GATE_FILE");
++        if (!same_cell_gate || same_cell_gate[0] == '\0') {
++          nr_rrc_trigger_mac_ra(rrc, NR_MAC_RA_START_SETUP);
++          RRCLOG_I("Triggering MAC RA for RRCSetupComplete pending NAS (prev_trigger=%d)\n", prev_trigger);
++        }
+       }
+diff --git a/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c b/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c
+--- a/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c
++++ b/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c
+@@ -7,8 +7,13 @@
+  */
+ 
+ #include <stdio.h>
++#include <stdint.h>
++#include <stdlib.h>
++#include <string.h>
+ #include <math.h>
+ #include <pthread.h>
++#include <time.h>
++#include "nr-uesoftmodem.h"
+ 
+ /* exe */
+ #include <common/utils/nr/nr_common.h>
+@@ -2560,6 +2565,68 @@ static bool nr_ue_get_sdu(NR_UE_MAC_INST_t *mac,
+   return true; // success if we got at least one sdu
+ }
+ 
++static uint64_t auth_timeout_gate_open_ms;
++static uint64_t auth_timeout_gate_poll_ms;
++static pthread_mutex_t auth_timeout_gate_mutex = PTHREAD_MUTEX_INITIALIZER;
++
++static uint64_t auth_timeout_monotonic_ms(void)
++{
++  struct timespec now;
++  clock_gettime(CLOCK_MONOTONIC, &now);
++  return (uint64_t)now.tv_sec * 1000U + (uint64_t)now.tv_nsec / 1000000U;
++}
++
++static unsigned auth_timeout_same_cell_ms(const char *name, unsigned maximum)
++{
++  const char *value = getenv(name);
++  if (!value || value[0] == '\0')
++    return 0;
++  char *end = NULL;
++  const long milliseconds = strtol(value, &end, 10);
++  return end && end[0] == '\0' && milliseconds >= 0 && (unsigned long)milliseconds <= maximum
++             ? (unsigned)milliseconds
++             : 0;
++}
++
++static bool auth_timeout_same_cell_ra_allowed(int ue)
++{
++  const char *path = getenv("OAI_AUTH_TIMEOUT_GATE_FILE");
++  if (!path || path[0] == '\0' || ue < 0 || ue >= MAX_NUM_NR_UE_INST)
++    return false;
++  const uint64_t now = auth_timeout_monotonic_ms();
++  verifyMutex(pthread_mutex_lock(&auth_timeout_gate_mutex));
++  if (now - auth_timeout_gate_poll_ms >= 20) {
++    auth_timeout_gate_poll_ms = now;
++    bool open = false;
++    FILE *gate = fopen(path, "r");
++    if (gate) {
++      char mode[6];
++      open = fread(mode, 1, sizeof(mode), gate) == sizeof(mode)
++             && memcmp(mode, "attack", sizeof(mode)) == 0;
++      fclose(gate);
++    }
++    if (open && auth_timeout_gate_open_ms == 0)
++      auth_timeout_gate_open_ms = now;
++    else if (!open)
++      auth_timeout_gate_open_ms = 0;
++  }
++  const uint64_t opened_ms = auth_timeout_gate_open_ms;
++  verifyMutex(pthread_mutex_unlock(&auth_timeout_gate_mutex));
++  if (opened_ms == 0)
++    return false;
++  const unsigned base_ms = auth_timeout_same_cell_ms("OAI_AUTH_TIMEOUT_GATE_BASE_MS", 10000);
++  const unsigned step_ms = auth_timeout_same_cell_ms("OAI_AUTH_TIMEOUT_GATE_STEP_MS", 10000);
++  const unsigned target_ms = base_ms + (unsigned)ue * step_ms;
++  if (now - opened_ms < target_ms)
++    return false;
++  LOG_I(NR_MAC,
++        "AUTH_TIMEOUT_RA_GATE event=released ue=%d waited_ms=%llu target_ms=%u\n",
++        ue,
++        (unsigned long long)(now - opened_ms),
++        target_ms);
++  return true;
++}
++
+ void nr_ue_ul_scheduler(NR_UE_MAC_INST_t *mac, nr_uplink_indication_t *ul_info)
+ {
+   int cc_id = ul_info->cc_id;
+@@ -2567,6 +2634,9 @@ void nr_ue_ul_scheduler(NR_UE_MAC_INST_t *mac, nr_uplink_indication_t *ul_info)
+   slot_t slot_tx = ul_info->slot;
+   RA_config_t *ra = &mac->ra;
+ 
++  if (mac->state == UE_RECEIVING_SIB && mac->current_UL_BWP && auth_timeout_same_cell_ra_allowed(mac->ue_id))
++    mac->state = UE_PERFORMING_RA;
++
+   if (mac->state == UE_PERFORMING_RA && ra->ra_state == nrRA_UE_IDLE) {
+     init_RA(mac);
+     // perform the Random Access Resource selection procedure (see clause 5.1.2 and .2a)

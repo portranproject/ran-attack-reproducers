@@ -1,0 +1,23 @@
+diff --git a/openair2/RRC/NR_UE/rrc_UE.c b/openair2/RRC/NR_UE/rrc_UE.c
+--- a/openair2/RRC/NR_UE/rrc_UE.c
++++ b/openair2/RRC/NR_UE/rrc_UE.c
+@@ -3360,3 +3360,4 @@ void *rrc_nrue(void *notUsed)
+ void *rrc_nrue(void *notUsed)
+ {
++  static bool normal_reconnect_pending[MAX_NUM_NR_UE_INST];
+   UNUSED(notUsed);
+@@ -3426,2 +3427,3 @@ void *rrc_nrue(void *notUsed)
+   case NR_RRC_MAC_RA_IND:
++    normal_reconnect_pending[rrc->ue_id] = false;
+     RRCLOG_D("Received %s: RA %s\n", ITTI_MSG_NAME(msg_p), NR_RRC_MAC_RA_IND(msg_p).RA_succeeded ? "successful" : "failed");
+@@ -3490,2 +3493,3 @@ void *rrc_nrue(void *notUsed)
+     else {
++      normal_reconnect_pending[rrc->ue_id] = NAS_DETACH_REQ(msg_p).reconnect;
+       if (!NAS_DETACH_REQ(msg_p).reconnect)
+@@ -3522,3 +3526,6 @@ void *rrc_nrue(void *notUsed)
+                rrc->nrRrcState);
++      const NR_UE_MAC_INST_t *mac = get_mac_inst(rrc->ue_id);
+       if (rrc->nrRrcState == RRC_STATE_IDLE_NR
++          && !normal_reconnect_pending[rrc->ue_id]
++          && mac && mac->current_UL_BWP
+           && !nr_rss_probe_withheld((int)rrc->ue_id)) {

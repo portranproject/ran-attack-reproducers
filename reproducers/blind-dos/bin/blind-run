@@ -53,6 +53,14 @@ LOCK_INHERITED=${BLIND_INTERNAL_LOCK_INHERITED:-0}
 EXPECTED_CONFIG_SHA256=${BLIND_INTERNAL_EXPECT_CONFIG_SHA256:-}
 EXPECTED_POLICY_SHA256=${BLIND_INTERNAL_EXPECT_POLICY_SHA256:-}
 
+if [[ ${SAME_CELL_PRESTART:-0} == 1 ]]; then
+  printf -v PHASE_CMD 'exec %q' "$HERE/bin/blind-p5-phase"
+  printf -v VERIFY_CMD 'exec python3 %q "$BLIND_RUN_DIR" "$BLIND_HOOK_RESULT"' \
+    "$HERE/analysis/export_labels.py"
+  ARTIFACT_SCANNER=$HERE/../rrc-signaling-storm/analysis/check_sensitive_artifacts.py
+  EVIDENCE_TOOL=$HERE/analysis/evidence_manifest.py
+fi
+
 usage() {
   cat <<EOF
 usage: $0 [control|attack] -n RUN_ID [-e 0|1]
@@ -477,6 +485,7 @@ if (( manifest_rc == 0 )); then
   python3 "$EVIDENCE_TOOL" verify "$OUT" >&2 || manifest_rc=$?
 fi
 (( manifest_rc == 0 )) || exit 20
+echo "완료됨: mode=$MODE output=$OUT"
 case $classification in
   passed) exit 0 ;;
   valid-failure) exit 10 ;;

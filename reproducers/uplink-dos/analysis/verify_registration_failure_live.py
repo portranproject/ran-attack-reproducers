@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import re
 import sys
 from collections import defaultdict
@@ -34,6 +35,14 @@ def jsonl(path: Path) -> list[dict]:
     if not rows or not all(isinstance(row, dict) for row in rows):
         raise ValueError(f"JSONL이 비었거나 객체가 아닙니다: {path}")
     return rows
+
+
+def join_rotated_jsonl(path: Path, output: Path) -> list[dict]:
+    rotated = sorted(item for item in path.parent.glob(path.name + ".*")
+                     if re.fullmatch(r"\d{8}-\d{6}", item.name.removeprefix(path.name + ".")))
+    inputs = [regular(item) for item in rotated] + [regular(path)]
+    output.write_text("".join(item.read_text(encoding="utf-8") for item in inputs), encoding="utf-8")
+    return jsonl(output)
 
 
 def parse_alerts(path: Path) -> list[dict]:
@@ -78,10 +87,13 @@ def verify(root: Path, mode: str, run_id: str, binary: Path, ue_config: Path, ue
     if expected != ue_count * target_per_ue or mode == "attack" and expected != threshold:
         raise ValueError("UE 실행 계획의 목표 거절 수가 잘못됐습니다")
     observations = root / "observations.jsonl"
+    rows = join_rotated_jsonl(root / "live/detector-input.jsonl", observations)
     telemetry = root / "live/telemetry.jsonl"
     if sha256(observations) != sha256(telemetry):
         raise ValueError("계측 원문과 탐지 엔진 입력 기록이 다릅니다")
-    rows = jsonl(observations)
+    profile_id = os.environ.get("RAN_REPRO_PROFILE_ID", "p5")
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", profile_id) is None:
+        raise ValueError("profile id가 잘못됐습니다")
     hello = [row for row in rows if row.get("type") == "hello"]
     seq = [row.get("seq") for row in rows]
     gaps = [row for row in rows if row.get("type") == "gap"]
@@ -155,7 +167,7 @@ def verify(root: Path, mode: str, run_id: str, binary: Path, ue_config: Path, ue
 
     run = {
         "schema": "ran-reproducer.run.v1", "run_id": run_id, "scenario_id": "uplink-credential-flood",
-        "rule_ids": ["L3-21"], "mode": mode, "profile": "p5", "reproduction_level": "protocol",
+        "rule_ids": ["L3-21"], "mode": mode, "profile": profile_id, "reproduction_level": "protocol",
         "started_at": session_started_at(hello[0].get("session")), "period_ms": 100,
         "source": {
             "ue_binary_sha256": sha256(binary), "ue_config_sha256": sha256(ue_config),

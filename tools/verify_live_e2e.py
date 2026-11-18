@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
-import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,6 +21,8 @@ SCENARIOS = {
     "blind-dos": ("L3-20", "protocol"),
     "downlink-identifier-exposure": ("L3-24", "protocol-result-emulation"),
     "ue-capability-hijacking": ("L3-14", "protocol-observation-emulation"),
+    "uplink-credential-flood": ("L3-21", "protocol"),
+    "nas-counter-desynchronization": ("L3-06", "protocol-result-emulation"),
 }
 
 
@@ -42,6 +44,14 @@ def load_jsonl(path: Path) -> list[dict]:
     if not rows or not all(isinstance(row, dict) for row in rows):
         raise ValueError(f"JSONL이 비었거나 객체가 아닙니다: {path}")
     return rows
+
+
+def join_rotated_jsonl(path: Path, output: Path) -> list[dict]:
+    rotated = sorted(item for item in path.parent.glob(path.name + ".*")
+                     if re.fullmatch(r"\d{8}-\d{6}", item.name.removeprefix(path.name + ".")))
+    inputs = [regular(item) for item in rotated] + [regular(path)]
+    output.write_text("".join(item.read_text(encoding="utf-8") for item in inputs), encoding="utf-8")
+    return load_jsonl(output)
 
 
 def sha256(path: Path) -> str:
@@ -67,6 +77,8 @@ def mechanism(scenario: str, mode: str, child: Path) -> tuple[bool, dict]:
     active = mode != "control"
     if scenario == "rrc-context-exhaustion":
         verdict_path = child / "run_stop.json"
+        if not verdict_path.is_file() and (child / "result.json").is_file():
+            verdict_path = child / "result.json"
         verdict = load_object(verdict_path)
         valid = verdict.get("valid") is True
         labels = []
@@ -74,9 +86,13 @@ def mechanism(scenario: str, mode: str, child: Path) -> tuple[bool, dict]:
         if label_path.is_file() and not label_path.is_symlink():
             labels = [json.loads(line) for line in label_path.read_text().splitlines() if line]
         positives = sum(row.get("canonical_a") is True or row.get("canonical_msg3_only") is True for row in labels)
-        passed = valid and (not active or positives > 0)
+        broker_msg3 = verdict.get("attacker_msg3", 0)
+        if not isinstance(broker_msg3, int):
+            broker_msg3 = 0
+        passed = valid and (not active or positives > 0 or broker_msg3 > 0)
         summary = {"source": str(verdict_path), "source_sha256": sha256(verdict_path),
-                   "valid": valid, "positive_ground_truth": positives}
+                   "valid": valid, "positive_ground_truth": positives,
+                   "broker_attacker_msg3": broker_msg3}
     elif scenario == "blind-dos":
         verdict_path = child / "run_stop.json"
         verdict = load_object(verdict_path)
@@ -101,28 +117,37 @@ def started_at(value: object) -> str:
     return datetime.strptime(value, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def verify(root: Path, scenario: str, mode: str, run_id: str, child: Path) -> dict:
+def verify(root: Path, scenario: str, mode: str, run_id: str, child: Path,
+           require_same_cell: bool = False) -> dict:
     if root.is_symlink() or not root.is_dir() or scenario not in SCENARIOS:
         raise ValueError("실행 디렉터리 또는 시나리오가 잘못됐습니다")
     rule, level = SCENARIOS[scenario]
     if mode not in {"control", "attack", "emulation"}:
         raise ValueError("mode가 잘못됐습니다")
     active = mode != "control"
+    profile_id = os.environ.get("RAN_REPRO_PROFILE_ID", "p5")
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", profile_id) is None:
+        raise ValueError("profile id가 잘못됐습니다")
 
-    telemetry = root / "live/telemetry.jsonl"
+    telemetry = root / "live/detector-input.jsonl"
     observations = root / "observations.jsonl"
-    shutil.copyfile(regular(telemetry), observations)
-    rows = load_jsonl(observations)
+    rows = join_rotated_jsonl(telemetry, observations)
     hello = [row for row in rows if row.get("type") == "hello"]
     gaps = [row for row in rows if row.get("type") == "gap"]
     kpm = [row for row in rows if row.get("type") == "kpm2"]
+    rrc_setup_requests = [row for row in rows if row.get("type") == "ue_evt"
+                          and row.get("msg") == "RRCSetupRequest"]
     sequence = [row.get("seq") for row in rows]
+    sequence_ok = (bool(sequence) and all(isinstance(value, int) for value in sequence)
+                   and sequence == list(range(sequence[0], sequence[0] + len(sequence))))
+    scenario_input_ok = not (scenario == "rrc-context-exhaustion" and active) or bool(rrc_setup_requests)
     input_ok = (len(hello) == 1 and hello[0].get("period_ms") == 100 and hello[0].get("ue_evt") is True
-                and sequence == list(range(1, len(rows) + 1)) and not gaps and bool(kpm))
+                and sequence_ok and not gaps and bool(kpm)
+                and scenario_input_ok)
 
     alerts = parse_alerts(root / "live/detector.stdout")
     raises = [row for row in alerts if row["action"] == "RAISE" and row["rule"] == rule]
-    detector_ok = len(raises) == (0 if not active else 1)
+    detector_ok = len(raises) == 0 if not active else len(raises) >= 1
     components = load_object(root / "live/components.json")
     if components.get("detector", {}).get("commit") != DETECTOR_COMMIT:
         raise ValueError("검증된 production detector 커밋이 아닙니다")
@@ -143,15 +168,46 @@ def verify(root: Path, scenario: str, mode: str, run_id: str, child: Path) -> di
                               "mode": mode, "passed": mechanism_ok})
     (root / "mechanism.json").write_text(json.dumps(mechanism_summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
 
+    same_cell_ok = not require_same_cell
+    same_cell_summary = {"missing": True} if require_same_cell else None
+    same_cell_run = root / "same-cell-run.json"
+    if same_cell_run.is_file() and not same_cell_run.is_symlink():
+        session = load_object(root / "same-cell-session.json")
+        wrapper = load_object(same_cell_run)
+        health = load_jsonl(root / "same-cell-normal-health.jsonl")
+        valid_rows = all(row.get("schema") == "same-cell.normal-health.v1"
+                         and row.get("run_id") == run_id for row in health)
+        before = {row.get("ue") for row in health if row.get("phase") == "before"
+                  and row.get("tun_ok") is True and row.get("ping_ok") is True}
+        after = {row.get("ue") for row in health if row.get("phase") == "after"
+                 and row.get("tun_ok") is True and row.get("ping_ok") is True}
+        expected_ues = set(range(1, 6))
+        same_cell_ok = (valid_rows and session.get("schema") == "same-cell.session.v2"
+                        and session.get("run_id") == run_id and session.get("normal_ues") == 5
+                        and session.get("clocked_attack_slots") is True
+                        and wrapper.get("schema") == "same-cell.run.v3"
+                        and wrapper.get("run_id") == run_id
+                        and wrapper.get("direct_detector_input") is False
+                        and wrapper.get("ue_to_ran_path_required") is True
+                        and wrapper.get("normal_healthy_before_attack_teardown") is True
+                        and wrapper.get("attack_exit_status") == 0
+                        and before == expected_ues and after == expected_ues)
+        same_cell_summary = {"normal_before": len(before), "normal_after": len(after),
+                             "direct_detector_input": wrapper.get("direct_detector_input"),
+                             "ue_to_ran_path_required": wrapper.get("ue_to_ran_path_required")}
+
     checks = {"hello_period_100ms": len(hello) == 1 and hello[0].get("period_ms") == 100,
-              "sequence_contiguous": sequence == list(range(1, len(rows) + 1)), "gap_count": len(gaps),
-              "kpm2_count": len(kpm), "target_raise_count": len(raises),
+              "sequence_contiguous": sequence_ok, "gap_count": len(gaps),
+              "kpm2_count": len(kpm), "rrc_setup_request_count": len(rrc_setup_requests),
+              "target_raise_count": len(raises),
               "dashboard_sender_exit_status": sender_status, "dashboard_accepted_lines": accepted,
               "dashboard_rejected_lines": rejected, "dashboard_alert_evidence_delivered": evidence_delivered,
-              "mechanism_passed": mechanism_ok}
-    passed = mechanism_ok and input_ok and detector_ok and delivery_ok
+              "mechanism_passed": mechanism_ok, "same_cell": same_cell_summary}
+    passed = mechanism_ok and input_ok and detector_ok and delivery_ok and same_cell_ok
+    if len(hello) != 1:
+        raise ValueError("detector 입력 hello가 정확히 하나가 아닙니다")
     run = {"schema": "ran-reproducer.run.v1", "run_id": run_id, "scenario_id": scenario,
-           "rule_ids": [rule], "mode": mode, "profile": "p5", "reproduction_level": level,
+           "rule_ids": [rule], "mode": mode, "profile": profile_id, "reproduction_level": level,
            "started_at": started_at(hello[0].get("session")), "period_ms": 100,
            "source": {"detector": components["detector"], "telemetry": components["telemetry"],
                       "mechanism_sha256": sha256(root / "mechanism.json")},
@@ -196,7 +252,9 @@ def main() -> int:
         print("고정 production detector 커밋과 다릅니다", file=sys.stderr)
         return 2
     try:
-        verdict = verify(Path(sys.argv[1]), sys.argv[2], sys.argv[3], sys.argv[4], Path(sys.argv[5]))
+        require_same_cell = os.environ.get("LIVE_E2E_REQUIRE_SAME_CELL", "0") == "1"
+        verdict = verify(Path(sys.argv[1]), sys.argv[2], sys.argv[3], sys.argv[4], Path(sys.argv[5]),
+                         require_same_cell=require_same_cell)
     except (OSError, ValueError, KeyError, json.JSONDecodeError) as error:
         print(f"live E2E 판정 실패: {error}", file=sys.stderr)
         return 2

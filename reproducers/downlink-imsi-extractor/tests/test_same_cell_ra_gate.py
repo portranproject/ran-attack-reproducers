@@ -13,6 +13,8 @@ class SameCellRaGateContractTests(unittest.TestCase):
         script = BUILD.read_text()
         self.assertIn("same-cell-ra-gate-w38.patch", script)
         self.assertLess(script.index('apply "$PATCH"'), script.index('apply "$SAME_CELL_GATE_PATCH"'))
+        self.assertIn("grep -Faq 'DOWNLINK_IMSI_EXTRACTOR event=%s' \"$BIN\"", script)
+        self.assertIn("grep -Faq 'identity_response_substituted' \"$BIN\"", script)
         self.assertIn("grep -Faq 'OAI_SAME_CELL_GATE_FILE' \"$BIN\"", script)
 
     def test_prestart_fails_closed_and_passes_gate_to_ue(self):

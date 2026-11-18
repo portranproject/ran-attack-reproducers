@@ -28,7 +28,8 @@ git -C "$OAI" apply "$SAME_CELL_GATE_PATCH"
 )
 
 [[ -x $BIN && -f $BUILD/liboai_zmqdevif.so ]] || fail "UE 빌드 결과가 불완전합니다"
-grep -Faq 'DOWNLINK_IMSI_EXTRACTOR event=identity_response_substituted' "$BIN" \
+grep -Faq 'DOWNLINK_IMSI_EXTRACTOR event=%s' "$BIN" \
+  && grep -Faq 'identity_response_substituted' "$BIN" \
   || fail "빌드된 UE에 Identity Response 치환 마커가 없습니다"
 grep -Faq 'DOWNLINK_IMSI_EXTRACTOR event=authentication_response_submitted' "$BIN" \
   || fail "빌드된 UE에 정상 대조 마커가 없습니다"

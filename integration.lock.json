@@ -37,7 +37,7 @@
       "workloads/normal-ue/patch/same-cell-ra-gate-w38.patch": "93f8955bd615bea444a59eb49e48b60a7fe314c6eae2fc7d0f4b6b38efb5cbf4",
       "reproducers/blind-dos/bin/blind-build": "049673d8ae04c5cb744bd0f341fdfc85eb6048129cb79bb31a79ca730aa0dc5d",
       "reproducers/uplink-dos/bin/uplink-build": "993c86afe69012b029c2de315387b26f0de7eaf25b6e5b046f3e9bc5efe5e515",
-      "reproducers/downlink-imsi-extractor/bin/downlink-imsi-build": "0816e32a39b172a0e316a791bcbe457d34ee18e9724418f604180a26c78949e7",
+      "reproducers/downlink-imsi-extractor/bin/downlink-imsi-build": "d71221344e3f2c3720f41d52fbfeb28f868c3c885a8cf36f128d0e699b08fb79",
       "reproducers/ue-capability-hijacking/bin/ue-capability-build": "172401d084334d9e2ab47986e32845d7f4c2a91be711d94e6db6ac83d35f5b58",
       "reproducers/nas-counter-desynchronization/bin/nas-counter-desync-build": "7d5e44b831d6454a454bdbcd1d0bcdf5d4ebb42b44aabad85ae3178a459be745"
     }

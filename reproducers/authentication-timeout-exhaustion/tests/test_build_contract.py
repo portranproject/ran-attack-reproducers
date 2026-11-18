@@ -30,6 +30,11 @@ class BuildContractTest(unittest.TestCase):
         self.assertIn("/root/OAI-auth-timeout-w38/", config)
         self.assertNotIn("/root/OAI-auth-multi-ru-e2e/", config)
 
+    def test_auth_ue_groups_are_stopped_with_one_shared_deadline(self):
+        runner = (MODULE / "bin" / "auth-stall-cell-run").read_text()
+        self.assertEqual(runner.count('stop_groups "${PIDS[@]}"'), 2)
+        self.assertIn("deadline=$((SECONDS + 10))", runner)
+
 
 if __name__ == "__main__":
     unittest.main()

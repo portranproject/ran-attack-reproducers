@@ -100,11 +100,29 @@ stop_group() {
   for _ in {1..100}; do running "$pid" || return 0; sleep .1; done
   FORCED_KILL=$((FORCED_KILL + 1)); kill -KILL -- "-$pid" 2>/dev/null || true
 }
+stop_groups() {
+  local pid deadline running_count
+  for pid in "$@"; do running "$pid" && kill -INT -- "-$pid" 2>/dev/null || true; done
+  sleep .2
+  for pid in "$@"; do running "$pid" && kill -INT -- "-$pid" 2>/dev/null || true; done
+  deadline=$((SECONDS + 10))
+  while (( SECONDS < deadline )); do
+    running_count=0
+    for pid in "$@"; do running "$pid" && running_count=$((running_count + 1)); done
+    (( running_count == 0 )) && return 0
+    sleep .1
+  done
+  for pid in "$@"; do
+    if running "$pid"; then
+      FORCED_KILL=$((FORCED_KILL + 1)); kill -KILL -- "-$pid" 2>/dev/null || true
+    fi
+  done
+}
 cleanup() {
-  local status=$? i
+  local status=$?
   trap - EXIT INT TERM
   set +e
-  for ((i=${#PIDS[@]}-1; i>=0; i--)); do stop_group "${PIDS[$i]}"; done
+  stop_groups "${PIDS[@]}"
   [[ -z $DU_PID ]] || stop_group "$DU_PID"
   [[ -z $BROKER_PID ]] || stop_group "$BROKER_PID"
   for file in "${RUNTIME_CONFIGS[@]}"; do unlink "$file" 2>/dev/null || true; done
@@ -229,7 +247,7 @@ if (( SAME_CELL_PRESTART )); then
     sleep .2
   done
 fi
-for ((i=${#PIDS[@]}-1; i>=0; i--)); do stop_group "${PIDS[$i]}"; done
+stop_groups "${PIDS[@]}"
 PIDS=()
 if (( MANAGE_RAN )); then
   stop_group "$DU_PID"; DU_PID=

@@ -196,6 +196,7 @@ class SameCellContractTests(unittest.TestCase):
         runner = (ROOT / "reproducers/authentication-timeout-exhaustion/bin/auth-stall-cell-run").read_text()
         self.assertIn('grep -Fxq recover "$SAME_CELL_UE_GATE_FILE"', runner)
         self.assertIn('kill -USR1 "$pid"', runner)
+        self.assertIn("gate_base_ms=$((i * 800)); gate_step_ms=1600", runner)
         self.assertIn('uplink-credential-flood) ATTACK_SLOTS=1', SCRIPT.read_text())
 
     def test_auth_timeout_uses_ten_independent_ru_attack_slots(self):
@@ -208,13 +209,13 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn('OAI_AUTH_TIMEOUT_GATE_FILE="$SAME_CELL_UE_GATE_FILE"', source)
         self.assertIn('OAI_AUTH_TIMEOUT_GATE_BASE_MS="$gate_base_ms"', source)
         self.assertIn('OAI_AUTH_TIMEOUT_GATE_STEP_MS="$gate_step_ms"', source)
-        self.assertIn('gate_base_ms=$((i * 500))', source)
+        self.assertIn('gate_base_ms=$((i * 800))', source)
         self.assertIn('probe_ues=0', source)
         self.assertIn('completion_pct=100', source)
         self.assertIn('--rss.probe_ues "$probe_ues"', source)
         self.assertIn('--rss.completion_pct "$completion_pct"', source)
-        self.assertIn('"same_cell_ra_base_ms":[0,500]', source)
-        self.assertIn('"same_cell_ra_step_ms":1000', source)
+        self.assertIn('"same_cell_ra_base_ms":[0,800]', source)
+        self.assertIn('"same_cell_ra_step_ms":1600', source)
         self.assertIn('"rss_probe_ues":0 if same_cell=="1"', source)
         self.assertIn('"rss_completion_pct":100 if same_cell=="1"', source)
 

@@ -15,7 +15,7 @@
       "reproducers/rrc-signaling-storm/bin/rss-build": "71f19e29bc1c674c3c15c5db7a80d160fe6231debbd54b65ff8832726f561cee",
       "reproducers/rrc-signaling-storm/bin/rss-doctor": "0f8624e8f05b68293742788860d6a76eb9408a0b264c02065d23b7f10fefcc9a",
       "reproducers/rrc-signaling-storm/patch/oai-broker-control-gate.patch": "fd54a5774b7f022cd36e5bcf4546eb2ea569a6dc4cab6470a13dd2552dabf75e",
-      "reproducers/authentication-timeout-exhaustion/bin/auth-stall-cell-run": "43753b4f35d2a5123771446351456c13059a36717242fbe0c2247dd0d0a0b969",
+      "reproducers/authentication-timeout-exhaustion/bin/auth-stall-cell-run": "ee51fc9737b5125dca97fe9bd04fe8131e9dae7e7cb5bf9ba1bf64752b3eaae4",
       "reproducers/authentication-timeout-exhaustion/analysis/multi_ru_config.py": "12c580f065565317b60358688e2625df45e02f703b03723fc556a19c8f50261c",
       "reproducers/authentication-timeout-exhaustion/analysis/verify_cell_flood.py": "306afdb3f37d16549cd05560af6e285ca400072ca32b84b41ea8f8c4d4f8aab9",
       "reproducers/authentication-timeout-exhaustion/bin/auth-timeout-build": "b5e073ee9d4f30df141f1ed4fc4445c930d913d0a8dab037dadc419b204b4e81",

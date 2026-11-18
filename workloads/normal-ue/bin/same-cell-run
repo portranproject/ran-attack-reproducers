@@ -503,6 +503,10 @@ if [[ $ACTION == run ]]; then
       sleep 1
     done
     select_broker standby || fail "완료된 공격 slot 비활성화에 실패했습니다"
+    if [[ $ATTACK == auth-timeout ]]; then
+      select_broker attack "${ATTACK_SLOT_IDS[@]}" \
+        || fail "인증 UE 정상 전환을 위한 slot 재활성화에 실패했습니다"
+    fi
     wait_healthy "$COUNT" "$SAME_CELL_RECOVERY_TIMEOUT_S" \
       || fail "공격 UE clock 유지 중 normal UE가 $COUNT/$COUNT가 아닙니다"
     record_health after

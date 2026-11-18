@@ -207,6 +207,7 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn("mac->state == UE_RECEIVING_SIB && mac->current_UL_BWP", gate)
         self.assertIn("pthread_mutex_lock(&auth_timeout_gate_mutex)", gate)
         self.assertIn("AUTH_TIMEOUT_RA_GATE event=released", gate)
+        self.assertIn("if (!same_cell_gate || same_cell_gate[0] == '\\0')", gate)
         self.assertNotIn("usleep", gate)
 
     def test_common_broker_opens_the_ue_gate_only_after_attack_ack(self):

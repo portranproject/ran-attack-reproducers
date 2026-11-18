@@ -156,6 +156,8 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn("until record_healthy before", run_section)
         self.assertIn("until record_healthy after", run_section)
         self.assertIn("record_health during || true", run_section)
+        self.assertIn("next_recovery_signal=$((SECONDS + 30))", run_section)
+        self.assertIn("NORMAL_RECOVERY_SIGNAL_COUNT=$((NORMAL_RECOVERY_SIGNAL_COUNT + 1))", run_section)
         done = run_section.index('SAME_CELL_ATTACK_DONE_FILE')
         recover = run_section.index('wait_healthy "$COUNT"')
         self.assertLess(done, run_section.index("select_broker retire", done, recover))

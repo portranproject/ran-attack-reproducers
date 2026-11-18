@@ -546,9 +546,15 @@ if [[ $ACTION == run ]]; then
       NORMAL_RECOVERY_SIGNAL_COUNT=1
     fi
     started=$SECONDS
+    next_recovery_signal=$((SECONDS + 30))
     until record_healthy after; do
       (( SECONDS - started < SAME_CELL_RECOVERY_TIMEOUT_S )) \
         || fail "공격 UE clock 유지 중 normal UE가 $COUNT/$COUNT가 아닙니다"
+      if (( NORMAL_RECOVERY_SIGNAL_COUNT > 0 && SECONDS >= next_recovery_signal )); then
+        kill -USR1 "$NORMAL_PID" || fail "normal UE 안전 재등록 재시도 신호 전송에 실패했습니다"
+        NORMAL_RECOVERY_SIGNAL_COUNT=$((NORMAL_RECOVERY_SIGNAL_COUNT + 1))
+        next_recovery_signal=$((SECONDS + 30))
+      fi
       sleep 1
     done
     NORMAL_HEALTH_BEFORE_TEARDOWN=true

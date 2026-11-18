@@ -212,7 +212,7 @@ ue_binary() { echo "$(oai_tree "$1")/cmake_targets/ran_build/build/nr-uesoftmode
 is_built() {
   local binary marker gate_marker
   if is_common_signal "$1"; then
-    [[ -x $REPROCTL && -f $ROOT/tools/generate_rule_signal.py ]]
+    [[ -f $REPROCTL && ! -L $REPROCTL && -f $ROOT/tools/generate_rule_signal.py ]]
     return
   fi
   binary=$(ue_binary "$1")

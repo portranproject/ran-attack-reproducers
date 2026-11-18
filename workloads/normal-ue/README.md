@@ -39,11 +39,11 @@ gate를, 나머지 live L3 모듈은 공통 RA gate를 사용해 broker의 uplin
 cold-start한다. 따라서 한 실행 중 RF stream을 갈아 끼우는 방식이 아니다.
 
 > 과거 selector 기반 hot-swap은 p5 자격 검증에 실패했다. 공개 사용법에서는 제거했으며
-> 과거 실험 기록으로만 보존한다. 현재 `run`은 공격별 cold-start와 상시 clocked attack
-> slot을 사용한다. UE Capability
+> 과거 실험 기록으로만 보존한다. 아래 미승인 내용은 2026-11-16 당시 기록이다. 현재
+> `run`은 공격별 cold-start와 상시 clocked attack slot을 사용한다. 당시 UE Capability
 > control·emulation은 각각 1회, L3-21 실패 플러드는 control→attack 3/3이 정상 UE 5대와
 > 함께 통과했다. Blind DoS는 배경 1대·2대에서도 피해 UE RA가 실패해 미승인이다. 다른
-> 공격의 p5 결합 자격은 아직 필요하다. 설계와 과거 실패 근거는
+> 공격의 p5 결합 자격도 당시에는 남아 있었다. 설계와 과거 실패 근거는
 > [hot-swap 검증 기록](docs/SAME-CELL-HOT-SWAP-20261113.md)을 따른다.
 
 - `start` 뒤 supervisor는 수동 `stop` 전까지 계속 실행한다.
@@ -66,18 +66,19 @@ cold-start한다. 따라서 한 실행 중 RF stream을 갈아 끼우는 방식�
 - p5 cold-start에서 5/5 수렴까지 12.7~62.3초가 걸렸으므로 시작 직후의 `degraded`는
   최종 실패가 아니다.
 
-## p5 자격 현황
+## same-cell 자격 현황
 
-2026-11-18 실측에서 current p5 OAI가 `--zmq.[1]...` indexed CLI option을 거부했지만,
+2026-11-18 실측에서 current OAI가 `--zmq.[1]...` indexed CLI option을 거부했지만,
 OAI config의 `RUs`·`cells`·`zmq` 배열은 독립 virtual RU socket 5/5를 만들었다. 반대로
-단일 shared RU는 channel timeout 약 9만 건과 서비스 1/5로 실패했다. 따라서 독립 RU
-구조로 복원하며 Registration·PDU·ping 5/5와 전체 캠페인을 다시 봉인한다.
-L3-21은 2026-11-16 정상 UE 5대가 모든 attack 표본에서 5/5를 유지한 채 matched 3/3을
-통과했다. Blind DoS는 같은 날 배경 1대·2대 모두 정상 풀은 유지했지만 피해 UE가 180초
-안에 등록하지 못해 미승인이다. Blind DoS·L3-01-O·L3-06을 포함한 새 L3 7종 cold-start
-통합 경로는 구현됐지만, p5에서 control→active 3/3과 dashboard 전송을 새로 봉인하기 전까지
-**구현됐으나 미자격**이다. 기존 개별 자격은 유지하지만 정상 UE 5대 same-cell 자격으로
-일반화하지 않는다. 실 SDR OTA는 아직 승인 범위가 아니다.
+단일 shared RU는 channel timeout 약 9만 건과 서비스 1/5로 실패했다. 현재 자격 경로는
+독립 RU 5개만 사용한다. 초기 Blind DoS와 L3-06 결합 실패는 이 구조, 공격 슬롯 사전 clock
+공급, 공격별 gate와 oracle 보정 전의 기록이다.
+
+2026-11-19 p1 clean-origin에서 L3 7종 cold-start 통합 경로를 각각
+`control → active` 3세트 실행해 42/42 통과했다. 모든 실행에서 공격 전과 종료 직전
+Registration·PDU·gateway ping 5/5, 직접 detector 입력 없음, dashboard 거절 0을 확인했다.
+[p1 자격 기록](../../artifacts/p1-clean-origin-live-e2e-20261119/)을 따른다. 실 SDR OTA는
+아직 승인 범위가 아니다.
 
 반복 실행별 결과와 증거 해시는 [p5 자격 검증](docs/P5-QUALIFICATION-20261113.md)에 남겼다.
 5 UE 불안정성의 코드 원인과 비교 실험은

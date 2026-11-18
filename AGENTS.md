@@ -1,7 +1,7 @@
 # AGENTS.md — 기지국 공격 재현 도구 모음 (RAN 보안 테스트베드)
 
 > 이 디렉토리에서 작업하는 에이전트/팀원용 컨텍스트. 처음 들어오면 이 파일부터 읽을 것.
-> 최종 갱신 2026-11-18.
+> 최종 갱신 2026-11-19.
 
 ## 실행 전 필수 규칙
 
@@ -18,7 +18,7 @@
 - 기존 개별 자격에서 L3-01-O는 `auth-stall-cell-run`의 한 셀 `2프로세스×5 UE`, L3-20은
   direct 2-cell 동시 victim+attacker다. 이 기존 결과를 정상 UE 5대 same-cell 자격으로
   바꾸어 적지 않는다. 한 프로세스 `--num-ues 10`과 순차 GUTI 재사용도 자격 결과가 아니다.
-- p5 자격을 p4·OTA 자격으로 복사하지 않는다. 환경별 control→active matched 3/3과
+- p5·p1 자격을 p4·OTA 자격으로 복사하지 않는다. 환경별 control→active matched 3/3과
   production dashboard 전송을 별도로 봉인한다.
 
 ## 이 디렉토리는 무엇인가
@@ -28,17 +28,17 @@
 설정, 라벨 계약, 실행 원문을 다른 공격과 섞지 않는다.
 
 - `reproducers/rrc-signaling-storm/`: RRCSetupComplete 미전송형 구현 완료. p5 실제 UE→RAN→TeleRAN→production detector matched control→attack 3/3 통과. 서비스 거부는 별도 효과이며 미관측
-- `reproducers/blind-dos/`: 현재 유효 5G-GUTI 재사용형 구현 완료. p5 direct 2-cell ZMQ의 G5와 실제 TeleRAN→production detector matched control→attack 3/3 통과. same-cell oracle은 다중 InitialUEMessage에서 피해자 IMSI와 live mapping을 고르도록 수정했지만 독립 ZMQ UE의 상향 시간축 불일치로 피해 UE RA가 실패해 결합 자격은 미승인
+- `reproducers/blind-dos/`: 현재 유효 5G-GUTI 재사용형 구현 완료. p5 direct 2-cell ZMQ의 G5와 실제 TeleRAN→production detector matched control→attack 3/3 통과. 현재 same-cell adapter는 다중 InitialUEMessage에서 피해자 mapping을 선택하고 사전 clock·GUTI target gate를 사용한다. p1 clean-origin 정상 UE 5대 same-cell matched 3/3 통과
 - `reproducers/uplink-dos/`: NAS Service Request MAC 단발 변조형 프로토콜 영향 에뮬레이터와 L3-21용 실제 UE 무효·위조 자격증명 실패 플러드. L3-21은 정상 UE 5대와 같은 셀의 UE→ZMQ→DU/CU→TeleRAN→production detector 경로에서 matched control→attack 3/3 통과
 - `ctl.sh`: 공격 선택, 상태 점검, 전용 OAI 준비·빌드, 단일 실행과 matched 캠페인을 기존 모듈 runner에 위임하는 통합 컨트롤러. `same-cell doctor|run|campaign l3-live`는 L3 7종을 정상 UE 5대와 같은 셀에서 검증하는 공개 진입점
 - [CONTROL-GUIDE.md](CONTROL-GUIDE.md): 통합 컨트롤러 사용법·자동화 범위·재현/에뮬레이션 표시 기준
 - `reproducers/authentication-timeout-exhaustion/`: 한 셀에서 서로 다른 랩 가입자 10명의 Authentication Response 미전송을 실제 UE 경로로 생성. p5 TeleRAN→production detector matched control→attack 3/3 통과, 서비스 거부는 미관측
 - `reproducers/downlink-imsi-extractor/`: 5G-Spector 계열 프로토콜 결과 에뮬레이터. p5 실제 N2→TeleRAN→production detector matched control→emulation 3/3 통과. RF overshadowing은 미검증
 - `reproducers/ue-capability-hijacking/`: 보안 전 unsolicited UECapabilityInformation F1 관측 에뮬레이터. p5 실제 F1→TeleRAN→production detector matched control→emulation 3/3 통과; MITM·내용 변조·강등 수락은 주장하지 않음
-- `reproducers/nas-counter-desynchronization/`: L3-06 요청되지 않은 NAS SecurityModeReject 결과 에뮬레이터. p5 UE→ZMQ→DU/CU→TeleRAN→production detector matched control→emulation 3/3 통과. MITM·invalid SMC 실제 수신·NAS counter wrap은 미관측. 정상 UE same-cell 공존은 5+1과 4+1 control에서 normal health 실패로 미승인
+- `reproducers/nas-counter-desynchronization/`: L3-06 요청되지 않은 NAS SecurityModeReject 결과 에뮬레이터. UE→ZMQ→DU/CU→TeleRAN→production detector matched control→emulation 3/3 통과. p1 clean-origin 정상 UE 5대 same-cell도 3/3 통과. MITM·invalid SMC 실제 수신·NAS counter wrap은 미관측
 - `reproducers/{authentication-sync-failure,nas-counter-reset,uplink-imsi-extractor,short-connection-repeat,rrc-reject-release-imprisonment,tac-manipulation-return}/`: AN-01·AN-06a·AN-02·AN-04·AN-07·AN-08 참고용 탐지 입력 fixture. 공격 플랫폼 1.0 자격 범위에서 제외하며 production detector 회귀에만 사용
 - `reproducer.json`, `schemas/`, `profiles/`, `tools/reproctl.py`: 7개 L3 공격 자격 카탈로그와 6개 AN 참고 fixture, p5/OTA profile, 공통 run/verdict/evidence 계약, production replay·report·verify
-- `workloads/normal-ue/`: 공격 슬롯과 같은 DU·셀의 지속 정상 UE 풀. 정상 logical UE 5대는 한 OAI 프로세스 안에서 UE별 독립 virtual RU/ZMQ endpoint 5개를 사용하고 broker가 이를 같은 DU·셀에 합친다. indexed CLI ZMQ 옵션은 현재 OAI가 거부하므로 `RUs`·`cells`·`zmq` 설정 배열을 사용한다. 단일 shared RU 실측은 channel timeout 약 9만 건과 서비스 1/5로 실패해 자격 경로에서 제외했다. L3 7종 독립-RU cold-start 통합 경로는 재자격 중이며 전체 matched 3/3 전에는 미자격이다. OTA 공존은 미검증
+- `workloads/normal-ue/`: 공격 슬롯과 같은 DU·셀의 지속 정상 UE 풀. 정상 logical UE 5대는 한 OAI 프로세스 안에서 UE별 독립 virtual RU/ZMQ endpoint 5개를 사용하고 broker가 이를 같은 DU·셀에 합친다. indexed CLI ZMQ 옵션은 현재 OAI가 거부하므로 `RUs`·`cells`·`zmq` 설정 배열을 사용한다. 단일 shared RU는 자격 경로에서 제외했다. p1 clean-origin L3 7종 독립-RU cold-start 통합 경로 matched 3/3, 총 42/42 통과. OTA 공존은 미검증
 
 아래 장문의 실측 기록은 첫 번째 모듈인 RRC signaling storm의 보존 컨텍스트다.
 
@@ -62,6 +62,7 @@
 - [reproducers/ue-capability-hijacking/artifacts/p5-zmq-pre-security-information-20261111/](reproducers/ue-capability-hijacking/artifacts/p5-zmq-pre-security-information-20261111/) — p5 matched 3/3 판정과 원격 원문 SHA-256
 - [reproducers/nas-counter-desynchronization/artifacts/p5-live-result-20261117/](reproducers/nas-counter-desynchronization/artifacts/p5-live-result-20261117/) — L3-06 실제 RAN·TeleRAN·production detector matched 3/3과 same-cell 미승인 기록
 - [artifacts/p5-live-e2e-five-20261117/](artifacts/p5-live-e2e-five-20261117/) — L3-01-V·L3-01-O·L3-20·L3-24·L3-14의 실제 TeleRAN→production detector matched 3/3 자격 요약
+- [artifacts/p1-clean-origin-live-e2e-20261119/](artifacts/p1-clean-origin-live-e2e-20261119/) — origin snapshot에서 복원한 p1의 정상 UE 5대 same-cell L3 7종 42/42 자격과 manifest SHA-256
 - [reproducers/rrc-signaling-storm/docs/CURATED-VALIDATION-20261030.md](reproducers/rrc-signaling-storm/docs/CURATED-VALIDATION-20261030.md) — clean curated 빌드·정상 회귀·Msg4 ACK·독립 broker witness 실측
 - [reproducers/rrc-signaling-storm/docs/LABEL-CONTRACT.md](reproducers/rrc-signaling-storm/docs/LABEL-CONTRACT.md) — UE 정답·탐지·대응·효과 판정·시간 동기 계약
 - [reproducers/rrc-signaling-storm/docs/USAGE-GUIDE.md](reproducers/rrc-signaling-storm/docs/USAGE-GUIDE.md) — 동결된 재현기의 실행·입력 격리·라벨·채점 가이드
@@ -182,7 +183,8 @@
   Response를 미전송하고 L3-01-O RAISE 1건, 대조군은 경보 0건을 matched 3/3 반복했다.
   정상 UE 5대 same-cell adapter는 OAI 프로세스마다 `RUs`·`cells`·`zmq` 설정 배열로
   독립 virtual RU 5개를 만들고, 2프로세스의 총 10개 endpoint를 broker가 한 DU·셀에
-  합치는 구조로 재자격 중이다. gNB·코어·detector 수정과 탐지 입력 주입은 없다.
+  합친다. 2026-11-19 p1 clean-origin matched 3/3을 통과했다. gNB·코어·detector 수정과
+  탐지 입력 주입은 없다.
 - 표준·LTEFuzz·5GSEC/OAI-5G·Buckler의 고정 자료로 이론과 공개 구현 계보를 기록했고,
   `cu.log`·F1/N2 관측은 탐지 입력, UE 마커·Open5GS 로그·정규화 결과는 사후 oracle로
   분리했다. production detector의 해당 룰 정탐은 3/3, 대조군 예상 공격 경보는 0/3이다.

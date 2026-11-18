@@ -97,10 +97,10 @@ UE가 먼저 송신했지만 broker가 아직 버린 구간을 공격 성공으�
 L3-14는 MITM 이후 관측 신호, L3-06은 요청되지 않은 SecurityModeReject 결과를 UE에서
 생성할 뿐 원래 RF·MITM·counter-wrap 원인을 재현한 것이 아니다.
 
-새 통합 경로를 코드에 추가한 것과 p5 자격 통과는 별개다. 현재 L3-21의 정상 UE 5대
-matched 3/3만 기존 봉인 근거가 있다. Blind DoS·L3-01-O·L3-06을 포함한 새 7종 캠페인은
-p5에서 control→active 3/3과 dashboard 전송을 새로 봉인하기 전까지 **구현됐으나 미자격**으로
-표시한다. 기존 direct 경로의 자격은 유지하지만 same-cell 자격으로 바꾸어 적지 않는다.
+새 통합 경로의 환경별 자격은 따로 판정한다. 2026-11-19 p1 clean-origin 캠페인은 L3 7종의
+정상 UE 5대 same-cell `control → active` 3세트, production detector와 dashboard 전송을
+42/42 통과했다. 이 결과는 [p1 자격 기록](artifacts/p1-clean-origin-live-e2e-20261119/)에
+봉인했다. p1 결과를 p4나 OTA 자격으로 복사하지 않는다.
 
 ## 공통 실행 결과
 

@@ -136,6 +136,12 @@ class ControllerTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("13 modules", result.stdout)
 
+    def test_common_signal_doctor_accepts_python_entrypoint_without_execute_bit(self):
+        self.assertFalse(os.access(ROOT / "tools/reproctl.py", os.X_OK))
+        result = self.run_ctl("doctor", "an-01")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("OK 공통 탐지 입력 runner", result.stdout)
+
     def test_control_rejects_enable(self):
         result = self.run_ctl(
             "run", "auth-timeout", "control", "test-run", "--enable", "--dry-run"

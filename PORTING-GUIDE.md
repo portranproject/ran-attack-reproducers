@@ -4,18 +4,20 @@
 
 이 저장소는 **임의의 PC에서 바로 실행되는 설치형 제품이 아니다.** 현재 자격이 끝난 환경은
 Linux x86-64, OAI 2026.w38 UE, OCUDU 26.10 CU/DU, Open5GS, GNU Radio ZMQ 가상 RF로
-구성한 p5뿐이다. AWS 자체에 종속된 공격 로직은 없지만, 각 runner의 경로·원격 제어·로그
-parser는 이 스택을 기준으로 한다.
+구성한 p5와 clean-origin에서 새로 설치한 p1이다. AWS 자체에 종속된 공격 로직은 없지만,
+각 runner의 경로·원격 제어·로그 parser는 이 스택을 기준으로 한다.
 
 | 옮길 환경 | 현재 상태 | 필요한 작업 |
 |---|---|---|
-| 같은 OAI·OCUDU·Open5GS의 다른 ZMQ 호스트 | 포팅 가능, 미자격 | profile·모듈 conf의 절대경로·IP·SSH hook 변경 후 control부터 재검증 |
+| p1 clean-origin | 자격 완료 | 정상 UE 5대 same-cell L3 7종 42/42, 상세는 p1 자격 기록 |
+| 같은 OAI·OCUDU·Open5GS의 다른 ZMQ 호스트 | 포팅 가능, 환경별 미자격 | profile·모듈 conf의 절대경로·IP·SSH hook 변경 후 control부터 재검증 |
 | 노트북+USRP+차폐박스 OTA | adapter 미구현 | ZMQ 장치 인자를 USRP로 교체하고 RF inventory·gain·clock·차폐 doctor 및 로그 수집 hook 구현 |
 | 다른 gNB·코어 | backend 개발 필요 | build/run adapter와 F1/N2 로그 parser 교체, 기존 oracle·artifact 계약 유지 |
 | macOS·Windows 네이티브 | 미지원 | Linux VM 또는 별도 Linux 호스트 사용 |
 
-`qualified`는 p5에서의 자격이다. 다른 환경에 저장소를 복사했다고 그 환경까지 qualified가
-되지는 않는다.
+`qualified`는 p5 또는 p1에서 실제 통과한 자격이다. 다른 환경에 저장소를 복사했다고 그
+환경까지 qualified가 되지는 않는다. p1 결과는
+[clean-origin 자격 기록](artifacts/p1-clean-origin-live-e2e-20261119/)을 따른다.
 
 ZIP·`scp` 파일 복사본은 사용하지 않는다. 대상 호스트에서 Git clone 또는 `git pull
 --ff-only`로 갱신하고 `doctor`가 현재 checkout과 핵심 runner 해시를 확인하게 한다. 공식
@@ -56,8 +58,11 @@ p4에서는 `profiles/p4.example.json`을 `profiles/p4.json`으로 복사한다.
 ./ctl.sh doctor --profile p4
 ```
 
-L3-01-O는 `auth-stall-cell-run`의 `2프로세스×5 UE`, L3-20은 direct 2-cell runner만
-자격 경로다. 자세한 실행표는 [E2E 실행 가이드](E2E-EXECUTION-GUIDE.md)를 따른다.
+과거 개별 자격에서 L3-01-O는 `auth-stall-cell-run`의 `2프로세스×5 UE`, L3-20은 direct
+2-cell runner를 사용했다. 현재 정상 UE 5대 통합 자격은 두 모듈을 포함해 반드시
+`./ctl.sh same-cell campaign l3-live`로 실행한다. 자세한 실행표는
+[E2E 실행 가이드](E2E-EXECUTION-GUIDE.md)를 따른다. 2026-11-19 p1 clean-origin 이관은
+이 경로로 42/42를 통과했다.
 
 profile에서 사용할 수 있는 module conf 키는 다음과 같다.
 

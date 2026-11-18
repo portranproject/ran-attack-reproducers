@@ -115,14 +115,13 @@ runner나 `tools/p5-live-e2e`를 직접 호출하지 않고 앞 절의 `ctl.sh s
 - runner·바이너리·설정·증거 SHA-256 봉인
 - 정상 UE 5대의 공격 전·종료 직전 Registration·PDU·ping 상태 봉인
 
-p5 결과를 p4 결과로 복사해 적지 않는다. p4에서 동일한 3세트를 별도로 통과해야 p4 자격으로
-기록한다.
+p5나 p1 결과를 다른 환경 결과로 복사해 적지 않는다. 새 환경에서 동일한 3세트를 별도로
+통과해야 해당 환경 자격으로 기록한다.
 
-현재 새 통합 경로는 구현 단계다. 기존 증거로 정상 UE 5대 same-cell matched 3/3이 확인된
-것은 L3-21이며, UE Capability는 control·emulation 각 1회, RRC는 별도 공존 실측만 있다.
-Blind DoS·L3-01-O·L3-06을 포함한 7종 전체는 새 CLI로 p5 control→active 3/3과 dashboard
-전송을 다시 봉인하기 전까지 **구현됐으나 미자격**이다. 기존 direct 1-cell·2-cell 자격은
-유효하지만 새 통합 자격을 대신하지 않는다.
+2026-11-19 p1 clean-origin에서는 이 절차로 L3 7종의 정상 UE 5대 same-cell
+`control → active` 3세트와 dashboard 전송을 42/42 통과했다. 설치·실행 조건과 manifest
+해시는 [p1 자격 기록](artifacts/p1-clean-origin-live-e2e-20261119/)을 따른다. 이는 p1
+자격이며 p4·OTA 자격을 대신하지 않는다.
 
 ## 실패했을 때
 

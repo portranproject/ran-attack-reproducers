@@ -40,11 +40,9 @@ diff --git a/openair2/RRC/NR_UE/rrc_UE.c b/openair2/RRC/NR_UE/rrc_UE.c
  static void nr_rrc_process_sib1(NR_UE_RRC_INST_t *rrc, NR_UE_RRC_SI_INFO *SI_info, NR_SIB1_t *sib1)
  {
    if(g_log->log_component[NR_RRC].level >= OAILOG_DEBUG)
-@@ -533,6 +559,7 @@ static void nr_rrc_process_sib1(NR_UE_RRC_INST_t *rrc, NR_UE_RRC_SI_INFO *SI_in
+@@ -533,4 +559,5 @@ static void nr_rrc_process_sib1(NR_UE_RRC_INST_t *rrc, NR_UE_RRC_SI_INFO *SI_in
    nr_mac_rrc_message_t rrc_msg = {0};
    rrc_msg.payload_type = NR_MAC_RRC_CONFIG_SIB1;
    nr_mac_rrc_config_sib1_t *config_sib1 = &rrc_msg.payload.config_sib1;
 +  auth_timeout_wait_same_cell_gate();
    config_sib1->sib1 = sib1;
-   config_sib1->can_start_ra = !rrc->is_NTN_UE;
-   nr_rrc_send_msg_to_mac(rrc, &rrc_msg);

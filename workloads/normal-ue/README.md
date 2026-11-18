@@ -18,21 +18,24 @@ broker/셀에서 함께 cold-start한다. 공격 UE는 DU보다 먼저 시작해
 유지한다. 준비 뒤 같은 stream의 이득만 1로 바꾸므로 실행 중 새 ZMQ stream을 삽입하지 않는다.
 
 ```bash
-./ctl.sh same-cell run uplink -n demo-uplink --count 5 -- /path/to/uplink-run emulation -n uplink-1 -e 1
-./ctl.sh same-cell run downlink-imsi -n demo-id --count 5 -- /path/to/downlink-imsi-run emulation -n id-1 -e 1
-./ctl.sh same-cell run ue-capability -n demo-cap --count 5 -- /path/to/ue-capability-run emulation -n cap-1 -e 1
+./ctl.sh same-cell doctor --profile p5
+./ctl.sh same-cell run downlink-imsi --profile p5 --mode control --run-id id-control-1
+./ctl.sh same-cell run downlink-imsi --profile p5 --mode emulation --run-id id-emulation-1 --enable
+./ctl.sh same-cell campaign l3-live --profile p5 --sets 3 --count 5 --enable
 ```
 
-Blind DoS와 L3-06 same-cell은 p5에서 미승인이라 기본 `run`이 거부한다. L3-01-O 자격은
-정상 UE wrapper가 아니라 `auth-stall-cell-run`의 한 셀 `2프로세스×5 UE` 경로를 사용한다.
-이 세 경로를 정상 UE 결합 성공으로 해석하거나 수동 스크립트로 우회하지 않는다.
+공개 same-cell 대상은 L3-01-V·L3-01-O·L3-20·L3-21·L3-24·L3-14·L3-06이다. 공격별
+내부 runner나 wrapper를 직접 호출하지 않는다. AN fixture와 legacy uplink MAC 단발 변조형은
+이 자격 범위가 아니다.
 
-각 module의 Git 밖 설정과 `--enable` 안전 조건은 기존과 같다. 각 공격 module runner는
-CU/DU를 시작·중지하지 않는 외부 lifecycle·prestart 모드로 실행된다. 실행 종료 시에는 PID와
-시작시각이 일치하는 정상 UE, 공격 runner, broker, DU만 종료하고 CU·코어는 유지한다.
+각 module의 Git 밖 설정과 `--enable` 안전 조건은 기존과 같다. phase 종료 시에는 PID와
+시작시각이 일치하는 정상 UE, 공격 runner, broker, DU만 종료하고 CU·코어·dashboard는
+유지한다. 다음 phase는 같은 CU·DU 인스턴스와 같은 셀 식별자에서 DU·broker·UE 프로세스를
+cold-start한다. 따라서 한 실행 중 RF stream을 갈아 끼우는 방식이 아니다.
 
-> 과거 selector 기반 hot-swap은 p5 자격 검증에 실패해 `hot-run` 진단 경로로만 남겼다.
-> 기본 `run`은 공격별 cold-start와 상시 clocked attack slot을 사용한다. UE Capability
+> 과거 selector 기반 hot-swap은 p5 자격 검증에 실패했다. 공개 사용법에서는 제거했으며
+> 과거 실험 기록으로만 보존한다. 현재 `run`은 공격별 cold-start와 상시 clocked attack
+> slot을 사용한다. UE Capability
 > control·emulation은 각각 1회, L3-21 실패 플러드는 control→attack 3/3이 정상 UE 5대와
 > 함께 통과했다. Blind DoS는 배경 1대·2대에서도 피해 UE RA가 실패해 미승인이다. 다른
 > 공격의 p5 결합 자격은 아직 필요하다. 설계와 과거 실패 근거는
@@ -48,13 +51,14 @@ CU/DU를 시작·중지하지 않는 외부 lifecycle·prestart 모드로 실행
   custom RU-sharing 집계기를 우회한다. 공격 UE와 TUN 이름이 충돌하지 않도록 same-cell
   실행용 binary에는 `patch/normal-tun-suffix.patch`도 적용한다.
 - `status`의 `healthy`는 요청 수만큼 TUN과 gateway ping이 모두 성공한 경우다.
+- same-cell 자격은 공격 전과 종료 직전 정상 UE 5대의 Registration·PDU·gateway ping을
+  각각 기록한다. 공격 중 저하는 별도 효과이며 종료 직전 5/5가 아니면 정상 UE 동반 자격에
+  실패한다.
 - 자격증명 실패 플러드 러너는 목표 실패를 만든 뒤에도 공격 UE를 idle 상태로 유지한다.
   컨트롤러가 같은 RF clock에서 정상 UE 5/5를 확인한 뒤 종료를 허가하므로, 공격 UE가 먼저
   사라져 broker 전체가 멈추는 종료 효과를 서비스 영향으로 오판하지 않는다.
 - p5 cold-start에서 5/5 수렴까지 12.7~62.3초가 걸렸으므로 시작 직후의 `degraded`는
   최종 실패가 아니다.
-- `same-cell hot-run`의 과거 selector 전환 코드는 연구용으로 남겨 두되
-  `SAME_CELL_EXPERIMENTAL_SWITCH=1` 없이는 실행되지 않는다.
 
 ## p5 자격 현황
 
@@ -63,7 +67,10 @@ gateway ping을 통과했다. 세 실행의 ZMQ channel timeout과 crash marker�
 종료 후 UE·broker·TUN 잔존도 0이었다. 따라서 p5 기본 5대 정상 배경 트래픽 용도로 승인한다.
 L3-21은 2026-11-16 정상 UE 5대가 모든 attack 표본에서 5/5를 유지한 채 matched 3/3을
 통과했다. Blind DoS는 같은 날 배경 1대·2대 모두 정상 풀은 유지했지만 피해 UE가 180초
-안에 등록하지 못해 미승인이다. 실 SDR OTA는 아직 승인 범위가 아니다.
+안에 등록하지 못해 미승인이다. Blind DoS·L3-01-O·L3-06을 포함한 새 L3 7종 cold-start
+통합 경로는 구현됐지만, p5에서 control→active 3/3과 dashboard 전송을 새로 봉인하기 전까지
+**구현됐으나 미자격**이다. 기존 개별 자격은 유지하지만 정상 UE 5대 same-cell 자격으로
+일반화하지 않는다. 실 SDR OTA는 아직 승인 범위가 아니다.
 
 반복 실행별 결과와 증거 해시는 [p5 자격 검증](docs/P5-QUALIFICATION-20261113.md)에 남겼다.
 5 UE 불안정성의 코드 원인과 비교 실험은

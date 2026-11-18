@@ -81,7 +81,14 @@ SAME_CELL_READY_TIMEOUT_S=${SAME_CELL_READY_TIMEOUT_S:-120}
 SAME_CELL_PRESTART=${SAME_CELL_PRESTART:-0}
 SAME_CELL_RAN_READY_FILE=${SAME_CELL_RAN_READY_FILE:-}
 SAME_CELL_ATTACK_READY_FILE=${SAME_CELL_ATTACK_READY_FILE:-}
+SAME_CELL_ATTACK_DONE_FILE=${SAME_CELL_ATTACK_DONE_FILE:-}
+SAME_CELL_RELEASE_FILE=${SAME_CELL_RELEASE_FILE:-}
 SAME_CELL_VICTIM_TUN=${SAME_CELL_VICTIM_TUN:-oaitun_ue1}
+if [[ $SAME_CELL_PRESTART == 1 ]]; then
+  P5_HOOK=$HERE/bin/blind-p5-hook
+  P5_EVIDENCE_PY=$HERE/tools/p5_evidence.py
+  export P5_HOOK P5_EVIDENCE_PY
+fi
 
 fail() { echo "blind-p5-phase: $*" >&2; exit 2; }
 positive_int() { [[ $2 =~ ^[1-9][0-9]*$ ]] || fail "$1 must be a positive integer"; }
@@ -137,6 +144,10 @@ positive_int SAME_CELL_READY_TIMEOUT_S "$SAME_CELL_READY_TIMEOUT_S"
   || fail "SAME_CELL_RAN_READY_FILE must be absolute in prestart mode"
 [[ $SAME_CELL_PRESTART == 0 || $SAME_CELL_ATTACK_READY_FILE == /* ]] \
   || fail "SAME_CELL_ATTACK_READY_FILE must be absolute in prestart mode"
+[[ $SAME_CELL_PRESTART == 0 || $SAME_CELL_ATTACK_DONE_FILE == /* ]] \
+  || fail "SAME_CELL_ATTACK_DONE_FILE must be absolute in prestart mode"
+[[ $SAME_CELL_PRESTART == 0 || $SAME_CELL_RELEASE_FILE == /* ]] \
+  || fail "SAME_CELL_RELEASE_FILE must be absolute in prestart mode"
 
 for name in OAI_BLIND_BIN VICTIM_UE_CFG ATTACKER_UE_CFG UECAP; do
   value=${!name}
@@ -747,6 +758,17 @@ fi
 if [[ $BLIND_MODE == attack ]]; then
   [[ $(wc -l <"$ATTACKER_EVENTS") -eq $ATTACK_EVENT_COUNT ]] \
     || fail "attacker emitted another event after the one-shot ended"
+fi
+if (( SAME_CELL_PRESTART )); then
+  exclusive_empty "$SAME_CELL_ATTACK_DONE_FILE"
+  release_started=$SECONDS
+  until [[ -f $SAME_CELL_RELEASE_FILE && ! -L $SAME_CELL_RELEASE_FILE ]]; do
+    require_alive "$VICTIM_INDEX"
+    require_alive "$ATTACKER_INDEX"
+    (( SECONDS - release_started < SAME_CELL_READY_TIMEOUT_S )) \
+      || fail "same-cell release timed out"
+    sleep .2
+  done
 fi
 stop_child "$ATTACKER_INDEX"
 stop_child "$VICTIM_INDEX"

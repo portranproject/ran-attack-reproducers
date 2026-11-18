@@ -423,6 +423,85 @@ campaign_one() {
   exec "${command[@]}"
 }
 
+same_cell_metadata() {
+  case $1 in
+    rrc-storm) echo "rrc-context-exhaustion L3-01-V rrc" ;;
+    auth-timeout) echo "authentication-timeout-exhaustion L3-01-O auth-timeout" ;;
+    blind-dos) echo "blind-dos L3-20 blind" ;;
+    uplink-credential-flood) echo "uplink-credential-flood L3-21 uplink-credential-flood" ;;
+    downlink-imsi) echo "downlink-identifier-exposure L3-24 downlink-imsi" ;;
+    ue-capability) echo "ue-capability-hijacking L3-14 ue-capability" ;;
+    nas-counter-desynchronization) echo "nas-counter-desynchronization L3-06 nas-counter-desync" ;;
+    *) return 1 ;;
+  esac
+}
+
+same_cell_run_one() {
+  local attack=$1 mode=$2 run_id=$3 count=$4 enabled=$5 dry_run=$6
+  local expected config env_name runner scenario rule alias normal_conf run_root enable_value child_dir
+  local -a inner command
+  attack=$(attack_id "$attack") || fail "알 수 없는 공격 ID: $1"
+  read -r scenario rule alias < <(same_cell_metadata "$attack") \
+    || fail "same-cell L3 자격 범위가 아닙니다: $attack"
+  expected=$(active_mode "$attack")
+  [[ $mode == control || $mode == "$expected" ]] \
+    || fail "$attack 모드는 control 또는 $expected 이어야 합니다"
+  valid_run_id "$run_id" || fail "RUN_ID는 영문·숫자로 시작하고 ._-만 사용해야 합니다"
+  if [[ $mode == control ]]; then
+    [[ $enabled == 0 ]] || fail "control에는 --enable을 붙이지 않습니다"
+    enable_value=0
+  else
+    [[ $enabled == 1 ]] || fail "$mode 실행에는 명시적 --enable이 필요합니다"
+    enable_value=1
+  fi
+  config=$(config_file "$attack")
+  normal_conf=${NORMAL_UE_CONF:-$ROOT/workloads/normal-ue/conf/p5.conf}
+  if [[ $attack == rrc-storm ]]; then
+    run_root=${RAN_REPRO_RUN_ROOT:-/var/lib/ran-reproducer/runs}/rrc-same-cell
+    child_dir=$run_root/$run_id
+    runner="$ROOT/reproducers/rrc-signaling-storm/bin/rss-broker-witness"
+    inner=(env "RSS_CONF=$config" "BROKER_NORMAL_CONF=$normal_conf" "BROKER_LOGDIR=$run_root" BROKER_ATTACK_PROCESSES=6
+      BROKER_ATTACK_UES_PER_PROCESS=2 BROKER_WITNESS_MULTI_RU=1 BROKER_WITNESS_UES=5
+      BROKER_START_GNB_LAST=1 BROKER_NORMAL_POOL_QUALIFICATION=1 BROKER_NORMAL_ATTACK_DURATION_S=30
+      BROKER_PY="$ROOT/workloads/normal-ue/tools/same_cell_broker.py"
+      "BROKER_CMD=exec env NORMAL_UE_BROKER_ENDPOINTS=11 QT_QPA_PLATFORM=offscreen python3 '$ROOT/workloads/normal-ue/tools/same_cell_broker.py'"
+      "$runner" "$mode" -n "$run_id" -d 240)
+    command=(env LIVE_E2E_REQUIRE_SAME_CELL=1 "$ROOT/tools/p5-live-e2e" "$scenario" "$mode" "$run_id" "$rule" "$child_dir" -- "${inner[@]}")
+  else
+    env_name=$(config_env "$attack")
+    runner=$(run_binary "$attack")
+    inner=(env "$env_name=$config" "$runner" "$mode" -n "$run_id" -e "$enable_value")
+    command=(env "$env_name=$config" "$SAME_CELL" run "$alias" -n "$run_id" --count "$count"
+      --config "$normal_conf" -- "${inner[@]}")
+    if [[ $attack != uplink-credential-flood && $attack != nas-counter-desynchronization ]]; then
+      command=(env LIVE_E2E_REQUIRE_SAME_CELL=1 "$ROOT/tools/p5-live-e2e" "$scenario" "$mode" "$run_id" "$rule" auto -- "${command[@]}")
+    fi
+  fi
+  if [[ $dry_run == 1 ]]; then print_command "${command[@]}"; return; fi
+  [[ -f $config && ! -L $config ]] || fail "설정이 없습니다. 먼저 실행: ./ctl.sh setup $attack"
+  [[ -f $normal_conf && ! -L $normal_conf ]] || fail "normal UE 설정이 없습니다: $normal_conf"
+  [[ -x $runner ]] || fail "runner가 없습니다: $runner"
+  "${command[@]}"
+}
+
+same_cell_campaign() {
+  local campaign_id=$1 sets=$2 count=$3 enabled=$4 dry_run=$5 index attack mode run_id
+  local -a attacks=(rrc-storm auth-timeout blind-dos uplink-credential-flood downlink-imsi ue-capability nas-counter-desynchronization)
+  valid_run_id "$campaign_id" || fail "CAMPAIGN_ID가 안전하지 않습니다"
+  (( sets == 3 )) || fail "L3 same-cell 자격은 --sets 3으로 고정합니다"
+  [[ $count == 5 ]] || fail "L3 same-cell 자격은 정상 UE --count 5로 고정합니다"
+  [[ $enabled == 1 ]] || fail "캠페인에는 명시적 --enable이 필요합니다"
+  for attack in "${attacks[@]}"; do
+    for ((index=1; index<=sets; index++)); do
+      run_id="sc-$campaign_id-$attack-control-$index"
+      same_cell_run_one "$attack" control "$run_id" "$count" 0 "$dry_run"
+      mode=$(active_mode "$attack")
+      run_id="sc-$campaign_id-$attack-$mode-$index"
+      same_cell_run_one "$attack" "$mode" "$run_id" "$count" 1 "$dry_run"
+    done
+  done
+}
+
 list_attacks() {
   python3 "$REPROCTL" catalog
   printf '%-32s %-12s %-30s %s\n' uplink-dos legacy protocol-result-emulation "상향 DoS 단발 MAC 변조 결과 에뮬레이션"
@@ -491,6 +570,76 @@ menu() {
   done
 }
 
+same_cell_cli() {
+  local action=${1:-} attack mode= run_id= profile=p5 count=5 sets=3 enabled=0 dry_run=0 campaign_id=
+  [[ $# == 0 ]] || shift
+  case $action in
+    doctor)
+      while [[ $# -gt 0 ]]; do
+        case $1 in --profile) [[ $# -ge 2 ]] || fail "--profile 값이 필요합니다"; profile=$2; shift 2 ;; *) fail "알 수 없는 옵션: $1" ;; esac
+      done
+      python3 "$REPROCTL" doctor --profile "$profile"
+      load_profile_env "$profile"
+      require_runnable_backend
+      local normal_conf=${NORMAL_UE_CONF:-$ROOT/workloads/normal-ue/conf/p5.conf}
+      "$NORMAL_UE" doctor --config "$normal_conf" --count 5
+      for attack in rrc-storm auth-timeout blind-dos uplink-credential-flood downlink-imsi ue-capability nas-counter-desynchronization; do
+        doctor_one "$attack"
+      done
+      ;;
+    run)
+      attack=${1:-}; [[ $# == 0 ]] || shift
+      while [[ $# -gt 0 ]]; do
+        case $1 in
+          --profile) [[ $# -ge 2 ]] || fail "--profile 값이 필요합니다"; profile=$2; shift 2 ;;
+          --mode) [[ $# -ge 2 ]] || fail "--mode 값이 필요합니다"; mode=$2; shift 2 ;;
+          --run-id|-n) [[ $# -ge 2 ]] || fail "--run-id 값이 필요합니다"; run_id=$2; shift 2 ;;
+          --count) [[ $# -ge 2 ]] || fail "--count 값이 필요합니다"; count=$2; shift 2 ;;
+          --enable) enabled=1; shift ;;
+          --dry-run) dry_run=1; shift ;;
+          *) fail "알 수 없는 옵션: $1" ;;
+        esac
+      done
+      [[ -n $attack && -n $mode ]] || fail "same-cell run에는 공격 ID와 --mode가 필요합니다"
+      [[ $count == 5 ]] || fail "L3 same-cell 자격은 정상 UE --count 5로 고정합니다"
+      run_id=${run_id:-sc-$attack-$mode-$(date -u +%Y%m%dT%H%M%SZ)}
+      if [[ $dry_run == 0 ]]; then
+        python3 "$REPROCTL" doctor --profile "$profile" >/dev/null
+        load_profile_env "$profile"
+        require_runnable_backend
+      fi
+      same_cell_run_one "$attack" "$mode" "$run_id" "$count" "$enabled" "$dry_run"
+      ;;
+    campaign)
+      [[ ${1:-} == l3-live ]] || fail "지원하는 same-cell campaign은 l3-live입니다"
+      shift
+      while [[ $# -gt 0 ]]; do
+        case $1 in
+          --profile) [[ $# -ge 2 ]] || fail "--profile 값이 필요합니다"; profile=$2; shift 2 ;;
+          --campaign-id|-n) [[ $# -ge 2 ]] || fail "--campaign-id 값이 필요합니다"; campaign_id=$2; shift 2 ;;
+          --sets) [[ $# -ge 2 ]] || fail "--sets 값이 필요합니다"; sets=$2; shift 2 ;;
+          --count) [[ $# -ge 2 ]] || fail "--count 값이 필요합니다"; count=$2; shift 2 ;;
+          --enable) enabled=1; shift ;;
+          --dry-run) dry_run=1; shift ;;
+          *) fail "알 수 없는 옵션: $1" ;;
+        esac
+      done
+      campaign_id=${campaign_id:-l3-$(date -u +%Y%m%dT%H%M%SZ)}
+      (( ${#campaign_id} <= 24 )) || fail "CAMPAIGN_ID는 24자 이하여야 합니다"
+      if [[ $dry_run == 0 ]]; then
+        python3 "$REPROCTL" doctor --profile "$profile" >/dev/null
+        load_profile_env "$profile"
+        require_runnable_backend
+      fi
+      same_cell_campaign "$campaign_id" "$sets" "$count" "$enabled" "$dry_run"
+      ;;
+    start|status|stop)
+      exec "$SAME_CELL" "$action" "$@"
+      ;;
+    *) fail "same-cell 작업은 doctor, run, campaign, start, status, stop 중 하나여야 합니다" ;;
+  esac
+}
+
 usage() {
   cat <<'EOF'
 사용법:
@@ -507,7 +656,9 @@ usage() {
   ./ctl.sh coverage
   ./ctl.sh validate
   ./ctl.sh normal-ue setup|doctor|start|status|stop [--profile p5] [--count N]
-  ./ctl.sh same-cell run uplink|uplink-credential-flood|downlink-imsi|ue-capability -n RUN_ID [--count 5] -- COMMAND...
+  ./ctl.sh same-cell doctor --profile p5
+  ./ctl.sh same-cell run ID --profile p5 --mode control|attack|emulation [--run-id ID] [--enable]
+  ./ctl.sh same-cell campaign l3-live --profile p5 --sets 3 --count 5 --enable
   ./ctl.sh same-cell start -n SESSION_ID [--count 5]  # 정상 UE 개발 세션
   ./ctl.sh same-cell status|stop
 
@@ -533,9 +684,12 @@ main() {
       exec "$NORMAL_UE" "$@" ;;
     same-cell)
       [[ -x $SAME_CELL ]] || fail "same-cell runner가 없습니다: $SAME_CELL"
-      case ${2:-} in status|stop) ;; *) require_qualified_checkout ;; esac
+      case ${2:-} in
+        status|stop) ;;
+        *) [[ " $* " == *" --dry-run "* ]] || require_qualified_checkout ;;
+      esac
       shift
-      exec "$SAME_CELL" "$@" ;;
+      same_cell_cli "$@" ;;
     doctor)
       command -v git >/dev/null && command -v python3 >/dev/null \
         || fail "git과 python3가 필요합니다"

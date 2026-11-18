@@ -7,11 +7,17 @@
 
 - 사람과 AI 모두 [E2E-EXECUTION-GUIDE.md](E2E-EXECUTION-GUIDE.md)의 공식 토폴로지와
   runner만 사용한다.
-- `./ctl.sh doctor --profile <환경>`이 실패하거나 공식 runner가 없으면 중단한다. OAI
+- 개별 모듈은 `./ctl.sh doctor --profile <환경>`, 정상 UE 5대 통합 자격은
+  `./ctl.sh same-cell doctor --profile <환경>`이 실패하면 중단한다. OAI
   바이너리 직접 실행이나 `/tmp` 수동 스크립트로 대체하지 않는다.
-- L3-01-O 자격은 `auth-stall-cell-run`의 한 셀 `2프로세스×5 UE`, L3-20 자격은 direct
-  2-cell 동시 victim+attacker다. 한 프로세스 `--num-ues 10`, 순차 GUTI 재사용,
-  Blind/L3-06 same-cell은 자격 결과로 인정하지 않는다.
+- L3 7종 정상 UE 통합 자격은 `./ctl.sh same-cell run` 또는
+  `./ctl.sh same-cell campaign l3-live`만 사용한다. 같은 CU·DU 인스턴스와 셀 식별자를
+  유지하되 모듈·phase마다 DU·broker·UE 프로세스를 cold-start한다. CU·코어·dashboard는
+  유지한다. 공격별 control→active 3세트와 정상 UE 5대의 공격 전·후 상태가 모두 봉인되기
+  전에는 통합 자격으로 쓰지 않는다.
+- 기존 개별 자격에서 L3-01-O는 `auth-stall-cell-run`의 한 셀 `2프로세스×5 UE`, L3-20은
+  direct 2-cell 동시 victim+attacker다. 이 기존 결과를 정상 UE 5대 same-cell 자격으로
+  바꾸어 적지 않는다. 한 프로세스 `--num-ues 10`과 순차 GUTI 재사용도 자격 결과가 아니다.
 - p5 자격을 p4·OTA 자격으로 복사하지 않는다. 환경별 control→active matched 3/3과
   production dashboard 전송을 별도로 봉인한다.
 
@@ -24,7 +30,7 @@
 - `reproducers/rrc-signaling-storm/`: RRCSetupComplete 미전송형 구현 완료. p5 실제 UE→RAN→TeleRAN→production detector matched control→attack 3/3 통과. 서비스 거부는 별도 효과이며 미관측
 - `reproducers/blind-dos/`: 현재 유효 5G-GUTI 재사용형 구현 완료. p5 direct 2-cell ZMQ의 G5와 실제 TeleRAN→production detector matched control→attack 3/3 통과. same-cell oracle은 다중 InitialUEMessage에서 피해자 IMSI와 live mapping을 고르도록 수정했지만 독립 ZMQ UE의 상향 시간축 불일치로 피해 UE RA가 실패해 결합 자격은 미승인
 - `reproducers/uplink-dos/`: NAS Service Request MAC 단발 변조형 프로토콜 영향 에뮬레이터와 L3-21용 실제 UE 무효·위조 자격증명 실패 플러드. L3-21은 정상 UE 5대와 같은 셀의 UE→ZMQ→DU/CU→TeleRAN→production detector 경로에서 matched control→attack 3/3 통과
-- `ctl.sh`: 공격 선택, 상태 점검, 전용 OAI 준비·빌드, 단일 실행과 matched 캠페인을 기존 모듈 runner에 위임하는 통합 컨트롤러
+- `ctl.sh`: 공격 선택, 상태 점검, 전용 OAI 준비·빌드, 단일 실행과 matched 캠페인을 기존 모듈 runner에 위임하는 통합 컨트롤러. `same-cell doctor|run|campaign l3-live`는 L3 7종을 정상 UE 5대와 같은 셀에서 검증하는 공개 진입점
 - [CONTROL-GUIDE.md](CONTROL-GUIDE.md): 통합 컨트롤러 사용법·자동화 범위·재현/에뮬레이션 표시 기준
 - `reproducers/authentication-timeout-exhaustion/`: 한 셀에서 서로 다른 랩 가입자 10명의 Authentication Response 미전송을 실제 UE 경로로 생성. p5 TeleRAN→production detector matched control→attack 3/3 통과, 서비스 거부는 미관측
 - `reproducers/downlink-imsi-extractor/`: 5G-Spector 계열 프로토콜 결과 에뮬레이터. p5 실제 N2→TeleRAN→production detector matched control→emulation 3/3 통과. RF overshadowing은 미검증
@@ -32,7 +38,7 @@
 - `reproducers/nas-counter-desynchronization/`: L3-06 요청되지 않은 NAS SecurityModeReject 결과 에뮬레이터. p5 UE→ZMQ→DU/CU→TeleRAN→production detector matched control→emulation 3/3 통과. MITM·invalid SMC 실제 수신·NAS counter wrap은 미관측. 정상 UE same-cell 공존은 5+1과 4+1 control에서 normal health 실패로 미승인
 - `reproducers/{authentication-sync-failure,nas-counter-reset,uplink-imsi-extractor,short-connection-repeat,rrc-reject-release-imprisonment,tac-manipulation-return}/`: AN-01·AN-06a·AN-02·AN-04·AN-07·AN-08 참고용 탐지 입력 fixture. 공격 플랫폼 1.0 자격 범위에서 제외하며 production detector 회귀에만 사용
 - `reproducer.json`, `schemas/`, `profiles/`, `tools/reproctl.py`: 7개 L3 공격 자격 카탈로그와 6개 AN 참고 fixture, p5/OTA profile, 공통 run/verdict/evidence 계약, production replay·report·verify
-- `workloads/normal-ue/`: 공격 슬롯과 같은 DU·셀의 지속 정상 UE 풀. 한 OAI 프로세스 안에서 UE별 독립 virtual RU/ZMQ endpoint를 broker로 합치는 구조로 p5 cold-start 3회 Registration·PDU·ping 5/5, timeout·crash 0을 통과. RRC storm 두 변형과의 단일 공존 실측에서는 선연결 5/5 유지, 공격 중 신규 접속은 4/5였다. one-shot 단일 셀 경로에서 UE Capability control·emulation 각 1회와 L3-21 control→attack 3/3이 통과했다. Blind DoS는 배경 1대와 2대 모두 피해 UE RA가 실패해 미승인이고, 다른 공격·OTA 공존은 미검증
+- `workloads/normal-ue/`: 공격 슬롯과 같은 DU·셀의 지속 정상 UE 풀. 한 OAI 프로세스 안에서 UE별 독립 virtual RU/ZMQ endpoint를 broker로 합치는 구조로 p5 cold-start 3회 Registration·PDU·ping 5/5, timeout·crash 0을 통과. RRC storm 두 변형과의 단일 공존 실측에서는 선연결 5/5 유지, 공격 중 신규 접속은 4/5였다. one-shot 단일 셀 경로에서 UE Capability control·emulation 각 1회와 L3-21 control→attack 3/3이 통과했다. L3 7종 cold-start 통합 경로는 구현됐지만 Blind DoS·인증 응답 미전송형·L3-06을 포함한 전체 p5 matched 3/3은 아직 미자격이다. 이전 Blind DoS 배경 1대·2대 실패도 새 통합 경로의 성공으로 바꾸어 적지 않으며, OTA 공존은 미검증
 
 아래 장문의 실측 기록은 첫 번째 모듈인 RRC signaling storm의 보존 컨텍스트다.
 

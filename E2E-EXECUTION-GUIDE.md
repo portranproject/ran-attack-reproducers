@@ -7,7 +7,8 @@
 ## 반드시 지킬 것
 
 1. ZIP·파일 복사본이 아니라 Git clone을 사용한다.
-2. 공격 전에 `./ctl.sh doctor --profile <환경>`을 통과한다.
+2. 개별 모듈은 `./ctl.sh doctor --profile <환경>`, 정상 UE 5대 통합 실행은
+   `./ctl.sh same-cell doctor --profile <환경>`을 통과한다.
 3. 공식 runner가 없거나 doctor가 실패하면 중단한다. OAI 바이너리를 직접 실행하거나
    `/tmp` 수동 스크립트로 대체하지 않는다.
 4. control을 먼저 통과한 뒤 active 모드를 실행한다. active에는 `--enable`을 붙인다.
@@ -38,12 +39,44 @@ chmod 600 profiles/p4.json
 
 실제 profile, 가입자 설정, SSH key는 Git 밖에 두고 권한을 `0600` 이하로 둔다.
 
-## 자격 토폴로지와 공격 runner
+## L3 7종 same-cell 통합 경로
+
+공개 진입점은 아래 세 하위 명령(`doctor`, `run`, `campaign`)뿐이다.
+
+```bash
+./ctl.sh same-cell doctor --profile p5
+./ctl.sh same-cell run blind-dos --profile p5 --mode control --run-id blind-control-1
+./ctl.sh same-cell run blind-dos --profile p5 --mode attack --run-id blind-attack-1 --enable
+./ctl.sh same-cell campaign l3-live --profile p5 --sets 3 --count 5 --enable
+```
+
+`l3-live`는 L3-01-V·L3-01-O·L3-20·L3-21·L3-24·L3-14·L3-06만 실행한다. AN fixture는
+공격 자격 범위가 아니므로 포함하지 않는다. active mode는 프로토콜 재현이면 `attack`,
+결과·관측 에뮬레이션이면 `emulation`이며, `ctl.sh`가 공격별 허용 mode를 검사한다.
+
+통합 경로는 같은 CU·DU EC2 인스턴스와 같은 셀 식별자를 계속 사용한다. 다만 공격 사이에
+상태가 섞이지 않도록 각 control·active phase마다 DU·broker·UE **프로세스**를 종료하고
+cold-start한다. CU·코어·production dashboard는 유지한다. 이는 한 RF 스트림에 실행 중 새
+UE를 삽입하는 hot-swap이 아니며, dashboard에는 같은 셀의 시간축에 phase 사이의 재시작
+구간이 생긴다.
+
+각 phase는 정상 UE 5대와 해당 공격 슬롯을 DU 시작 전에 broker에 모두 연결한다. 공격 전과
+종료 직전의 정상 UE 5대 Registration·PDU·gateway ping 상태를 별도로 기록한다. 공격 중
+일시 저하는 공격 효과로 분리하며, 종료 직전 5/5 회복을 확인하지 못하면 정상 UE 동반 자격은
+실패다.
+
+탐지 입력을 직접 만들거나 KPM·detector socket으로 주입하지 않는다. 자격 경로는 항상
+`UE → ZMQ broker → DU/CU → TeleRAN → production detector → dashboard`를 사용한다.
+L3-24·L3-14·L3-06은 기존과 같이 UE 쪽에서 논문 공격의 결과 또는 관측 신호를 만드는
+에뮬레이션이며, RF overshadowing·MITM·NAS counter wrap의 실제 원인을 재현했다고 주장하지
+않는다.
+
+## 기존 개별 자격 토폴로지
 
 모든 자격 실행은 **CU 인스턴스 1대와 DU 인스턴스 1대**를 순차 재사용한다. Blind DoS의
 2-cell은 DU 두 대가 아니라 동일 DU 프로세스의 논리 셀 두 개다.
 
-| 룰 | 공격 runner 진입점 | 자격 토폴로지 | 금지·미승인 경로 |
+| 룰 | 공격 runner 진입점 | 기존 자격 토폴로지 | 당시 금지·미승인 경로 |
 |---|---|---|---|
 | L3-01-V | `ctl.sh campaign rrc-storm` | 1 DU·1 cell | 임의 timer/capacity 완화 |
 | L3-06 | `ctl.sh campaign l3-06` | direct 1-cell | 정상 UE same-cell |
@@ -53,39 +86,9 @@ chmod 600 profiles/p4.json
 | L3-01-O | `ctl.sh campaign auth-timeout` | 한 셀, 2 OAI 프로세스×5 UE, endpoint 10개 | 한 프로세스 `--num-ues 10` |
 | L3-20 | `bin/blind-run`·`bin/blind-p5-phase` | direct 2-cell, victim·attacker 동시 실행 | 순차 재사용·same-cell |
 
-L3-01-O production 자격은 일반 기전 runner인 `auth-timeout-run`이 아니라 반드시
-`auth-stall-cell-run`을 사용한다. 컨트롤러가 이 runner로 matched 3세트를 고정한다.
-
-```bash
-AUTH_STALL_CELL_CONF=/etc/ran-reproducer/auth-stall-cell.conf \
-  ./ctl.sh campaign auth-timeout auth-matched-3 --enable
-```
-
-Blind DoS는 모듈의 `p5-zmq.conf.example`을 환경에 맞춰 만든 뒤 기존 campaign을 사용한다.
-설정의 phase command는 공식 `blind-p5-phase`를 가리켜야 하며 direct 2-cell DU 설정을
-사용해야 한다.
-
-```bash
-BLIND_CONF=/etc/ran-reproducer/blind.conf \
-  reproducers/blind-dos/bin/blind-campaign -n blind-matched-3 -e 1
-```
-
-위 campaign은 공격 기전의 matched 3세트다. **TeleRAN→detector→dashboard까지 포함한 E2E
-자격은 아니다.** E2E에서는 control과 active 각각을 `tools/p5-live-e2e`로 감싸고, 실제 runner가
-생성할 `CHILD_DIR`을 정확히 넘긴다. 다음은 L3-01-O control 한 회의 형식이다.
-
-```bash
-RUN_ID=auth-e2e-control-1
-CHILD_DIR=/root/auth-timeout-cell-runs/$RUN_ID
-LIVE_E2E_CONF=/etc/ran-reproducer/live-e2e.conf \
-  tools/p5-live-e2e authentication-timeout-exhaustion control "$RUN_ID" L3-01-O "$CHILD_DIR" -- \
-  env AUTH_STALL_CELL_CONF=/etc/ran-reproducer/auth-stall-cell.conf \
-  reproducers/authentication-timeout-exhaustion/bin/auth-stall-cell-run \
-  control -n "$RUN_ID" -e 0
-```
-
-attack은 새 `RUN_ID`와 `CHILD_DIR`로 같은 명령의 mode를 `attack`, `-e`를 `1`로 바꾼다.
-이 control→attack 쌍을 3회 수행한다. 다른 룰도 표의 runner를 같은 wrapper 형식으로 실행한다.
+이 표는 이미 봉인된 개별 모듈 결과의 출처를 설명한다. 새 정상 UE 5대 통합 자격을 만들 때는
+runner나 `tools/p5-live-e2e`를 직접 호출하지 않고 앞 절의 `ctl.sh same-cell`만 사용한다.
+기존 개별 자격을 same-cell 자격으로 복사해 적지 않는다.
 
 ## E2E 합격 조건
 
@@ -97,9 +100,16 @@ attack은 새 `RUN_ID`와 `CHILD_DIR`로 같은 명령의 mode를 `attack`, `-e`
 - control의 대상 경보 0건, active의 대상 RAISE 1건
 - dashboard 수락 1건 이상·거절 0건
 - runner·바이너리·설정·증거 SHA-256 봉인
+- 정상 UE 5대의 공격 전·종료 직전 Registration·PDU·ping 상태 봉인
 
 p5 결과를 p4 결과로 복사해 적지 않는다. p4에서 동일한 3세트를 별도로 통과해야 p4 자격으로
 기록한다.
+
+현재 새 통합 경로는 구현 단계다. 기존 증거로 정상 UE 5대 same-cell matched 3/3이 확인된
+것은 L3-21이며, UE Capability는 control·emulation 각 1회, RRC는 별도 공존 실측만 있다.
+Blind DoS·L3-01-O·L3-06을 포함한 7종 전체는 새 CLI로 p5 control→active 3/3과 dashboard
+전송을 다시 봉인하기 전까지 **구현됐으나 미자격**이다. 기존 direct 1-cell·2-cell 자격은
+유효하지만 새 통합 자격을 대신하지 않는다.
 
 ## 실패했을 때
 

@@ -57,6 +57,40 @@ runner 해시를 확인한다. Git 없는 파일 복사본, 구버전, 수정된
 `campaign`의 ID를 생략하면 UTC timestamp로 생성한다. 공격·에뮬레이션에는 항상
 `--enable`이 필요하고 control에 붙이면 실패한다.
 
+## 정상 UE 5대 same-cell L3 자격
+
+L3 7종을 정상 UE 5대와 같은 셀에서 검증할 때는 일반 `run|campaign`이나 모듈 runner를
+직접 호출하지 않고 다음 공개 명령을 사용한다.
+
+```bash
+./ctl.sh same-cell doctor --profile p5
+./ctl.sh same-cell run rrc-storm --profile p5 --mode control --run-id rrc-control-1
+./ctl.sh same-cell run rrc-storm --profile p5 --mode attack --run-id rrc-attack-1 --enable
+./ctl.sh same-cell campaign l3-live --profile p5 --sets 3 --count 5 --enable
+```
+
+`l3-live` 대상은 L3-01-V·L3-01-O·L3-20·L3-21·L3-24·L3-14·L3-06으로 고정한다. AN
+fixture와 legacy uplink MAC 단발 변조형은 포함하지 않는다. `--sets 3`, `--count 5`도 자격
+계약이라 다른 값으로 완화할 수 없다. control에는 `--enable`을 붙이지 않고, attack 또는
+emulation에는 반드시 붙인다.
+
+모든 phase는 같은 CU·DU EC2 인스턴스와 같은 셀 식별자를 사용한다. 공격 전환 때는 이전
+실행의 무선 상태를 물려받지 않도록 DU·broker·UE 프로세스를 정리하고 cold-start한다.
+CU·코어·production dashboard는 유지한다. 정상 UE 5대와 공격 슬롯은 DU 시작 전에 모두
+broker에 연결하며, 정상 UE의 공격 전과 종료 직전 Registration·PDU·gateway ping 상태를
+실행 증거에 남긴다.
+
+이 경로는 직접 KPM이나 detector 입력을 만들지 않는다. 실제
+`UE → ZMQ → DU/CU → TeleRAN → production detector → dashboard` 경로만 자격으로 인정한다.
+다만 에뮬레이션 모듈의 주장 범위는 바뀌지 않는다. L3-24는 RF overshadowing 이후 결과,
+L3-14는 MITM 이후 관측 신호, L3-06은 요청되지 않은 SecurityModeReject 결과를 UE에서
+생성할 뿐 원래 RF·MITM·counter-wrap 원인을 재현한 것이 아니다.
+
+새 통합 경로를 코드에 추가한 것과 p5 자격 통과는 별개다. 현재 L3-21의 정상 UE 5대
+matched 3/3만 기존 봉인 근거가 있다. Blind DoS·L3-01-O·L3-06을 포함한 새 7종 캠페인은
+p5에서 control→active 3/3과 dashboard 전송을 새로 봉인하기 전까지 **구현됐으나 미자격**으로
+표시한다. 기존 direct 경로의 자격은 유지하지만 same-cell 자격으로 바꾸어 적지 않는다.
+
 ## 공통 실행 결과
 
 공통 입력 runner는 profile의 `run_root` 아래에 다음 파일을 원자적으로 생성한다.
@@ -148,10 +182,10 @@ BLIND_OAI=/srv/OAI-blind-dos-w38 \
 컨트롤러의 유형 표시는 기존 모듈의 주장 범위를 바꾸지 않는다. 상세 성공 조건과 탐지 입력,
 검증 한계는 각 모듈 README와 사용 가이드를 기준으로 한다.
 
-L3-01-O의 production 자격은 일반 `auth-timeout-run`이 아니라 한 셀 10 UE 전용
-`auth-stall-cell-run`을 사용한다. Blind DoS의 자격 경로는 direct 2-cell이며 same-cell이
-아니다. 두 경로의 정확한 명령과 금지 조합은 [E2E 실행 가이드](E2E-EXECUTION-GUIDE.md)에
-고정한다.
+기존 개별 자격에서 L3-01-O는 한 셀 10 UE 전용 `auth-stall-cell-run`, Blind DoS는 direct
+2-cell이다. 새 same-cell 컨트롤러가 내부 adapter로 이 동작을 조합하지만, 사용자가 해당
+runner를 직접 호출해서 통합 자격을 만들지는 않는다. 정확한 lifecycle과 금지 조합은
+[E2E 실행 가이드](E2E-EXECUTION-GUIDE.md)에 고정한다.
 
 전체 정규 명칭과 p5/OTA 자격 상태는 [공격 카탈로그](ATTACK-CATALOG.md), 주장 경계는
 [주장과 한계](CLAIMS-AND-LIMITS.md)를 따른다.

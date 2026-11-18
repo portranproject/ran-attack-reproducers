@@ -151,6 +151,31 @@ class ControllerTest(unittest.TestCase):
         self.assertEqual(result.stdout.count("auth-stall-cell-run"), 6)
         self.assertNotIn("auth-timeout-run", result.stdout)
 
+    def test_same_cell_suite_dry_run_uses_seven_live_ran_paths(self):
+        result = self.run_ctl(
+            "same-cell", "campaign", "l3-live", "--campaign-id", "suite",
+            "--sets", "3", "--count", "5", "--enable", "--dry-run",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.count("실행 예정:"), 42)
+        for runner in (
+            "rss-broker-witness", "auth-stall-cell-run", "blind-run",
+            "uplink-credential-flood-run", "downlink-imsi-run",
+            "ue-capability-run", "nas-counter-desync-run",
+        ):
+            self.assertIn(runner, result.stdout)
+        self.assertNotIn("generate_rule_signal.py", result.stdout)
+        rrc_lines = [line for line in result.stdout.splitlines() if "rss-broker-witness" in line]
+        self.assertEqual(len(rrc_lines), 6)
+        self.assertTrue(all("BROKER_NORMAL_CONF=" in line and "-d 240" in line for line in rrc_lines))
+
+    def test_same_cell_active_run_requires_enable(self):
+        result = self.run_ctl(
+            "same-cell", "run", "blind-dos", "--mode", "attack", "--dry-run",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("--enable", result.stderr)
+
     def test_build_reuses_binary_with_module_marker(self):
         with tempfile.TemporaryDirectory() as directory:
             tree = pathlib.Path(directory)

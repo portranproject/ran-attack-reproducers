@@ -15,22 +15,18 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn("same-cell-run run", result.stdout)
         self.assertIn("same-cell-run status", result.stdout)
         self.assertIn("same-cell-run stop", result.stdout)
-        self.assertIn("uplink|uplink-credential-flood|downlink-imsi|ue-capability", result.stdout)
-        self.assertNotIn("same-cell-run run blind|", result.stdout)
-        self.assertIn("hot-run", result.stdout)
+        self.assertIn("blind|uplink|uplink-credential-flood|auth-timeout", result.stdout)
+        self.assertIn("downlink-imsi|ue-capability|nas-counter-desync", result.stdout)
+        self.assertNotIn("hot-run", result.stdout)
 
-    def test_unqualified_same_cell_paths_fail_before_configuration(self):
-        for attack, message in (
-            ("blind", "direct 2-cell"),
-            ("auth-timeout", "auth-stall-cell-run"),
-            ("nas-counter-desync", "direct 1-cell"),
-        ):
+    def test_live_l3_paths_reach_configuration_validation(self):
+        for attack in ("blind", "auth-timeout", "nas-counter-desync"):
             result = subprocess.run(
                 [str(SCRIPT), "run", attack, "-n", "blocked", "--", "true"],
                 text=True, capture_output=True,
             )
             self.assertNotEqual(result.returncode, 0)
-            self.assertIn(message, result.stderr)
+            self.assertIn("normal UE 설정", result.stderr)
 
     def test_module_runners_have_external_lifecycle_and_readiness_gates(self):
         contracts = {
@@ -40,6 +36,8 @@ class SameCellContractTests(unittest.TestCase):
                 "CREDENTIAL_FLOOD_MANAGE_RAN",
             ROOT / "reproducers/authentication-timeout-exhaustion/bin/auth-timeout-p5-phase":
                 "AUTH_TIMEOUT_MANAGE_DU",
+            ROOT / "reproducers/authentication-timeout-exhaustion/bin/auth-stall-cell-run":
+                "SAME_CELL_AUTH_TIMEOUT_MANAGE_DU",
             ROOT / "reproducers/downlink-imsi-extractor/bin/downlink-imsi-run":
                 "DOWNLINK_IMSI_MANAGE_RAN",
             ROOT / "reproducers/ue-capability-hijacking/bin/ue-capability-run":
@@ -54,6 +52,26 @@ class SameCellContractTests(unittest.TestCase):
             self.assertIn("SAME_CELL_RAN_READY_FILE", source)
             self.assertIn("SAME_CELL_PRESTART", source)
             self.assertIn("SAME_CELL_ATTACK_READY_FILE", source)
+            if path.name not in {"auth-timeout-p5-phase", "uplink-run"}:
+                self.assertIn("SAME_CELL_ATTACK_DONE_FILE", source)
+                self.assertIn("SAME_CELL_RELEASE_FILE", source)
+
+    def test_wrapped_runners_publish_their_evidence_directory(self):
+        for path in (
+            ROOT / "reproducers/blind-dos/bin/blind-run",
+            ROOT / "reproducers/authentication-timeout-exhaustion/bin/auth-stall-cell-run",
+            ROOT / "reproducers/downlink-imsi-extractor/bin/downlink-imsi-run",
+            ROOT / "reproducers/ue-capability-hijacking/bin/ue-capability-run",
+        ):
+            self.assertIn("output=$OUT", path.read_text(), str(path))
+
+    def test_blind_same_cell_uses_the_current_checkout(self):
+        runner = (ROOT / "reproducers/blind-dos/bin/blind-run").read_text()
+        phase = (ROOT / "reproducers/blind-dos/bin/blind-p5-phase").read_text()
+        example = (ROOT / "reproducers/blind-dos/conf/p5-zmq.conf.example").read_text()
+        self.assertIn('PHASE_CMD \'exec %q\' "$HERE/bin/blind-p5-phase"', runner)
+        self.assertIn("P5_HOOK=$HERE/bin/blind-p5-hook", phase)
+        self.assertNotIn("/root/blind-dos-tool", example)
 
     def test_normal_tun_suffix_is_opt_in(self):
         patch = (ROOT / "workloads/normal-ue/patch/normal-tun-suffix.patch").read_text()
@@ -80,8 +98,10 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn("blocks.selector", broker)
         self.assertIn("blocks.multiply_const_cc(0.0)", broker)
         self.assertIn("ul_gate.set_k", broker)
-        self.assertIn("dl_gate.set_k", broker)
+        self.assertIn("dl_gate = blocks.multiply_const_cc(1.0)", broker)
         self.assertIn("NORMAL_UE_BROKER_PERSISTENT_ATTACK", broker)
+        self.assertIn('mode not in {"standby", "warmup", "attack"}', broker)
+        self.assertIn("endpoint_count > 15", broker)
         self.assertIn('mode == "warmup"', broker)
         self.assertIn("attack slots must be warmed first", broker)
         method = broker.split("def select_attack_slots", 1)[1].split("\n\n", 1)[0]
@@ -104,8 +124,12 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn("SAME_CELL_VICTIM_TUN=oaitun_ue1", run_section)
         self.assertIn('공격 UE clock 유지 중 normal UE가 $COUNT/$COUNT가 아닙니다', run_section)
         self.assertIn("normal_healthy_before_attack_teardown", run_section)
+        self.assertIn('if [[ $ATTACK != uplink ]]; then', run_section)
+        self.assertIn("TOTAL_ENDPOINTS <= 15", run_section)
         self.assertIn("attack.ready", run_section)
         self.assertIn("clocked_attack_slots", run_section)
+        self.assertIn("embed_self_live_evidence", run_section)
+        self.assertIn('"normal_ue_coexistence"', source)
         restart = run_section.index('bash -c "$NORMAL_UE_GNB_RESTART_CMD"')
         self.assertLess(run_section.index("start_normal_group"), restart)
         self.assertLess(run_section.index('setsid "${COMMAND[@]}"'), restart)

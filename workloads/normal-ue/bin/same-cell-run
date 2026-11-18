@@ -21,9 +21,8 @@ PLACEHOLDER_CFG=""
 usage() {
   cat <<'EOF'
 사용법:
-  same-cell-run run uplink|uplink-credential-flood|downlink-imsi|ue-capability -n RUN_ID [--count 5] [--config FILE] -- COMMAND...
+  same-cell-run run blind|uplink|uplink-credential-flood|auth-timeout|downlink-imsi|ue-capability|nas-counter-desync -n RUN_ID [--count 5] [--config FILE] -- COMMAND...
   same-cell-run start -n SESSION_ID [--count 5] [--config FILE]  # 정상 UE 개발 세션
-  same-cell-run hot-run blind|uplink|auth-timeout -n RUN_ID -- COMMAND...  # 미승인 진단용
   same-cell-run status
   same-cell-run stop
 EOF
@@ -41,13 +40,13 @@ case $ACTION in
       esac
     done
     ;;
-  run|hot-run)
+  run)
     ATTACK=${1:-}; [[ $# == 0 ]] || shift
     while [[ $# -gt 0 && $1 != -- ]]; do
       case $1 in
         -n|--run-id) [[ $# -ge 2 ]] || fail "run id 값이 필요합니다"; RUN_ID=$2; shift 2 ;;
-        -c|--count) [[ $ACTION == run && $# -ge 2 ]] || fail "count는 run에서만 지정할 수 있습니다"; COUNT=$2; shift 2 ;;
-        --config) [[ $ACTION == run && $# -ge 2 ]] || fail "config는 run에서만 지정할 수 있습니다"; CONF=$2; shift 2 ;;
+        -c|--count) [[ $# -ge 2 ]] || fail "count 값이 필요합니다"; COUNT=$2; shift 2 ;;
+        --config) [[ $# -ge 2 ]] || fail "config 값이 필요합니다"; CONF=$2; shift 2 ;;
         *) fail "알 수 없는 옵션: $1" ;;
       esac
     done
@@ -60,14 +59,6 @@ case $ACTION in
   help|-h|--help) usage; exit 0 ;;
   *) usage; fail "알 수 없는 작업: $ACTION" ;;
 esac
-
-if [[ $ACTION == run ]]; then
-  case $ATTACK in
-    blind) fail "Blind DoS same-cell은 미승인입니다. 검증된 direct 2-cell runner를 사용하세요" ;;
-    auth-timeout) fail "L3-01-O 자격은 same-cell wrapper가 아니라 auth-stall-cell-run의 2×5 UE 경로입니다" ;;
-    nas-counter-desync) fail "L3-06 정상 UE same-cell은 미승인입니다. direct 1-cell runner를 사용하세요" ;;
-  esac
-fi
 
 if [[ $ACTION == start || $ACTION == run ]]; then
   CONF=${CONF:-$ROOT/workloads/normal-ue/conf/p5.conf}
@@ -99,8 +90,10 @@ PING_CMD=${PING_CMD:-ping}
 SS_CMD=${SS_CMD:-ss}
 if [[ $ACTION == run ]]; then
   case $ATTACK in
-    uplink|downlink-imsi|ue-capability) ATTACK_SLOTS=1 ;;
+    blind) ATTACK_SLOTS=2 ;;
+    uplink|downlink-imsi|ue-capability|nas-counter-desync) ATTACK_SLOTS=1 ;;
     uplink-credential-flood) ATTACK_SLOTS=1 ;;
+    auth-timeout) ATTACK_SLOTS=10 ;;
     *) fail "지원하지 않는 same-cell 공격: $ATTACK" ;;
   esac
 else
@@ -206,6 +199,65 @@ health() {
       && ok=$((ok + 1)) || true
   done
   printf '%s\n' "$ok"
+}
+record_health() {
+  local phase=$1 iface tun_ok ping_ok timestamp
+  timestamp=$(date +%s%N)
+  for ((i=1; i<=COUNT; i++)); do
+    iface="oaitun_ue${i}p${NORMAL_UE_PDU_SESSION_ID}"
+    tun_ok=false; ping_ok=false
+    if "$IP_CMD" -4 -o addr show "$iface" >/dev/null 2>&1; then
+      tun_ok=true
+      "$PING_CMD" -n -I "$iface" -c 1 -W 1 10.45.1.1 >/dev/null 2>&1 && ping_ok=true || true
+    fi
+    printf '{"schema":"same-cell.normal-health.v1","run_id":"%s","phase":"%s","realtime_ns":%s,"ue":%d,"interface":"%s","tun_ok":%s,"ping_ok":%s}\n' \
+      "$RUN_ID" "$phase" "$timestamp" "$i" "$iface" "$tun_ok" "$ping_ok" \
+      >>"$RUN_OUT/normal-health.jsonl"
+  done
+}
+embed_self_live_evidence() {
+  python3 - "$CHILD_OUTPUT" "$RUN_OUT/run.json" "$RUN_OUT/session.json" \
+    "$RUN_OUT/normal-health.jsonl" "$RUN_OUT/broker.log" <<'PY'
+import hashlib
+import json
+import pathlib
+import sys
+
+child, wrapper_path, session_path, health_path, broker_path = map(pathlib.Path, sys.argv[1:])
+paths = [child / name for name in ("run.json", "oracle.jsonl", "verdict.json", "report.md", "evidence_manifest.json")]
+paths += [wrapper_path, session_path, health_path, broker_path]
+if any(path.is_symlink() or not path.is_file() for path in paths):
+    raise SystemExit("same-cell 최종 증거 파일이 안전하지 않습니다")
+health = [json.loads(line) for line in health_path.read_text(encoding="utf-8").splitlines() if line]
+before = {row.get("ue") for row in health if row.get("phase") == "before" and row.get("ping_ok") is True}
+after = {row.get("ue") for row in health if row.get("phase") == "after" and row.get("ping_ok") is True}
+if before != set(range(1, 6)) or after != set(range(1, 6)):
+    raise SystemExit("same-cell 정상 UE 전후 5/5 증거가 없습니다")
+summary = {
+    "wrapper": json.loads(wrapper_path.read_text(encoding="utf-8")),
+    "session": json.loads(session_path.read_text(encoding="utf-8")),
+    "normal_health": health,
+    "broker_sha256": hashlib.sha256(broker_path.read_bytes()).hexdigest(),
+}
+run = json.loads((child / "run.json").read_text(encoding="utf-8"))
+run["same_cell"] = summary
+(child / "run.json").write_text(json.dumps(run, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+oracle_rows = [json.loads(line) for line in (child / "oracle.jsonl").read_text(encoding="utf-8").splitlines() if line]
+if len(oracle_rows) != 1:
+    raise SystemExit("same-cell oracle은 객체 한 줄이어야 합니다")
+oracle_rows[0]["same_cell"] = summary
+(child / "oracle.jsonl").write_text(json.dumps(oracle_rows[0], sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
+verdict = json.loads((child / "verdict.json").read_text(encoding="utf-8"))
+verdict.setdefault("dimensions", {})["normal_ue_coexistence"] = "pass"
+(child / "verdict.json").write_text(json.dumps(verdict, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+with (child / "report.md").open("a", encoding="utf-8") as output:
+    output.write("- 같은 DU·셀 정상 UE 공격 전/후: `5/5`, `5/5`\n")
+manifest = json.loads((child / "evidence_manifest.json").read_text(encoding="utf-8"))
+for name in ("run.json", "oracle.jsonl", "verdict.json", "report.md"):
+    path = child / name
+    manifest["files"][name] = {"size": path.stat().st_size, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+(child / "evidence_manifest.json").write_text(json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
+PY
 }
 wait_healthy() {
   local count=$1 timeout=$2 started=$SECONDS
@@ -318,7 +370,7 @@ select_broker() {
 if [[ $ACTION == run ]]; then
   [[ $RUN_ID =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$ ]] || fail "안전한 run id가 필요합니다"
   [[ $COUNT =~ ^[1-9][0-9]*$ && $COUNT -le 7 ]] || fail "count는 1..7이어야 합니다"
-  (( TOTAL_ENDPOINTS <= 11 )) || fail "공격 UE endpoint와 normal UE 합계는 11 이하여야 합니다"
+  (( TOTAL_ENDPOINTS <= 15 )) || fail "공격 UE endpoint와 normal UE 합계는 15 이하여야 합니다"
   [[ ! -e $STATE ]] || fail "same-cell 상태 디렉터리가 이미 있습니다: $STATE"
   pgrep -x nr-uesoftmodem >/dev/null 2>&1 && fail "기존 OAI UE가 있습니다"
   mkdir -m 700 "$STATE"
@@ -422,6 +474,7 @@ if [[ $ACTION == run ]]; then
     (( SECONDS - started < SAME_CELL_HEALTH_TIMEOUT_S )) || fail "normal UE $COUNT/$COUNT 준비가 시간 초과했습니다"
     sleep 1
   done
+  record_health before
   ( set -o noclobber; : >"$STATE/normal.ready" )
   started=$SECONDS
   until [[ -f $STATE/attack.ready && ! -L $STATE/attack.ready ]]; do
@@ -438,29 +491,44 @@ if [[ $ACTION == run ]]; then
     "$RUN_ID" "$ATTACK" "$COUNT" "$ATTACK_SLOTS" >"$RUN_OUT/session.json"
 
   NORMAL_HEALTH_BEFORE_TEARDOWN=null
-  if [[ $ATTACK == uplink-credential-flood || $ATTACK == nas-counter-desync ]]; then
+  if [[ $ATTACK != uplink ]]; then
     until [[ -f $STATE/attack.done && ! -L $STATE/attack.done ]]; do
       is_running "$ATTACK_PID" || fail "공격 runner가 완료 marker 전에 종료됐습니다"
       printf '%s\t%s\n' "$(date +%s%N)" "$(health "$COUNT")" >>"$RUN_OUT/normal-health.tsv"
+      record_health during
       sleep 1
     done
     wait_healthy "$COUNT" "$SAME_CELL_RECOVERY_TIMEOUT_S" \
       || fail "공격 UE clock 유지 중 normal UE가 $COUNT/$COUNT가 아닙니다"
+    record_health after
     NORMAL_HEALTH_BEFORE_TEARDOWN=true
     ( set -o noclobber; : >"$STATE/attack.release" )
   fi
   while is_running "$ATTACK_PID"; do
-    [[ $ATTACK == uplink-credential-flood || $ATTACK == nas-counter-desync ]] \
-      || printf '%s\t%s\n' "$(date +%s%N)" "$(health "$COUNT")" >>"$RUN_OUT/normal-health.tsv"
+    [[ $ATTACK != uplink ]] \
+      || { printf '%s\t%s\n' "$(date +%s%N)" "$(health "$COUNT")" >>"$RUN_OUT/normal-health.tsv"; record_health during; }
     sleep 1
   done
   if wait "$ATTACK_PID"; then ATTACK_STATUS=0; else ATTACK_STATUS=$?; fi
   ATTACK_PID=""
   select_broker standby || true
-  printf '{"schema":"same-cell.run.v2","run_id":"%s","attack":"%s","normal_ues":%d,"attack_slots":%d,"du_restarted_during_attack":false,"normal_healthy_before_attack_teardown":%s,"attack_exit_status":%d}\n' \
+  CHILD_OUTPUT=$(python3 - "$RUN_OUT/attack.stdout" <<'PY'
+import pathlib, re, sys
+text = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+matches = re.findall(r"(?:^|\s)output=(/[^\s]+)", text)
+print(matches[-1] if matches else "")
+PY
+  ) || fail "공격 runner 출력 경로를 읽지 못했습니다"
+  [[ -n $CHILD_OUTPUT && -d $CHILD_OUTPUT && ! -L $CHILD_OUTPUT ]] \
+    || fail "공격 runner가 안전한 output 경로를 남기지 않았습니다"
+  printf '%s\n' "$CHILD_OUTPUT" >"$RUN_OUT/child-output.txt"
+  printf '{"schema":"same-cell.run.v3","run_id":"%s","attack":"%s","normal_ues":%d,"attack_slots":%d,"du_restarted_during_attack":false,"normal_healthy_before_attack_teardown":%s,"direct_detector_input":false,"ue_to_ran_path_required":true,"attack_exit_status":%d}\n' \
     "$RUN_ID" "$ATTACK" "$COUNT" "$ATTACK_SLOTS" \
     "$NORMAL_HEALTH_BEFORE_TEARDOWN" "$ATTACK_STATUS" >"$RUN_OUT/run.json"
   (( ATTACK_STATUS == 0 )) || fail "공격 runner가 실패했습니다: status=$ATTACK_STATUS"
+  if [[ $ATTACK == uplink-credential-flood || $ATTACK == nas-counter-desync ]]; then
+    embed_self_live_evidence || fail "self-live same-cell 증거 봉인에 실패했습니다"
+  fi
   echo "완료됨: attack=$ATTACK same_cell=true normal=$COUNT output=$RUN_OUT"
   exit 0
 fi

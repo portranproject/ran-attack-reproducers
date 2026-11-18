@@ -11,7 +11,7 @@ CONF=${LIVE_E2E_CONF:-/root/live-e2e.conf}
 . "$CONF"
 
 [[ $# -ge 7 && $6 == -- ]] || {
-  echo "사용법: $0 SCENARIO MODE RUN_ID RULE CHILD_DIR -- COMMAND..." >&2; exit 2;
+  echo "사용법: $0 SCENARIO MODE RUN_ID RULE CHILD_DIR|auto -- COMMAND..." >&2; exit 2;
 }
 SCENARIO=$1 MODE=$2 RUN_ID=$3 RULE=$4 CHILD_DIR=$5
 shift 6
@@ -26,6 +26,7 @@ CU_DASHBOARD_CA_FILE=${CU_DASHBOARD_CA_FILE:-/home/ubuntu/portran-e2e-20261113/d
 CU_DASHBOARD_ENV=${CU_DASHBOARD_ENV:-p5}
 PRE_CHILD_S=${LIVE_E2E_PRE_CHILD_S:-0}
 POST_CHILD_S=${LIVE_E2E_POST_CHILD_S:-4}
+REQUIRE_SAME_CELL=${LIVE_E2E_REQUIRE_SAME_CELL:-0}
 DETECTOR_COMMIT=766f5569d0ddb425c14bf210a31c38ac60eceef9
 
 fail() { echo "p5-live-e2e: $*" >&2; exit 2; }
@@ -33,7 +34,9 @@ fail() { echo "p5-live-e2e: $*" >&2; exit 2; }
 [[ $MODE == control || $MODE == attack || $MODE == emulation ]] || fail "mode가 잘못됐습니다"
 [[ $RUN_ID =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$ ]] || fail "안전한 RUN_ID가 필요합니다"
 [[ $RULE =~ ^L3-[0-9]{2}(-[A-Z])?$ ]] || fail "안전한 RULE이 필요합니다"
-[[ $CHILD_DIR == /* && $CHILD_DIR != / ]] || fail "CHILD_DIR은 안전한 절대 경로여야 합니다"
+[[ $REQUIRE_SAME_CELL == 0 || $REQUIRE_SAME_CELL == 1 ]] || fail "LIVE_E2E_REQUIRE_SAME_CELL은 0 또는 1이어야 합니다"
+[[ $CHILD_DIR == auto || $CHILD_DIR == /* && $CHILD_DIR != / ]] \
+  || fail "CHILD_DIR은 auto 또는 안전한 절대 경로여야 합니다"
 [[ $RUN_ROOT == /* && $RUN_ROOT != / && $CU_LIVE_RUN_ROOT == /* && $CU_LIVE_RUN_ROOT != / ]] || fail "run root가 안전하지 않습니다"
 [[ $CU_HOST =~ ^[A-Za-z_][A-Za-z0-9_-]*@[A-Za-z0-9.-]+$ ]] || fail "CU_HOST는 user@host 형식이어야 합니다"
 [[ $CU_DASHBOARD_URL == https://* ]] || fail "dashboard URL은 https여야 합니다"
@@ -142,8 +145,40 @@ child_status=$?
 set -e
 printf '%s\n' "$child_status" >"$OUT/child.exit"
 (( child_status == 0 )) || fail "공격 runner가 실패했습니다: status=$child_status"
+SAME_CELL_OUTPUT=
+if [[ $CHILD_DIR == auto ]]; then
+  SAME_CELL_OUTPUT=$(python3 - "$OUT/child.stdout" <<'PY'
+import pathlib, re, sys
+text = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+matches = re.findall(r"(?:^|\s)output=(/[^\s]+)", text)
+print(matches[-1] if matches else "")
+PY
+  ) || fail "same-cell 출력 경로를 읽지 못했습니다"
+  [[ -d $SAME_CELL_OUTPUT && ! -L $SAME_CELL_OUTPUT \
+     && -f $SAME_CELL_OUTPUT/child-output.txt && ! -L $SAME_CELL_OUTPUT/child-output.txt ]] \
+    || fail "same-cell 실행이 안전한 child output 참조를 남기지 않았습니다"
+  read -r CHILD_DIR <"$SAME_CELL_OUTPUT/child-output.txt"
+  [[ $CHILD_DIR == /* && $CHILD_DIR != / && -d $CHILD_DIR && ! -L $CHILD_DIR ]] \
+    || fail "same-cell child output 경로가 안전하지 않습니다"
+  for item in run.json session.json normal-health.jsonl broker.log; do
+    [[ -f $SAME_CELL_OUTPUT/$item && ! -L $SAME_CELL_OUTPUT/$item ]] || fail "same-cell 증거가 없습니다: $item"
+    install -m 600 "$SAME_CELL_OUTPUT/$item" "$OUT/same-cell-$item"
+  done
+elif [[ -f $CHILD_DIR/same-cell-run.json && ! -L $CHILD_DIR/same-cell-run.json ]]; then
+  SAME_CELL_OUTPUT=$CHILD_DIR
+  for item in run.json session.json; do
+    [[ -f $CHILD_DIR/same-cell-$item && ! -L $CHILD_DIR/same-cell-$item ]] || fail "same-cell 증거가 없습니다: $item"
+    install -m 600 "$CHILD_DIR/same-cell-$item" "$OUT/same-cell-$item"
+  done
+  for item in normal-health.jsonl broker.log; do
+    [[ -f $CHILD_DIR/$item && ! -L $CHILD_DIR/$item ]] || fail "same-cell 증거가 없습니다: $item"
+    install -m 600 "$CHILD_DIR/$item" "$OUT/same-cell-$item"
+  done
+fi
+[[ $REQUIRE_SAME_CELL == 0 || -n $SAME_CELL_OUTPUT ]] || fail "필수 same-cell 증거가 없습니다"
 (( POST_CHILD_S == 0 )) || sleep "$POST_CHILD_S"
 stop_live
-python3 "$ROOT/tools/verify_live_e2e.py" "$OUT" "$SCENARIO" "$MODE" "$RUN_ID" "$CHILD_DIR" "$DETECTOR_COMMIT"
+LIVE_E2E_REQUIRE_SAME_CELL=$REQUIRE_SAME_CELL \
+  python3 "$ROOT/tools/verify_live_e2e.py" "$OUT" "$SCENARIO" "$MODE" "$RUN_ID" "$CHILD_DIR" "$DETECTOR_COMMIT"
 trap - EXIT INT TERM
 echo "완료됨: scenario=$SCENARIO mode=$MODE output=$OUT"

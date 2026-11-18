@@ -362,12 +362,17 @@ class BlindP5PhaseTests(unittest.TestCase):
         ready = self.root / "normal.ready"
         ran_ready = self.root / "ran.ready"
         attack_ready = self.root / "attack.ready"
+        attack_done = self.root / "attack.done"
+        release = self.root / "attack.release"
         ready.write_text("")
         ran_ready.write_text("")
+        release.write_text("")
         result, _ = self.execute(
             "external-ran", BLIND_MANAGE_DU="0", SAME_CELL_READY_FILE=str(ready),
             SAME_CELL_PRESTART="1", SAME_CELL_RAN_READY_FILE=str(ran_ready),
             SAME_CELL_ATTACK_READY_FILE=str(attack_ready),
+            SAME_CELL_ATTACK_DONE_FILE=str(attack_done),
+            SAME_CELL_RELEASE_FILE=str(release),
         )
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         events = self.events()
@@ -376,6 +381,7 @@ class BlindP5PhaseTests(unittest.TestCase):
         self.assertNotIn("du-stop", names)
         self.assertNotIn("du-restart", names)
         self.assertTrue(attack_ready.is_file())
+        self.assertTrue(attack_done.is_file())
         self.assertEqual([row["tun_suffix"] for row in events
                           if row["event"] == "ue_start"], ["0", "1"])
 

@@ -12,10 +12,12 @@ diff --git a/openair2/RRC/NR_UE/rrc_UE.c b/openair2/RRC/NR_UE/rrc_UE.c
  
  #include "rrc_defs.h"
  #include "rrc_proto.h"
-@@ -467,6 +471,40 @@ static void get_sib19_schedinfo(NR_UE_RRC_SI_INFO *SI_info, NR_SI_SchedulingInf
+@@ -467,6 +471,46 @@ static void get_sib19_schedinfo(NR_UE_RRC_SI_INFO *SI_info, NR_SI_SchedulingInf
    }
  }
  
++static bool auth_timeout_same_cell_gate_released[MAX_NUM_NR_UE_INST];
++
 +static bool auth_timeout_same_cell_gate_open(void)
 +{
 +  const char *path = getenv("OAI_AUTH_TIMEOUT_GATE_FILE");
@@ -43,17 +45,21 @@ diff --git a/openair2/RRC/NR_UE/rrc_UE.c b/openair2/RRC/NR_UE/rrc_UE.c
 +
 +static void auth_timeout_wait_same_cell_gate(int ue)
 +{
++  if (ue >= 0 && ue < MAX_NUM_NR_UE_INST && auth_timeout_same_cell_gate_released[ue])
++    return;
 +  while (!auth_timeout_same_cell_gate_open())
 +    usleep(100000);
 +  const unsigned phase_ms = auth_timeout_same_cell_phase_ms();
 +  if (phase_ms > 0 && ue >= 0 && ue < 10)
 +    usleep((useconds_t)phase_ms * (unsigned)(ue + 1) * 1000U);
++  if (ue >= 0 && ue < MAX_NUM_NR_UE_INST)
++    auth_timeout_same_cell_gate_released[ue] = true;
 +}
 +
  static void nr_rrc_process_sib1(NR_UE_RRC_INST_t *rrc, NR_UE_RRC_SI_INFO *SI_info, NR_SIB1_t *sib1)
  {
    if(g_log->log_component[NR_RRC].level >= OAILOG_DEBUG)
-@@ -533,4 +571,5 @@ static void nr_rrc_process_sib1(NR_UE_RRC_INST_t *rrc, NR_UE_RRC_SI_INFO *SI_in
+@@ -533,4 +577,5 @@ static void nr_rrc_process_sib1(NR_UE_RRC_INST_t *rrc, NR_UE_RRC_SI_INFO *SI_in
    nr_mac_rrc_message_t rrc_msg = {0};
    rrc_msg.payload_type = NR_MAC_RRC_CONFIG_SIB1;
    nr_mac_rrc_config_sib1_t *config_sib1 = &rrc_msg.payload.config_sib1;

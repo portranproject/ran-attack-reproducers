@@ -200,6 +200,7 @@ class SameCellContractTests(unittest.TestCase):
         self.assertLess(build.index('apply "$PATCH"'), build.index('apply "$SAME_CELL_GATE_PATCH"'))
         self.assertIn("return NB_UE_INST > nrue_get_ru_count();", patch)
         self.assertIn('getenv("OAI_AUTH_TIMEOUT_GATE_PHASE_MS")', gate)
+        self.assertIn("auth_timeout_same_cell_gate_released[ue]", gate)
         self.assertIn("auth_timeout_wait_same_cell_gate((int)rrc->ue_id)", gate)
 
     def test_common_broker_opens_the_ue_gate_only_after_attack_ack(self):

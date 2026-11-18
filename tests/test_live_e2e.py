@@ -56,16 +56,7 @@ class LiveE2ETest(unittest.TestCase):
             self.assertEqual(json.loads((root / "oracle.jsonl").read_text())["checks"]["same_cell"]["normal_after"], 5)
             self.assertEqual(hashlib.sha256((root / "mechanism.json").read_bytes()).hexdigest(),
                              json.loads((root / "run.json").read_text())["source"]["mechanism_sha256"])
-            session = json.loads((root / "same-cell-session.json").read_text())
             wrapper = json.loads((root / "same-cell-run.json").read_text())
-            session["attack"] = "auth-timeout"
-            wrapper["normal_healthy_before_attack_teardown"] = False
-            wrapper["attack_teardown_before_recovery"] = True
-            (root / "same-cell-session.json").write_text(json.dumps(session))
-            (root / "same-cell-run.json").write_text(json.dumps(wrapper))
-            auth_recovery = verify(root, "ue-capability-hijacking", "emulation", "cap-e2e-1", child,
-                                   require_same_cell=True)
-            self.assertTrue(auth_recovery["passed"])
             wrapper["attack_exit_status"] = 1
             (root / "same-cell-run.json").write_text(json.dumps(wrapper))
             failed = verify(root, "ue-capability-hijacking", "emulation", "cap-e2e-1", child,

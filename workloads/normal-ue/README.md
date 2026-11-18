@@ -53,14 +53,12 @@ cold-start한다. 따라서 한 실행 중 RF stream을 갈아 끼우는 방식�
 - 정상 워크로드용 OAI에는 `patch/normal-probe-phase.patch`를 적용한다. 공격 UE와 TUN 이름이 충돌하지 않도록 same-cell
   실행용 binary에는 `patch/normal-tun-suffix.patch`도 적용한다.
 - `status`의 `healthy`는 요청 수만큼 TUN과 gateway ping이 모두 성공한 경우다.
-- same-cell 자격은 공격 전과 종료 단계 정상 UE 5대의 Registration·PDU·gateway ping을
-  각각 기록한다. 공격 중 저하는 별도 효과이며 종료 단계 5/5가 아니면 정상 UE 동반 자격에
+- same-cell 자격은 공격 전과 종료 직전 정상 UE 5대의 Registration·PDU·gateway ping을
+  각각 기록한다. 공격 중 저하는 별도 효과이며 종료 직전 5/5가 아니면 정상 UE 동반 자격에
   실패한다.
 - 공격 runner가 목표 이벤트 생성을 완료하면 컨트롤러가 해당 uplink slot을 먼저 닫고 정상
   UE 5/5 회복을 확인한 뒤 공격 UE 종료를 허가한다. 공격 UE가 먼저 사라져 broker 전체가
   멈추는 종료 효과를 서비스 영향으로 오판하지 않는다.
-- 인증 미응답형은 예외로 공격 UE 10대의 재시도를 종료하고 같은 endpoint를 무송신 clock
-  placeholder로 교체한 뒤 정상 UE 회복을 측정하며 `attack_teardown_before_recovery=true`를 남긴다.
 - p5 cold-start에서 5/5 수렴까지 12.7~62.3초가 걸렸으므로 시작 직후의 `degraded`는
   최종 실패가 아니다.
 

@@ -313,18 +313,17 @@ start_normal_group() {
   record_pid normal "$!"
 }
 start_placeholder_group() {
-  local generation=${1:-1} config=${2:-$PLACEHOLDER_CFG} slot_count=${3:-$ATTACK_SLOTS}
-  local endpoint_offset=${4:-0} role=${5:-placeholder-group} pid endpoint
+  local generation=${1:-1} pid endpoint
   normal_args; rss_args
-  setsid env RSS_SHARE_NUE="$slot_count" "$NORMAL_UE_ATTACK_BIN" -O "$config" \
-    "${NORMAL_ARGS[@]}" "${RSS_ARGS[@]}" --num-ues "$slot_count" --rss.max_duration_s 0 \
-    --rss.honor_reject 0 --rss.msg4_wait 1 --rss.probe_ues "$slot_count" --rss.probe_delay_ms 86400000 \
+  setsid env RSS_SHARE_NUE="$ATTACK_SLOTS" "$NORMAL_UE_ATTACK_BIN" -O "$PLACEHOLDER_CFG" \
+    "${NORMAL_ARGS[@]}" "${RSS_ARGS[@]}" --num-ues "$ATTACK_SLOTS" --rss.max_duration_s 0 \
+    --rss.honor_reject 0 --rss.msg4_wait 1 --rss.probe_ues "$ATTACK_SLOTS" --rss.probe_delay_ms 86400000 \
     --rss.probe_ra_only 0 --rss.probe_interval_ms 1000 --rss.phase_ms 0 \
     --rss.run_id "pg-$generation" --rss.log_file "$RUN_OUT/placeholders/group-$generation.jsonl" \
     >>"$RUN_OUT/placeholders/group.log" 2>&1 </dev/null 9>&- &
   pid=$!
-  record_pid "$role" "$pid"
-  for ((endpoint=endpoint_offset + 1; endpoint<=endpoint_offset + slot_count; endpoint++)); do
+  record_pid placeholder-group "$pid"
+  for ((endpoint=1; endpoint<=ATTACK_SLOTS; endpoint++)); do
     wait_process_port "$pid" "$((2001 + 100 * endpoint))" \
       || fail "placeholder group endpoint $endpoint가 준비되기 전에 프로세스가 종료되거나 시간 초과했습니다"
   done
@@ -382,13 +381,6 @@ if [[ $ACTION == run ]]; then
   printf '%s\n' "$RUN_OUT" >"$STATE/run_root"
   RUNTIME_CFG=$(SAME_CELL_NORMAL_STATE_DIR="$STATE" NORMAL_UE_ZMQ_ENDPOINT_OFFSET="$ATTACK_SLOTS" \
     "$NORMAL_CTL" prepare --config "$CONF" --count "$COUNT")
-  if [[ $ATTACK == auth-timeout ]]; then
-    mkdir -m 700 "$STATE/placeholders" "$RUN_OUT/placeholders"
-    python3 "$ROOT/reproducers/authentication-timeout-exhaustion/analysis/multi_ru_config.py" \
-      "$NORMAL_UE_CFG" "$STATE/placeholders/group-1.conf" 5 0
-    python3 "$ROOT/reproducers/authentication-timeout-exhaustion/analysis/multi_ru_config.py" \
-      "$NORMAL_UE_CFG" "$STATE/placeholders/group-2.conf" 5 5
-  fi
   resolve_pdu_session_id
 
   ENDPOINTS_FILE="$STATE/attack-endpoints.txt"
@@ -408,9 +400,6 @@ if [[ $ACTION == run ]]; then
     local status=$? pid
     trap - EXIT INT TERM
     [[ -z $ATTACK_PID ]] || stop_group "$ATTACK_PID"
-    for role in placeholder-group placeholder-group-1 placeholder-group-2; do
-      pid=$(owned_pid "$role" 2>/dev/null || true); [[ -z $pid ]] || stop_group "$pid"
-    done
     pid=$(owned_pid broker 2>/dev/null || true); [[ -z $pid ]] || stop_group "$pid"
     pid=$(owned_pid normal 2>/dev/null || true); [[ -z $pid ]] || stop_group "$pid"
     pid=$(owned_pid du 2>/dev/null || true); [[ -z $pid ]] || stop_group "$pid"
@@ -503,8 +492,6 @@ if [[ $ACTION == run ]]; then
     "$RUN_ID" "$ATTACK" "$COUNT" "$ATTACK_SLOTS" >"$RUN_OUT/session.json"
 
   NORMAL_HEALTH_BEFORE_TEARDOWN=null
-  ATTACK_TEARDOWN_BEFORE_RECOVERY=false
-  ATTACK_STATUS=0
   if [[ $ATTACK != uplink ]]; then
     attack_wait_started=$SECONDS
     until [[ -f $STATE/attack.done && ! -L $STATE/attack.done ]]; do
@@ -516,42 +503,22 @@ if [[ $ACTION == run ]]; then
       sleep 1
     done
     select_broker standby || fail "완료된 공격 slot 비활성화에 실패했습니다"
-    if [[ $ATTACK == auth-timeout ]]; then
-      ( set -o noclobber; : >"$STATE/attack.release" )
-      attack_exit_started=$SECONDS
-      while is_running "$ATTACK_PID"; do
-        (( SECONDS - attack_exit_started < SAME_CELL_ATTACK_TIMEOUT_S )) \
-          || fail "공격 runner 종료가 ${SAME_CELL_ATTACK_TIMEOUT_S}초를 초과했습니다"
-        sleep 1
-      done
-      if wait "$ATTACK_PID"; then ATTACK_STATUS=0; else ATTACK_STATUS=$?; fi
-      ATTACK_PID=""
-      start_placeholder_group 1 "$STATE/placeholders/group-1.conf" 5 0 placeholder-group-1
-      start_placeholder_group 2 "$STATE/placeholders/group-2.conf" 5 5 placeholder-group-2
-      ATTACK_TEARDOWN_BEFORE_RECOVERY=true
-    fi
     wait_healthy "$COUNT" "$SAME_CELL_RECOVERY_TIMEOUT_S" \
-      || fail "공격 종료 단계에서 normal UE가 $COUNT/$COUNT로 회복되지 않았습니다"
+      || fail "공격 UE clock 유지 중 normal UE가 $COUNT/$COUNT가 아닙니다"
     record_health after
-    if [[ $ATTACK == auth-timeout ]]; then
-      NORMAL_HEALTH_BEFORE_TEARDOWN=false
-    else
-      NORMAL_HEALTH_BEFORE_TEARDOWN=true
-      ( set -o noclobber; : >"$STATE/attack.release" )
-    fi
+    NORMAL_HEALTH_BEFORE_TEARDOWN=true
+    ( set -o noclobber; : >"$STATE/attack.release" )
   fi
-  if [[ -n $ATTACK_PID ]]; then
-    attack_exit_started=$SECONDS
-    while is_running "$ATTACK_PID"; do
-      (( SECONDS - attack_exit_started < SAME_CELL_ATTACK_TIMEOUT_S )) \
-        || fail "공격 runner 종료가 ${SAME_CELL_ATTACK_TIMEOUT_S}초를 초과했습니다"
-      [[ $ATTACK != uplink ]] \
-        || { printf '%s\t%s\n' "$(date +%s%N)" "$(health "$COUNT")" >>"$RUN_OUT/normal-health.tsv"; record_health during; }
-      sleep 1
-    done
-    if wait "$ATTACK_PID"; then ATTACK_STATUS=0; else ATTACK_STATUS=$?; fi
-    ATTACK_PID=""
-  fi
+  attack_exit_started=$SECONDS
+  while is_running "$ATTACK_PID"; do
+    (( SECONDS - attack_exit_started < SAME_CELL_ATTACK_TIMEOUT_S )) \
+      || fail "공격 runner 종료가 ${SAME_CELL_ATTACK_TIMEOUT_S}초를 초과했습니다"
+    [[ $ATTACK != uplink ]] \
+      || { printf '%s\t%s\n' "$(date +%s%N)" "$(health "$COUNT")" >>"$RUN_OUT/normal-health.tsv"; record_health during; }
+    sleep 1
+  done
+  if wait "$ATTACK_PID"; then ATTACK_STATUS=0; else ATTACK_STATUS=$?; fi
+  ATTACK_PID=""
   select_broker standby || true
   CHILD_OUTPUT=$(python3 - "$RUN_OUT/attack.stdout" <<'PY'
 import pathlib, re, sys
@@ -563,9 +530,9 @@ PY
   [[ -n $CHILD_OUTPUT && -d $CHILD_OUTPUT && ! -L $CHILD_OUTPUT ]] \
     || fail "공격 runner가 안전한 output 경로를 남기지 않았습니다"
   printf '%s\n' "$CHILD_OUTPUT" >"$RUN_OUT/child-output.txt"
-  printf '{"schema":"same-cell.run.v3","run_id":"%s","attack":"%s","normal_ues":%d,"normal_shared_ru":false,"attack_slots":%d,"du_restarted_during_attack":false,"normal_healthy_before_attack_teardown":%s,"attack_teardown_before_recovery":%s,"direct_detector_input":false,"ue_to_ran_path_required":true,"attack_exit_status":%d}\n' \
+  printf '{"schema":"same-cell.run.v3","run_id":"%s","attack":"%s","normal_ues":%d,"normal_shared_ru":false,"attack_slots":%d,"du_restarted_during_attack":false,"normal_healthy_before_attack_teardown":%s,"direct_detector_input":false,"ue_to_ran_path_required":true,"attack_exit_status":%d}\n' \
     "$RUN_ID" "$ATTACK" "$COUNT" "$ATTACK_SLOTS" \
-    "$NORMAL_HEALTH_BEFORE_TEARDOWN" "$ATTACK_TEARDOWN_BEFORE_RECOVERY" "$ATTACK_STATUS" >"$RUN_OUT/run.json"
+    "$NORMAL_HEALTH_BEFORE_TEARDOWN" "$ATTACK_STATUS" >"$RUN_OUT/run.json"
   (( ATTACK_STATUS == 0 )) || fail "공격 runner가 실패했습니다: status=$ATTACK_STATUS"
   if [[ $ATTACK == uplink-credential-flood || $ATTACK == nas-counter-desync ]]; then
     embed_self_live_evidence || fail "self-live same-cell 증거 봉인에 실패했습니다"

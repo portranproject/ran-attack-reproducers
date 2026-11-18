@@ -171,9 +171,6 @@ def verify(root: Path, scenario: str, mode: str, run_id: str, child: Path,
         after = {row.get("ue") for row in health if row.get("phase") == "after"
                  and row.get("tun_ok") is True and row.get("ping_ok") is True}
         expected_ues = set(range(1, 6))
-        recovery_order_ok = (wrapper.get("normal_healthy_before_attack_teardown") is True
-                             or (session.get("attack") == "auth-timeout"
-                                 and wrapper.get("attack_teardown_before_recovery") is True))
         same_cell_ok = (valid_rows and session.get("schema") == "same-cell.session.v2"
                         and session.get("run_id") == run_id and session.get("normal_ues") == 5
                         and session.get("clocked_attack_slots") is True
@@ -181,11 +178,10 @@ def verify(root: Path, scenario: str, mode: str, run_id: str, child: Path,
                         and wrapper.get("run_id") == run_id
                         and wrapper.get("direct_detector_input") is False
                         and wrapper.get("ue_to_ran_path_required") is True
-                        and recovery_order_ok
+                        and wrapper.get("normal_healthy_before_attack_teardown") is True
                         and wrapper.get("attack_exit_status") == 0
                         and before == expected_ues and after == expected_ues)
         same_cell_summary = {"normal_before": len(before), "normal_after": len(after),
-                             "attack_teardown_before_recovery": wrapper.get("attack_teardown_before_recovery"),
                              "direct_detector_input": wrapper.get("direct_detector_input"),
                              "ue_to_ran_path_required": wrapper.get("ue_to_ran_path_required")}
 

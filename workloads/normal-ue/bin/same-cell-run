@@ -117,6 +117,8 @@ done
   || fail "normal/placeholder UE binary와 controller가 실행 가능해야 합니다"
 grep -Faq OAI_NORMAL_TUN_SUFFIX "$NORMAL_UE_BIN" \
   || fail "normal UE binary에 normal-tun-suffix.patch가 없습니다"
+grep -Faq NORMAL_UE_RECOVERY "$NORMAL_UE_BIN" \
+  || fail "normal UE binary에 연결 회복 패치가 없습니다"
 [[ -n $NORMAL_UE_GNB_STOP_CMD && -n $NORMAL_UE_GNB_RESTART_CMD && -n $NORMAL_UE_GNB_READY_CMD ]] \
   || fail "gNB stop/restart/ready 명령이 필요합니다"
 grep -Eq 'tx_port=tcp://[^, ]*:2000([, ]|$)' "$NORMAL_UE_GNB_CONFIG" \
@@ -496,6 +498,7 @@ if [[ $ACTION == run ]]; then
     "$RUN_ID" "$ATTACK" "$COUNT" "$ATTACK_SLOTS" >"$RUN_OUT/session.json"
 
   NORMAL_HEALTH_BEFORE_TEARDOWN=null
+  NORMAL_RECOVERY_SIGNAL_COUNT=0
   if [[ $ATTACK != uplink ]]; then
     attack_wait_started=$SECONDS
     until [[ -f $STATE/attack.done && ! -L $STATE/attack.done ]]; do
@@ -507,6 +510,10 @@ if [[ $ACTION == run ]]; then
       sleep 1
     done
     select_broker retire || fail "완료된 공격 slot 분리에 실패했습니다"
+    if [[ $(health "$COUNT") != "$COUNT" ]]; then
+      kill -USR1 "$NORMAL_PID" || fail "normal UE 재등록 신호 전송에 실패했습니다"
+      NORMAL_RECOVERY_SIGNAL_COUNT=1
+    fi
     wait_healthy "$COUNT" "$SAME_CELL_RECOVERY_TIMEOUT_S" \
       || fail "공격 UE clock 유지 중 normal UE가 $COUNT/$COUNT가 아닙니다"
     record_health after
@@ -534,9 +541,9 @@ PY
   [[ -n $CHILD_OUTPUT && -d $CHILD_OUTPUT && ! -L $CHILD_OUTPUT ]] \
     || fail "공격 runner가 안전한 output 경로를 남기지 않았습니다"
   printf '%s\n' "$CHILD_OUTPUT" >"$RUN_OUT/child-output.txt"
-  printf '{"schema":"same-cell.run.v3","run_id":"%s","attack":"%s","normal_ues":%d,"normal_shared_ru":false,"attack_slots":%d,"du_restarted_during_attack":false,"normal_healthy_before_attack_teardown":%s,"direct_detector_input":false,"ue_to_ran_path_required":true,"attack_exit_status":%d}\n' \
+  printf '{"schema":"same-cell.run.v3","run_id":"%s","attack":"%s","normal_ues":%d,"normal_shared_ru":false,"attack_slots":%d,"du_restarted_during_attack":false,"normal_recovery_signal_count":%d,"normal_healthy_before_attack_teardown":%s,"direct_detector_input":false,"ue_to_ran_path_required":true,"attack_exit_status":%d}\n' \
     "$RUN_ID" "$ATTACK" "$COUNT" "$ATTACK_SLOTS" \
-    "$NORMAL_HEALTH_BEFORE_TEARDOWN" "$ATTACK_STATUS" >"$RUN_OUT/run.json"
+    "$NORMAL_RECOVERY_SIGNAL_COUNT" "$NORMAL_HEALTH_BEFORE_TEARDOWN" "$ATTACK_STATUS" >"$RUN_OUT/run.json"
   (( ATTACK_STATUS == 0 )) || fail "공격 runner가 실패했습니다: status=$ATTACK_STATUS"
   if [[ $ATTACK == uplink-credential-flood || $ATTACK == nas-counter-desync ]]; then
     embed_self_live_evidence || fail "self-live same-cell 증거 봉인에 실패했습니다"

@@ -9,16 +9,11 @@ diff --git a/openair2/RRC/NR_UE/rrc_UE.c b/openair2/RRC/NR_UE/rrc_UE.c
  
  #include "rrc_defs.h"
  #include "rrc_proto.h"
-@@ -534,6 +535,9 @@ static void nr_rrc_process_sib1(NR_UE_RRC_INST_t *rrc, NR_UE_RRC_SI_INFO *SI_in
-   nr_mac_rrc_config_sib1_t *config_sib1 = &rrc_msg.payload.config_sib1;
-   config_sib1->sib1 = sib1;
-   config_sib1->can_start_ra = !rrc->is_NTN_UE;
+@@ -537,1 +538,4 @@ static void nr_rrc_process_sib1(NR_UE_RRC_INST_t *rrc, NR_UE_RRC_SI_INFO *SI_in
 +  const char *same_cell_gate = getenv("OAI_AUTH_TIMEOUT_GATE_FILE");
 +  if (same_cell_gate && same_cell_gate[0] != '\0')
 +    config_sib1->can_start_ra = false;
    nr_rrc_send_msg_to_mac(rrc, &rrc_msg);
- }
- 
 diff --git a/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c b/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c
 --- a/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c
 +++ b/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c

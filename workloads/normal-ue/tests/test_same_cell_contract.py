@@ -205,6 +205,8 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn('auth_timeout_same_cell_ms("OAI_AUTH_TIMEOUT_GATE_STEP_MS", 1000)', gate)
         self.assertIn("auth_timeout_same_cell_ra_allowed(mac->ue_id)", gate)
         self.assertIn("mac->state == UE_RECEIVING_SIB && mac->current_UL_BWP", gate)
+        self.assertIn("pthread_mutex_lock(&auth_timeout_gate_mutex)", gate)
+        self.assertIn("AUTH_TIMEOUT_RA_GATE event=released", gate)
         self.assertNotIn("usleep", gate)
 
     def test_common_broker_opens_the_ue_gate_only_after_attack_ack(self):

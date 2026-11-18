@@ -31,12 +31,13 @@ diff --git a/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c b/openair2/LAYER2/NR_MA
  
  /* exe */
  #include <common/utils/nr/nr_common.h>
-@@ -2560,6 +2565,54 @@ static bool nr_ue_get_sdu(NR_UE_MAC_INST_t *mac,
+@@ -2560,6 +2565,65 @@ static bool nr_ue_get_sdu(NR_UE_MAC_INST_t *mac,
    return true; // success if we got at least one sdu
  }
  
-+static uint64_t auth_timeout_gate_open_ms[MAX_NUM_NR_UE_INST];
-+static uint64_t auth_timeout_gate_poll_ms[MAX_NUM_NR_UE_INST];
++static uint64_t auth_timeout_gate_open_ms;
++static uint64_t auth_timeout_gate_poll_ms;
++static pthread_mutex_t auth_timeout_gate_mutex = PTHREAD_MUTEX_INITIALIZER;
 +
 +static uint64_t auth_timeout_monotonic_ms(void)
 +{
@@ -63,30 +64,40 @@ diff --git a/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c b/openair2/LAYER2/NR_MA
 +  if (!path || path[0] == '\0' || ue < 0 || ue >= MAX_NUM_NR_UE_INST)
 +    return false;
 +  const uint64_t now = auth_timeout_monotonic_ms();
-+  if (auth_timeout_gate_open_ms[ue] == 0) {
-+    if (now - auth_timeout_gate_poll_ms[ue] < 20)
-+      return false;
-+    auth_timeout_gate_poll_ms[ue] = now;
++  verifyMutex(pthread_mutex_lock(&auth_timeout_gate_mutex));
++  if (auth_timeout_gate_open_ms == 0 && now - auth_timeout_gate_poll_ms >= 20) {
++    auth_timeout_gate_poll_ms = now;
 +    FILE *gate = fopen(path, "r");
-+    if (!gate)
-+      return false;
-+    char mode[6];
-+    const bool open = fread(mode, 1, sizeof(mode), gate) == sizeof(mode)
-+                      && memcmp(mode, "attack", sizeof(mode)) == 0;
-+    fclose(gate);
-+    if (!open)
-+      return false;
-+    auth_timeout_gate_open_ms[ue] = now;
++    if (gate) {
++      char mode[6];
++      const bool open = fread(mode, 1, sizeof(mode), gate) == sizeof(mode)
++                        && memcmp(mode, "attack", sizeof(mode)) == 0;
++      fclose(gate);
++      if (open)
++        auth_timeout_gate_open_ms = now;
++    }
 +  }
++  const uint64_t opened_ms = auth_timeout_gate_open_ms;
++  verifyMutex(pthread_mutex_unlock(&auth_timeout_gate_mutex));
++  if (opened_ms == 0)
++    return false;
 +  const unsigned base_ms = auth_timeout_same_cell_ms("OAI_AUTH_TIMEOUT_GATE_BASE_MS", 1000);
 +  const unsigned step_ms = auth_timeout_same_cell_ms("OAI_AUTH_TIMEOUT_GATE_STEP_MS", 1000);
-+  return now - auth_timeout_gate_open_ms[ue] >= base_ms + (unsigned)ue * step_ms;
++  const unsigned target_ms = base_ms + (unsigned)ue * step_ms;
++  if (now - opened_ms < target_ms)
++    return false;
++  LOG_I(NR_MAC,
++        "AUTH_TIMEOUT_RA_GATE event=released ue=%d waited_ms=%llu target_ms=%u\n",
++        ue,
++        (unsigned long long)(now - opened_ms),
++        target_ms);
++  return true;
 +}
 +
  void nr_ue_ul_scheduler(NR_UE_MAC_INST_t *mac, nr_uplink_indication_t *ul_info)
  {
    int cc_id = ul_info->cc_id;
-@@ -2567,6 +2620,9 @@ void nr_ue_ul_scheduler(NR_UE_MAC_INST_t *mac, nr_uplink_indication_t *ul_info)
+@@ -2567,6 +2631,9 @@ void nr_ue_ul_scheduler(NR_UE_MAC_INST_t *mac, nr_uplink_indication_t *ul_info)
    slot_t slot_tx = ul_info->slot;
    RA_config_t *ra = &mac->ra;
  

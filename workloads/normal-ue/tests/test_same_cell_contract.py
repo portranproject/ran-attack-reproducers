@@ -147,6 +147,8 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn("TOTAL_ENDPOINTS <= 15", run_section)
         self.assertIn("TOTAL_ENDPOINTS=$((ATTACK_SLOTS + COUNT))", source)
         self.assertIn("auth-timeout) ATTACK_SLOTS=10", source)
+        self.assertIn("SAME_CELL_AUTH_RECOVERY_TIMEOUT_S:-240", source)
+        self.assertIn("SAME_CELL_AUTH_READY_TIMEOUT_S:-300", source)
         normal_group = source.split("start_normal_group()", 1)[1].split("start_placeholder_group()", 1)[0]
         self.assertIn("RSS_SHARE_NUE=\"$COUNT\"", normal_group)
         self.assertNotIn("--zmq.", normal_group)

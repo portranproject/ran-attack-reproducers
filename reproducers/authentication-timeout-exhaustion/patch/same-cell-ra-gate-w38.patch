@@ -90,8 +90,8 @@ diff --git a/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c b/openair2/LAYER2/NR_MA
 +  verifyMutex(pthread_mutex_unlock(&auth_timeout_gate_mutex));
 +  if (opened_ms == 0)
 +    return false;
-+  const unsigned base_ms = auth_timeout_same_cell_ms("OAI_AUTH_TIMEOUT_GATE_BASE_MS", 1000);
-+  const unsigned step_ms = auth_timeout_same_cell_ms("OAI_AUTH_TIMEOUT_GATE_STEP_MS", 1000);
++  const unsigned base_ms = auth_timeout_same_cell_ms("OAI_AUTH_TIMEOUT_GATE_BASE_MS", 10000);
++  const unsigned step_ms = auth_timeout_same_cell_ms("OAI_AUTH_TIMEOUT_GATE_STEP_MS", 10000);
 +  const unsigned target_ms = base_ms + (unsigned)ue * step_ms;
 +  if (now - opened_ms < target_ms)
 +    return false;

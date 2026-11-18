@@ -187,6 +187,16 @@ class ControllerTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("workloads/normal-ue/conf/p1.conf", result.stdout)
 
+    def test_self_live_runners_use_profile_telemetry_identity(self):
+        for relative, old_node in (
+            ("reproducers/uplink-dos/bin/uplink-credential-flood-run", "p5-l321"),
+            ("reproducers/nas-counter-desynchronization/bin/nas-counter-desync-run", "p5-l306"),
+        ):
+            source = (ROOT / relative).read_text()
+            self.assertIn("PROFILE_TELEMETRY_NODE=${CU_TELEMETRY_NODE:-}", source)
+            self.assertIn('--node "$telemetry_node"', source)
+            self.assertNotIn(f"--node {old_node}", source)
+
     def test_same_cell_active_run_requires_enable(self):
         result = self.run_ctl(
             "same-cell", "run", "blind-dos", "--mode", "attack", "--dry-run",

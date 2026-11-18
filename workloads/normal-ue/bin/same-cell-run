@@ -76,6 +76,7 @@ NORMAL_UE_BROKER_PY=${NORMAL_UE_BROKER_PY:-$ROOT/workloads/normal-ue/tools/same_
 NORMAL_UE_PHASE_MS=${NORMAL_UE_PHASE_MS:-1000}
 NORMAL_UE_RETRY_MS=${NORMAL_UE_RETRY_MS:-5000}
 NORMAL_UE_PDU_SESSION_ID=${NORMAL_UE_PDU_SESSION_ID:-}
+NORMAL_UE_GATEWAY=${NORMAL_UE_GATEWAY:-10.45.1.1}
 NORMAL_UE_GNB_READY_CMD=${NORMAL_UE_GNB_READY_CMD:-}
 NORMAL_UE_GNB_CONFIG=${NORMAL_UE_GNB_CONFIG:-}
 NORMAL_UE_GNB_LOG=${NORMAL_UE_GNB_LOG:-/tmp/odu.log}
@@ -210,7 +211,7 @@ health() {
   for ((i=1; i<=count; i++)); do
     iface="oaitun_ue${i}p${NORMAL_UE_PDU_SESSION_ID}"
     "$IP_CMD" -4 -o addr show "$iface" >/dev/null 2>&1 \
-      && "$PING_CMD" -n -I "$iface" -c 1 -W 1 10.45.1.1 >/dev/null 2>&1 \
+      && "$PING_CMD" -n -I "$iface" -c 1 -W 1 "$NORMAL_UE_GATEWAY" >/dev/null 2>&1 \
       && ok=$((ok + 1)) || true
   done
   printf '%s\n' "$ok"
@@ -223,7 +224,7 @@ record_health() {
     tun_ok=false; ping_ok=false
     if "$IP_CMD" -4 -o addr show "$iface" >/dev/null 2>&1; then
       tun_ok=true
-      "$PING_CMD" -n -I "$iface" -c 1 -W 1 10.45.1.1 >/dev/null 2>&1 && ping_ok=true || true
+      "$PING_CMD" -n -I "$iface" -c 1 -W 1 "$NORMAL_UE_GATEWAY" >/dev/null 2>&1 && ping_ok=true || true
     fi
     printf '{"schema":"same-cell.normal-health.v1","run_id":"%s","phase":"%s","realtime_ns":%s,"ue":%d,"interface":"%s","tun_ok":%s,"ping_ok":%s}\n' \
       "$RUN_ID" "$phase" "$timestamp" "$i" "$iface" "$tun_ok" "$ping_ok" \

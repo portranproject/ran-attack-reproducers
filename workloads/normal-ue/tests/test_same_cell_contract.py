@@ -138,6 +138,7 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn('select_broker recover "${ATTACK_SLOT_IDS[@]}"', run_section)
         broker = source.split("select_broker()", 1)[1].split("if [[ $ACTION == run ]]", 1)[0]
         self.assertIn("broker_mode=attack", broker)
+        self.assertIn("printf 'recover", broker)
         self.assertNotIn("$mode\" \"$slots", broker)
         self.assertIn("normal_healthy_before_attack_teardown", run_section)
         placeholder_group = source.split("start_placeholder_group()", 1)[1].split("stop_placeholder_group()", 1)[0]
@@ -190,6 +191,9 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn('memcmp(mode, "attack", sizeof(mode)) == 0', patch)
         self.assertLess(patch.index("if (!auth_timeout_gate_open())"),
                         patch.index('auth_timeout_enabled("OAI_AUTH_TIMEOUT_WITHHOLD")'))
+        runner = (ROOT / "reproducers/authentication-timeout-exhaustion/bin/auth-stall-cell-run").read_text()
+        self.assertIn('grep -Fxq recover "$SAME_CELL_UE_GATE_FILE"', runner)
+        self.assertIn('kill -USR1 "$pid"', runner)
         self.assertIn('uplink-credential-flood) ATTACK_SLOTS=1', SCRIPT.read_text())
 
     def test_auth_timeout_uses_ten_independent_ru_attack_slots(self):

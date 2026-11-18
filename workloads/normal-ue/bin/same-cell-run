@@ -342,8 +342,10 @@ select_broker() {
   local mode=$1 broker_mode=$1 before started=$SECONDS count slots=""
   shift
   [[ $mode == placeholder || $mode == standby || $mode == warmup || $mode == attack || $mode == recover ]] || return 1
-  if [[ $mode == placeholder || $mode == standby || $mode == recover ]]; then
+  if [[ $mode == placeholder || $mode == standby ]]; then
     printf 'standby\n' >"$STATE/attack-ue-gate"
+  elif [[ $mode == recover ]]; then
+    printf 'recover\n' >"$STATE/attack-ue-gate"
   fi
   [[ $mode != recover ]] || broker_mode=attack
   if [[ $broker_mode == warmup || $broker_mode == attack ]]; then

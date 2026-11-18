@@ -30,7 +30,15 @@ diff --git a/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c b/openair2/LAYER2/NR_MA
  
  /* exe */
  #include <common/utils/nr/nr_common.h>
-@@ -2560,6 +2564,54 @@ static bool nr_ue_get_sdu(NR_UE_MAC_INST_t *mac,
+@@ -27,6 +31,7 @@
+ #include <executables/softmodem-common.h>
+ #include "openair2/LAYER2/nr_rlc/nr_rlc_oai_api.h"
+ #include "RRC/NR_UE/L2_interface_ue.h"
++#include "nr-uesoftmodem.h"
+ 
+ //#define SRS_DEBUG
+ #define verifyMutex(a)                                                \
+@@ -2560,6 +2565,54 @@ static bool nr_ue_get_sdu(NR_UE_MAC_INST_t *mac,
    return true; // success if we got at least one sdu
  }
  
@@ -85,7 +93,7 @@ diff --git a/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c b/openair2/LAYER2/NR_MA
  void nr_ue_ul_scheduler(NR_UE_MAC_INST_t *mac, nr_uplink_indication_t *ul_info)
  {
    int cc_id = ul_info->cc_id;
-@@ -2567,6 +2619,9 @@ void nr_ue_ul_scheduler(NR_UE_MAC_INST_t *mac, nr_uplink_indication_t *ul_info)
+@@ -2567,6 +2620,9 @@ void nr_ue_ul_scheduler(NR_UE_MAC_INST_t *mac, nr_uplink_indication_t *ul_info)
    slot_t slot_tx = ul_info->slot;
    RA_config_t *ra = &mac->ra;
  

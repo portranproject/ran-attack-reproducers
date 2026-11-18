@@ -8,7 +8,7 @@
       "tools/p5-live-e2e": "98652c2f713041e497814f8dce6cf935c4dc43a3cb011fc99b2502290fe0532e",
       "tools/verify_live_e2e.py": "f8dbffcfc7683e35c9e1b420c0cba63103aa0da16d41a46fb49684f07a56ac73",
       "workloads/normal-ue/bin/normal-ue": "6ae72f3d92b6e627fc9b80d75fb63eb7e9b1401fc1a6156351dd79255266c008",
-      "workloads/normal-ue/bin/same-cell-run": "030c6a87e9a0a29046f610e7a8443cfb245f8cdec78009027e0279bdc3e3422f",
+      "workloads/normal-ue/bin/same-cell-run": "187975d72e63141e268bb0f3fd4bfc5a97f2972914423f50482caa7b86aa5cc5",
       "workloads/normal-ue/tools/same_cell_broker.py": "c83b33808719f1994ef7d901cc350c7779e31433c7835f0463c534c3acb08050",
       "workloads/normal-ue/patch/normal-multi-ru.patch": "422c6eabcc86f7c3e2d9171ef5d08b882f0a59bccda0a4782a4acb6a6a0103fa",
       "reproducers/rrc-signaling-storm/bin/rss-broker-witness": "d796d55c5ae1d56fbe8b80ca81070e987eff9b575732f8f3370f0c0cb23b9c90",

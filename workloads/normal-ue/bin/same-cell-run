@@ -178,14 +178,15 @@ wait_port() {
     sleep .2
   done
 }
-wait_attack_port() {
-  local port=$1 started=$SECONDS
+wait_process_port() {
+  local pid=$1 port=$2 started=$SECONDS
   until port_ready "$port"; do
-    is_running "$ATTACK_PID" || return 2
+    is_running "$pid" || return 2
     (( SECONDS - started < SAME_CELL_ENDPOINT_TIMEOUT_S )) || return 1
     sleep .2
   done
 }
+wait_attack_port() { wait_process_port "$ATTACK_PID" "$1"; }
 wait_port_free() {
   local port=$1 started=$SECONDS
   while port_ready "$port"; do
@@ -324,7 +325,8 @@ start_placeholder_group() {
   pid=$!
   record_pid "$role" "$pid"
   for ((endpoint=endpoint_offset + 1; endpoint<=endpoint_offset + slot_count; endpoint++)); do
-    wait_port "$((2001 + 100 * endpoint))" || fail "placeholder group endpoint $endpoint가 준비되지 않았습니다"
+    wait_process_port "$pid" "$((2001 + 100 * endpoint))" \
+      || fail "placeholder group endpoint $endpoint가 준비되기 전에 프로세스가 종료되거나 시간 초과했습니다"
   done
 }
 stop_placeholder_group() {

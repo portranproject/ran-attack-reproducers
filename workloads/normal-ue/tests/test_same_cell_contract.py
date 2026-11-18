@@ -142,6 +142,8 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn('"$STATE/placeholders/group-2.conf" 5 5', run_section)
         self.assertIn("placeholder-group-1", run_section)
         self.assertIn("placeholder-group-2", run_section)
+        placeholder_group = source.split("start_placeholder_group()", 1)[1].split("stop_placeholder_group()", 1)[0]
+        self.assertIn('wait_process_port "$pid"', placeholder_group)
         self.assertIn('if [[ $ATTACK != uplink ]]; then', run_section)
         self.assertIn("TOTAL_ENDPOINTS <= 15", run_section)
         self.assertIn("TOTAL_ENDPOINTS=$((ATTACK_SLOTS + COUNT))", source)

@@ -203,7 +203,8 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn("return NB_UE_INST > nrue_get_ru_count();", patch)
         self.assertIn('auth_timeout_same_cell_ms("OAI_AUTH_TIMEOUT_GATE_BASE_MS", 1000)', gate)
         self.assertIn('auth_timeout_same_cell_ms("OAI_AUTH_TIMEOUT_GATE_STEP_MS", 1000)', gate)
-        self.assertIn("auth_timeout_same_cell_ra_allowed((int)rrc->ue_id)", gate)
+        self.assertIn("auth_timeout_same_cell_ra_allowed(mac->ue_id)", gate)
+        self.assertIn("mac->state == UE_RECEIVING_SIB && mac->current_UL_BWP", gate)
         self.assertNotIn("usleep", gate)
 
     def test_common_broker_opens_the_ue_gate_only_after_attack_ack(self):

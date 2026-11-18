@@ -1,38 +1,52 @@
 diff --git a/openair2/RRC/NR_UE/rrc_UE.c b/openair2/RRC/NR_UE/rrc_UE.c
 --- a/openair2/RRC/NR_UE/rrc_UE.c
 +++ b/openair2/RRC/NR_UE/rrc_UE.c
-@@ -19,6 +19,12 @@
+@@ -22,6 +22,7 @@
  #include "NR_UL-DCCH-Message.h"
  #include "uper_encoder.h"
  #include "uper_decoder.h"
-+#include <stdio.h>
-+#include <stdint.h>
 +#include <stdlib.h>
-+#include <string.h>
-+#include <time.h>
-+#include <unistd.h>
  
  #include "rrc_defs.h"
  #include "rrc_proto.h"
-@@ -467,6 +473,60 @@ static void get_sib19_schedinfo(NR_UE_RRC_SI_INFO *SI_info, NR_SI_SchedulingInf
-   }
+@@ -534,6 +535,9 @@ static void nr_rrc_process_sib1(NR_UE_RRC_INST_t *rrc, NR_UE_RRC_SI_INFO *SI_in
+   nr_mac_rrc_config_sib1_t *config_sib1 = &rrc_msg.payload.config_sib1;
+   config_sib1->sib1 = sib1;
+   config_sib1->can_start_ra = !rrc->is_NTN_UE;
++  const char *same_cell_gate = getenv("OAI_AUTH_TIMEOUT_GATE_FILE");
++  if (same_cell_gate && same_cell_gate[0] != '\0')
++    config_sib1->can_start_ra = false;
+   nr_rrc_send_msg_to_mac(rrc, &rrc_msg);
  }
  
-+static uint64_t auth_timeout_same_cell_gate_open_ms;
+diff --git a/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c b/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c
+--- a/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c
++++ b/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c
+@@ -7,8 +7,12 @@
+  */
+ 
+ #include <stdio.h>
++#include <stdint.h>
++#include <stdlib.h>
++#include <string.h>
+ #include <math.h>
+ #include <pthread.h>
++#include <time.h>
+ 
+ /* exe */
+ #include <common/utils/nr/nr_common.h>
+@@ -2560,6 +2564,54 @@ static bool nr_ue_get_sdu(NR_UE_MAC_INST_t *mac,
+   return true; // success if we got at least one sdu
+ }
+ 
++static uint64_t auth_timeout_gate_open_ms[MAX_NUM_NR_UE_INST];
++static uint64_t auth_timeout_gate_poll_ms[MAX_NUM_NR_UE_INST];
 +
-+static bool auth_timeout_same_cell_gate_open(void)
++static uint64_t auth_timeout_monotonic_ms(void)
 +{
-+  const char *path = getenv("OAI_AUTH_TIMEOUT_GATE_FILE");
-+  if (!path || path[0] == '\0')
-+    return true;
-+  FILE *gate = fopen(path, "r");
-+  if (!gate)
-+    return false;
-+  char mode[6];
-+  const bool open = fread(mode, 1, sizeof(mode), gate) == sizeof(mode)
-+                    && memcmp(mode, "attack", sizeof(mode)) == 0;
-+  fclose(gate);
-+  return open;
++  struct timespec now;
++  clock_gettime(CLOCK_MONOTONIC, &now);
++  return (uint64_t)now.tv_sec * 1000U + (uint64_t)now.tv_nsec / 1000000U;
 +}
 +
 +static unsigned auth_timeout_same_cell_ms(const char *name, unsigned maximum)
@@ -47,35 +61,42 @@ diff --git a/openair2/RRC/NR_UE/rrc_UE.c b/openair2/RRC/NR_UE/rrc_UE.c
 +             : 0;
 +}
 +
-+static uint64_t auth_timeout_monotonic_ms(void)
-+{
-+  struct timespec now;
-+  clock_gettime(CLOCK_MONOTONIC, &now);
-+  return (uint64_t)now.tv_sec * 1000U + (uint64_t)now.tv_nsec / 1000000U;
-+}
-+
 +static bool auth_timeout_same_cell_ra_allowed(int ue)
 +{
 +  const char *path = getenv("OAI_AUTH_TIMEOUT_GATE_FILE");
-+  if (!path || path[0] == '\0')
-+    return true;
-+  if (!auth_timeout_same_cell_gate_open()) {
-+    auth_timeout_same_cell_gate_open_ms = 0;
++  if (!path || path[0] == '\0' || ue < 0 || ue >= MAX_NUM_NR_UE_INST)
 +    return false;
-+  }
 +  const uint64_t now = auth_timeout_monotonic_ms();
-+  if (auth_timeout_same_cell_gate_open_ms == 0)
-+    auth_timeout_same_cell_gate_open_ms = now;
++  if (auth_timeout_gate_open_ms[ue] == 0) {
++    if (now - auth_timeout_gate_poll_ms[ue] < 20)
++      return false;
++    auth_timeout_gate_poll_ms[ue] = now;
++    FILE *gate = fopen(path, "r");
++    if (!gate)
++      return false;
++    char mode[6];
++    const bool open = fread(mode, 1, sizeof(mode), gate) == sizeof(mode)
++                      && memcmp(mode, "attack", sizeof(mode)) == 0;
++    fclose(gate);
++    if (!open)
++      return false;
++    auth_timeout_gate_open_ms[ue] = now;
++  }
 +  const unsigned base_ms = auth_timeout_same_cell_ms("OAI_AUTH_TIMEOUT_GATE_BASE_MS", 1000);
 +  const unsigned step_ms = auth_timeout_same_cell_ms("OAI_AUTH_TIMEOUT_GATE_STEP_MS", 1000);
-+  const unsigned delay_ms = base_ms + (ue >= 0 && ue < 10 ? (unsigned)ue * step_ms : 0);
-+  return now - auth_timeout_same_cell_gate_open_ms >= delay_ms;
++  return now - auth_timeout_gate_open_ms[ue] >= base_ms + (unsigned)ue * step_ms;
 +}
 +
- static void nr_rrc_process_sib1(NR_UE_RRC_INST_t *rrc, NR_UE_RRC_SI_INFO *SI_info, NR_SIB1_t *sib1)
+ void nr_ue_ul_scheduler(NR_UE_MAC_INST_t *mac, nr_uplink_indication_t *ul_info)
  {
-   if(g_log->log_component[NR_RRC].level >= OAILOG_DEBUG)
-@@ -536,1 +596,3 @@ static void nr_rrc_process_sib1(NR_UE_RRC_INST_t *rrc, NR_UE_RRC_SI_INFO *SI_in
-+  if (!auth_timeout_same_cell_ra_allowed((int)rrc->ue_id))
-+    config_sib1->can_start_ra = false;
-   nr_rrc_send_msg_to_mac(rrc, &rrc_msg);
+   int cc_id = ul_info->cc_id;
+@@ -2567,6 +2619,9 @@ void nr_ue_ul_scheduler(NR_UE_MAC_INST_t *mac, nr_uplink_indication_t *ul_info)
+   slot_t slot_tx = ul_info->slot;
+   RA_config_t *ra = &mac->ra;
+ 
++  if (mac->state == UE_RECEIVING_SIB && mac->current_UL_BWP && auth_timeout_same_cell_ra_allowed(mac->ue_id))
++    mac->state = UE_PERFORMING_RA;
++
+   if (mac->state == UE_PERFORMING_RA && ra->ra_state == nrRA_UE_IDLE) {
+     init_RA(mac);
+     // perform the Random Access Resource selection procedure (see clause 5.1.2 and .2a)

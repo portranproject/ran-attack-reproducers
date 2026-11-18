@@ -306,14 +306,18 @@ PY
   printf '%s\n' "$NORMAL_UE_PDU_SESSION_ID" >"$STATE/pdu_session_id"
 }
 start_normal_group() {
-  local runtime_cfg=$1 run_id=$2
+  local runtime_cfg=$1 run_id=$2 generation=${3:-initial} log_file=normal.log event_file=normal.jsonl
+  if [[ $generation != initial ]]; then
+    log_file="normal-$generation.log"
+    event_file="normal-$generation.jsonl"
+  fi
   normal_args; rss_args
   setsid env RSS_SHARE_NUE="$COUNT" OAI_NORMAL_TUN_SUFFIX=1 "$NORMAL_UE_BIN" -O "$runtime_cfg" \
     "${NORMAL_ARGS[@]}" "${RSS_ARGS[@]}" --num-ues "$COUNT" --rss.max_duration_s 0 \
     --rss.honor_reject 0 --rss.msg4_wait 1 --rss.probe_ues "$COUNT" --rss.probe_delay_ms 0 \
     --rss.probe_ra_only 0 --rss.probe_interval_ms "$NORMAL_UE_RETRY_MS" \
-    --rss.phase_ms "$NORMAL_UE_PHASE_MS" --rss.run_id "n-$run_id" --rss.log_file "$RUN_OUT/normal.jsonl" \
-    >"$RUN_OUT/normal.log" 2>&1 </dev/null 9>&- &
+    --rss.phase_ms "$NORMAL_UE_PHASE_MS" --rss.run_id "n-$run_id-$generation" \
+    --rss.log_file "$RUN_OUT/$event_file" >"$RUN_OUT/$log_file" 2>&1 </dev/null 9>&- &
   record_pid normal "$!"
 }
 start_placeholder_group() {
@@ -497,6 +501,7 @@ if [[ $ACTION == run ]]; then
 
   NORMAL_HEALTH_BEFORE_TEARDOWN=null
   NORMAL_RECOVERY_SIGNAL_COUNT=0
+  NORMAL_RESTART_COUNT=0
   if [[ $ATTACK != uplink ]]; then
     attack_wait_started=$SECONDS
     until [[ -f $STATE/attack.done && ! -L $STATE/attack.done ]]; do
@@ -508,6 +513,19 @@ if [[ $ACTION == run ]]; then
       sleep 1
     done
     select_broker retire || fail "완료된 공격 slot 분리에 실패했습니다"
+    if ! wait_healthy "$COUNT" 15; then
+      stop_group "$NORMAL_PID"
+      for ((i=ATTACK_SLOTS + 1; i<=TOTAL_ENDPOINTS; i++)); do
+        wait_port_free "$((2001 + 100 * i))" || fail "normal UE endpoint $i가 해제되지 않았습니다"
+      done
+      start_normal_group "$RUNTIME_CFG" "$RUN_ID" recovery-1
+      NORMAL_PID=$(owned_pid normal) || fail "복구 normal UE PID를 기록하지 못했습니다"
+      for ((i=ATTACK_SLOTS + 1; i<=TOTAL_ENDPOINTS; i++)); do
+        wait_process_port "$NORMAL_PID" "$((2001 + 100 * i))" \
+          || fail "복구 normal UE endpoint $i가 준비되지 않았습니다"
+      done
+      NORMAL_RESTART_COUNT=1
+    fi
     wait_healthy "$COUNT" "$SAME_CELL_RECOVERY_TIMEOUT_S" \
       || fail "공격 UE clock 유지 중 normal UE가 $COUNT/$COUNT가 아닙니다"
     record_health after
@@ -535,9 +553,9 @@ PY
   [[ -n $CHILD_OUTPUT && -d $CHILD_OUTPUT && ! -L $CHILD_OUTPUT ]] \
     || fail "공격 runner가 안전한 output 경로를 남기지 않았습니다"
   printf '%s\n' "$CHILD_OUTPUT" >"$RUN_OUT/child-output.txt"
-  printf '{"schema":"same-cell.run.v3","run_id":"%s","attack":"%s","normal_ues":%d,"normal_shared_ru":false,"attack_slots":%d,"du_restarted_during_attack":false,"normal_recovery_signal_count":%d,"normal_healthy_before_attack_teardown":%s,"direct_detector_input":false,"ue_to_ran_path_required":true,"attack_exit_status":%d}\n' \
+  printf '{"schema":"same-cell.run.v3","run_id":"%s","attack":"%s","normal_ues":%d,"normal_shared_ru":false,"attack_slots":%d,"du_restarted_during_attack":false,"normal_recovery_signal_count":%d,"normal_restart_count":%d,"normal_healthy_before_attack_teardown":%s,"direct_detector_input":false,"ue_to_ran_path_required":true,"attack_exit_status":%d}\n' \
     "$RUN_ID" "$ATTACK" "$COUNT" "$ATTACK_SLOTS" \
-    "$NORMAL_RECOVERY_SIGNAL_COUNT" "$NORMAL_HEALTH_BEFORE_TEARDOWN" "$ATTACK_STATUS" >"$RUN_OUT/run.json"
+    "$NORMAL_RECOVERY_SIGNAL_COUNT" "$NORMAL_RESTART_COUNT" "$NORMAL_HEALTH_BEFORE_TEARDOWN" "$ATTACK_STATUS" >"$RUN_OUT/run.json"
   (( ATTACK_STATUS == 0 )) || fail "공격 runner가 실패했습니다: status=$ATTACK_STATUS"
   if [[ $ATTACK == uplink-credential-flood || $ATTACK == nas-counter-desync ]]; then
     embed_self_live_evidence || fail "self-live same-cell 증거 봉인에 실패했습니다"

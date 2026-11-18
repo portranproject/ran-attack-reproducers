@@ -200,12 +200,16 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn('uplink-credential-flood) ATTACK_SLOTS=1', wrapper)
         self.assertNotIn('select_broker recover', wrapper)
         retire = wrapper.index('select_broker retire || fail "완료된 공격 slot 분리에 실패했습니다"')
+        restart = wrapper.index('start_normal_group "$RUNTIME_CFG" "$RUN_ID" recovery-1', retire)
         health = wrapper.index('wait_healthy "$COUNT"', retire)
         release = wrapper.index(': >"$STATE/attack.release"', health)
         self.assertLess(retire, health)
+        self.assertLess(health, restart)
+        self.assertLess(restart, release)
         self.assertLess(health, release)
         self.assertNotIn('kill -USR1 "$NORMAL_PID"', wrapper)
         self.assertIn('"normal_recovery_signal_count":%d', wrapper)
+        self.assertIn('"normal_restart_count":%d', wrapper)
 
     def test_auth_timeout_uses_ten_independent_ru_attack_slots(self):
         source = (ROOT / "reproducers/authentication-timeout-exhaustion/bin/auth-stall-cell-run").read_text()

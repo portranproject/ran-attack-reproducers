@@ -138,7 +138,7 @@ for ((i=0; i<PROCESS_COUNT; i++)); do
     "${CONFIGS[$i]}" "$runtime_config" "$UES_PER_PROCESS" "$endpoint_offset"
   RUNTIME_CONFIGS+=("$runtime_config")
   gate_base_ms=0; gate_step_ms=0; probe_ues=$UES_PER_PROCESS
-  if (( SAME_CELL_PRESTART )); then gate_base_ms=$((i * 25)); gate_step_ms=50; probe_ues=0; fi
+  if (( SAME_CELL_PRESTART )); then gate_base_ms=$((i * 500)); gate_step_ms=1000; probe_ues=0; fi
   setsid env OAI_AUTH_TIMEOUT_TRACE=1 OAI_AUTH_TIMEOUT_WITHHOLD=$ENABLE \
     OAI_AUTH_TIMEOUT_GATE_FILE="$SAME_CELL_UE_GATE_FILE" RSS_SHARE_NUE=$UES_PER_PROCESS \
     OAI_AUTH_TIMEOUT_GATE_BASE_MS="$gate_base_ms" OAI_AUTH_TIMEOUT_GATE_STEP_MS="$gate_step_ms" \
@@ -251,8 +251,8 @@ with open(path,"x") as f:
  json.dump({"schema":"auth-timeout.cell-flood-run.v1","run_id":run_id,"mode":mode,
             "withholding_enabled":enabled=="1","logical_ues":int(count),
             "process_count":int(processes),"ues_per_process":int(per_process),
-            "start_interval_ms":int(interval),"same_cell_ra_base_ms":[0,25] if same_cell=="1" else [0,0],
-            "same_cell_ra_step_ms":50 if same_cell=="1" else 0,
+            "start_interval_ms":int(interval),"same_cell_ra_base_ms":[0,500] if same_cell=="1" else [0,0],
+            "same_cell_ra_step_ms":1000 if same_cell=="1" else 0,
             "rss_probe_ues":0 if same_cell=="1" else int(per_process),
             "single_cell":True},f,sort_keys=True,separators=(",",":")); f.write("\n")
 PY

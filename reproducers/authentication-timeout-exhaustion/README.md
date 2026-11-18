@@ -94,9 +94,10 @@ timeout이 발생했다. 프로세스당 4 UICC도 반복 phase timeout으로 �
 2개 OAI 프로세스×5 UE로 실행한다. 각 프로세스는 config 배열로 독립 virtual RU/ZMQ
 endpoint 5개를 만들며, GNU Radio broker가 총 10개 endpoint를 한 DU·셀에 합친다. 공격군은
 10명 모두 Authentication Response를 미전송하고 대조군은 모두 정상 제출한다.
-broker 적용 확인 전에는 RA를 보류하고, 두 OAI 프로세스는 0 ms·25 ms 기준점에서 UE별
-50 ms 간격으로 첫 RA를 분산한다. 이는 같은 sample clock에서 10개 UE가 같은 PRACH
-시점에 몰리는 랩 동기화를 피하기 위한 시작 오케스트레이션이며 공격 메시지·탐지 문턱은
+broker 적용 확인 전에는 RA를 보류하고, 두 OAI 프로세스는 0 ms·500 ms 기준점에서 UE별
+1,000 ms 간격으로 첫 RA를 분산한다. 즉 10개 UE는 전체적으로 0.5초 간격으로 진입한다.
+이는 같은 sample clock에서 여러 UE가 같은 PRACH 시점에 몰리는 랩 동기화를 피하기 위한
+시작 오케스트레이션이며 공격 메시지·탐지 문턱은
 바꾸지 않는다. same-cell에서는 과거 RSS probe scheduler를 끄고 이 단일 RA 경로만 사용한다.
 gNB·코어·detector는 수정하지 않는다. 이 복원 경로는 p5 재자격 전까지
 미자격이다.

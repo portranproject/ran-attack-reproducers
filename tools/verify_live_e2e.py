@@ -7,7 +7,6 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -45,6 +44,14 @@ def load_jsonl(path: Path) -> list[dict]:
     if not rows or not all(isinstance(row, dict) for row in rows):
         raise ValueError(f"JSONL이 비었거나 객체가 아닙니다: {path}")
     return rows
+
+
+def join_rotated_jsonl(path: Path, output: Path) -> list[dict]:
+    rotated = sorted(item for item in path.parent.glob(path.name + ".*")
+                     if re.fullmatch(r"\d{8}-\d{6}", item.name.removeprefix(path.name + ".")))
+    inputs = [regular(item) for item in rotated] + [regular(path)]
+    output.write_text("".join(item.read_text(encoding="utf-8") for item in inputs), encoding="utf-8")
+    return load_jsonl(output)
 
 
 def sha256(path: Path) -> str:
@@ -124,8 +131,7 @@ def verify(root: Path, scenario: str, mode: str, run_id: str, child: Path,
 
     telemetry = root / "live/detector-input.jsonl"
     observations = root / "observations.jsonl"
-    shutil.copyfile(regular(telemetry), observations)
-    rows = load_jsonl(observations)
+    rows = join_rotated_jsonl(telemetry, observations)
     hello = [row for row in rows if row.get("type") == "hello"]
     gaps = [row for row in rows if row.get("type") == "gap"]
     kpm = [row for row in rows if row.get("type") == "kpm2"]
@@ -198,6 +204,8 @@ def verify(root: Path, scenario: str, mode: str, run_id: str, child: Path,
               "dashboard_rejected_lines": rejected, "dashboard_alert_evidence_delivered": evidence_delivered,
               "mechanism_passed": mechanism_ok, "same_cell": same_cell_summary}
     passed = mechanism_ok and input_ok and detector_ok and delivery_ok and same_cell_ok
+    if len(hello) != 1:
+        raise ValueError("detector 입력 hello가 정확히 하나가 아닙니다")
     run = {"schema": "ran-reproducer.run.v1", "run_id": run_id, "scenario_id": scenario,
            "rule_ids": [rule], "mode": mode, "profile": profile_id, "reproduction_level": level,
            "started_at": started_at(hello[0].get("session")), "period_ms": 100,

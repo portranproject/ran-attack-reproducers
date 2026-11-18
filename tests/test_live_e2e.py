@@ -31,7 +31,8 @@ class LiveE2ETest(unittest.TestCase):
                 {"type": "kpm2", "seq": 2, "t_start_ms": 0, "t_end_ms": 100},
             ]
             (live / "telemetry.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
-            (live / "detector-input.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
+            (live / "detector-input.jsonl.20261117-010300").write_text(json.dumps(rows[0]) + "\n")
+            (live / "detector-input.jsonl").write_text(json.dumps(rows[1]) + "\n")
             digest = "a" * 64
             (live / "components.json").write_text(json.dumps({
                 "detector": {"commit": DETECTOR_COMMIT, "binary_sha256": digest},

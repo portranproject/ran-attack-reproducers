@@ -186,9 +186,11 @@ class SameCellContractTests(unittest.TestCase):
         self.assertNotIn('"--zmq.[0].tx_channels"', source)
         self.assertNotIn('"--zmq.[$ru].tx_channels"', source)
         self.assertIn('OAI_AUTH_TIMEOUT_GATE_FILE="$SAME_CELL_UE_GATE_FILE"', source)
-        self.assertIn('OAI_AUTH_TIMEOUT_GATE_PHASE_MS="$gate_phase_ms"', source)
-        self.assertIn('gate_phase_ms=$((25 + i * 15))', source)
-        self.assertIn('"same_cell_ra_phase_ms":[25,40]', source)
+        self.assertIn('OAI_AUTH_TIMEOUT_GATE_BASE_MS="$gate_base_ms"', source)
+        self.assertIn('OAI_AUTH_TIMEOUT_GATE_STEP_MS="$gate_step_ms"', source)
+        self.assertIn('gate_base_ms=$((i * 25))', source)
+        self.assertIn('"same_cell_ra_base_ms":[0,25]', source)
+        self.assertIn('"same_cell_ra_step_ms":50', source)
 
     def test_auth_build_disables_ru_sharing_when_each_ue_has_a_ru(self):
         build = (ROOT / "reproducers/authentication-timeout-exhaustion/bin/auth-timeout-build").read_text()
@@ -199,9 +201,10 @@ class SameCellContractTests(unittest.TestCase):
         self.assertLess(build.index('apply "$NORMAL_MULTI_RU_PATCH"'), build.index('apply "$PATCH"'))
         self.assertLess(build.index('apply "$PATCH"'), build.index('apply "$SAME_CELL_GATE_PATCH"'))
         self.assertIn("return NB_UE_INST > nrue_get_ru_count();", patch)
-        self.assertIn('getenv("OAI_AUTH_TIMEOUT_GATE_PHASE_MS")', gate)
-        self.assertIn("auth_timeout_same_cell_gate_released[ue]", gate)
-        self.assertIn("auth_timeout_wait_same_cell_gate((int)rrc->ue_id)", gate)
+        self.assertIn('auth_timeout_same_cell_ms("OAI_AUTH_TIMEOUT_GATE_BASE_MS", 1000)', gate)
+        self.assertIn('auth_timeout_same_cell_ms("OAI_AUTH_TIMEOUT_GATE_STEP_MS", 1000)', gate)
+        self.assertIn("auth_timeout_same_cell_ra_allowed((int)rrc->ue_id)", gate)
+        self.assertNotIn("usleep", gate)
 
     def test_common_broker_opens_the_ue_gate_only_after_attack_ack(self):
         source = SCRIPT.read_text()

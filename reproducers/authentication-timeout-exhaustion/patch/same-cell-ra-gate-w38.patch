@@ -1,22 +1,24 @@
 diff --git a/openair2/RRC/NR_UE/rrc_UE.c b/openair2/RRC/NR_UE/rrc_UE.c
 --- a/openair2/RRC/NR_UE/rrc_UE.c
 +++ b/openair2/RRC/NR_UE/rrc_UE.c
-@@ -19,6 +19,10 @@
+@@ -19,6 +19,12 @@
  #include "NR_UL-DCCH-Message.h"
  #include "uper_encoder.h"
  #include "uper_decoder.h"
 +#include <stdio.h>
++#include <stdint.h>
 +#include <stdlib.h>
 +#include <string.h>
++#include <time.h>
 +#include <unistd.h>
  
  #include "rrc_defs.h"
  #include "rrc_proto.h"
-@@ -467,6 +471,46 @@ static void get_sib19_schedinfo(NR_UE_RRC_SI_INFO *SI_info, NR_SI_SchedulingInf
+@@ -467,6 +473,60 @@ static void get_sib19_schedinfo(NR_UE_RRC_SI_INFO *SI_info, NR_SI_SchedulingInf
    }
  }
  
-+static bool auth_timeout_same_cell_gate_released[MAX_NUM_NR_UE_INST];
++static uint64_t auth_timeout_same_cell_gate_open_ms;
 +
 +static bool auth_timeout_same_cell_gate_open(void)
 +{
@@ -33,35 +35,47 @@ diff --git a/openair2/RRC/NR_UE/rrc_UE.c b/openair2/RRC/NR_UE/rrc_UE.c
 +  return open;
 +}
 +
-+static unsigned auth_timeout_same_cell_phase_ms(void)
++static unsigned auth_timeout_same_cell_ms(const char *name, unsigned maximum)
 +{
-+  const char *value = getenv("OAI_AUTH_TIMEOUT_GATE_PHASE_MS");
++  const char *value = getenv(name);
 +  if (!value || value[0] == '\0')
 +    return 0;
 +  char *end = NULL;
-+  const long phase_ms = strtol(value, &end, 10);
-+  return end && end[0] == '\0' && phase_ms >= 0 && phase_ms <= 200 ? (unsigned)phase_ms : 0;
++  const long milliseconds = strtol(value, &end, 10);
++  return end && end[0] == '\0' && milliseconds >= 0 && (unsigned long)milliseconds <= maximum
++             ? (unsigned)milliseconds
++             : 0;
 +}
 +
-+static void auth_timeout_wait_same_cell_gate(int ue)
++static uint64_t auth_timeout_monotonic_ms(void)
 +{
-+  if (ue >= 0 && ue < MAX_NUM_NR_UE_INST && auth_timeout_same_cell_gate_released[ue])
-+    return;
-+  while (!auth_timeout_same_cell_gate_open())
-+    usleep(100000);
-+  const unsigned phase_ms = auth_timeout_same_cell_phase_ms();
-+  if (phase_ms > 0 && ue >= 0 && ue < 10)
-+    usleep((useconds_t)phase_ms * (unsigned)(ue + 1) * 1000U);
-+  if (ue >= 0 && ue < MAX_NUM_NR_UE_INST)
-+    auth_timeout_same_cell_gate_released[ue] = true;
++  struct timespec now;
++  clock_gettime(CLOCK_MONOTONIC, &now);
++  return (uint64_t)now.tv_sec * 1000U + (uint64_t)now.tv_nsec / 1000000U;
++}
++
++static bool auth_timeout_same_cell_ra_allowed(int ue)
++{
++  const char *path = getenv("OAI_AUTH_TIMEOUT_GATE_FILE");
++  if (!path || path[0] == '\0')
++    return true;
++  if (!auth_timeout_same_cell_gate_open()) {
++    auth_timeout_same_cell_gate_open_ms = 0;
++    return false;
++  }
++  const uint64_t now = auth_timeout_monotonic_ms();
++  if (auth_timeout_same_cell_gate_open_ms == 0)
++    auth_timeout_same_cell_gate_open_ms = now;
++  const unsigned base_ms = auth_timeout_same_cell_ms("OAI_AUTH_TIMEOUT_GATE_BASE_MS", 1000);
++  const unsigned step_ms = auth_timeout_same_cell_ms("OAI_AUTH_TIMEOUT_GATE_STEP_MS", 1000);
++  const unsigned delay_ms = base_ms + (ue >= 0 && ue < 10 ? (unsigned)ue * step_ms : 0);
++  return now - auth_timeout_same_cell_gate_open_ms >= delay_ms;
 +}
 +
  static void nr_rrc_process_sib1(NR_UE_RRC_INST_t *rrc, NR_UE_RRC_SI_INFO *SI_info, NR_SIB1_t *sib1)
  {
    if(g_log->log_component[NR_RRC].level >= OAILOG_DEBUG)
-@@ -533,4 +577,5 @@ static void nr_rrc_process_sib1(NR_UE_RRC_INST_t *rrc, NR_UE_RRC_SI_INFO *SI_in
-   nr_mac_rrc_message_t rrc_msg = {0};
-   rrc_msg.payload_type = NR_MAC_RRC_CONFIG_SIB1;
-   nr_mac_rrc_config_sib1_t *config_sib1 = &rrc_msg.payload.config_sib1;
-+  auth_timeout_wait_same_cell_gate((int)rrc->ue_id);
-   config_sib1->sib1 = sib1;
+@@ -536,1 +596,3 @@ static void nr_rrc_process_sib1(NR_UE_RRC_INST_t *rrc, NR_UE_RRC_SI_INFO *SI_in
++  if (!auth_timeout_same_cell_ra_allowed((int)rrc->ue_id))
++    config_sib1->can_start_ra = false;
+   nr_rrc_send_msg_to_mac(rrc, &rrc_msg);

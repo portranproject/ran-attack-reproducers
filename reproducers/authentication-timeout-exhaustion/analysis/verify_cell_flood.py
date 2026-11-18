@@ -43,10 +43,9 @@ def verify(root: Path, mode: str, run_id: str, expected: int) -> dict:
         text = path.read_text(errors="replace")
         marker_counts.append(len(set(re.findall(re.escape(MARKERS[mode]) + r" ue=(\d+)", text))))
     crashes = sum(len(re.findall(r"Segmentation fault|Assertion.*failed|Backtrace|core dumped", path.read_text(errors="replace"))) for path in logs)
-    expected_recovery_signals = process_count if mode == "attack" and run.get("same_cell_ra_step_ms") else 0
     clean = (process.get("schema") == "auth-timeout.cell-flood-process.v1"
              and process.get("early_exit_count") == 0 and process.get("forced_kill_count") == 0
-             and process.get("recovery_signal_count", 0) == expected_recovery_signals and crashes == 0)
+             and process.get("recovery_signal_count", 0) == 0 and crashes == 0)
     mechanism = marker_counts == [ues_per_process] * process_count
     passed = clean and mechanism
     return {"schema": "auth-timeout.cell-flood-verdict.v1", "run_id": run_id, "mode": mode,

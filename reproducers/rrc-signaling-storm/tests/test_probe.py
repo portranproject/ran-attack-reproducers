@@ -63,6 +63,14 @@ class ProbeSummaryTests(unittest.TestCase):
 
 
 class RunnerProbeKnobTests(unittest.TestCase):
+    def test_connected_probe_keeps_loss_detection_armed(self):
+        source = PATCH.read_text()
+        branch = source.split(
+            "if (ordinary_probe && rrc->nrRrcState == RRC_STATE_CONNECTED_NR)", 1
+        )[1].split("if (rss_probe_done[pu])", 1)[0]
+        self.assertIn("nr_timer_setup(t, 10, 10);", branch)
+        self.assertIn("nr_timer_start(t);", branch)
+
     def verify_evidence(self, require_matched=False):
         command = [sys.executable, str(EVIDENCE), "verify", str(self.run_dir)]
         if require_matched:

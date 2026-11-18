@@ -1386,6 +1386,8 @@ index 0addfe5..6e28e39 100644
 +        nr_rss_log(pu, "probe_connected", "\"tries\":%u,\"ms\":%llu",
 +                   rss_probe_tries[pu], (unsigned long long)((now - t0) / 1000000ULL));
 +      }
++      nr_timer_setup(t, 10, 10);
++      nr_timer_start(t);
 +      return;
 +    }
 +    if (rss_probe_done[pu]) {

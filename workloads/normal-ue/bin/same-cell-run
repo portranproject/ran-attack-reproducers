@@ -343,18 +343,15 @@ stop_placeholder_group() {
   unlink "$STATE/placeholder-group.starttime"
 }
 select_broker() {
-  local mode=$1 broker_mode=$1 before started=$SECONDS count slots=""
+  local mode=$1 before started=$SECONDS count slots=""
   shift
-  [[ $mode == placeholder || $mode == standby || $mode == warmup || $mode == attack || $mode == recover ]] || return 1
+  [[ $mode == placeholder || $mode == standby || $mode == warmup || $mode == attack ]] || return 1
   if [[ $mode == placeholder || $mode == standby ]]; then
     printf 'standby\n' >"$STATE/attack-ue-gate"
-  elif [[ $mode == recover ]]; then
-    printf 'recover\n' >"$STATE/attack-ue-gate"
   fi
-  [[ $mode != recover ]] || broker_mode=attack
-  if [[ $broker_mode == warmup || $broker_mode == attack ]]; then
+  if [[ $mode == warmup || $mode == attack ]]; then
     slots=$(IFS=,; echo "$*")
-    printf '%s %s\n' "$broker_mode" "$slots" >"$STATE/broker-control"
+    printf '%s %s\n' "$mode" "$slots" >"$STATE/broker-control"
   else
     printf '%s\n' "$mode" >"$STATE/broker-control"
   fi
@@ -510,10 +507,6 @@ if [[ $ACTION == run ]]; then
       sleep 1
     done
     select_broker standby || fail "완료된 공격 slot 비활성화에 실패했습니다"
-    if [[ $ATTACK == auth-timeout ]]; then
-      select_broker recover "${ATTACK_SLOT_IDS[@]}" \
-        || fail "인증 UE 정상 전환을 위한 slot 재활성화에 실패했습니다"
-    fi
     wait_healthy "$COUNT" "$SAME_CELL_RECOVERY_TIMEOUT_S" \
       || fail "공격 UE clock 유지 중 normal UE가 $COUNT/$COUNT가 아닙니다"
     record_health after

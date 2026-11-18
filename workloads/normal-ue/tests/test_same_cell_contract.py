@@ -134,12 +134,8 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn("SAME_CELL_ATTACK_DONE_FILE", run_section)
         self.assertIn("SAME_CELL_VICTIM_TUN=oaitun_ue1", run_section)
         self.assertIn('공격 UE clock 유지 중 normal UE가 $COUNT/$COUNT가 아닙니다', run_section)
-        self.assertIn('if [[ $ATTACK == auth-timeout ]]; then', run_section)
-        self.assertIn('select_broker recover "${ATTACK_SLOT_IDS[@]}"', run_section)
         broker = source.split("select_broker()", 1)[1].split("if [[ $ACTION == run ]]", 1)[0]
-        self.assertIn("broker_mode=attack", broker)
-        self.assertIn("printf 'recover", broker)
-        self.assertNotIn("$mode\" \"$slots", broker)
+        self.assertNotIn("recover", broker)
         self.assertIn("normal_healthy_before_attack_teardown", run_section)
         placeholder_group = source.split("start_placeholder_group()", 1)[1].split("stop_placeholder_group()", 1)[0]
         self.assertIn('wait_process_port "$pid"', placeholder_group)
@@ -194,10 +190,17 @@ class SameCellContractTests(unittest.TestCase):
         self.assertLess(patch.index("if (!auth_timeout_gate_open())"),
                         patch.index('auth_timeout_enabled("OAI_AUTH_TIMEOUT_WITHHOLD")'))
         runner = (ROOT / "reproducers/authentication-timeout-exhaustion/bin/auth-stall-cell-run").read_text()
-        self.assertIn('grep -Fxq recover "$SAME_CELL_UE_GATE_FILE"', runner)
-        self.assertIn('kill -USR1 "$pid"', runner)
+        self.assertNotIn("SAME_CELL_RECOVERY_FILE", runner)
+        self.assertNotIn('kill -USR1 "$pid"', runner)
         self.assertIn("gate_base_ms=$((i * 800)); gate_step_ms=1600", runner)
-        self.assertIn('uplink-credential-flood) ATTACK_SLOTS=1', SCRIPT.read_text())
+        wrapper = SCRIPT.read_text()
+        self.assertIn('uplink-credential-flood) ATTACK_SLOTS=1', wrapper)
+        self.assertNotIn('select_broker recover', wrapper)
+        standby = wrapper.index('select_broker standby || fail "완료된 공격 slot 비활성화에 실패했습니다"')
+        health = wrapper.index('wait_healthy "$COUNT"', standby)
+        release = wrapper.index(': >"$STATE/attack.release"', health)
+        self.assertLess(standby, health)
+        self.assertLess(health, release)
 
     def test_auth_timeout_uses_ten_independent_ru_attack_slots(self):
         source = (ROOT / "reproducers/authentication-timeout-exhaustion/bin/auth-stall-cell-run").read_text()

@@ -230,12 +230,6 @@ if (( SAME_CELL_PRESTART )); then
   started=$SECONDS
   until [[ -f $SAME_CELL_RELEASE_FILE && ! -L $SAME_CELL_RELEASE_FILE ]]; do
     for pid in "${PIDS[@]}"; do running "$pid" || fail "same-cell 종료 허가 전에 UE가 종료됐습니다"; done
-    if (( ENABLE == 1 && RECOVERY_SIGNAL_COUNT == 0 )) && grep -Fxq recover "$SAME_CELL_UE_GATE_FILE"; then
-      for pid in "${PIDS[@]}"; do
-        kill -USR1 "$pid" || fail "인증 UE 재등록 신호 전송에 실패했습니다"
-        RECOVERY_SIGNAL_COUNT=$((RECOVERY_SIGNAL_COUNT + 1))
-      done
-    fi
     (( SECONDS - started < READY_TIMEOUT_S )) || fail "same-cell 종료 허가가 시간 초과했습니다"
     sleep .2
   done

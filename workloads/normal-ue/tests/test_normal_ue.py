@@ -118,13 +118,12 @@ class NormalUeTests(unittest.TestCase):
             "normal-multi-ru.patch",
             "normal-probe-phase.patch",
             "normal-tun-suffix.patch",
-            "normal-reconnect-w38.patch",
         ]
         positions = [source.index(name) for name in expected]
         self.assertEqual(positions, sorted(positions))
         self.assertIn('git -C "$OAI" apply --cached "$patch"', source)
         self.assertIn("./build_oai --nrUE -w ZMQ --ninja", source)
-        for marker in ("RSS_SHARE_NUE", "OAI_NORMAL_TUN_SUFFIX", "NORMAL_UE_RECOVERY"):
+        for marker in ("RSS_SHARE_NUE", "OAI_NORMAL_TUN_SUFFIX"):
             self.assertIn(marker, source)
 
     def test_prepare_writes_private_independent_ru_runtime_config(self):

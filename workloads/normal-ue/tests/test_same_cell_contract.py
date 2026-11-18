@@ -78,7 +78,7 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn("OAI_NORMAL_TUN_SUFFIX", patch)
         self.assertIn('strcmp(normal_tun_suffix, "1") == 0', patch)
         self.assertIn("normal UE PDU session id를 읽지 못했습니다", SCRIPT.read_text())
-        self.assertIn("grep -Faq NORMAL_UE_RECOVERY", SCRIPT.read_text())
+        self.assertNotIn("NORMAL_UE_RECOVERY", SCRIPT.read_text())
 
     def test_persistent_session_owns_du_and_never_restarts_it_per_attack(self):
         source = SCRIPT.read_text()
@@ -200,12 +200,11 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn('uplink-credential-flood) ATTACK_SLOTS=1', wrapper)
         self.assertNotIn('select_broker recover', wrapper)
         retire = wrapper.index('select_broker retire || fail "완료된 공격 slot 분리에 실패했습니다"')
-        signal = wrapper.index('kill -USR1 "$NORMAL_PID"', retire)
         health = wrapper.index('wait_healthy "$COUNT"', retire)
         release = wrapper.index(': >"$STATE/attack.release"', health)
-        self.assertLess(retire, signal)
-        self.assertLess(signal, health)
+        self.assertLess(retire, health)
         self.assertLess(health, release)
+        self.assertNotIn('kill -USR1 "$NORMAL_PID"', wrapper)
         self.assertIn('"normal_recovery_signal_count":%d', wrapper)
 
     def test_auth_timeout_uses_ten_independent_ru_attack_slots(self):

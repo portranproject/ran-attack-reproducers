@@ -117,8 +117,6 @@ done
   || fail "normal/placeholder UE binary와 controller가 실행 가능해야 합니다"
 grep -Faq OAI_NORMAL_TUN_SUFFIX "$NORMAL_UE_BIN" \
   || fail "normal UE binary에 normal-tun-suffix.patch가 없습니다"
-grep -Faq NORMAL_UE_RECOVERY "$NORMAL_UE_BIN" \
-  || fail "normal UE binary에 연결 회복 패치가 없습니다"
 [[ -n $NORMAL_UE_GNB_STOP_CMD && -n $NORMAL_UE_GNB_RESTART_CMD && -n $NORMAL_UE_GNB_READY_CMD ]] \
   || fail "gNB stop/restart/ready 명령이 필요합니다"
 grep -Eq 'tx_port=tcp://[^, ]*:2000([, ]|$)' "$NORMAL_UE_GNB_CONFIG" \
@@ -510,10 +508,6 @@ if [[ $ACTION == run ]]; then
       sleep 1
     done
     select_broker retire || fail "완료된 공격 slot 분리에 실패했습니다"
-    if [[ $(health "$COUNT") != "$COUNT" ]]; then
-      kill -USR1 "$NORMAL_PID" || fail "normal UE 재등록 신호 전송에 실패했습니다"
-      NORMAL_RECOVERY_SIGNAL_COUNT=1
-    fi
     wait_healthy "$COUNT" "$SAME_CELL_RECOVERY_TIMEOUT_S" \
       || fail "공격 UE clock 유지 중 normal UE가 $COUNT/$COUNT가 아닙니다"
     record_health after

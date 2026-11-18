@@ -9,7 +9,7 @@
       "tools/verify_live_e2e.py": "55960005522588ec38c088c1f76a635c00c063d49c134769b1ac7c2bd7e99c87",
       "workloads/normal-ue/bin/normal-ue": "77a6897311ef9f87e9446542cee66cb7a6dc642f85abd848de397451cf37cee5",
       "workloads/normal-ue/bin/normal-ue-build": "188f71d3ad63fde92d6397fb040ebabc18a44de7dedf2365673ef7f01f4a189c",
-      "workloads/normal-ue/bin/same-cell-run": "319ec9e3b3930010e88fb990114b64429a3078d295b6f9e6e9e4c0fa3793bf27",
+      "workloads/normal-ue/bin/same-cell-run": "884ed7530ac29f745cbd32d5e26bef26e8b48cdab4ad39d952980fd19f5caada",
       "workloads/normal-ue/tools/same_cell_broker.py": "75455fc173577b0fc58d6a514163854757d9894703955c2babe4fc92f8ca1556",
       "workloads/normal-ue/patch/normal-multi-ru.patch": "422c6eabcc86f7c3e2d9171ef5d08b882f0a59bccda0a4782a4acb6a6a0103fa",
       "workloads/normal-ue/patch/normal-probe-phase.patch": "011b4c1cb1c06f95810f685025582568064f8ffbc8972aeac2f93b50bf3dd6f2",

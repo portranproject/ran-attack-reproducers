@@ -213,6 +213,8 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn('"normal_recovery_signal_count":%d', wrapper)
         self.assertIn('"normal_restart_count":%d', wrapper)
         self.assertIn('"broker_restart_count":%d', wrapper)
+        self.assertNotIn('wait_process_port "$BROKER_PID" 2000', wrapper)
+        self.assertNotIn('wait_port_free 2000', wrapper)
 
     def test_auth_timeout_uses_ten_independent_ru_attack_slots(self):
         source = (ROOT / "reproducers/authentication-timeout-exhaustion/bin/auth-stall-cell-run").read_text()

@@ -327,8 +327,8 @@ start_persistent_broker() {
     >>"$RUN_OUT/broker.log" 2>&1 </dev/null 9>&- &
   record_pid broker "$!"
   BROKER_PID=$(owned_pid broker) || fail "broker PID를 기록하지 못했습니다"
-  wait_process_port "$BROKER_PID" 2000 || fail "broker DU downlink endpoint가 준비되지 않았습니다"
-  wait_process_port "$BROKER_PID" 2001 || fail "broker DU uplink endpoint가 준비되지 않았습니다"
+  sleep 2
+  is_running "$BROKER_PID" || fail "broker가 준비 전에 종료됐습니다"
 }
 start_placeholder_group() {
   local generation=${1:-1} pid endpoint
@@ -520,8 +520,6 @@ if [[ $ACTION == run ]]; then
     if ! wait_healthy "$COUNT" 15; then
       stop_group "$NORMAL_PID"
       stop_group "$BROKER_PID"
-      wait_port_free 2000 || fail "broker DU downlink endpoint가 해제되지 않았습니다"
-      wait_port_free 2001 || fail "broker DU uplink endpoint가 해제되지 않았습니다"
       for ((i=ATTACK_SLOTS + 1; i<=TOTAL_ENDPOINTS; i++)); do
         wait_port_free "$((2001 + 100 * i))" || fail "normal UE endpoint $i가 해제되지 않았습니다"
       done

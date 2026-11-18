@@ -1,40 +1,24 @@
 diff --git a/openair2/RRC/NR_UE/rrc_UE.c b/openair2/RRC/NR_UE/rrc_UE.c
 --- a/openair2/RRC/NR_UE/rrc_UE.c
 +++ b/openair2/RRC/NR_UE/rrc_UE.c
-@@ -3360,5 +3360,6 @@ void *rrc_nrue(void *notUsed)
+@@ -3360,3 +3360,4 @@ void *rrc_nrue(void *notUsed)
  void *rrc_nrue(void *notUsed)
  {
 +  static bool normal_reconnect_pending[MAX_NUM_NR_UE_INST];
    UNUSED(notUsed);
-   MessageDef *msg_p = NULL;
-   itti_receive_msg(TASK_RRC_NRUE, &msg_p);
-@@ -3423,7 +3424,9 @@ void *rrc_nrue(void *notUsed)
-     nr_rrc_handle_msg3_indication(rrc, NR_RRC_MAC_MSG3_IND(msg_p).rnti);
-     break;
- 
+@@ -3426,2 +3427,4 @@ void *rrc_nrue(void *notUsed)
    case NR_RRC_MAC_RA_IND:
 +    if (NR_RRC_MAC_RA_IND(msg_p).RA_succeeded)
 +      normal_reconnect_pending[rrc->ue_id] = false;
      RRCLOG_D("Received %s: RA %s\n", ITTI_MSG_NAME(msg_p), NR_RRC_MAC_RA_IND(msg_p).RA_succeeded ? "successful" : "failed");
-     nr_rrc_handle_ra_indication(rrc, NR_RRC_MAC_RA_IND(msg_p).RA_succeeded, NR_RRC_MAC_RA_IND(msg_p).gnb_index);
-     break;
-@@ -3487,7 +3490,8 @@ void *rrc_nrue(void *notUsed)
-   case NAS_DETACH_REQ:
-     if (NAS_DETACH_REQ(msg_p).wait_release)
-       rrc->detach_after_release = true;
+@@ -3490,2 +3493,3 @@ void *rrc_nrue(void *notUsed)
      else {
 +      normal_reconnect_pending[rrc->ue_id] = NAS_DETACH_REQ(msg_p).reconnect;
        if (!NAS_DETACH_REQ(msg_p).reconnect)
-         rrc->nrRrcState = RRC_STATE_DETACH_NR;
-       NR_Release_Cause_t release_cause = OTHER;
-@@ -3520,7 +3524,10 @@ void *rrc_nrue(void *notUsed)
-       RRCLOG_I("Initial NAS UL: no SRB yet; buffered %u B for RRCSetupComplete dedicatedNAS (RRC state=%d)\n",
-                req->nasMsg.length,
+@@ -3522,3 +3526,6 @@ void *rrc_nrue(void *notUsed)
                 rrc->nrRrcState);
 +      const NR_UE_MAC_INST_t *mac = get_mac_inst(rrc->ue_id);
        if (rrc->nrRrcState == RRC_STATE_IDLE_NR
 +          && !normal_reconnect_pending[rrc->ue_id]
 +          && mac && mac->current_UL_BWP
            && !nr_rss_probe_withheld((int)rrc->ue_id)) {
-         RA_trigger_t prev_trigger = rrc->ra_trigger;
-         rrc->ra_trigger = RRC_CONNECTION_SETUP;

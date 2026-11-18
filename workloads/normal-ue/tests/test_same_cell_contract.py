@@ -178,6 +178,13 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn('OAI_UPLINK_DOS_REGISTRATION_FAILURE_TARGET=$TARGET_PER_UE', source)
         self.assertIn("Received Registration Reject cause", source)
         self.assertIn("SAME_CELL_RELEASE_FILE", source)
+
+    def test_auth_withholding_closes_with_same_cell_gate(self):
+        patch = (ROOT / "reproducers/authentication-timeout-exhaustion/patch/auth-timeout-ue-w38.patch").read_text()
+        self.assertIn("static bool auth_timeout_gate_open(void)", patch)
+        self.assertIn('memcmp(mode, "attack", sizeof(mode)) == 0', patch)
+        self.assertLess(patch.index("if (!auth_timeout_gate_open())"),
+                        patch.index('auth_timeout_enabled("OAI_AUTH_TIMEOUT_WITHHOLD")'))
         self.assertIn('uplink-credential-flood) ATTACK_SLOTS=1', SCRIPT.read_text())
 
     def test_auth_timeout_uses_ten_independent_ru_attack_slots(self):

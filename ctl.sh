@@ -479,6 +479,7 @@ same_cell_run_one() {
     runner="$ROOT/reproducers/rrc-signaling-storm/bin/rss-broker-witness"
     inner=(env "RSS_CONF=$config" "BROKER_NORMAL_CONF=$normal_conf" "BROKER_LOGDIR=$run_root" BROKER_ATTACK_PROCESSES=6
       BROKER_ATTACK_UES_PER_PROCESS=2 BROKER_WITNESS_MULTI_RU=1 BROKER_WITNESS_UES=5
+      BROKER_WITNESS_PHASE_MS=3000
       BROKER_START_GNB_LAST=1 BROKER_NORMAL_POOL_QUALIFICATION=1 BROKER_NORMAL_ATTACK_DURATION_S=30
       BROKER_PY="$ROOT/workloads/normal-ue/tools/same_cell_broker.py"
       "BROKER_CMD=exec env NORMAL_UE_BROKER_ENDPOINTS=11 QT_QPA_PLATFORM=offscreen python3 '$ROOT/workloads/normal-ue/tools/same_cell_broker.py'"

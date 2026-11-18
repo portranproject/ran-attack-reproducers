@@ -3,7 +3,7 @@
   "reproducer": {
     "minimum_commit": "9acd6cbfac17500ffb6290e1bd14378d45fb01e5",
     "required_files": {
-      "ctl.sh": "75c1db5caf08aa7bb16eb4cd2202be13a78e4ac3bb5225f5b878248afc3c6187",
+      "ctl.sh": "ef650a04a3435356cf53a8669bf418504959386a79e8f5fa90d3d79df61f2f3e",
       "tools/reproctl.py": "e74294dd395c6d6f8226e54eba4c153bf4bd94b72deff9f5cafcd5bec29b6223",
       "tools/p5-live-e2e": "04881ca784eff9bf8417c5f4d13af680cbc859f0fdf0f88ce07b4c93096d6750",
       "tools/verify_live_e2e.py": "55960005522588ec38c088c1f76a635c00c063d49c134769b1ac7c2bd7e99c87",

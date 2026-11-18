@@ -20,7 +20,7 @@
       "reproducers/rrc-signaling-storm/bin/rss-doctor": "0f8624e8f05b68293742788860d6a76eb9408a0b264c02065d23b7f10fefcc9a",
       "reproducers/rrc-signaling-storm/patch/rss-ue-curated.patch": "fedb8d0d8bcf67b9b34825504a9e9fa8740500162419291b485a0cd8ad5aeb3f",
       "reproducers/rrc-signaling-storm/patch/oai-broker-control-gate.patch": "fd54a5774b7f022cd36e5bcf4546eb2ea569a6dc4cab6470a13dd2552dabf75e",
-      "reproducers/authentication-timeout-exhaustion/bin/auth-stall-cell-run": "e06646da0029381c932da8f0c0eab0765610ba447d41fff4a7c1de0b1bc74d0a",
+      "reproducers/authentication-timeout-exhaustion/bin/auth-stall-cell-run": "9e74429ed97c2a3abb60b167e074e9f218cf1035758f81cfec4f2ea030f158d7",
       "reproducers/authentication-timeout-exhaustion/analysis/multi_ru_config.py": "12c580f065565317b60358688e2625df45e02f703b03723fc556a19c8f50261c",
       "reproducers/authentication-timeout-exhaustion/analysis/verify_cell_flood.py": "f65422787fe7a8f6096cba5bce611cff745616cc49d1d6f5ef501b6eb89fae9f",
       "reproducers/authentication-timeout-exhaustion/bin/auth-timeout-build": "adfebfa9e8cac1c2465c104a4488dfe828137214edd3b1e8066563eab49eb9cf",

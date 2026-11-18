@@ -85,8 +85,8 @@ broker에 연결하며, 정상 UE의 공격 전과 종료 직전 Registration·P
 channel timeout 약 9만 건과 서비스 1/5로 실패했으므로 자격 경로가 아니다.
 
 공격 슬롯은 대기 중에도 downlink를 받아 DU와 같은 sample clock을 유지한다. broker가 공격
-uplink를 활성화했다는 응답을 남긴 뒤 공격별 adapter가 UE 동작을 연다. RRC storm에서는 이
-순서를 UE의 RA scheduler gate가 강제한다. 따라서 대기 중 PRACH 재시도를 소진하거나, UE가
+uplink를 활성화했다는 응답을 남긴 뒤 공격별 adapter가 UE 동작을 연다. RRC storm과 인증
+미응답형에서는 이 순서를 UE의 RA scheduler gate가 강제한다. 따라서 대기 중 PRACH 재시도를 소진하거나, UE가
 먼저 송신했지만 broker가 아직 버린 구간을 공격 성공으로 세지 않는다.
 
 이 경로는 직접 KPM이나 detector 입력을 만들지 않는다. 실제

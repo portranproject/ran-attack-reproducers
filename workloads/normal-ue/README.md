@@ -16,7 +16,8 @@ OAI 프로세스 안에서 UE별 독립 virtual RU/ZMQ endpoint 5개를 사용�
 broker/셀에서 함께 cold-start한다. 공격 UE는 DU보다 먼저 시작해 downlink와 uplink sample을
 계속 소비하되, 정상 UE 5/5가 준비될 때까지 broker가 공격 슬롯의 uplink 이득을 0으로
 유지한다. downlink는 계속 공급해 공격 UE의 sample clock을 DU와 맞춘다. RRC storm은 UE의
-RA scheduler도 별도 gate로 함께 보류하고, broker의 uplink 활성화 확인 뒤에만 연다. 준비 뒤
+RA scheduler도 별도 gate로 함께 보류하고, broker의 uplink 활성화 확인 뒤에만 연다. 인증
+미응답형의 10개 UE도 같은 순서로 첫 RA를 시작한다. 준비 뒤
 같은 stream의 이득과 UE 동작만 바꾸므로 실행 중 새 ZMQ stream을 삽입하지 않는다.
 
 ```bash

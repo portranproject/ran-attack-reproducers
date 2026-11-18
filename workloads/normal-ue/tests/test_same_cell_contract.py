@@ -182,6 +182,7 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn('endpoint_rows[$((i * UES_PER_PROCESS + ru))]', source)
         self.assertNotIn('"--zmq.[0].tx_channels"', source)
         self.assertNotIn('"--zmq.[$ru].tx_channels"', source)
+        self.assertIn('OAI_AUTH_TIMEOUT_GATE_FILE="$SAME_CELL_UE_GATE_FILE"', source)
 
     def test_auth_build_disables_ru_sharing_when_each_ue_has_a_ru(self):
         build = (ROOT / "reproducers/authentication-timeout-exhaustion/bin/auth-timeout-build").read_text()
@@ -189,7 +190,15 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn("NORMAL_MULTI_RU_PATCH", build)
         self.assertLess(build.index('apply "$RU_SHARE_PATCH"'), build.index('apply "$NORMAL_MULTI_RU_PATCH"'))
         self.assertLess(build.index('apply "$NORMAL_MULTI_RU_PATCH"'), build.index('apply "$PATCH"'))
+        self.assertLess(build.index('apply "$PATCH"'), build.index('apply "$SAME_CELL_GATE_PATCH"'))
         self.assertIn("return NB_UE_INST > nrue_get_ru_count();", patch)
+
+    def test_common_broker_opens_the_ue_gate_only_after_attack_ack(self):
+        source = SCRIPT.read_text()
+        select = source.split("select_broker()", 1)[1].split("\n}\n", 1)[0]
+        open_gate = 'printf \'attack\\n\' >"$STATE/attack-ue-gate"'
+        self.assertLess(select.index('count > before'), select.index(open_gate))
+        self.assertIn('SAME_CELL_UE_GATE_FILE="$STATE/attack-ue-gate"', source)
 
     def test_modified_shell_entrypoints_are_syntax_valid(self):
         paths = [

@@ -37,6 +37,7 @@ SAME_CELL_READY_FILE=${SAME_CELL_READY_FILE:-}
 SAME_CELL_ATTACK_READY_FILE=${SAME_CELL_ATTACK_READY_FILE:-}
 SAME_CELL_ATTACK_DONE_FILE=${SAME_CELL_ATTACK_DONE_FILE:-}
 SAME_CELL_RELEASE_FILE=${SAME_CELL_RELEASE_FILE:-}
+SAME_CELL_UE_GATE_FILE=${SAME_CELL_UE_GATE_FILE:-}
 
 fail() { echo "auth-stall-cell-run: $*" >&2; exit 2; }
 [[ $MODE == control || $MODE == attack ]] || fail "mode는 control 또는 attack이어야 합니다"
@@ -70,9 +71,13 @@ if (( SAME_CELL_PRESTART )); then
   mapfile -t endpoint_rows <"$ENDPOINTS_FILE"
   (( ${#endpoint_rows[@]} == UE_COUNT )) || fail "same-cell 인증 미응답형은 독립 RU endpoint 10개가 필요합니다"
   for path in "$SAME_CELL_RAN_READY_FILE" "$SAME_CELL_READY_FILE" "$SAME_CELL_ATTACK_READY_FILE" \
-              "$SAME_CELL_ATTACK_DONE_FILE" "$SAME_CELL_RELEASE_FILE"; do
+              "$SAME_CELL_ATTACK_DONE_FILE" "$SAME_CELL_RELEASE_FILE" "$SAME_CELL_UE_GATE_FILE"; do
     [[ $path == /* ]] || fail "same-cell marker는 절대 경로여야 합니다"
   done
+  [[ -f $SAME_CELL_UE_GATE_FILE && ! -L $SAME_CELL_UE_GATE_FILE ]] \
+    || fail "same-cell UE gate가 안전하지 않습니다"
+  grep -Faq OAI_AUTH_TIMEOUT_GATE_FILE "$OAI_BIN" \
+    || fail "same-cell 인증 UE 바이너리에 RA gate가 없습니다"
 fi
 for command in flock python3 setsid stdbuf; do command -v "$command" >/dev/null || fail "$command가 필요합니다"; done
 mapfile -t CONFIGS < <(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$ATTACKER_CONFIGS_FILE" | head -n "$PROCESS_COUNT")
@@ -132,7 +137,8 @@ for ((i=0; i<PROCESS_COUNT; i++)); do
   python3 "$ROOT/analysis/multi_ru_config.py" \
     "${CONFIGS[$i]}" "$runtime_config" "$UES_PER_PROCESS" "$endpoint_offset"
   RUNTIME_CONFIGS+=("$runtime_config")
-  setsid env OAI_AUTH_TIMEOUT_TRACE=1 OAI_AUTH_TIMEOUT_WITHHOLD=$ENABLE RSS_SHARE_NUE=$UES_PER_PROCESS \
+  setsid env OAI_AUTH_TIMEOUT_TRACE=1 OAI_AUTH_TIMEOUT_WITHHOLD=$ENABLE \
+    OAI_AUTH_TIMEOUT_GATE_FILE="$SAME_CELL_UE_GATE_FILE" RSS_SHARE_NUE=$UES_PER_PROCESS \
     "$OAI_BIN" -O "$runtime_config" --band 78 -C 3489420000 --numerology 1 -r 51 -E \
     --ue-scan-carrier --uecap_file "$UECAP" --device.name oai_zmqdevif \
     --rss.enable 1 --rss.interval_ms 0 --rss.completion_pct 0 --rss.ack_gate 1 --rss.ra_gate 1 \

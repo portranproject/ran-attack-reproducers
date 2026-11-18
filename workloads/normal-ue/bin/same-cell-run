@@ -86,6 +86,8 @@ SAME_CELL_GNB_SETTLE_S=${SAME_CELL_GNB_SETTLE_S:-2}
 SAME_CELL_ATTACK_WARMUP_S=${SAME_CELL_ATTACK_WARMUP_S:-8}
 SAME_CELL_ATTACK_TIMEOUT_S=${SAME_CELL_ATTACK_TIMEOUT_S:-300}
 SAME_CELL_EXPERIMENTAL_SWITCH=${SAME_CELL_EXPERIMENTAL_SWITCH:-0}
+BASELINE_READY_FILE=${LIVE_E2E_BASELINE_READY_FILE:-}
+OBSERVATION_READY_FILE=${LIVE_E2E_OBSERVATION_READY_FILE:-}
 if [[ $ACTION == run && $ATTACK == auth-timeout ]]; then
   SAME_CELL_RECOVERY_TIMEOUT_S=${SAME_CELL_AUTH_RECOVERY_TIMEOUT_S:-240}
   export SAME_CELL_AUTH_READY_TIMEOUT_S=${SAME_CELL_AUTH_READY_TIMEOUT_S:-300}
@@ -133,6 +135,9 @@ done
   || fail "SAME_CELL_ATTACK_TIMEOUT_S는 1..600초여야 합니다"
 [[ $SAME_CELL_EXPERIMENTAL_SWITCH == 0 || $SAME_CELL_EXPERIMENTAL_SWITCH == 1 ]] \
   || fail "SAME_CELL_EXPERIMENTAL_SWITCH는 0 또는 1이어야 합니다"
+[[ -z $BASELINE_READY_FILE && -z $OBSERVATION_READY_FILE \
+   || $BASELINE_READY_FILE == /* && $OBSERVATION_READY_FILE == /* ]] \
+  || fail "live E2E 기준선 marker는 둘 다 절대 경로여야 합니다"
 
 mkdir -p "$(dirname "$LOCK_FILE")"
 exec 9>"$LOCK_FILE"
@@ -485,6 +490,16 @@ if [[ $ACTION == run ]]; then
     sleep 1
   done
   record_health before
+  if [[ -n $BASELINE_READY_FILE ]]; then
+    ( set -o noclobber; date +%s%N >"$BASELINE_READY_FILE" ) \
+      || fail "정상 UE 기준선 marker 게시에 실패했습니다"
+    started=$SECONDS
+    until [[ -f $OBSERVATION_READY_FILE && ! -L $OBSERVATION_READY_FILE ]]; do
+      is_running "$ATTACK_PID" || fail "관측 시작 전에 공격 runner가 종료됐습니다"
+      (( SECONDS - started < SAME_CELL_HEALTH_TIMEOUT_S )) || fail "live E2E 관측 시작이 시간 초과했습니다"
+      sleep .2
+    done
+  fi
   ( set -o noclobber; : >"$STATE/normal.ready" )
   started=$SECONDS
   until [[ -f $STATE/attack.ready && ! -L $STATE/attack.ready ]]; do

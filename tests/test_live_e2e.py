@@ -9,6 +9,13 @@ from tools.verify_live_e2e import DETECTOR_COMMIT, verify
 
 
 class LiveE2ETest(unittest.TestCase):
+    def test_live_wrapper_waits_for_normal_baseline_before_observation(self):
+        wrapper = (Path(__file__).resolve().parents[1] / "tools" / "p5-live-e2e").read_text()
+        self.assertLess(wrapper.index('until [[ -f $LIVE_E2E_BASELINE_READY_FILE'),
+                        wrapper.index("start_live\n"))
+        self.assertLess(wrapper.index("start_live\n"),
+                        wrapper.index('date +%s%N >"$LIVE_E2E_OBSERVATION_READY_FILE"'))
+
     def test_active_run_requires_mechanism_live_input_alert_and_dashboard(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "run"

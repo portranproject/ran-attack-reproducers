@@ -484,7 +484,8 @@ same_cell_run_one() {
       BROKER_PY="$ROOT/workloads/normal-ue/tools/same_cell_broker.py"
       "BROKER_CMD=exec env NORMAL_UE_BROKER_ENDPOINTS=11 QT_QPA_PLATFORM=offscreen python3 '$ROOT/workloads/normal-ue/tools/same_cell_broker.py'"
       "$runner" "$mode" -n "$run_id" -d 240)
-    command=(env LIVE_E2E_REQUIRE_SAME_CELL=1 "$ROOT/tools/p5-live-e2e" "$scenario" "$mode" "$run_id" "$rule" "$child_dir" -- "${inner[@]}")
+    command=(env LIVE_E2E_REQUIRE_SAME_CELL=1 LIVE_E2E_WAIT_FOR_BASELINE=1
+      "$ROOT/tools/p5-live-e2e" "$scenario" "$mode" "$run_id" "$rule" "$child_dir" -- "${inner[@]}")
   else
     env_name=$(config_env "$attack")
     runner=$(run_binary "$attack")
@@ -492,7 +493,8 @@ same_cell_run_one() {
     command=(env "$env_name=$config" "$SAME_CELL" run "$alias" -n "$run_id" --count "$count"
       --config "$normal_conf" -- "${inner[@]}")
     if [[ $attack != uplink-credential-flood && $attack != nas-counter-desynchronization ]]; then
-      command=(env LIVE_E2E_REQUIRE_SAME_CELL=1 "$ROOT/tools/p5-live-e2e" "$scenario" "$mode" "$run_id" "$rule" auto -- "${command[@]}")
+      command=(env LIVE_E2E_REQUIRE_SAME_CELL=1 LIVE_E2E_WAIT_FOR_BASELINE=1
+        "$ROOT/tools/p5-live-e2e" "$scenario" "$mode" "$run_id" "$rule" auto -- "${command[@]}")
     fi
   fi
   phase_timeout=${SAME_CELL_PHASE_TIMEOUT_S:-900}

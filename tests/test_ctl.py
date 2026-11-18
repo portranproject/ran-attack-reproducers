@@ -159,6 +159,7 @@ class ControllerTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.count("실행 예정:"), 42)
         self.assertEqual(result.stdout.count("timeout --signal=TERM --kill-after=60s 900s"), 42)
+        self.assertEqual(result.stdout.count("LIVE_E2E_WAIT_FOR_BASELINE=1"), 30)
         for runner in (
             "rss-broker-witness", "auth-stall-cell-run", "blind-run",
             "uplink-credential-flood-run", "downlink-imsi-run",

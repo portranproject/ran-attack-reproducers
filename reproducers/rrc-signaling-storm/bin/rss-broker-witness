@@ -110,6 +110,8 @@ BROKER_WITNESS_PHASE_MS=${BROKER_WITNESS_PHASE_MS:-0}
 BROKER_WITNESS_RETRY_MS=${BROKER_WITNESS_RETRY_MS:-1000}
 BROKER_WITNESS_HONOR_REJECT=${BROKER_WITNESS_HONOR_REJECT:-0}
 BROKER_START_GNB_LAST=${BROKER_START_GNB_LAST:-0}
+BASELINE_READY_FILE=${LIVE_E2E_BASELINE_READY_FILE:-}
+OBSERVATION_READY_FILE=${LIVE_E2E_OBSERVATION_READY_FILE:-}
 MULTI_RU_CONFIG=${MULTI_RU_CONFIG:-$HERE/../authentication-timeout-exhaustion/analysis/multi_ru_config.py}
 if (( BROKER_NORMAL_POOL_QUALIFICATION )); then
   BROKER_ATTACK_UE_BIN=${NORMAL_UE_ATTACK_BIN:-$BROKER_ATTACK_UE_BIN}
@@ -148,6 +150,9 @@ for value in BROKER_WITNESS_RSS BROKER_WITNESS_MULTI_RU BROKER_NORMAL_POOL_QUALI
   [[ ${!value} == 0 || ${!value} == 1 ]] \
     || { echo "$value must be 0 or 1" >&2; exit 1; }
 done
+[[ -z $BASELINE_READY_FILE && -z $OBSERVATION_READY_FILE \
+   || $BASELINE_READY_FILE == /* && $OBSERVATION_READY_FILE == /* ]] \
+  || { echo "live E2E baseline markers must both be absolute paths" >&2; exit 1; }
 (( BROKER_ATTACK_MAX_DURATION_S <= 86400 )) \
   || { echo "BROKER_ATTACK_MAX_DURATION_S must be 0..86400" >&2; exit 1; }
 [[ $BROKER_ATTACK_PHASE_MS =~ ^[0-9]+$ ]] && (( BROKER_ATTACK_PHASE_MS <= 5000 )) \
@@ -939,6 +944,19 @@ if (( BROKER_NORMAL_POOL_QUALIFICATION && SYNC_READY && !BROKER_EARLY_EXIT && !E
       break
     fi
     sleep 1
+  done
+fi
+
+if (( BROKER_NORMAL_POOL_QUALIFICATION && NORMAL_BEFORE_HEALTHY )) && [[ -n $BASELINE_READY_FILE ]]; then
+  ( set -o noclobber; date +%s%N >"$BASELINE_READY_FILE" ) \
+    || { echo "failed to publish normal UE baseline marker" >&2; exit 1; }
+  OBSERVATION_WAIT_STARTED=$SECONDS
+  until [[ -f $OBSERVATION_READY_FILE && ! -L $OBSERVATION_READY_FILE ]]; do
+    is_running "$BROKER_PID" || { BROKER_EARLY_EXIT=1; break; }
+    all_active_ues_running || { EARLY_EXIT=1; break; }
+    (( SECONDS - OBSERVATION_WAIT_STARTED < BROKER_NORMAL_HEALTH_TIMEOUT_S )) \
+      || { echo "live E2E observation start timed out" >&2; exit 1; }
+    sleep .2
   done
 fi
 

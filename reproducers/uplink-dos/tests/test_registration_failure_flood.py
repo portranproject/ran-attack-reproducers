@@ -8,8 +8,27 @@ from analysis.generate_l3_21_replay import generate
 from analysis.verify_registration_failure_live import failed_contexts, session_started_at
 from analysis.verify_registration_failure_run import verify
 
+MODULE_ROOT = Path(__file__).resolve().parents[1]
+
 
 class RegistrationFailureFloodTest(unittest.TestCase):
+    def test_same_cell_ra_gate_is_built_and_passed_fail_closed(self):
+        build = (MODULE_ROOT / "bin/uplink-build").read_text()
+        runner = (MODULE_ROOT / "bin/uplink-credential-flood-run").read_text()
+
+        self.assertIn("workloads/normal-ue/patch/same-cell-ra-gate-w38.patch", build)
+        self.assertLess(
+            build.index('git -C "$OAI" apply "$FLOOD_PATCH"'),
+            build.index('git -C "$OAI" apply --check "$SAME_CELL_GATE_PATCH"'),
+        )
+        self.assertIn("grep -Faq 'OAI_SAME_CELL_GATE_FILE' \"$BIN\"", build)
+
+        self.assertIn('SAME_CELL_UE_GATE_FILE=${SAME_CELL_UE_GATE_FILE:-}', runner)
+        self.assertIn('[[ $SAME_CELL_UE_GATE_FILE == /* ]]', runner)
+        self.assertIn('[[ -f $SAME_CELL_UE_GATE_FILE && ! -L $SAME_CELL_UE_GATE_FILE ]]', runner)
+        self.assertIn("grep -Faq 'OAI_SAME_CELL_GATE_FILE' \"$OAI_BIN\"", runner)
+        self.assertIn('OAI_SAME_CELL_GATE_FILE="$SAME_CELL_UE_GATE_FILE"', runner)
+
     def test_live_session_start_is_normalized(self):
         self.assertEqual(session_started_at("20261116T030405Z"), "2026-11-16T03:04:05Z")
         with self.assertRaises(ValueError):

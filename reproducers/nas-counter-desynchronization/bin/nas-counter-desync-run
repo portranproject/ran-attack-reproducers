@@ -52,6 +52,7 @@ SAME_CELL_READY_FILE=${SAME_CELL_READY_FILE:-}
 SAME_CELL_ATTACK_READY_FILE=${SAME_CELL_ATTACK_READY_FILE:-}
 SAME_CELL_ATTACK_DONE_FILE=${SAME_CELL_ATTACK_DONE_FILE:-}
 SAME_CELL_RELEASE_FILE=${SAME_CELL_RELEASE_FILE:-}
+SAME_CELL_UE_GATE_FILE=${SAME_CELL_UE_GATE_FILE:-}
 READY_TIMEOUT_S=${SAME_CELL_READY_TIMEOUT_S:-120}
 UE_TIMEOUT_S=${NAS_DESYNC_UE_TIMEOUT_S:-90}
 POST_EVENT_S=${NAS_DESYNC_POST_EVENT_S:-6}
@@ -83,6 +84,12 @@ done
 [[ -x $OAI_BIN ]] || fail "OAI_BIN은 실행 가능해야 합니다"
 grep -Faq 'NAS_COUNTER_DESYNC event=unsolicited_security_mode_reject' "$OAI_BIN" \
   || fail "OAI binary에 L3-06 결과 패치가 없습니다"
+if (( SAME_CELL_PRESTART )); then
+  [[ $SAME_CELL_UE_GATE_FILE == /* && -f $SAME_CELL_UE_GATE_FILE && ! -L $SAME_CELL_UE_GATE_FILE ]] \
+    || fail "prestart에는 절대 일반 비심볼릭 링크 UE gate 파일이 필요합니다"
+  grep -Faq 'OAI_SAME_CELL_GATE_FILE' "$OAI_BIN" \
+    || fail "OAI binary에 same-cell RA gate 패치가 없습니다"
+fi
 [[ $MANAGE_RAN == 0 || -x $DU_CTL && -f $DU_CTL && ! -L $DU_CTL ]] || fail "DU_CTL이 안전하지 않습니다"
 for command in flock ssh scp python3 setsid stdbuf; do command -v "$command" >/dev/null || fail "$command가 필요합니다"; done
 
@@ -244,7 +251,8 @@ fi
 bin_dir=$(dirname "$OAI_BIN")
 (
   cd "$bin_dir"
-  OAI_NAS_DESYNC_TRACE=1 OAI_NAS_DESYNC_RESULT_EMULATE=$ENABLE \
+  OAI_SAME_CELL_GATE_FILE="$SAME_CELL_UE_GATE_FILE" \
+    OAI_NAS_DESYNC_TRACE=1 OAI_NAS_DESYNC_RESULT_EMULATE=$ENABLE \
     exec setsid stdbuf -oL -eL "$OAI_BIN" \
     -O "$UE_CONFIG" --band 78 -C 3489420000 --numerology 1 -r 51 -E --ue-scan-carrier \
     --uecap_file "$UECAP" --device.name oai_zmqdevif --num-ues "$UE_COUNT" "${UE_ZMQ[@]}"

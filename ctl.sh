@@ -163,17 +163,27 @@ built_marker() {
   esac
 }
 
+built_gate_marker() {
+  case $1 in
+    rrc-storm) echo RSS_BROKER_CONTROL_FILE ;;
+    auth-timeout) echo OAI_AUTH_TIMEOUT_GATE_FILE ;;
+    blind-dos|uplink-dos|uplink-credential-flood|downlink-imsi|ue-capability|nas-counter-desynchronization)
+      echo OAI_SAME_CELL_GATE_FILE ;;
+  esac
+}
+
 ue_binary() { echo "$(oai_tree "$1")/cmake_targets/ran_build/build/nr-uesoftmodem"; }
 
 is_built() {
-  local binary marker
+  local binary marker gate_marker
   if is_common_signal "$1"; then
     [[ -x $REPROCTL && -f $ROOT/tools/generate_rule_signal.py ]]
     return
   fi
   binary=$(ue_binary "$1")
   marker=$(built_marker "$1")
-  [[ -x $binary ]] && grep -Faq "$marker" "$binary"
+  gate_marker=$(built_gate_marker "$1")
+  [[ -x $binary ]] && grep -Faq "$marker" "$binary" && grep -Faq "$gate_marker" "$binary"
 }
 
 prepare_config() {

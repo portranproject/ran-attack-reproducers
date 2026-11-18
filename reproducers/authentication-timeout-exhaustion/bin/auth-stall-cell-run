@@ -137,8 +137,11 @@ for ((i=0; i<PROCESS_COUNT; i++)); do
   python3 "$ROOT/analysis/multi_ru_config.py" \
     "${CONFIGS[$i]}" "$runtime_config" "$UES_PER_PROCESS" "$endpoint_offset"
   RUNTIME_CONFIGS+=("$runtime_config")
+  gate_phase_ms=0
+  (( SAME_CELL_PRESTART )) && gate_phase_ms=$((25 + i * 15))
   setsid env OAI_AUTH_TIMEOUT_TRACE=1 OAI_AUTH_TIMEOUT_WITHHOLD=$ENABLE \
     OAI_AUTH_TIMEOUT_GATE_FILE="$SAME_CELL_UE_GATE_FILE" RSS_SHARE_NUE=$UES_PER_PROCESS \
+    OAI_AUTH_TIMEOUT_GATE_PHASE_MS="$gate_phase_ms" \
     "$OAI_BIN" -O "$runtime_config" --band 78 -C 3489420000 --numerology 1 -r 51 -E \
     --ue-scan-carrier --uecap_file "$UECAP" --device.name oai_zmqdevif \
     --rss.enable 1 --rss.interval_ms 0 --rss.completion_pct 0 --rss.ack_gate 1 --rss.ra_gate 1 \
@@ -241,14 +244,15 @@ for file in "${RUNTIME_CONFIGS[@]}"; do unlink "$file"; done
 RUNTIME_CONFIGS=()
 printf '{"schema":"auth-timeout.cell-flood-process.v1","early_exit_count":%s,"forced_kill_count":%s}\n' \
   "$EARLY_EXIT" "$FORCED_KILL" >"$OUT/process.json"
-python3 - "$OUT/run.json" "$RUN_ID" "$MODE" "$ENABLE" "$UE_COUNT" "$PROCESS_COUNT" "$UES_PER_PROCESS" "$START_INTERVAL_MS" <<'PY'
+python3 - "$OUT/run.json" "$RUN_ID" "$MODE" "$ENABLE" "$UE_COUNT" "$PROCESS_COUNT" "$UES_PER_PROCESS" "$START_INTERVAL_MS" "$SAME_CELL_PRESTART" <<'PY'
 import json,sys
-path,run_id,mode,enabled,count,processes,per_process,interval=sys.argv[1:]
+path,run_id,mode,enabled,count,processes,per_process,interval,same_cell=sys.argv[1:]
 with open(path,"x") as f:
  json.dump({"schema":"auth-timeout.cell-flood-run.v1","run_id":run_id,"mode":mode,
             "withholding_enabled":enabled=="1","logical_ues":int(count),
             "process_count":int(processes),"ues_per_process":int(per_process),
-            "start_interval_ms":int(interval),"single_cell":True},f,sort_keys=True,separators=(",",":")); f.write("\n")
+            "start_interval_ms":int(interval),"same_cell_ra_phase_ms":[25,40] if same_cell=="1" else [0,0],
+            "single_cell":True},f,sort_keys=True,separators=(",",":")); f.write("\n")
 PY
 python3 "$ROOT/analysis/verify_cell_flood.py" "$OUT" "$MODE" "$RUN_ID" "$UE_COUNT"
 trap - EXIT INT TERM

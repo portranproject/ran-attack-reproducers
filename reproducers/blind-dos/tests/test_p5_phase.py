@@ -104,6 +104,7 @@ class BlindP5PhaseTests(unittest.TestCase):
             log_file = option("--blind.log_file")
             emit("ue_start", enable=enable, target=target, run_id=run_id,
                  target_file=target_file, log_file=log_file,
+                 same_cell_gate_file=os.environ.get("OAI_SAME_CELL_GATE_FILE"),
                  recovery_mode=option("--blind.recovery_mode", "0"),
                  tun_suffix=option("--blind.tun_suffix"),
                  tx=option("--zmq.[0].tx_channels"),
@@ -340,6 +341,7 @@ class BlindP5PhaseTests(unittest.TestCase):
         ue_starts = [row for row in events if row["event"] == "ue_start"]
         self.assertEqual([row["tun_suffix"] for row in ue_starts], ["1", "1"])
         self.assertEqual([row["recovery_mode"] for row in ue_starts], ["1", "0"])
+        self.assertEqual([row["same_cell_gate_file"] for row in ue_starts], [None, None])
         baseline_pids = {row["victim_pid"] for row in events if row["event"] in
                          {"registration", "tun", "ping"}
                          and row["phase"] == "baseline"}
@@ -364,15 +366,18 @@ class BlindP5PhaseTests(unittest.TestCase):
         attack_ready = self.root / "attack.ready"
         attack_done = self.root / "attack.done"
         release = self.root / "attack.release"
+        ue_gate = self.root / "attack-ue-gate"
         ready.write_text("")
         ran_ready.write_text("")
         release.write_text("")
+        ue_gate.write_text("attack\n")
         result, _ = self.execute(
             "external-ran", BLIND_MANAGE_DU="0", SAME_CELL_READY_FILE=str(ready),
             SAME_CELL_PRESTART="1", SAME_CELL_RAN_READY_FILE=str(ran_ready),
             SAME_CELL_ATTACK_READY_FILE=str(attack_ready),
             SAME_CELL_ATTACK_DONE_FILE=str(attack_done),
             SAME_CELL_RELEASE_FILE=str(release),
+            SAME_CELL_UE_GATE_FILE=str(ue_gate),
         )
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         events = self.events()
@@ -384,6 +389,26 @@ class BlindP5PhaseTests(unittest.TestCase):
         self.assertTrue(attack_done.is_file())
         self.assertEqual([row["tun_suffix"] for row in events
                           if row["event"] == "ue_start"], ["0", "1"])
+        starts = [row for row in events if row["event"] == "ue_start"]
+        self.assertEqual(starts[0]["same_cell_gate_file"], str(ue_gate))
+        self.assertIsNone(starts[1]["same_cell_gate_file"])
+
+    def test_external_ran_rejects_a_symlinked_same_cell_gate(self):
+        target = self.root / "gate-target"
+        gate = self.root / "gate-link"
+        target.write_text("standby\n")
+        gate.symlink_to(target)
+        result, _ = self.execute(
+            "unsafe-gate", BLIND_MANAGE_DU="0", SAME_CELL_PRESTART="1",
+            SAME_CELL_RAN_READY_FILE=str(self.root / "ran.ready"),
+            SAME_CELL_ATTACK_READY_FILE=str(self.root / "attack.ready"),
+            SAME_CELL_ATTACK_DONE_FILE=str(self.root / "attack.done"),
+            SAME_CELL_RELEASE_FILE=str(self.root / "release"),
+            SAME_CELL_UE_GATE_FILE=str(gate),
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("absolute regular non-symlink", result.stderr)
+        self.assertEqual(self.events(), [])
 
     def test_attack_passes_exact_target_run_and_exclusive_log_arguments(self):
         result, run_dir = self.execute(

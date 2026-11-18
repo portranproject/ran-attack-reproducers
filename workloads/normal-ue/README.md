@@ -15,9 +15,10 @@ OAI 프로세스 안에서 UE별 독립 virtual RU/ZMQ endpoint 5개를 사용�
 공격과 같이 실행할 때는 `same-cell run`이 해당 공격에 필요한 UE와 정상 UE 5대를 하나의
 broker/셀에서 함께 cold-start한다. 공격 UE는 DU보다 먼저 시작해 downlink와 uplink sample을
 계속 소비하되, 정상 UE 5/5가 준비될 때까지 broker가 공격 슬롯의 uplink 이득을 0으로
-유지한다. downlink는 계속 공급해 공격 UE의 sample clock을 DU와 맞춘다. RRC storm은 UE의
-RA scheduler도 별도 gate로 함께 보류하고, broker의 uplink 활성화 확인 뒤에만 연다. 인증
-미응답형의 10개 UE도 같은 순서로 첫 RA를 시작한다. 준비 뒤
+유지한다. downlink는 계속 공급해 공격 UE의 sample clock을 DU와 맞춘다. RRC storm은 전용
+gate를, 나머지 live L3 모듈은 공통 RA gate를 사용해 broker의 uplink 활성화 확인 뒤에만
+첫 RA를 시작한다. Blind DoS의 공격 UE는 기존 target gate를 사용하므로 공통 gate는 피해 UE에만
+적용한다. 준비 뒤
 같은 stream의 이득과 UE 동작만 바꾸므로 실행 중 새 ZMQ stream을 삽입하지 않는다.
 
 ```bash
@@ -55,9 +56,9 @@ cold-start한다. 따라서 한 실행 중 RF stream을 갈아 끼우는 방식�
 - same-cell 자격은 공격 전과 종료 직전 정상 UE 5대의 Registration·PDU·gateway ping을
   각각 기록한다. 공격 중 저하는 별도 효과이며 종료 직전 5/5가 아니면 정상 UE 동반 자격에
   실패한다.
-- 자격증명 실패 플러드 러너는 목표 실패를 만든 뒤에도 공격 UE를 idle 상태로 유지한다.
-  컨트롤러가 같은 RF clock에서 정상 UE 5/5를 확인한 뒤 종료를 허가하므로, 공격 UE가 먼저
-  사라져 broker 전체가 멈추는 종료 효과를 서비스 영향으로 오판하지 않는다.
+- 공격 runner가 목표 이벤트 생성을 완료하면 컨트롤러가 해당 uplink slot을 먼저 닫고 정상
+  UE 5/5 회복을 확인한 뒤 공격 UE 종료를 허가한다. 공격 UE가 먼저 사라져 broker 전체가
+  멈추는 종료 효과를 서비스 영향으로 오판하지 않는다.
 - p5 cold-start에서 5/5 수렴까지 12.7~62.3초가 걸렸으므로 시작 직후의 `degraded`는
   최종 실패가 아니다.
 

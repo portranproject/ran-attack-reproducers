@@ -83,6 +83,7 @@ SAME_CELL_RAN_READY_FILE=${SAME_CELL_RAN_READY_FILE:-}
 SAME_CELL_ATTACK_READY_FILE=${SAME_CELL_ATTACK_READY_FILE:-}
 SAME_CELL_ATTACK_DONE_FILE=${SAME_CELL_ATTACK_DONE_FILE:-}
 SAME_CELL_RELEASE_FILE=${SAME_CELL_RELEASE_FILE:-}
+SAME_CELL_UE_GATE_FILE=${SAME_CELL_UE_GATE_FILE:-}
 SAME_CELL_VICTIM_TUN=${SAME_CELL_VICTIM_TUN:-oaitun_ue1}
 if [[ $SAME_CELL_PRESTART == 1 ]]; then
   P5_HOOK=$HERE/bin/blind-p5-hook
@@ -148,12 +149,19 @@ positive_int SAME_CELL_READY_TIMEOUT_S "$SAME_CELL_READY_TIMEOUT_S"
   || fail "SAME_CELL_ATTACK_DONE_FILE must be absolute in prestart mode"
 [[ $SAME_CELL_PRESTART == 0 || $SAME_CELL_RELEASE_FILE == /* ]] \
   || fail "SAME_CELL_RELEASE_FILE must be absolute in prestart mode"
+if (( SAME_CELL_PRESTART )); then
+  [[ $SAME_CELL_UE_GATE_FILE == /* && -f $SAME_CELL_UE_GATE_FILE \
+     && ! -L $SAME_CELL_UE_GATE_FILE ]] \
+    || fail "SAME_CELL_UE_GATE_FILE must be an absolute regular non-symlink file in prestart mode"
+fi
 
 for name in OAI_BLIND_BIN VICTIM_UE_CFG ATTACKER_UE_CFG UECAP; do
   value=${!name}
   [[ -n $value && -f $value && ! -L $value ]] || fail "$name must be a regular non-symlink file"
 done
 [[ -x $OAI_BLIND_BIN ]] || fail "OAI_BLIND_BIN must be executable"
+(( SAME_CELL_PRESTART == 0 )) || grep -Faq OAI_SAME_CELL_GATE_FILE "$OAI_BLIND_BIN" \
+  || fail "OAI_BLIND_BIN lacks the same-cell RA gate"
 for name in BAND DL_FREQ NUMEROLOGY PRB DEVICE \
   VICTIM_TX_ENDPOINT VICTIM_RX_ENDPOINT ATTACKER_TX_ENDPOINT ATTACKER_RX_ENDPOINT; do
   [[ -n ${!name} ]] || fail "$name is required"
@@ -522,8 +530,12 @@ if (( SAME_CELL_PRESTART )); then
 fi
 start_ue() {
   local role=$1 config=$2 tx=$3 rx=$4 log=$5
+  local -a role_env=(env -u OAI_SAME_CELL_GATE_FILE)
   shift 5
-  start_child "$role" 1 "$log" "$OAI_BLIND_BIN" -O "$config" "${common_args[@]}" \
+  if [[ $role == victim && $SAME_CELL_PRESTART == 1 ]]; then
+    role_env=(env "OAI_SAME_CELL_GATE_FILE=$SAME_CELL_UE_GATE_FILE")
+  fi
+  start_child "$role" 1 "$log" "${role_env[@]}" "$OAI_BLIND_BIN" -O "$config" "${common_args[@]}" \
     '--zmq.[0].tx_channels' "$tx" '--zmq.[0].rx_channels' "$rx" "$@"
 }
 

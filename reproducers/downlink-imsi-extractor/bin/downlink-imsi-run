@@ -42,6 +42,7 @@ SAME_CELL_PRESTART=${SAME_CELL_PRESTART:-0}
 SAME_CELL_ATTACK_READY_FILE=${SAME_CELL_ATTACK_READY_FILE:-}
 SAME_CELL_ATTACK_DONE_FILE=${SAME_CELL_ATTACK_DONE_FILE:-}
 SAME_CELL_RELEASE_FILE=${SAME_CELL_RELEASE_FILE:-}
+SAME_CELL_UE_GATE_FILE=${SAME_CELL_UE_GATE_FILE:-}
 
 fail() { echo "downlink-imsi-run: $*" >&2; exit 2; }
 [[ $MODE == control || $MODE == emulation ]] || fail "mode는 control 또는 emulation이어야 합니다"
@@ -63,6 +64,12 @@ for file in "$OAI_BIN" "$UE_CFG" "$UECAP" "$DU_CFG" "$SSH_KEY" "$ROOT/patch/down
   [[ -f $file && ! -L $file ]] || fail "필수 일반 파일이 없습니다: $file"
 done
 [[ -x $OAI_BIN ]] || fail "OAI_BIN은 실행 가능해야 합니다"
+if (( SAME_CELL_PRESTART )); then
+  [[ $SAME_CELL_UE_GATE_FILE == /* && -f $SAME_CELL_UE_GATE_FILE && ! -L $SAME_CELL_UE_GATE_FILE ]] \
+    || fail "prestart에는 절대 일반 비심볼릭 링크 UE gate 파일이 필요합니다"
+  grep -Faq 'OAI_SAME_CELL_GATE_FILE' "$OAI_BIN" \
+    || fail "OAI binary에 same-cell RA gate 패치가 없습니다"
+fi
 if (( DOWNLINK_IMSI_MANAGE_RAN )); then
   [[ -f $DU_CTL && ! -L $DU_CTL && -x $DU_CTL ]] || fail "DU_CTL은 실행 가능한 일반 파일이어야 합니다"
 fi
@@ -143,7 +150,8 @@ fi
 bin_dir=$(dirname "$OAI_BIN")
 (
   cd "$bin_dir"
-  OAI_DOWNLINK_IMSI_TRACE=1 OAI_DOWNLINK_IMSI_EMULATE=$ENABLE exec setsid stdbuf -oL -eL "$OAI_BIN" \
+  OAI_SAME_CELL_GATE_FILE="$SAME_CELL_UE_GATE_FILE" \
+    OAI_DOWNLINK_IMSI_TRACE=1 OAI_DOWNLINK_IMSI_EMULATE=$ENABLE exec setsid stdbuf -oL -eL "$OAI_BIN" \
     -O "$UE_CFG" --band 78 -C 3489420000 --numerology 1 -r 51 -E --ue-scan-carrier \
     --uecap_file "$UECAP" --device.name oai_zmqdevif --num-ues 1 \
     '--zmq.[0].tx_channels' "$UE_TX_ENDPOINT" '--zmq.[0].rx_channels' "$UE_RX_ENDPOINT"

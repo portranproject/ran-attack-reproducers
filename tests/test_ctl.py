@@ -91,7 +91,7 @@ class ControllerTest(unittest.TestCase):
             tree = pathlib.Path(directory)
             binary = tree / "cmake_targets/ran_build/build/nr-uesoftmodem"
             binary.parent.mkdir(parents=True)
-            binary.write_text("UPLINK_DOS_DETECTION event=registration_failure")
+            binary.write_text("UPLINK_DOS_DETECTION event=registration_failure\nOAI_SAME_CELL_GATE_FILE")
             binary.chmod(0o700)
             env = dict(os.environ, UPLINK_OAI=str(tree))
             result = self.run_ctl("build", "uplink-credential-flood", env=env)
@@ -197,7 +197,7 @@ class ControllerTest(unittest.TestCase):
             tree = pathlib.Path(directory)
             binary = tree / "cmake_targets/ran_build/build/nr-uesoftmodem"
             binary.parent.mkdir(parents=True)
-            binary.write_text("UPLINK_DOS_EMULATION event=service_request_mac_corrupted")
+            binary.write_text("UPLINK_DOS_EMULATION event=service_request_mac_corrupted\nOAI_SAME_CELL_GATE_FILE")
             binary.chmod(0o700)
             env = dict(os.environ, UPLINK_OAI=str(tree))
             result = self.run_ctl("build", "uplink-dos", env=env)

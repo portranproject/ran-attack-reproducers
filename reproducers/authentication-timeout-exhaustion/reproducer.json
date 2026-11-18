@@ -9,8 +9,7 @@
   "active_mode": "attack",
   "claim": "Authentication Request에 응답하지 않는 서로 다른 랩 가입자가 pre-auth RRC·NGAP·5GMM 컨텍스트를 점유하는 실제 프로토콜 재현",
   "commands": {
-    "run": "bin/auth-timeout-run",
-    "campaign": "bin/auth-timeout-campaign",
+    "run": "bin/auth-stall-cell-run",
     "analyze": "analysis/normalize_p5.py",
     "verify": "analysis/verify_evidence.py"
   },

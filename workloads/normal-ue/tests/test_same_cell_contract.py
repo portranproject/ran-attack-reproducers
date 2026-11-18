@@ -15,8 +15,22 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn("same-cell-run run", result.stdout)
         self.assertIn("same-cell-run status", result.stdout)
         self.assertIn("same-cell-run stop", result.stdout)
-        self.assertIn("blind|uplink|uplink-credential-flood|auth-timeout|downlink-imsi|ue-capability", result.stdout)
+        self.assertIn("uplink|uplink-credential-flood|downlink-imsi|ue-capability", result.stdout)
+        self.assertNotIn("same-cell-run run blind|", result.stdout)
         self.assertIn("hot-run", result.stdout)
+
+    def test_unqualified_same_cell_paths_fail_before_configuration(self):
+        for attack, message in (
+            ("blind", "direct 2-cell"),
+            ("auth-timeout", "auth-stall-cell-run"),
+            ("nas-counter-desync", "direct 1-cell"),
+        ):
+            result = subprocess.run(
+                [str(SCRIPT), "run", attack, "-n", "blocked", "--", "true"],
+                text=True, capture_output=True,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(message, result.stderr)
 
     def test_module_runners_have_external_lifecycle_and_readiness_gates(self):
         contracts = {

@@ -48,6 +48,16 @@ class ReproError(RuntimeError):
     pass
 
 
+def git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(
+        ["git", "-C", str(root), *args], text=True,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    if check and result.returncode != 0:
+        raise ReproError(f"Git 확인 실패: {result.stderr.strip() or 'unknown error'}")
+    return result
+
+
 def regular(path: Path, label: str) -> Path:
     if path.is_symlink() or not path.is_file():
         raise ReproError(f"{label}이 일반 파일이 아닙니다: {path}")
@@ -82,6 +92,34 @@ def sha256(path: Path) -> str:
         for block in iter(lambda: source.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def check_qualified_checkout(root: Path = ROOT) -> str:
+    lock = load_object(root / "integration.lock.json", "integration lock")
+    qualification = lock.get("reproducer")
+    if not isinstance(qualification, dict):
+        raise ReproError("integration lock에 재현도구 자격 정보가 없습니다")
+    minimum = str(qualification.get("minimum_commit", ""))
+    required = qualification.get("required_files")
+    if not COMMIT.fullmatch(minimum) or not isinstance(required, dict) or not required:
+        raise ReproError("integration lock의 재현도구 자격 정보가 잘못됐습니다")
+    if git(root, "rev-parse", "--is-inside-work-tree", check=False).returncode != 0:
+        raise ReproError("Git 없는 복사본은 자격 실행에 사용할 수 없습니다. 저장소를 clone하세요")
+    head = git(root, "rev-parse", "HEAD").stdout.strip()
+    if git(root, "merge-base", "--is-ancestor", minimum, head, check=False).returncode != 0:
+        raise ReproError(f"재현도구가 자격 기준보다 오래됐습니다: {head}")
+    dirty = git(root, "status", "--porcelain=v1", "--untracked-files=no").stdout.strip()
+    if dirty:
+        raise ReproError("재현도구의 추적 파일이 수정됐습니다. clean checkout이 필요합니다")
+    for relative, expected in required.items():
+        if not isinstance(relative, str) or Path(relative).is_absolute() or ".." in Path(relative).parts:
+            raise ReproError("integration lock의 필수 파일 경로가 잘못됐습니다")
+        if not SHA256.fullmatch(str(expected)):
+            raise ReproError(f"integration lock의 SHA-256이 잘못됐습니다: {relative}")
+        path = regular(root / relative, f"자격 필수 파일 {relative}")
+        if sha256(path) != expected:
+            raise ReproError(f"자격 필수 파일 해시가 다릅니다: {relative}")
+    return head
 
 
 def validate_manifest(value: dict[str, Any], path: Path) -> None:
@@ -594,6 +632,7 @@ def command_coverage(as_json: bool) -> None:
 
 
 def command_doctor(profile_name: str) -> None:
+    head = check_qualified_checkout()
     manifest_count = len(manifests())
     profile_path_value, profile = load_profile(profile_name)
     check_private_credentials(profile)
@@ -601,11 +640,16 @@ def command_doctor(profile_name: str) -> None:
     telemetry_binary = regular(Path(profile["telemetry"]["binary"]), "telemetry binary")
     if not os.access(telemetry_binary, os.X_OK):
         raise ReproError(f"telemetry binary가 실행 가능하지 않습니다: {telemetry_binary}")
+    print(f"OK reproducer checkout: {head}")
     print(f"OK manifest: {manifest_count}개")
     print(f"OK profile: {profile_path_value}")
     print(f"OK detector: {binary} ({sha256(binary)})")
     print(f"OK detector config: {config} ({sha256(config)})")
     print(f"OK telemetry: {telemetry_binary} period_ms=100")
+
+
+def command_checkout() -> None:
+    print(f"OK reproducer checkout: {check_qualified_checkout()}")
 
 
 def command_env(profile_name: str) -> None:
@@ -623,6 +667,7 @@ def main(argv: list[str] | None = None) -> int:
         child = sub.add_parser(name)
         child.add_argument("--json", action="store_true")
     sub.add_parser("validate")
+    sub.add_parser("checkout")
     doctor = sub.add_parser("doctor")
     doctor.add_argument("--profile", required=True)
     env = sub.add_parser("env")
@@ -654,6 +699,8 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "validate":
             found = manifests()
             print(f"manifest-validation: ok ({len(found)} modules)")
+        elif args.command == "checkout":
+            command_checkout()
         elif args.command == "doctor":
             command_doctor(args.profile)
         elif args.command == "env":

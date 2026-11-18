@@ -4,6 +4,10 @@
 한 화면에서 호출한다. 실행 원문과 라벨 계약은 계속 각 `reproducers/<attack>/`에 분리된다.
 7개 L3 공격은 1.0 자격 대상으로, 6개 AN fixture는 참고용 detector 회귀로 검색한다.
 
+> 처음 설치하거나 다른 환경으로 옮길 때는 [L3 공격 7종 E2E 실행 가이드](E2E-EXECUTION-GUIDE.md)를
+> 먼저 따른다. 공식 runner가 없거나 `doctor`가 실패하면 OAI 바이너리 직접 실행이나
+> `/tmp` 수동 스크립트로 대체하지 않는다.
+
 ## 가장 빠른 사용법
 
 인자 없이 실행하면 메뉴가 열린다.
@@ -39,6 +43,10 @@
 ./ctl.sh report an-01-matched-3-emulation-1 --profile p5
 ./ctl.sh verify an-01-matched-3-emulation-1 --profile p5
 ```
+
+`doctor`는 profile뿐 아니라 Git checkout, 최소 자격 커밋, 추적 파일 변경 여부와 핵심
+runner 해시를 확인한다. Git 없는 파일 복사본, 구버전, 수정된 runner는 실행 환경으로
+인정하지 않는다.
 
 실제 실행 없이 위임 명령만 확인하려면 `--dry-run`을 붙인다.
 
@@ -78,10 +86,11 @@ gap 0, KPM 존재, 예상 RAISE 수, dashboard 수락과 child 기전 판정을 
 
 ## profile
 
-`profiles/p5.example.json` 또는 `profiles/ota.example.json`을 같은 디렉터리의 `.json`으로
-복사해 실제 경로를 채운다. 실제 profile은 Git에서 제외된다. `doctor`는 다음을 fail-closed로
-확인한다.
+`profiles/p4.example.json`, `profiles/p5.example.json` 또는 `profiles/ota.example.json`을
+같은 디렉터리의 `.json`으로 복사해 실제 경로를 채운다. 실제 profile은 Git에서 제외된다.
+`doctor`는 다음을 fail-closed로 확인한다.
 
+- Git clone과 최소 자격 커밋, clean tracked worktree, 핵심 runner SHA-256
 - `configured=true`, `lab_only=true`, target allowlist와 실행 상한
 - detector·telemetry 고정 commit과 실행 파일, detector config SHA-256
 - telemetry `period_ms=100`
@@ -138,6 +147,11 @@ BLIND_OAI=/srv/OAI-blind-dos-w38 \
 
 컨트롤러의 유형 표시는 기존 모듈의 주장 범위를 바꾸지 않는다. 상세 성공 조건과 탐지 입력,
 검증 한계는 각 모듈 README와 사용 가이드를 기준으로 한다.
+
+L3-01-O의 production 자격은 일반 `auth-timeout-run`이 아니라 한 셀 10 UE 전용
+`auth-stall-cell-run`을 사용한다. Blind DoS의 자격 경로는 direct 2-cell이며 same-cell이
+아니다. 두 경로의 정확한 명령과 금지 조합은 [E2E 실행 가이드](E2E-EXECUTION-GUIDE.md)에
+고정한다.
 
 전체 정규 명칭과 p5/OTA 자격 상태는 [공격 카탈로그](ATTACK-CATALOG.md), 주장 경계는
 [주장과 한계](CLAIMS-AND-LIMITS.md)를 따른다.

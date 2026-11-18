@@ -17,6 +17,10 @@ parser는 이 스택을 기준으로 한다.
 `qualified`는 p5에서의 자격이다. 다른 환경에 저장소를 복사했다고 그 환경까지 qualified가
 되지는 않는다.
 
+ZIP·`scp` 파일 복사본은 사용하지 않는다. 대상 호스트에서 Git clone 또는 `git pull
+--ff-only`로 갱신하고 `doctor`가 현재 checkout과 핵심 runner 해시를 확인하게 한다. 공식
+runner가 없으면 포팅 실패이며 수동 스크립트를 새로 작성해 대체하지 않는다.
+
 ## 호스트 선행조건
 
 runner는 Linux의 GNU 명령 동작을 사용한다. 다음 항목은 자동 설치하지 않는다.
@@ -35,13 +39,25 @@ profile과 module conf는 Git 밖에 두고 권한을 0600 이하로 설정한�
 
 ## 같은 스택의 다른 ZMQ 환경
 
-1. 저장소를 DU/공격 UE 실행 호스트에 clone한다.
+1. 저장소를 DU/공격 UE 실행 호스트에 clone하고 `git switch main && git pull --ff-only`를
+   실행한다. `git status --short`는 비어 있어야 한다.
 2. OAI 기준 저장소를 준비하고 `OAI_BASE`를 실제 절대경로로 지정한다.
 3. `profiles/p5.example.json`을 별도 profile 디렉터리에 복사해 `configured=true`, CU/DU
    endpoint, detector·telemetry·run 경로를 실제 값으로 바꾼다.
 4. 모듈별 conf를 Git 밖에 만들고 아래 profile environment 키로 절대경로를 연결한다.
 5. `doctor → setup → control → active` 순서로 실행한다. control이 등록·PDU·ping과
    telemetry gap 0을 통과하기 전에는 공격을 실행하지 않는다.
+
+p4에서는 `profiles/p4.example.json`을 `profiles/p4.json`으로 복사한다. `backend` 이름은
+현재 ZMQ adapter 호환을 위해 `p5`로 유지하되 profile ID와 endpoint·allowlist·credential
+경로는 p4 값으로 채운다. 이후 다음 명령이 실패하면 공격을 실행하지 않는다.
+
+```bash
+./ctl.sh doctor --profile p4
+```
+
+L3-01-O는 `auth-stall-cell-run`의 `2프로세스×5 UE`, L3-20은 direct 2-cell runner만
+자격 경로다. 자세한 실행표는 [E2E 실행 가이드](E2E-EXECUTION-GUIDE.md)를 따른다.
 
 profile에서 사용할 수 있는 module conf 키는 다음과 같다.
 

@@ -21,7 +21,7 @@ PLACEHOLDER_CFG=""
 usage() {
   cat <<'EOF'
 사용법:
-  same-cell-run run blind|uplink|uplink-credential-flood|auth-timeout|downlink-imsi|ue-capability|nas-counter-desync -n RUN_ID [--count 5] [--config FILE] -- COMMAND...
+  same-cell-run run uplink|uplink-credential-flood|downlink-imsi|ue-capability -n RUN_ID [--count 5] [--config FILE] -- COMMAND...
   same-cell-run start -n SESSION_ID [--count 5] [--config FILE]  # 정상 UE 개발 세션
   same-cell-run hot-run blind|uplink|auth-timeout -n RUN_ID -- COMMAND...  # 미승인 진단용
   same-cell-run status
@@ -61,6 +61,14 @@ case $ACTION in
   *) usage; fail "알 수 없는 작업: $ACTION" ;;
 esac
 
+if [[ $ACTION == run ]]; then
+  case $ATTACK in
+    blind) fail "Blind DoS same-cell은 미승인입니다. 검증된 direct 2-cell runner를 사용하세요" ;;
+    auth-timeout) fail "L3-01-O 자격은 same-cell wrapper가 아니라 auth-stall-cell-run의 2×5 UE 경로입니다" ;;
+    nas-counter-desync) fail "L3-06 정상 UE same-cell은 미승인입니다. direct 1-cell runner를 사용하세요" ;;
+  esac
+fi
+
 if [[ $ACTION == start || $ACTION == run ]]; then
   CONF=${CONF:-$ROOT/workloads/normal-ue/conf/p5.conf}
 else
@@ -91,10 +99,8 @@ PING_CMD=${PING_CMD:-ping}
 SS_CMD=${SS_CMD:-ss}
 if [[ $ACTION == run ]]; then
   case $ATTACK in
-    blind) ATTACK_SLOTS=2 ;;
-    uplink|downlink-imsi|ue-capability|nas-counter-desync) ATTACK_SLOTS=1 ;;
+    uplink|downlink-imsi|ue-capability) ATTACK_SLOTS=1 ;;
     uplink-credential-flood) ATTACK_SLOTS=1 ;;
-    auth-timeout) ATTACK_SLOTS=4 ;;
     *) fail "지원하지 않는 same-cell 공격: $ATTACK" ;;
   esac
 else

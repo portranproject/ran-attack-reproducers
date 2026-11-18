@@ -4,6 +4,7 @@ set -euo pipefail
 umask 077
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+python3 "$ROOT/tools/reproctl.py" checkout >/dev/null
 CONF=${LIVE_E2E_CONF:-/root/live-e2e.conf}
 [[ -f $CONF && ! -L $CONF ]] || { echo "안전한 LIVE_E2E_CONF가 필요합니다: $CONF" >&2; exit 2; }
 # shellcheck source=/dev/null

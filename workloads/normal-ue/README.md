@@ -18,12 +18,14 @@ broker/셀에서 함께 cold-start한다. 공격 UE는 DU보다 먼저 시작해
 유지한다. 준비 뒤 같은 stream의 이득만 1로 바꾸므로 실행 중 새 ZMQ stream을 삽입하지 않는다.
 
 ```bash
-./ctl.sh same-cell run blind -n demo-blind --count 5 -- /path/to/blind-run attack -n blind-1 -e 1
 ./ctl.sh same-cell run uplink -n demo-uplink --count 5 -- /path/to/uplink-run emulation -n uplink-1 -e 1
-./ctl.sh same-cell run auth-timeout -n demo-auth --count 5 -- /path/to/auth-timeout-run attack -n auth-1 -e 1
 ./ctl.sh same-cell run downlink-imsi -n demo-id --count 5 -- /path/to/downlink-imsi-run emulation -n id-1 -e 1
 ./ctl.sh same-cell run ue-capability -n demo-cap --count 5 -- /path/to/ue-capability-run emulation -n cap-1 -e 1
 ```
+
+Blind DoS와 L3-06 same-cell은 p5에서 미승인이라 기본 `run`이 거부한다. L3-01-O 자격은
+정상 UE wrapper가 아니라 `auth-stall-cell-run`의 한 셀 `2프로세스×5 UE` 경로를 사용한다.
+이 세 경로를 정상 UE 결합 성공으로 해석하거나 수동 스크립트로 우회하지 않는다.
 
 각 module의 Git 밖 설정과 `--enable` 안전 조건은 기존과 같다. 각 공격 module runner는
 CU/DU를 시작·중지하지 않는 외부 lifecycle·prestart 모드로 실행된다. 실행 종료 시에는 PID와

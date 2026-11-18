@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import importlib.util
 import json
 import os
 import pathlib
@@ -13,8 +14,41 @@ GENERATOR = ROOT / "tools/generate_rule_signal.py"
 RULES = ("L3-06", "AN-01", "AN-06a", "AN-02", "AN-04", "AN-07", "AN-08")
 SIGNAL_RULES = ("AN-01", "AN-06a", "AN-02", "AN-04", "AN-07", "AN-08")
 
+SPEC = importlib.util.spec_from_file_location("reproctl", REPROCTL)
+REPROCTL_MODULE = importlib.util.module_from_spec(SPEC)
+assert SPEC.loader is not None
+SPEC.loader.exec_module(REPROCTL_MODULE)
+
 
 class PlatformTest(unittest.TestCase):
+    def test_qualified_checkout_rejects_modified_deployment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            subprocess.run(["git", "-C", str(root), "config", "user.email", "test@example.invalid"], check=True)
+            subprocess.run(["git", "-C", str(root), "config", "user.name", "test"], check=True)
+            runner = root / "bin/runner"
+            runner.parent.mkdir()
+            runner.write_text("qualified\n")
+            subprocess.run(["git", "-C", str(root), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-qm", "baseline"], check=True)
+            baseline = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
+            lock = {
+                "schema": "ran-reproducer.integration-lock.v1",
+                "reproducer": {
+                    "minimum_commit": baseline,
+                    "required_files": {"bin/runner": REPROCTL_MODULE.sha256(runner)},
+                },
+            }
+            (root / "integration.lock.json").write_text(json.dumps(lock))
+            subprocess.run(["git", "-C", str(root), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-qm", "lock"], check=True)
+            self.assertEqual(REPROCTL_MODULE.check_qualified_checkout(root), subprocess.check_output(
+                ["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip())
+            runner.write_text("tampered\n")
+            with self.assertRaises(REPROCTL_MODULE.ReproError):
+                REPROCTL_MODULE.check_qualified_checkout(root)
+
     def test_catalog_has_exactly_thirteen_rule_families(self):
         result = subprocess.run(
             ["python3", str(REPROCTL), "coverage", "--json"], cwd=ROOT, text=True,

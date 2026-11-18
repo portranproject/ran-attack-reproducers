@@ -15,7 +15,7 @@
 2. `profiles/p5.example.json`을 `profiles/p5.json`으로 복사해 현재 CU/DU public/private
    endpoint와 detector·telemetry 경로를 채운다.
 3. `./ctl.sh doctor --profile p5`가 manifest 13개, production detector/config,
-   telemetry `period_ms=100`을 모두 통과해야 한다.
+   telemetry `period_ms=100`, 재현도구 checkout·핵심 runner 해시를 모두 통과해야 한다.
 4. OCUDU/FlexRIC만 있고 현재 integration lock의 detector·telemetry가 없으면 자격 검증을
    시작하지 않는다.
 

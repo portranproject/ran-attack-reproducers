@@ -1,7 +1,19 @@
 # AGENTS.md — 기지국 공격 재현 도구 모음 (RAN 보안 테스트베드)
 
 > 이 디렉토리에서 작업하는 에이전트/팀원용 컨텍스트. 처음 들어오면 이 파일부터 읽을 것.
-> 최종 갱신 2026-11-17.
+> 최종 갱신 2026-11-18.
+
+## 실행 전 필수 규칙
+
+- 사람과 AI 모두 [E2E-EXECUTION-GUIDE.md](E2E-EXECUTION-GUIDE.md)의 공식 토폴로지와
+  runner만 사용한다.
+- `./ctl.sh doctor --profile <환경>`이 실패하거나 공식 runner가 없으면 중단한다. OAI
+  바이너리 직접 실행이나 `/tmp` 수동 스크립트로 대체하지 않는다.
+- L3-01-O 자격은 `auth-stall-cell-run`의 한 셀 `2프로세스×5 UE`, L3-20 자격은 direct
+  2-cell 동시 victim+attacker다. 한 프로세스 `--num-ues 10`, 순차 GUTI 재사용,
+  Blind/L3-06 same-cell은 자격 결과로 인정하지 않는다.
+- p5 자격을 p4·OTA 자격으로 복사하지 않는다. 환경별 control→active matched 3/3과
+  production dashboard 전송을 별도로 봉인한다.
 
 ## 이 디렉토리는 무엇인가
 

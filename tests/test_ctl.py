@@ -143,6 +143,14 @@ class ControllerTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("control", result.stderr)
 
+    def test_auth_timeout_dry_run_uses_qualified_two_by_five_runner(self):
+        result = self.run_ctl(
+            "campaign", "auth-timeout", "auth-qualified", "--enable", "--dry-run"
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.count("auth-stall-cell-run"), 6)
+        self.assertNotIn("auth-timeout-run", result.stdout)
+
     def test_build_reuses_binary_with_module_marker(self):
         with tempfile.TemporaryDirectory() as directory:
             tree = pathlib.Path(directory)

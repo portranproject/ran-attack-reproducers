@@ -13,6 +13,7 @@ NORMAL_UE="$ROOT/workloads/normal-ue/bin/normal-ue"
 SAME_CELL="$ROOT/workloads/normal-ue/bin/same-cell-run"
 
 fail() { echo "ctl.sh: $*" >&2; exit 2; }
+require_qualified_checkout() { python3 "$REPROCTL" checkout >/dev/null; }
 
 attack_id() {
   case ${1:-} in
@@ -103,7 +104,7 @@ config_file() {
     rrc-storm) echo "${RSS_CONF:-$dir/conf/rss.conf}" ;;
     blind-dos) echo "${BLIND_CONF:-$dir/conf/blind.conf}" ;;
     uplink-dos|uplink-credential-flood) echo "${UPLINK_CONF:-$dir/conf/uplink.conf}" ;;
-    auth-timeout) echo "${AUTH_TIMEOUT_CONF:-$dir/conf/auth-timeout.conf}" ;;
+    auth-timeout) echo "${AUTH_STALL_CELL_CONF:-$dir/conf/auth-stall-cell.conf}" ;;
     downlink-imsi) echo "${DOWNLINK_IMSI_CONF:-$dir/conf/downlink-imsi.conf}" ;;
     ue-capability) echo "${UE_CAPABILITY_CONF:-$dir/conf/ue-capability.conf}" ;;
     nas-counter-desynchronization) echo "${NAS_DESYNC_CONF:-$dir/conf/nas-counter-desync.conf}" ;;
@@ -116,7 +117,7 @@ config_example() {
     rrc-storm) echo "$dir/conf/rss.conf.example" ;;
     blind-dos) echo "$dir/conf/p5-zmq.conf.example" ;;
     uplink-dos|uplink-credential-flood) echo "$dir/conf/uplink.conf.example" ;;
-    auth-timeout) echo "$dir/conf/auth-timeout.conf.example" ;;
+    auth-timeout) echo "$dir/conf/auth-stall-cell.conf.example" ;;
     downlink-imsi) echo "$dir/conf/p5-zmq.conf.example" ;;
     ue-capability) echo "$dir/conf/p5-zmq.conf.example" ;;
     nas-counter-desynchronization) echo "$dir/conf/nas-counter-desync.conf.example" ;;
@@ -271,7 +272,7 @@ config_env() {
     rrc-storm) echo RSS_CONF ;;
     blind-dos) echo BLIND_CONF ;;
     uplink-dos|uplink-credential-flood) echo UPLINK_CONF ;;
-    auth-timeout) echo AUTH_TIMEOUT_CONF ;;
+    auth-timeout) echo AUTH_STALL_CELL_CONF ;;
     downlink-imsi) echo DOWNLINK_IMSI_CONF ;;
     ue-capability) echo UE_CAPABILITY_CONF ;;
     nas-counter-desynchronization) echo NAS_DESYNC_CONF ;;
@@ -285,7 +286,7 @@ run_binary() {
     blind-dos) echo "$dir/bin/blind-run" ;;
     uplink-dos) echo "$dir/bin/uplink-run" ;;
     uplink-credential-flood) echo "$dir/bin/uplink-credential-flood-run" ;;
-    auth-timeout) echo "$dir/bin/auth-timeout-run" ;;
+    auth-timeout) echo "$dir/bin/auth-stall-cell-run" ;;
     downlink-imsi) echo "$dir/bin/downlink-imsi-run" ;;
     ue-capability) echo "$dir/bin/ue-capability-run" ;;
     nas-counter-desynchronization) echo "$dir/bin/nas-counter-desync-run" ;;
@@ -298,7 +299,6 @@ campaign_binary() {
     blind-dos) echo "$dir/bin/blind-campaign" ;;
     uplink-dos) echo "$dir/bin/uplink-campaign" ;;
     uplink-credential-flood) echo "$dir/bin/uplink-credential-flood-campaign" ;;
-    auth-timeout) echo "$dir/bin/auth-timeout-campaign" ;;
     downlink-imsi) echo "$dir/bin/downlink-imsi-campaign" ;;
     ue-capability) echo "$dir/bin/ue-capability-campaign" ;;
     nas-counter-desynchronization) echo "$dir/bin/nas-counter-desync-campaign" ;;
@@ -374,6 +374,27 @@ campaign_one() {
     if [[ $dry_run == 1 ]]; then print_command "${command[@]}"; return; fi
     exec "${command[@]}"
   fi
+  if [[ $attack == auth-timeout ]]; then
+    config=$(config_file "$attack")
+    env_name=$(config_env "$attack")
+    runner=$(run_binary "$attack")
+    if [[ $dry_run == 1 ]]; then
+      local index
+      for index in 1 2 3; do
+        print_command env "$env_name=$config" "$runner" control -n "$campaign_id-control-$index" -e 0
+        print_command env "$env_name=$config" "$runner" attack -n "$campaign_id-attack-$index" -e 1
+      done
+      return
+    fi
+    [[ -f $config && ! -L $config ]] || fail "설정이 없습니다. 먼저 실행: ./ctl.sh setup $attack"
+    [[ -x $runner ]] || fail "runner가 없습니다: $runner"
+    local index
+    for index in 1 2 3; do
+      env "$env_name=$config" "$runner" control -n "$campaign_id-control-$index" -e 0
+      env "$env_name=$config" "$runner" attack -n "$campaign_id-attack-$index" -e 1
+    done
+    return
+  fi
   if [[ $attack == rrc-storm ]]; then
     config=$(config_file "$attack")
     runner=$(run_binary "$attack")
@@ -441,7 +462,7 @@ menu() {
     PS3="작업 번호 선택: "
     select action in 상태점검 환경준비_및_빌드 정상대조 "$mode" 3세트_캠페인 뒤로; do
       case $action in
-        상태점검) doctor_one "$choice" || true; break ;;
+        상태점검) require_qualified_checkout && doctor_one "$choice" || true; break ;;
         환경준비_및_빌드)
           read -r -p "설정 생성·OAI 준비·빌드를 시작하려면 SETUP 입력: " answer
           if [[ $answer == SETUP ]]; then setup_one "$choice"; else echo "취소됨"; fi
@@ -486,7 +507,7 @@ usage() {
   ./ctl.sh coverage
   ./ctl.sh validate
   ./ctl.sh normal-ue setup|doctor|start|status|stop [--profile p5] [--count N]
-  ./ctl.sh same-cell run blind|uplink|uplink-credential-flood|auth-timeout|downlink-imsi|ue-capability|nas-counter-desync -n RUN_ID [--count 5] -- COMMAND...
+  ./ctl.sh same-cell run uplink|uplink-credential-flood|downlink-imsi|ue-capability -n RUN_ID [--count 5] -- COMMAND...
   ./ctl.sh same-cell start -n SESSION_ID [--count 5]  # 정상 UE 개발 세션
   ./ctl.sh same-cell status|stop
 
@@ -501,16 +522,18 @@ EOF
 main() {
   local subcommand=${1:-menu} target attack mode run_id enabled=0 dry_run=0 option profile=p5 profile_given=0
   case $subcommand in
-    menu) menu ;;
+    menu) require_qualified_checkout; menu ;;
     list) list_attacks ;;
     coverage) python3 "$REPROCTL" coverage ;;
     validate) python3 "$REPROCTL" validate ;;
     normal-ue)
       [[ -x $NORMAL_UE ]] || fail "normal-ue runner가 없습니다: $NORMAL_UE"
+      case ${2:-} in status|stop) ;; *) require_qualified_checkout ;; esac
       shift
       exec "$NORMAL_UE" "$@" ;;
     same-cell)
       [[ -x $SAME_CELL ]] || fail "same-cell runner가 없습니다: $SAME_CELL"
+      case ${2:-} in status|stop) ;; *) require_qualified_checkout ;; esac
       shift
       exec "$SAME_CELL" "$@" ;;
     doctor)
@@ -525,6 +548,8 @@ main() {
         python3 "$REPROCTL" doctor --profile "$profile"
         load_profile_env "$profile"
         require_runnable_backend
+      else
+        require_qualified_checkout
       fi
       doctor_targets "$target" ;;
     setup|build)
@@ -533,6 +558,7 @@ main() {
       while [[ $# -gt 0 ]]; do
         case $1 in --profile) [[ $# -ge 2 ]] || fail "--profile 값이 필요합니다"; profile=$2; profile_given=1; shift 2 ;; *) fail "알 수 없는 옵션: $1" ;; esac
       done
+      require_qualified_checkout
       if [[ $profile_given == 1 ]]; then load_profile_env "$profile"; require_runnable_backend; fi
       if [[ $subcommand == setup ]]; then for_each_strict setup_one "$target"; else for_each_strict build_one "$target"; fi ;;
     run)
@@ -544,6 +570,7 @@ main() {
       while [[ $# -gt 0 ]]; do
         case $1 in --enable) enabled=1; shift ;; --dry-run) dry_run=1; shift ;; --profile) [[ $# -ge 2 ]] || fail "--profile 값이 필요합니다"; profile=$2; profile_given=1; shift 2 ;; *) fail "알 수 없는 옵션: $1" ;; esac
       done
+      [[ $dry_run == 1 ]] || require_qualified_checkout
       if [[ $profile_given == 1 ]] && ! is_common_signal "$attack"; then
         load_profile_env "$profile"
         require_runnable_backend
@@ -557,6 +584,7 @@ main() {
       while [[ $# -gt 0 ]]; do
         case $1 in --enable) enabled=1; shift ;; --dry-run) dry_run=1; shift ;; --profile) [[ $# -ge 2 ]] || fail "--profile 값이 필요합니다"; profile=$2; profile_given=1; shift 2 ;; *) fail "알 수 없는 옵션: $1" ;; esac
       done
+      [[ $dry_run == 1 ]] || require_qualified_checkout
       if [[ $profile_given == 1 ]] && ! is_common_signal "$attack"; then
         load_profile_env "$profile"
         require_runnable_backend

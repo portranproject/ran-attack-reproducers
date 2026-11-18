@@ -4,9 +4,10 @@
 탐지·대응기의 입력과 정답을 검증하기 위한 도구 모음이다. 공격 모듈마다 구현,
 설정, 라벨 계약, 실험 결과를 분리하며 RF 차폐 또는 가상 RF 환경에서만 사용한다.
 
-처음 읽을 문서는 [AGENTS.md](AGENTS.md)다. 공통 준비·빌드·실행은
-[통합 컨트롤러 사용 가이드](CONTROL-GUIDE.md), 공격별 검증 범위는 해당 모듈의 README를
-기준으로 한다.
+사람과 AI 모두 먼저 [L3 공격 7종 E2E 실행 가이드](E2E-EXECUTION-GUIDE.md)를 읽는다.
+공통 준비·빌드·실행은 [통합 컨트롤러 사용 가이드](CONTROL-GUIDE.md), 공격별 검증 범위는
+해당 모듈의 README를 기준으로 한다. 공식 runner가 없거나 `doctor`가 실패하면 수동
+스크립트로 대체하지 않고 실행을 중단한다.
 
 ```bash
 ./ctl.sh list
@@ -81,7 +82,7 @@ reproducers/
 ├── rrc-reject-release-imprisonment/ # AN-07 입력 에뮬레이션
 └── tac-manipulation-return/       # AN-08 입력 에뮬레이션
 artifacts/                  # 봉인된 RRC 증거와 게시용 요약
-profiles/                   # Git 밖 실제 환경 + 추적되는 p5/OTA 예제
+profiles/                   # Git 밖 실제 환경 + 추적되는 p4/p5/OTA 예제
 schemas/                    # module/profile/run/verdict/evidence 계약
 tools/                      # catalog·replay·report·verify와 공통 입력 생성기
 rss-storm/                  # 과거 문서·명령용 호환 안내와 위임 스크립트

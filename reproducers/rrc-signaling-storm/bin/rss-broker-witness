@@ -111,6 +111,7 @@ BROKER_WITNESS_RETRY_MS=${BROKER_WITNESS_RETRY_MS:-1000}
 BROKER_WITNESS_HONOR_REJECT=${BROKER_WITNESS_HONOR_REJECT:-0}
 BROKER_START_GNB_LAST=${BROKER_START_GNB_LAST:-0}
 if (( BROKER_NORMAL_POOL_QUALIFICATION )); then
+  BROKER_ATTACK_UE_BIN=${NORMAL_UE_ATTACK_BIN:-$BROKER_ATTACK_UE_BIN}
   GNB_CONFIG=${NORMAL_UE_GNB_CONFIG:-$GNB_CONFIG}
   GNB_STOP_CMD=${NORMAL_UE_GNB_STOP_CMD:-$GNB_STOP_CMD}
   GNB_RESTART_CMD=${NORMAL_UE_GNB_RESTART_CMD:-$GNB_RESTART_CMD}
@@ -1399,10 +1400,10 @@ EOF
 
 if (( BROKER_NORMAL_POOL_QUALIFICATION )); then
   cat >"$OUT/same-cell-session.json" <<EOF
-{"schema":"same-cell.session.v2","run_id":"$RUN_ID","attack":"rrc-storm","mode":"$MODE","normal_ues":5,"attack_slots":6,"cell_restarts":1,"cu_restarts":0,"clocked_attack_slots":true}
+{"schema":"same-cell.session.v2","run_id":"$RUN_ID","attack":"rrc-storm","mode":"$MODE","normal_ues":5,"normal_shared_ru":true,"attack_slots":6,"cell_restarts":1,"cu_restarts":0,"clocked_attack_slots":true}
 EOF
   cat >"$OUT/same-cell-run.json" <<EOF
-{"schema":"same-cell.run.v3","run_id":"$RUN_ID","attack":"rrc-storm","mode":"$MODE","normal_ues":5,"attack_slots":6,"du_restarted_during_attack":false,"normal_healthy_before_attack_teardown":$(bool "$NORMAL_RECOVERY_HEALTHY"),"direct_detector_input":false,"ue_to_ran_path_required":true,"attack_exit_status":$((VALID ? 0 : 1)),"result":"result.json"}
+{"schema":"same-cell.run.v3","run_id":"$RUN_ID","attack":"rrc-storm","mode":"$MODE","normal_ues":5,"normal_shared_ru":true,"attack_slots":6,"du_restarted_during_attack":false,"normal_healthy_before_attack_teardown":$(bool "$NORMAL_RECOVERY_HEALTHY"),"direct_detector_input":false,"ue_to_ran_path_required":true,"attack_exit_status":$((VALID ? 0 : 1)),"result":"result.json"}
 EOF
 fi
 

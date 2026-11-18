@@ -468,10 +468,10 @@ same_cell_run_one() {
     child_dir=$run_root/$run_id
     runner="$ROOT/reproducers/rrc-signaling-storm/bin/rss-broker-witness"
     inner=(env "RSS_CONF=$config" "BROKER_NORMAL_CONF=$normal_conf" "BROKER_LOGDIR=$run_root" BROKER_ATTACK_PROCESSES=6
-      BROKER_ATTACK_UES_PER_PROCESS=2 BROKER_WITNESS_MULTI_RU=1 BROKER_WITNESS_UES=5
+      BROKER_ATTACK_UES_PER_PROCESS=2 BROKER_WITNESS_MULTI_RU=0 BROKER_WITNESS_UES=5
       BROKER_START_GNB_LAST=1 BROKER_NORMAL_POOL_QUALIFICATION=1 BROKER_NORMAL_ATTACK_DURATION_S=30
       BROKER_PY="$ROOT/workloads/normal-ue/tools/same_cell_broker.py"
-      "BROKER_CMD=exec env NORMAL_UE_BROKER_ENDPOINTS=11 QT_QPA_PLATFORM=offscreen python3 '$ROOT/workloads/normal-ue/tools/same_cell_broker.py'"
+      "BROKER_CMD=exec env NORMAL_UE_BROKER_ENDPOINTS=7 QT_QPA_PLATFORM=offscreen python3 '$ROOT/workloads/normal-ue/tools/same_cell_broker.py'"
       "$runner" "$mode" -n "$run_id" -d 240)
     command=(env LIVE_E2E_REQUIRE_SAME_CELL=1 "$ROOT/tools/p5-live-e2e" "$scenario" "$mode" "$run_id" "$rule" "$child_dir" -- "${inner[@]}")
   else

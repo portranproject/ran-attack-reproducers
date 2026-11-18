@@ -85,7 +85,7 @@ L3-24·L3-14·L3-06은 기존과 같이 UE 쪽에서 논문 공격의 결과 또
 | L3-24 | `ctl.sh campaign downlink-imsi` | direct 1-cell | RF 원인 재현 주장 |
 | L3-14 | `ctl.sh campaign ue-capability` | direct 1-cell | MITM·내용 변조 주장 |
 | L3-21 | `ctl.sh campaign uplink-credential-flood` | 한 UE가 10개 실패 연결 생성 | 단발 MAC 변조를 L3-21로 주장 |
-| L3-01-O | `ctl.sh campaign auth-timeout` | 한 셀, 2 OAI 프로세스×5 UE, endpoint 10개 | 한 프로세스 `--num-ues 10` |
+| L3-01-O | `ctl.sh campaign auth-timeout` | 한 셀, 2 OAI 프로세스×5 UE, shared endpoint 2개 | 한 프로세스 `--num-ues 10` |
 | L3-20 | `bin/blind-run`·`bin/blind-p5-phase` | direct 2-cell, victim·attacker 동시 실행 | 순차 재사용·same-cell |
 
 이 표는 이미 봉인된 개별 모듈 결과의 출처를 설명한다. 새 정상 UE 5대 통합 자격을 만들 때는

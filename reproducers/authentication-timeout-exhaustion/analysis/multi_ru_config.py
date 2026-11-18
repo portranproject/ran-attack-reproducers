@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""가입자 설정에 p5 단일 셀용 독립 virtual RU를 실행 시점에 추가한다."""
+"""가입자 설정을 공유 virtual RU용 private runtime 파일로 복사한다."""
 
 from __future__ import annotations
 
@@ -13,19 +13,13 @@ def generate(source: Path, target: Path, count: int) -> None:
     if source.is_symlink() or not source.is_file() or target.exists() or target.is_symlink():
         raise ValueError("입력은 일반 파일이고 출력은 새 파일이어야 합니다")
     if count < 1 or count > 10:
-        raise ValueError("RU 수는 1..10이어야 합니다")
+        raise ValueError("UE 수는 1..10이어야 합니다")
     text = source.read_text(encoding="utf-8")
     if re.search(r"(?m)^\s*(RUs|cells)\s*=", text):
         raise ValueError("가입자 설정에 기존 RUs/cells가 있습니다")
     if len(re.findall(r"(?m)^\s*uicc\d+\s*=", text)) < count:
         raise ValueError("요청 수만큼 UICC 설정이 없습니다")
-    radios = ",\n".join('  { nb_tx = 1; nb_rx = 1; sdr_addrs = "type=zmq"; }' for _ in range(count))
-    cells = ",\n".join(
-        f"  {{ ru_id = {index}; band = 78; rf_freq = 3489420000L; rf_offset = 0L; "
-        "numerology = 1; N_RB_DL = 51; ssb_start = 516; }"
-        for index in range(count)
-    )
-    target.write_text(text.rstrip() + f"\n\nRUs = (\n{radios}\n);\n\ncells = (\n{cells}\n);\n", encoding="utf-8")
+    target.write_text(text, encoding="utf-8")
     os.chmod(target, 0o600)
 
 

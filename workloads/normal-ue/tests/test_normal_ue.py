@@ -104,7 +104,7 @@ class NormalUeTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("normal-ue setup|doctor|prepare|start|status|stop", result.stdout)
 
-    def test_prepare_writes_private_runtime_config_to_requested_state_dir(self):
+    def test_prepare_writes_private_shared_ru_runtime_config(self):
         state = self.root / "same-cell-state"
         result = subprocess.run(
             [str(SCRIPT), "prepare", "--config", str(self.conf), "--count", "5"],
@@ -117,8 +117,8 @@ class NormalUeTests(unittest.TestCase):
         self.assertEqual(runtime, state / "normal-ue-runtime.conf")
         self.assertEqual(runtime.stat().st_mode & 0o777, 0o600)
         payload = runtime.read_text()
-        self.assertEqual(payload.count('sdr_addrs = "type=zmq"'), 5)
-        self.assertEqual(payload.count("ru_id ="), 5)
+        self.assertEqual(payload, self.normal_cfg.read_text())
+        self.assertNotIn("RUs =", payload)
 
 
 if __name__ == "__main__":

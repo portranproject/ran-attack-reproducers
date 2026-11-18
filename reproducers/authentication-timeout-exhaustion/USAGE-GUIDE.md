@@ -118,7 +118,7 @@ AUTH_TIMEOUT_CONF=conf/auth-timeout.conf \
 
 ### production L3-01-O 한 셀 자격 실행
 
-`auth-stall-cell-run`은 UE별 독립 virtual RU 10개를 broker로 한 DU·셀에 합친다. 실제
+`auth-stall-cell-run`은 OAI 프로세스별 shared virtual RU 2개를 broker로 한 DU·셀에 합친다. 실제
 가입자 설정 목록은 Git 밖에 두고 예제 설정을 복사해 경로만 채운다.
 
 ```bash

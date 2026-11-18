@@ -1230,6 +1230,7 @@ class BrokerWitnessTests(unittest.TestCase):
         block = source.split("if (( BROKER_NORMAL_POOL_QUALIFICATION )); then", 1)[1].split("fi", 1)[0]
         for name in ("GNB_CONFIG", "GNB_STOP_CMD", "GNB_RESTART_CMD", "GNB_READY_CMD"):
             self.assertIn(f"NORMAL_UE_{name}", block)
+        self.assertIn("NORMAL_UE_ATTACK_BIN", block)
 
     def test_harness_launches_ue_endpoints_before_the_broker(self):
         source = SCRIPT.read_text()

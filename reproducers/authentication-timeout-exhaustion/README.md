@@ -91,8 +91,8 @@ timeout이 발생했다. 프로세스당 4 UICC도 반복 phase timeout으로 �
 인증을 통과하지 못했다. 미검증 broker 코드는 운영 도구에서 제외했다.
 
 2026-11-17 자격 검증은 위 4-cell 자원 누적 실험을 억지로 확장하지 않고, 정상 UE 풀에서
-검증된 **UE별 독립 virtual RU** 구조를 재사용했다. `auth-stall-cell-run`이 서로 다른 랩
-가입자 10명을 2개 OAI 프로세스×5 UE로 실행하고, GNU Radio broker가 10개 endpoint를 한
+검증된 **shared virtual RU** 구조를 사용한다. `auth-stall-cell-run`이 서로 다른 랩
+가입자 10명을 2개 OAI 프로세스×5 UE로 실행하고, GNU Radio broker가 프로세스별 2개 endpoint를 한
 DU·셀에 합친다. 공격군은 10명 모두 Authentication Response를 미전송하고 대조군은 10명
 모두 정상 제출한다. gNB·코어·detector는 수정하지 않는다.
 

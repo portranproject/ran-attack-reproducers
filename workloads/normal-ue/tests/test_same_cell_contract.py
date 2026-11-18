@@ -126,6 +126,12 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn("normal_healthy_before_attack_teardown", run_section)
         self.assertIn('if [[ $ATTACK != uplink ]]; then', run_section)
         self.assertIn("TOTAL_ENDPOINTS <= 15", run_section)
+        self.assertIn("TOTAL_ENDPOINTS=$((ATTACK_SLOTS + 1))", source)
+        self.assertIn("auth-timeout) ATTACK_SLOTS=2", source)
+        normal_group = source.split("start_normal_group()", 1)[1].split("start_placeholder_group()", 1)[0]
+        self.assertIn("RSS_SHARE_NUE=\"$COUNT\"", normal_group)
+        self.assertIn("--zmq.[0].tx_channels", normal_group)
+        self.assertNotIn("--zmq.[$ru]", normal_group)
         self.assertIn("attack.ready", run_section)
         self.assertIn("clocked_attack_slots", run_section)
         self.assertIn("embed_self_live_evidence", run_section)
@@ -157,6 +163,14 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn("Received Registration Reject cause", source)
         self.assertIn("SAME_CELL_RELEASE_FILE", source)
         self.assertIn('uplink-credential-flood) ATTACK_SLOTS=1', SCRIPT.read_text())
+
+    def test_auth_timeout_uses_two_shared_ru_attack_slots(self):
+        source = (ROOT / "reproducers/authentication-timeout-exhaustion/bin/auth-stall-cell-run").read_text()
+        self.assertIn("${#endpoint_rows[@]} == PROCESS_COUNT", source)
+        same_cell = source.split("if (( SAME_CELL_PRESTART )); then", 2)[2].split("else", 1)[0]
+        self.assertIn('endpoint_rows[$i]', same_cell)
+        self.assertIn('"--zmq.[0].tx_channels"', same_cell)
+        self.assertNotIn('"--zmq.[$ru].tx_channels"', same_cell)
 
     def test_modified_shell_entrypoints_are_syntax_valid(self):
         paths = [

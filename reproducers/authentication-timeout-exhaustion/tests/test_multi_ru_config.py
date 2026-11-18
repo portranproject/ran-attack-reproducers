@@ -11,7 +11,7 @@ SPEC.loader.exec_module(multi_ru_config)
 
 
 class MultiRuConfigTest(unittest.TestCase):
-    def test_adds_one_ru_and_cell_per_ue(self):
+    def test_preserves_subscribers_for_shared_ru_runtime(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source = root / "source.conf"
@@ -19,8 +19,8 @@ class MultiRuConfigTest(unittest.TestCase):
             source.write_text("\n".join(f"uicc{i} = {{ imsi = \"{i}\"; }};" for i in range(5)))
             multi_ru_config.generate(source, target, 5)
             text = target.read_text()
-            self.assertEqual(text.count('sdr_addrs = "type=zmq"'), 5)
-            self.assertIn("ru_id = 4", text)
+            self.assertEqual(text, source.read_text())
+            self.assertNotIn("RUs =", text)
             self.assertEqual(target.stat().st_mode & 0o777, 0o600)
 
     def test_rejects_existing_radio_config(self):

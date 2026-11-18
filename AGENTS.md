@@ -38,7 +38,7 @@
 - `reproducers/nas-counter-desynchronization/`: L3-06 요청되지 않은 NAS SecurityModeReject 결과 에뮬레이터. p5 UE→ZMQ→DU/CU→TeleRAN→production detector matched control→emulation 3/3 통과. MITM·invalid SMC 실제 수신·NAS counter wrap은 미관측. 정상 UE same-cell 공존은 5+1과 4+1 control에서 normal health 실패로 미승인
 - `reproducers/{authentication-sync-failure,nas-counter-reset,uplink-imsi-extractor,short-connection-repeat,rrc-reject-release-imprisonment,tac-manipulation-return}/`: AN-01·AN-06a·AN-02·AN-04·AN-07·AN-08 참고용 탐지 입력 fixture. 공격 플랫폼 1.0 자격 범위에서 제외하며 production detector 회귀에만 사용
 - `reproducer.json`, `schemas/`, `profiles/`, `tools/reproctl.py`: 7개 L3 공격 자격 카탈로그와 6개 AN 참고 fixture, p5/OTA profile, 공통 run/verdict/evidence 계약, production replay·report·verify
-- `workloads/normal-ue/`: 공격 슬롯과 같은 DU·셀의 지속 정상 UE 풀. 한 OAI 프로세스 안에서 UE별 독립 virtual RU/ZMQ endpoint를 broker로 합치는 구조로 p5 cold-start 3회 Registration·PDU·ping 5/5, timeout·crash 0을 통과. RRC storm 두 변형과의 단일 공존 실측에서는 선연결 5/5 유지, 공격 중 신규 접속은 4/5였다. one-shot 단일 셀 경로에서 UE Capability control·emulation 각 1회와 L3-21 control→attack 3/3이 통과했다. L3 7종 cold-start 통합 경로는 구현됐지만 Blind DoS·인증 응답 미전송형·L3-06을 포함한 전체 p5 matched 3/3은 아직 미자격이다. 이전 Blind DoS 배경 1대·2대 실패도 새 통합 경로의 성공으로 바꾸어 적지 않으며, OTA 공존은 미검증
+- `workloads/normal-ue/`: 공격 슬롯과 같은 DU·셀의 지속 정상 UE 풀. 정상 logical UE 5대는 한 OAI 프로세스와 하나의 shared virtual RU/ZMQ endpoint를 사용하고, 공격 OAI 프로세스별 endpoint와 broker에서 합친다. 2026-11-18 p5 실측에서 현재 OAI가 UE별 indexed ZMQ 옵션을 거부함을 확인해 과거 독립 virtual RU 설명은 자격 근거에서 제외했다. L3 7종 shared-RU cold-start 통합 경로는 재자격 중이며 전체 matched 3/3 전에는 미자격이다. OTA 공존은 미검증
 
 아래 장문의 실측 기록은 첫 번째 모듈인 RRC signaling storm의 보존 컨텍스트다.
 
@@ -178,7 +178,7 @@
 - 2026-11-11 direct 4-cell 구현은 공격자 6명의 동시 pre-auth 컨텍스트를 확인했지만
   witness 등록·PDU·ping이 5/5 성공해 서비스 거부에는 미달했다. 프로세스당 10 UICC를
   하나의 virtual RU에 공유한 확장은 11/20만 인증해 성능 근거에서 제외한다.
-- 2026-11-17에는 정상 UE에서 검증된 UE별 독립 virtual RU 구조를 재사용해, 2개 OAI
+- 2026-11-18 current p5 OAI의 indexed ZMQ 거부를 반영해, shared virtual RU 2개로 2개 OAI
   프로세스×5 UE를 broker로 한 DU·셀에 합쳤다. 공격군은 서로 다른 랩 가입자 10명의
   Authentication Response 미전송을 만들고 L3-01-O RAISE 1건, 대조군은 경보 0건을
   matched 3/3 반복했다. 실제 F1/N2→TeleRAN→production detector→dashboard 경로이며

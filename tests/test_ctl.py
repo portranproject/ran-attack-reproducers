@@ -168,7 +168,7 @@ class ControllerTest(unittest.TestCase):
         self.assertNotIn("generate_rule_signal.py", result.stdout)
         rrc_lines = [line for line in result.stdout.splitlines() if "rss-broker-witness" in line]
         self.assertEqual(len(rrc_lines), 6)
-        self.assertTrue(all("BROKER_NORMAL_CONF=" in line and "-d 240" in line for line in rrc_lines))
+        self.assertTrue(all("BROKER_NORMAL_CONF=" in line and "NORMAL_UE_BROKER_ENDPOINTS=7" in line and "-d 240" in line for line in rrc_lines))
 
     def test_same_cell_active_run_requires_enable(self):
         result = self.run_ctl(

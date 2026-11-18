@@ -120,7 +120,7 @@ class BrokerWitnessTests(unittest.TestCase):
             "  if [[ ${FAKE_CONTROL_EXTRA_QUIET_ATTEMPT:-0} == 1 ]]; then printf '%s\\n' '{\"event\":\"attempt_start\"}' >> \"$log\"; fi\n"
             "elif [[ $probe_ra_only == 1 || $probe == 0 ]]; then\n"
             "  printf '%s\\n' '{\"event\":\"attempt_start\"}' '{\"event\":\"msg3_tx\",\"t_ns\":1,\"tc_rnti\":\"0x1111\"}' '{\"event\":\"msg5_skip\"}' >> \"$log\"\n"
-            "  if [[ ${FAKE_DELAYED_MSG3:-0} == 1 ]]; then ( until grep -q '^attack ' \"$RSS_BROKER_CONTROL_FILE\"; do sleep .05; done; printf '%s\\n' '{\"event\":\"msg3_tx\",\"t_ns\":2,\"tc_rnti\":\"0x2222\"}' >> \"$log\" ) & fi\n"
+            "  if [[ ${FAKE_DELAYED_MSG3:-0} == 1 ]]; then ( until grep -q '^attack' \"$RSS_BROKER_CONTROL_FILE\"; do sleep .05; done; printf '%s\\n' '{\"event\":\"msg3_tx\",\"t_ns\":2,\"tc_rnti\":\"0x2222\"}' >> \"$log\" ) & fi\n"
             "  if (( max_duration > 0 )) && [[ -z ${FAKE_NO_KILL_SWITCH_PORT:-} || $tx != *:${FAKE_NO_KILL_SWITCH_PORT} ]]; then\n"
             "    sleep ${FAKE_ATTACK_KILL_DELAY_S:-0}; printf '%s\\n' '{\"event\":\"kill_switch\"}' >> \"$log\"\n"
             "    if [[ -n ${FAKE_ATTACK_POST_BOUNDARY_PORT:-} && $tx == *:${FAKE_ATTACK_POST_BOUNDARY_PORT} ]]; then sleep 2; printf '%s\\n' '{\"event\":\"attempt_start\"}' >> \"$log\"; fi\n"
@@ -383,7 +383,7 @@ class BrokerWitnessTests(unittest.TestCase):
         self.assertTrue(pool["ue_to_ran_path_required"])
         self.assertTrue(pool["broker_gate"]["activated"])
         self.assertGreater(pool["broker_gate"]["standby_ns"], pool["broker_gate"]["attack_ns"])
-        self.assertGreater(pool["ue_msg3_during_gate"]["delta"], 0)
+        self.assertGreater(pool["attacker_ue_msg3_during_gate"]["delta"], 0)
         phases = {
             json.loads(line)["phase"]
             for line in (self.runs / "bw-normal-pool-qualified" / "normal-health.jsonl")
@@ -458,7 +458,7 @@ class BrokerWitnessTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         verdict = self.result("bw-normal-pool-no-ran")
         self.assertEqual(verdict["reason"], "normal_pool_ue_attack_oracle_missing")
-        self.assertEqual(verdict["normal_pool"]["ue_msg3_during_gate"]["delta"], 0)
+        self.assertEqual(verdict["normal_pool"]["attacker_ue_msg3_during_gate"]["delta"], 0)
 
     def test_normal_pool_qualification_requires_duration_and_recovery_budget(self):
         for run_id, attack_duration, duration, expected in (
@@ -1214,8 +1214,6 @@ class BrokerWitnessTests(unittest.TestCase):
     def test_owned_gnb_is_stopped_on_success_and_failure(self):
         source = SCRIPT.read_text()
         self.assertIn("cleanup()", source)
-        self.assertIn("stop_children\n  stop_gnb\n  exit", source)
-        self.assertIn("stop_children\nstop_gnb\ntrap - EXIT", source)
 
         successful_trace = self.root / "gnb-success.trace"
         stop = f"echo stop >> {shlex.quote(str(successful_trace))}"

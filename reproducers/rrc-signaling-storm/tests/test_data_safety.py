@@ -78,8 +78,10 @@ class DataSafetyTests(unittest.TestCase):
         curated = content.index('git -C "$OAI" apply "$PATCH"')
         stale_rnti = content.index('git -C "$OAI" apply "$DCI_FIX"')
         ack_rnti = content.index('git -C "$OAI" apply "$ACK_RNTI_FIX"')
+        broker_gate = content.index('git -C "$OAI" apply "$BROKER_GATE_FIX"')
         self.assertLess(curated, stale_rnti)
         self.assertLess(stale_rnti, ack_rnti)
+        self.assertLess(ack_rnti, broker_gate)
 
     def test_build_preserves_staged_unstaged_and_untracked_changes(self):
         self.make_repo()

@@ -211,6 +211,8 @@ if (( BROKER_NORMAL_POOL_QUALIFICATION )); then
     || { echo "BROKER_NORMAL_ATTACK_DURATION_S must be 1..300" >&2; exit 1; }
   grep -Faq OAI_NORMAL_TUN_SUFFIX "$BROKER_WITNESS_UE_BIN" \
     || { echo "normal-pool qualification requires normal-tun-suffix.patch in the witness UE binary" >&2; exit 1; }
+  grep -Faq RSS_BROKER_CONTROL_FILE "$BROKER_ATTACK_UE_BIN" \
+    || { echo "normal-pool qualification requires the broker control gate in the attack UE binary" >&2; exit 1; }
   NORMAL_REQUIRED_DURATION_MS=$(((BROKER_NORMAL_HEALTH_TIMEOUT_S + BROKER_NORMAL_ATTACK_DURATION_S + NORMAL_RECOVERY_DEADLINE_S) * 1000))
   (( DURATION_S * 1000 >= NORMAL_REQUIRED_DURATION_MS )) || {
     required_s=$(((NORMAL_REQUIRED_DURATION_MS + 999) / 1000))
@@ -336,8 +338,10 @@ OUT="$BROKER_LOGDIR/$RUN_ID"
 mkdir -- "$OUT" \
   || { echo "cannot create $OUT — existing results are never overwritten" >&2; exit 1; }
 BROKER_CONTROL_FILE=$OUT/broker-control
+ATTACK_UE_GATE_FILE=$OUT/attack-ue-gate
 if (( BROKER_NORMAL_POOL_QUALIFICATION )); then
   printf 'standby\n' >"$BROKER_CONTROL_FILE"
+  printf 'standby\n' >"$ATTACK_UE_GATE_FILE"
 fi
 
 RECOVERY_ROLE_JSON=""
@@ -517,6 +521,7 @@ select_persistent_attack() {
   local mode=$1 before started=$SECONDS count slots="1,2,3,4,5,6"
   [[ $mode == standby || $mode == warmup || $mode == attack ]] || return 1
   if [[ $mode == standby ]]; then
+    printf 'standby\n' >"$ATTACK_UE_GATE_FILE"
     printf 'standby\n' >"$BROKER_CONTROL_FILE"
   else
     printf '%s %s\n' "$mode" "$slots" >"$BROKER_CONTROL_FILE"
@@ -526,7 +531,10 @@ select_persistent_attack() {
   while :; do
     grep -q '^SAME_CELL_SLOT_SELECTION_FAILED ' "$OUT/broker.log" 2>/dev/null && return 1
     count=$(count '^SAME_CELL_SLOT_SELECTION ' "$OUT/broker.log")
-    (( count > before )) && return 0
+    if (( count > before )); then
+      [[ $mode != attack ]] || printf 'attack\n' >"$ATTACK_UE_GATE_FILE"
+      return 0
+    fi
     is_running "$BROKER_PID" || return 1
     (( SECONDS - started < BROKER_ENDPOINT_READY_TIMEOUT_S )) || return 1
     sleep .1
@@ -772,7 +780,7 @@ for ((i=1; i<=TOTAL_UE_PROCESSES; i++)); do
   (( BROKER_WITNESS_MULTI_RU == 0 || i != WITNESS_INDEX )) || ROLE_ZMQ_ARGS=()
   ROLE_ENV=(env RSS_SHARE_NUE="$ROLE_NUM_UES")
   if (( BROKER_NORMAL_POOL_QUALIFICATION && i <= BROKER_ATTACK_PROCESSES )); then
-    ROLE_ENV+=(RSS_BROKER_CONTROL_FILE="$BROKER_CONTROL_FILE")
+    ROLE_ENV+=(RSS_BROKER_CONTROL_FILE="$ATTACK_UE_GATE_FILE")
   fi
   if (( BROKER_NORMAL_POOL_QUALIFICATION && i == WITNESS_INDEX )); then
     ROLE_ENV+=(OAI_NORMAL_TUN_SUFFIX=1)
@@ -1375,7 +1383,7 @@ if (( RECOVERY_WITNESS_ENABLED || BROKER_SAME_WITNESS_CYCLE || BROKER_NORMAL_POO
   ATTACK_WINDOW_RESULT_JSON=",\"attack_window\":{\"boundary\":\"$ATTACK_WINDOW_BOUNDARY\",\"frozen\":$(bool "$PRIMARY_ATTACK_WINDOW_FROZEN"),\"end_s\":$PRIMARY_ATTACK_WINDOW_END_S,\"attempts\":$PRIMARY_ATTACK_WINDOW_ATTEMPTS,\"distinct_fresh_identities\":$PRIMARY_ATTACK_WINDOW_DISTINCT_IDENTITIES,\"first_attempt_ns\":$PRIMARY_ATTACK_WINDOW_FIRST_ATTEMPT_NS,\"last_attempt_ns\":$PRIMARY_ATTACK_WINDOW_LAST_ATTEMPT_NS,\"attempt_span_ms\":$PRIMARY_ATTACK_WINDOW_ATTEMPT_SPAN_MS,\"msg3_tx\":$PRIMARY_ATTACK_WINDOW_MSG3_TX,\"distinct_nonzero_tc_rnti\":$PRIMARY_ATTACK_WINDOW_DISTINCT_TC_RNTI,\"first_msg3_tx_ns\":$PRIMARY_ATTACK_WINDOW_FIRST_MSG3_NS,\"last_msg3_tx_ns\":$PRIMARY_ATTACK_WINDOW_LAST_MSG3_NS,\"msg3_span_ms\":$PRIMARY_ATTACK_WINDOW_MSG3_SPAN_MS,\"attached\":$(bool "$PRIMARY_ATTACK_WINDOW_ATTACHED"),\"rrc_setup_complete\":$PRIMARY_ATTACK_WINDOW_RRC,\"registration_accept\":$PRIMARY_ATTACK_WINDOW_REG,\"pdu_accept\":$PRIMARY_ATTACK_WINDOW_PDU,\"rrc_reject\":$PRIMARY_ATTACK_WINDOW_REJECT,\"ping_ok\":$(bool "$((PRIMARY_ATTACK_WINDOW_PING_RX > 0))"),\"ping_received\":$PRIMARY_ATTACK_WINDOW_PING_RX,\"service_ok\":$(bool "$PRIMARY_ATTACK_WINDOW_SERVICE")},\"post_boundary_activity\":{\"observed\":$(bool "$PRIMARY_POST_BOUNDARY_ACTIVITY"),\"rrc_setup_complete\":$PRIMARY_POST_BOUNDARY_RRC,\"registration_accept\":$PRIMARY_POST_BOUNDARY_REG,\"pdu_accept\":$PRIMARY_POST_BOUNDARY_PDU}"
 fi
 if (( BROKER_NORMAL_POOL_QUALIFICATION )); then
-  NORMAL_POOL_RESULT_JSON=",\"normal_pool\":{\"enabled\":true,\"same_du_cell\":true,\"expected_ues\":$BROKER_WITNESS_UES,\"health_evidence\":\"normal-health.jsonl\",\"before\":{\"healthy_ues\":$NORMAL_BEFORE_HEALTHY_UES,\"all_healthy\":$(bool "$NORMAL_BEFORE_HEALTHY")},\"during\":{\"samples\":$NORMAL_DURING_SAMPLES,\"min_healthy_ues\":$NORMAL_DURING_MIN_HEALTHY,\"last_healthy_ues\":$NORMAL_DURING_LAST_HEALTHY},\"recovery\":{\"deadline_s\":$NORMAL_RECOVERY_DEADLINE_S,\"elapsed_s\":$NORMAL_RECOVERY_ELAPSED_S,\"healthy_ues\":$NORMAL_RECOVERY_HEALTHY_UES,\"all_healthy\":$(bool "$NORMAL_RECOVERY_HEALTHY")},\"broker_gate\":{\"attack_ns\":$NORMAL_GATE_ATTACK_NS,\"standby_ns\":$NORMAL_GATE_STANDBY_NS,\"activated\":$(bool "$NORMAL_GATE_OK")},\"ue_msg3_during_gate\":{\"before\":$NORMAL_UE_MSG3_BEFORE,\"after\":$NORMAL_UE_MSG3_AFTER,\"delta\":$NORMAL_UE_MSG3_DELTA},\"direct_detector_input\":false,\"ue_to_ran_path_required\":true}"
+  NORMAL_POOL_RESULT_JSON=",\"normal_pool\":{\"enabled\":true,\"same_du_cell\":true,\"expected_ues\":$BROKER_WITNESS_UES,\"health_evidence\":\"normal-health.jsonl\",\"before\":{\"healthy_ues\":$NORMAL_BEFORE_HEALTHY_UES,\"all_healthy\":$(bool "$NORMAL_BEFORE_HEALTHY")},\"during\":{\"samples\":$NORMAL_DURING_SAMPLES,\"min_healthy_ues\":$NORMAL_DURING_MIN_HEALTHY,\"last_healthy_ues\":$NORMAL_DURING_LAST_HEALTHY},\"recovery\":{\"deadline_s\":$NORMAL_RECOVERY_DEADLINE_S,\"elapsed_s\":$NORMAL_RECOVERY_ELAPSED_S,\"healthy_ues\":$NORMAL_RECOVERY_HEALTHY_UES,\"all_healthy\":$(bool "$NORMAL_RECOVERY_HEALTHY")},\"broker_gate\":{\"attack_ns\":$NORMAL_GATE_ATTACK_NS,\"standby_ns\":$NORMAL_GATE_STANDBY_NS,\"activated\":$(bool "$NORMAL_GATE_OK")},\"attacker_ue_msg3_during_gate\":{\"before\":$NORMAL_UE_MSG3_BEFORE,\"after\":$NORMAL_UE_MSG3_AFTER,\"delta\":$NORMAL_UE_MSG3_DELTA},\"direct_detector_input\":false,\"ue_to_ran_path_required\":true}"
 fi
 if (( RECOVERY_WITNESS_ENABLED )); then
   RECOVERY_RESULT_JSON=",\"recovery_witness\":{\"prelaunched\":true,\"endpoint_index\":$RECOVERY_WITNESS_INDEX,\"started\":$(bool "$RECOVERY_STARTED"),\"start_s\":$RECOVERY_START_S,\"sync_ready\":$(bool "$SYNC_READY"),\"sync_wait_s\":$SYNC_WAIT_S,\"pre_attack_attempts\":$RECOVERY_PRE_ATTACK_ATTEMPTS,\"pre_phase_attempts\":$RECOVERY_PRE_PHASE_ATTEMPTS,\"attackers_quiet\":$(bool "$RECOVERY_ATTACKERS_QUIET"),\"attached\":$(bool "$RECOVERY_ATTACHED"),\"attach_s\":$RECOVERY_ATTACH_S,\"rrc_setup_complete\":$RECOVERY_RRC,\"registration_accept\":$RECOVERY_REG,\"pdu_accept\":$RECOVERY_PDU,\"rrc_reject\":$RECOVERY_REJECT,\"ping_ok\":$(bool "$RECOVERY_PING_OK"),\"ping_isolated\":$(bool "$RECOVERY_PING_ISOLATED"),\"ping\":{\"transmitted\":$RECOVERY_PING_TX,\"received\":$RECOVERY_PING_RX,\"loss_pct\":$RECOVERY_PING_LOSS_PCT,\"rtt_avg_ms\":$RECOVERY_PING_RTT_AVG_MS},\"service_ok\":$(bool "$RECOVERY_SERVICE")}"

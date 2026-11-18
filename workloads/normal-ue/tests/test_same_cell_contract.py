@@ -110,6 +110,17 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn("signal.SIGUSR1", broker)
         self.assertIn("SAME_CELL_SLOT_SELECTION", broker)
 
+    def test_rrc_attack_ue_waits_for_the_broker_gate(self):
+        patch = (ROOT / "reproducers/rrc-signaling-storm/patch/oai-broker-control-gate.patch").read_text()
+        runner = (ROOT / "reproducers/rrc-signaling-storm/bin/rss-broker-witness").read_text()
+        self.assertIn('getenv("RSS_BROKER_CONTROL_FILE")', patch)
+        self.assertIn('memcmp(mode, "attack"', patch)
+        self.assertIn("if (!rss_broker_attack_enabled())", patch)
+        self.assertIn('grep -Faq RSS_BROKER_CONTROL_FILE "$BROKER_ATTACK_UE_BIN"', runner)
+        gate = runner.split("select_persistent_attack()", 1)[1].split("\n}\n", 1)[0]
+        open_gate = 'printf \'attack\\n\' >"$ATTACK_UE_GATE_FILE"'
+        self.assertLess(gate.index('count > before'), gate.index(open_gate))
+
     def test_default_run_cold_starts_clocked_attack_slots(self):
         source = SCRIPT.read_text()
         run_section = source.rsplit("if [[ $ACTION == run ]]; then", 1)[1].split(

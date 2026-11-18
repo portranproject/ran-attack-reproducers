@@ -19,6 +19,7 @@ OAI=${OAI:-/root/OAI}
 PATCH=${PATCH:-$HERE/patch/rss-ue-curated.patch}
 DCI_FIX="$HERE/patch/oai-stale-rnti-dci.patch"
 ACK_RNTI_FIX="$HERE/patch/oai-msg4-ack-rnti.patch"
+BROKER_GATE_FIX="$HERE/patch/oai-broker-control-gate.patch"
 BRANCH=${BRANCH:-rss-ue-a-type}
 BUILD="$OAI/cmake_targets/ran_build/build"
 BIN="$BUILD/nr-uesoftmodem"
@@ -33,6 +34,7 @@ git -C "$OAI" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
 [[ -f $PATCH ]] || { echo "patch not found: $PATCH" >&2; exit 1; }
 [[ -f $DCI_FIX ]] || { echo "OAI stale-RNTI DCI fix not found: $DCI_FIX" >&2; exit 1; }
 [[ -f $ACK_RNTI_FIX ]] || { echo "OAI Msg4 ACK RNTI fix not found: $ACK_RNTI_FIX" >&2; exit 1; }
+[[ -f $BROKER_GATE_FIX ]] || { echo "OAI broker control gate not found: $BROKER_GATE_FIX" >&2; exit 1; }
 [[ -d $BUILD ]] || { echo "no build dir $BUILD — build stock OAI once first" >&2; exit 1; }
 
 TREE_STATE=$(git -C "$OAI" status --porcelain --untracked-files=all --ignore-submodules=none) \
@@ -62,7 +64,7 @@ PATCH_INDEX_DIR=$(mktemp -d)
 PATCH_INDEX="$PATCH_INDEX_DIR/index"
 trap 'rm -f -- "$PATCH_INDEX"; rmdir -- "$PATCH_INDEX_DIR"' EXIT
 GIT_INDEX_FILE="$PATCH_INDEX" git -C "$OAI" read-tree HEAD
-for patch_file in "$PATCH" "$DCI_FIX" "$ACK_RNTI_FIX"; do
+for patch_file in "$PATCH" "$DCI_FIX" "$ACK_RNTI_FIX" "$BROKER_GATE_FIX"; do
   GIT_INDEX_FILE="$PATCH_INDEX" git -C "$OAI" apply --cached "$patch_file" \
     || { echo "RSS patch set does not apply cleanly — nothing patched" >&2; exit 1; }
 done
@@ -80,6 +82,8 @@ echo "== applying $DCI_FIX"
 git -C "$OAI" apply "$DCI_FIX"
 echo "== applying $ACK_RNTI_FIX"
 git -C "$OAI" apply "$ACK_RNTI_FIX"
+echo "== applying $BROKER_GATE_FIX"
+git -C "$OAI" apply "$BROKER_GATE_FIX"
 git -C "$OAI" --no-pager diff --stat | tail -12
 
 for t in nr-uesoftmodem oai_zmqdevif zmq_radio_static; do
@@ -109,6 +113,7 @@ check "$BIN" probe_interval_ms
 check "$BIN" rss_reject_reset_skipped
 check "$BIN" RSS_SHARE_LOCKSTEP
 check "$BIN" RSS_SHARE_NUE
+check "$BIN" RSS_BROKER_CONTROL_FILE
 check "$DEVLIB" RSS_ZMQ_TX_WAIT_US
 secret_log=$(strings "$BIN" 2>/dev/null | grep -c 'UICC simulation: IMSI=' || true)
 printf '   %-26s %-26s %s\n' "$(basename "$BIN")" "subscriber-secret-log" "$secret_log"

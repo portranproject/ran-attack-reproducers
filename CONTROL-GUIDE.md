@@ -89,7 +89,8 @@ uplink를 활성화했다는 응답을 남긴 뒤 공격별 adapter가 UE 동작
 gate를, 나머지 live L3 모듈은 공통 RA gate를 사용한다. Blind DoS는 피해 UE에만 공통 gate를
 적용하고 공격 UE는 기존 GUTI target gate를 유지한다. 따라서 대기 중 PRACH 재시도를 소진하거나,
 UE가 먼저 송신했지만 broker가 아직 버린 구간을 공격 성공으로 세지 않는다. 공격 runner가
-완료를 게시하면 broker가 공격 uplink를 먼저 닫고 정상 UE 5/5 회복을 확인한 뒤 UE를 종료한다.
+완료를 게시하면 broker가 공격 uplink를 먼저 닫고 정상 UE 5/5 회복을 확인한다. 인증 미응답형은
+공격 UE의 재시도를 끝내기 위해 UE를 먼저 종료한 뒤 회복을 측정하고 그 순서를 증거에 표시한다.
 
 이 경로는 직접 KPM이나 detector 입력을 만들지 않는다. 실제
 `UE → ZMQ → DU/CU → TeleRAN → production detector → dashboard` 경로만 자격으로 인정한다.

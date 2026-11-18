@@ -490,6 +490,8 @@ if [[ $ACTION == run ]]; then
     "$RUN_ID" "$ATTACK" "$COUNT" "$ATTACK_SLOTS" >"$RUN_OUT/session.json"
 
   NORMAL_HEALTH_BEFORE_TEARDOWN=null
+  ATTACK_TEARDOWN_BEFORE_RECOVERY=false
+  ATTACK_STATUS=0
   if [[ $ATTACK != uplink ]]; then
     attack_wait_started=$SECONDS
     until [[ -f $STATE/attack.done && ! -L $STATE/attack.done ]]; do
@@ -501,22 +503,40 @@ if [[ $ACTION == run ]]; then
       sleep 1
     done
     select_broker standby || fail "완료된 공격 slot 비활성화에 실패했습니다"
+    if [[ $ATTACK == auth-timeout ]]; then
+      ( set -o noclobber; : >"$STATE/attack.release" )
+      attack_exit_started=$SECONDS
+      while is_running "$ATTACK_PID"; do
+        (( SECONDS - attack_exit_started < SAME_CELL_ATTACK_TIMEOUT_S )) \
+          || fail "공격 runner 종료가 ${SAME_CELL_ATTACK_TIMEOUT_S}초를 초과했습니다"
+        sleep 1
+      done
+      if wait "$ATTACK_PID"; then ATTACK_STATUS=0; else ATTACK_STATUS=$?; fi
+      ATTACK_PID=""
+      ATTACK_TEARDOWN_BEFORE_RECOVERY=true
+    fi
     wait_healthy "$COUNT" "$SAME_CELL_RECOVERY_TIMEOUT_S" \
-      || fail "공격 UE clock 유지 중 normal UE가 $COUNT/$COUNT가 아닙니다"
+      || fail "공격 종료 단계에서 normal UE가 $COUNT/$COUNT로 회복되지 않았습니다"
     record_health after
-    NORMAL_HEALTH_BEFORE_TEARDOWN=true
-    ( set -o noclobber; : >"$STATE/attack.release" )
+    if [[ $ATTACK == auth-timeout ]]; then
+      NORMAL_HEALTH_BEFORE_TEARDOWN=false
+    else
+      NORMAL_HEALTH_BEFORE_TEARDOWN=true
+      ( set -o noclobber; : >"$STATE/attack.release" )
+    fi
   fi
-  attack_exit_started=$SECONDS
-  while is_running "$ATTACK_PID"; do
-    (( SECONDS - attack_exit_started < SAME_CELL_ATTACK_TIMEOUT_S )) \
-      || fail "공격 runner 종료가 ${SAME_CELL_ATTACK_TIMEOUT_S}초를 초과했습니다"
-    [[ $ATTACK != uplink ]] \
-      || { printf '%s\t%s\n' "$(date +%s%N)" "$(health "$COUNT")" >>"$RUN_OUT/normal-health.tsv"; record_health during; }
-    sleep 1
-  done
-  if wait "$ATTACK_PID"; then ATTACK_STATUS=0; else ATTACK_STATUS=$?; fi
-  ATTACK_PID=""
+  if [[ -n $ATTACK_PID ]]; then
+    attack_exit_started=$SECONDS
+    while is_running "$ATTACK_PID"; do
+      (( SECONDS - attack_exit_started < SAME_CELL_ATTACK_TIMEOUT_S )) \
+        || fail "공격 runner 종료가 ${SAME_CELL_ATTACK_TIMEOUT_S}초를 초과했습니다"
+      [[ $ATTACK != uplink ]] \
+        || { printf '%s\t%s\n' "$(date +%s%N)" "$(health "$COUNT")" >>"$RUN_OUT/normal-health.tsv"; record_health during; }
+      sleep 1
+    done
+    if wait "$ATTACK_PID"; then ATTACK_STATUS=0; else ATTACK_STATUS=$?; fi
+    ATTACK_PID=""
+  fi
   select_broker standby || true
   CHILD_OUTPUT=$(python3 - "$RUN_OUT/attack.stdout" <<'PY'
 import pathlib, re, sys
@@ -528,9 +548,9 @@ PY
   [[ -n $CHILD_OUTPUT && -d $CHILD_OUTPUT && ! -L $CHILD_OUTPUT ]] \
     || fail "공격 runner가 안전한 output 경로를 남기지 않았습니다"
   printf '%s\n' "$CHILD_OUTPUT" >"$RUN_OUT/child-output.txt"
-  printf '{"schema":"same-cell.run.v3","run_id":"%s","attack":"%s","normal_ues":%d,"normal_shared_ru":false,"attack_slots":%d,"du_restarted_during_attack":false,"normal_healthy_before_attack_teardown":%s,"direct_detector_input":false,"ue_to_ran_path_required":true,"attack_exit_status":%d}\n' \
+  printf '{"schema":"same-cell.run.v3","run_id":"%s","attack":"%s","normal_ues":%d,"normal_shared_ru":false,"attack_slots":%d,"du_restarted_during_attack":false,"normal_healthy_before_attack_teardown":%s,"attack_teardown_before_recovery":%s,"direct_detector_input":false,"ue_to_ran_path_required":true,"attack_exit_status":%d}\n' \
     "$RUN_ID" "$ATTACK" "$COUNT" "$ATTACK_SLOTS" \
-    "$NORMAL_HEALTH_BEFORE_TEARDOWN" "$ATTACK_STATUS" >"$RUN_OUT/run.json"
+    "$NORMAL_HEALTH_BEFORE_TEARDOWN" "$ATTACK_TEARDOWN_BEFORE_RECOVERY" "$ATTACK_STATUS" >"$RUN_OUT/run.json"
   (( ATTACK_STATUS == 0 )) || fail "공격 runner가 실패했습니다: status=$ATTACK_STATUS"
   if [[ $ATTACK == uplink-credential-flood || $ATTACK == nas-counter-desync ]]; then
     embed_self_live_evidence || fail "self-live same-cell 증거 봉인에 실패했습니다"

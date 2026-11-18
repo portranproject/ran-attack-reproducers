@@ -63,9 +63,10 @@ UE를 삽입하는 hot-swap이 아니며, dashboard에는 같은 셀의 시간�
 구간이 생긴다.
 
 각 phase는 정상 UE 5대와 해당 공격 슬롯을 DU 시작 전에 broker에 모두 연결한다. 공격 전과
-종료 직전의 정상 UE 5대 Registration·PDU·gateway ping 상태를 별도로 기록한다. 공격 중
-일시 저하는 공격 효과로 분리하며, 종료 직전 5/5 회복을 확인하지 못하면 정상 UE 동반 자격은
-실패다.
+종료 단계의 정상 UE 5대 Registration·PDU·gateway ping 상태를 별도로 기록한다. 공격 중
+일시 저하는 공격 효과로 분리하며, 종료 단계에서 5/5 회복을 확인하지 못하면 정상 UE 동반
+자격은 실패다. 인증 미응답형은 10개 미인증 컨텍스트를 만든 공격 UE가 계속 재시도하므로
+공격 UE를 먼저 종료하고 회복을 측정하며 `attack_teardown_before_recovery=true`를 남긴다.
 
 탐지 입력을 직접 만들거나 KPM·detector socket으로 주입하지 않는다. 자격 경로는 항상
 `UE → ZMQ broker → DU/CU → TeleRAN → production detector → dashboard`를 사용한다.

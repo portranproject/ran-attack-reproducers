@@ -379,6 +379,11 @@ if [[ $ACTION == run ]]; then
   printf '%s\n' "$RUN_OUT" >"$STATE/run_root"
   RUNTIME_CFG=$(SAME_CELL_NORMAL_STATE_DIR="$STATE" NORMAL_UE_ZMQ_ENDPOINT_OFFSET="$ATTACK_SLOTS" \
     "$NORMAL_CTL" prepare --config "$CONF" --count "$COUNT")
+  if [[ $ATTACK == auth-timeout ]]; then
+    mkdir -m 700 "$STATE/placeholders" "$RUN_OUT/placeholders"
+    PLACEHOLDER_CFG=$(SAME_CELL_NORMAL_STATE_DIR="$STATE/placeholders" NORMAL_UE_ZMQ_ENDPOINT_OFFSET=0 \
+      "$NORMAL_CTL" prepare --config "$CONF" --count "$ATTACK_SLOTS")
+  fi
   resolve_pdu_session_id
 
   ENDPOINTS_FILE="$STATE/attack-endpoints.txt"
@@ -398,6 +403,7 @@ if [[ $ACTION == run ]]; then
     local status=$? pid
     trap - EXIT INT TERM
     [[ -z $ATTACK_PID ]] || stop_group "$ATTACK_PID"
+    pid=$(owned_pid placeholder-group 2>/dev/null || true); [[ -z $pid ]] || stop_group "$pid"
     pid=$(owned_pid broker 2>/dev/null || true); [[ -z $pid ]] || stop_group "$pid"
     pid=$(owned_pid normal 2>/dev/null || true); [[ -z $pid ]] || stop_group "$pid"
     pid=$(owned_pid du 2>/dev/null || true); [[ -z $pid ]] || stop_group "$pid"
@@ -513,6 +519,7 @@ if [[ $ACTION == run ]]; then
       done
       if wait "$ATTACK_PID"; then ATTACK_STATUS=0; else ATTACK_STATUS=$?; fi
       ATTACK_PID=""
+      start_placeholder_group 1
       ATTACK_TEARDOWN_BEFORE_RECOVERY=true
     fi
     wait_healthy "$COUNT" "$SAME_CELL_RECOVERY_TIMEOUT_S" \

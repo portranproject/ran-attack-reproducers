@@ -59,8 +59,8 @@ cold-start한다. 따라서 한 실행 중 RF stream을 갈아 끼우는 방식�
 - 공격 runner가 목표 이벤트 생성을 완료하면 컨트롤러가 해당 uplink slot을 먼저 닫고 정상
   UE 5/5 회복을 확인한 뒤 공격 UE 종료를 허가한다. 공격 UE가 먼저 사라져 broker 전체가
   멈추는 종료 효과를 서비스 영향으로 오판하지 않는다.
-- 인증 미응답형은 예외로 공격 UE 10대의 재시도를 종료한 뒤 정상 UE 회복을 측정하고
-  `attack_teardown_before_recovery=true`를 남긴다.
+- 인증 미응답형은 예외로 공격 UE 10대의 재시도를 종료하고 같은 endpoint를 무송신 clock
+  placeholder로 교체한 뒤 정상 UE 회복을 측정하며 `attack_teardown_before_recovery=true`를 남긴다.
 - p5 cold-start에서 5/5 수렴까지 12.7~62.3초가 걸렸으므로 시작 직후의 `degraded`는
   최종 실패가 아니다.
 

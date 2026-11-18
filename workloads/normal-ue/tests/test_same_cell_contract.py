@@ -138,6 +138,8 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn("attack_teardown_before_recovery", run_section)
         self.assertIn('if [[ $ATTACK == auth-timeout ]]; then', run_section)
         self.assertIn("ATTACK_TEARDOWN_BEFORE_RECOVERY=true", run_section)
+        self.assertIn('"$NORMAL_CTL" prepare --config "$CONF" --count "$ATTACK_SLOTS"', run_section)
+        self.assertIn("start_placeholder_group 1", run_section)
         self.assertIn('if [[ $ATTACK != uplink ]]; then', run_section)
         self.assertIn("TOTAL_ENDPOINTS <= 15", run_section)
         self.assertIn("TOTAL_ENDPOINTS=$((ATTACK_SLOTS + COUNT))", source)

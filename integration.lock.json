@@ -5,7 +5,7 @@
     "required_files": {
       "ctl.sh": "8797bba25db3f13ecac0611bd3f00a7751112a307f7d8a268dc0b95df88c4c77",
       "tools/reproctl.py": "a303b8c58e449704fa3a534d49816d2fc61d13ad7dccd58212909865fff66560",
-      "tools/p5-live-e2e": "d1a651b458d77f972e8a5975a543cb03d5a0e4ec99cfb1780ff3d6c215be320d",
+      "tools/p5-live-e2e": "dbf1454fb0774beba4566963da8f70e1037818e03bf7aee3ae2a21c311695e49",
       "tools/verify_live_e2e.py": "c3fc62c141acebc4429018088b4842b9fbc478edb26a34d96ff95d9b4c8365e9",
       "workloads/normal-ue/bin/normal-ue": "2fbd7dff551ec78a9b17bc5d20a1103dc6f34e5d8957f9814f43201d87ed8cb2",
       "workloads/normal-ue/bin/normal-ue-build": "bb05c53717dc3d0f2eea9033ef0b5be55970b53a5b81cc7fd04ea8c45022199e",

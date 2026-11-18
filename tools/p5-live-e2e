@@ -137,7 +137,15 @@ pid=$(cat "$out/detector.pid")
 kill -INT -- "-$pid" 2>/dev/null || kill -INT "$pid" 2>/dev/null || true
 for _ in {1..100}; do kill -0 "$pid" 2>/dev/null || break; sleep .1; done
 kill -0 "$pid" 2>/dev/null && kill -KILL -- "-$pid" 2>/dev/null || true
-for file in evidence.jsonl detector-input.jsonl detector.stdout detector.stderr; do
+for stem in evidence.jsonl detector-input.jsonl; do
+  for file in "$out/$stem" "$out/$stem".*; do
+    [[ -e $file ]] || continue
+    [[ -f $file && ! -L $file ]] || { echo "unsafe warmup artifact: $file" >&2; exit 2; }
+    base=${file##*/}
+    mv "$file" "$out/warmup-$base"
+  done
+done
+for file in detector.stdout detector.stderr; do
   [[ ! -e $out/$file ]] || mv "$out/$file" "$out/warmup-$file"
 done
 rm -f "$sock"

@@ -17,6 +17,10 @@ class LiveE2ETest(unittest.TestCase):
                         wrapper.index("reset_detector_after_baseline\n"))
         self.assertLess(wrapper.index("reset_detector_after_baseline\n"),
                         wrapper.index('date +%s%N >"$LIVE_E2E_OBSERVATION_READY_FILE"'))
+        reset = wrapper.split("reset_detector_after_baseline() {", 1)[1].split("\n}\n", 1)[0]
+        self.assertIn('for stem in evidence.jsonl detector-input.jsonl', reset)
+        self.assertIn('"$out/$stem".*', reset)
+        self.assertIn('mv "$file" "$out/warmup-$base"', reset)
 
     def test_active_run_requires_mechanism_live_input_alert_and_dashboard(self):
         with tempfile.TemporaryDirectory() as directory:

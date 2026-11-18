@@ -649,7 +649,7 @@ same_cell_cli() {
       require_runnable_backend
       require_same_cell_dependencies
       local normal_conf=${NORMAL_UE_CONF:-$ROOT/workloads/normal-ue/conf/${RAN_REPRO_PROFILE_ID:-p5}.conf}
-      "$NORMAL_UE" doctor --config "$normal_conf" --count 5
+      "$NORMAL_UE" doctor --profile "$profile" --config "$normal_conf" --count 5
       for attack in rrc-storm auth-timeout blind-dos uplink-credential-flood downlink-imsi ue-capability nas-counter-desynchronization; do
         doctor_one "$attack"
       done

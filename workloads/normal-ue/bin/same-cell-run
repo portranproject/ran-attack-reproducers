@@ -500,6 +500,7 @@ if [[ $ACTION == run ]]; then
       record_health during
       sleep 1
     done
+    select_broker standby || fail "완료된 공격 slot 비활성화에 실패했습니다"
     wait_healthy "$COUNT" "$SAME_CELL_RECOVERY_TIMEOUT_S" \
       || fail "공격 UE clock 유지 중 normal UE가 $COUNT/$COUNT가 아닙니다"
     record_health after

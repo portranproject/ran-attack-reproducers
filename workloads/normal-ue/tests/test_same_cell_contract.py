@@ -100,7 +100,6 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn("ul_gate.set_k", broker)
         self.assertIn("dl_gate = blocks.multiply_const_cc(1.0)", broker)
         self.assertIn("NORMAL_UE_BROKER_PERSISTENT_ATTACK", broker)
-        self.assertIn('mode not in {"standby", "warmup", "attack"}', broker)
         self.assertIn("endpoint_count > 15", broker)
         self.assertIn('mode == "warmup"', broker)
         self.assertIn("attack slots must be warmed first", broker)
@@ -109,6 +108,9 @@ class SameCellContractTests(unittest.TestCase):
         self.assertNotIn("self.connect(", method)
         self.assertIn("signal.SIGUSR1", broker)
         self.assertIn("SAME_CELL_SLOT_SELECTION", broker)
+        self.assertIn('mode not in {"standby", "warmup", "attack", "retire"}', broker)
+        self.assertIn("selector.set_input_index(1)", broker)
+        self.assertIn("retired attack slots cannot be re-enabled", broker)
 
     def test_rrc_attack_ue_waits_for_the_broker_gate(self):
         patch = (ROOT / "reproducers/rrc-signaling-storm/patch/oai-broker-control-gate.patch").read_text()
@@ -152,7 +154,7 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn("attack.ready", run_section)
         done = run_section.index('SAME_CELL_ATTACK_DONE_FILE')
         recover = run_section.index('wait_healthy "$COUNT"')
-        self.assertLess(done, run_section.index("select_broker standby", done, recover))
+        self.assertLess(done, run_section.index("select_broker retire", done, recover))
         self.assertIn("clocked_attack_slots", run_section)
         self.assertIn("embed_self_live_evidence", run_section)
         self.assertIn("SAME_CELL_ATTACK_TIMEOUT_S", run_section)
@@ -196,10 +198,10 @@ class SameCellContractTests(unittest.TestCase):
         wrapper = SCRIPT.read_text()
         self.assertIn('uplink-credential-flood) ATTACK_SLOTS=1', wrapper)
         self.assertNotIn('select_broker recover', wrapper)
-        standby = wrapper.index('select_broker standby || fail "완료된 공격 slot 비활성화에 실패했습니다"')
-        health = wrapper.index('wait_healthy "$COUNT"', standby)
+        retire = wrapper.index('select_broker retire || fail "완료된 공격 slot 분리에 실패했습니다"')
+        health = wrapper.index('wait_healthy "$COUNT"', retire)
         release = wrapper.index(': >"$STATE/attack.release"', health)
-        self.assertLess(standby, health)
+        self.assertLess(retire, health)
         self.assertLess(health, release)
 
     def test_auth_timeout_uses_ten_independent_ru_attack_slots(self):

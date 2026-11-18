@@ -129,6 +129,8 @@ class NormalUeTests(unittest.TestCase):
             self.assertIn(marker, source)
         safe = (ROOT / "workloads/normal-ue/patch/normal-safe-initial-ra.patch").read_text()
         self.assertIn("mac && mac->current_UL_BWP", safe)
+        self.assertIn("normal_reconnect_pending[rrc->ue_id]", safe)
+        self.assertIn("NR_RRC_MAC_RA_IND(msg_p).RA_succeeded", safe)
 
     def test_prepare_writes_private_independent_ru_runtime_config(self):
         state = self.root / "same-cell-state"

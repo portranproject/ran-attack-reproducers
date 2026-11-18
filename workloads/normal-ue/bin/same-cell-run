@@ -320,6 +320,16 @@ start_normal_group() {
     --rss.log_file "$RUN_OUT/$event_file" >"$RUN_OUT/$log_file" 2>&1 </dev/null 9>&- &
   record_pid normal "$!"
 }
+start_persistent_broker() {
+  setsid env NORMAL_UE_BROKER_ENDPOINTS="$TOTAL_ENDPOINTS" \
+    NORMAL_UE_BROKER_ATTACK_SLOTS="$ATTACK_SLOTS" NORMAL_UE_BROKER_PERSISTENT_ATTACK=1 \
+    NORMAL_UE_BROKER_CONTROL="$STATE/broker-control" python3 "$NORMAL_UE_BROKER_PY" \
+    >>"$RUN_OUT/broker.log" 2>&1 </dev/null 9>&- &
+  record_pid broker "$!"
+  BROKER_PID=$(owned_pid broker) || fail "broker PID를 기록하지 못했습니다"
+  wait_process_port "$BROKER_PID" 2000 || fail "broker DU downlink endpoint가 준비되지 않았습니다"
+  wait_process_port "$BROKER_PID" 2001 || fail "broker DU uplink endpoint가 준비되지 않았습니다"
+}
 start_placeholder_group() {
   local generation=${1:-1} pid endpoint
   normal_args; rss_args
@@ -453,14 +463,7 @@ if [[ $ACTION == run ]]; then
       fail "UE endpoint $i 준비가 시간 초과했습니다"
     fi
   done
-  setsid env NORMAL_UE_BROKER_ENDPOINTS="$TOTAL_ENDPOINTS" \
-    NORMAL_UE_BROKER_ATTACK_SLOTS="$ATTACK_SLOTS" NORMAL_UE_BROKER_PERSISTENT_ATTACK=1 \
-    NORMAL_UE_BROKER_CONTROL="$STATE/broker-control" python3 "$NORMAL_UE_BROKER_PY" \
-    >"$RUN_OUT/broker.log" 2>&1 </dev/null 9>&- &
-  record_pid broker "$!"
-  BROKER_PID=$(owned_pid broker) || fail "broker PID를 기록하지 못했습니다"
-
-  sleep 2
+  start_persistent_broker
   bash -c "$NORMAL_UE_GNB_STOP_CMD" >"$RUN_OUT/gnb-stop.log" 2>&1
   (( SAME_CELL_GNB_SETTLE_S == 0 )) || sleep "$SAME_CELL_GNB_SETTLE_S"
   bash -c "$NORMAL_UE_GNB_RESTART_CMD" >"$RUN_OUT/gnb-start.log" 2>&1 9>&-
@@ -502,6 +505,7 @@ if [[ $ACTION == run ]]; then
   NORMAL_HEALTH_BEFORE_TEARDOWN=null
   NORMAL_RECOVERY_SIGNAL_COUNT=0
   NORMAL_RESTART_COUNT=0
+  BROKER_RESTART_COUNT=0
   if [[ $ATTACK != uplink ]]; then
     attack_wait_started=$SECONDS
     until [[ -f $STATE/attack.done && ! -L $STATE/attack.done ]]; do
@@ -515,6 +519,9 @@ if [[ $ACTION == run ]]; then
     select_broker retire || fail "완료된 공격 slot 분리에 실패했습니다"
     if ! wait_healthy "$COUNT" 15; then
       stop_group "$NORMAL_PID"
+      stop_group "$BROKER_PID"
+      wait_port_free 2000 || fail "broker DU downlink endpoint가 해제되지 않았습니다"
+      wait_port_free 2001 || fail "broker DU uplink endpoint가 해제되지 않았습니다"
       for ((i=ATTACK_SLOTS + 1; i<=TOTAL_ENDPOINTS; i++)); do
         wait_port_free "$((2001 + 100 * i))" || fail "normal UE endpoint $i가 해제되지 않았습니다"
       done
@@ -524,7 +531,10 @@ if [[ $ACTION == run ]]; then
         wait_process_port "$NORMAL_PID" "$((2001 + 100 * i))" \
           || fail "복구 normal UE endpoint $i가 준비되지 않았습니다"
       done
+      start_persistent_broker
+      select_broker retire || fail "복구 broker의 공격 slot 분리에 실패했습니다"
       NORMAL_RESTART_COUNT=1
+      BROKER_RESTART_COUNT=1
     fi
     wait_healthy "$COUNT" "$SAME_CELL_RECOVERY_TIMEOUT_S" \
       || fail "공격 UE clock 유지 중 normal UE가 $COUNT/$COUNT가 아닙니다"
@@ -553,9 +563,10 @@ PY
   [[ -n $CHILD_OUTPUT && -d $CHILD_OUTPUT && ! -L $CHILD_OUTPUT ]] \
     || fail "공격 runner가 안전한 output 경로를 남기지 않았습니다"
   printf '%s\n' "$CHILD_OUTPUT" >"$RUN_OUT/child-output.txt"
-  printf '{"schema":"same-cell.run.v3","run_id":"%s","attack":"%s","normal_ues":%d,"normal_shared_ru":false,"attack_slots":%d,"du_restarted_during_attack":false,"normal_recovery_signal_count":%d,"normal_restart_count":%d,"normal_healthy_before_attack_teardown":%s,"direct_detector_input":false,"ue_to_ran_path_required":true,"attack_exit_status":%d}\n' \
+  printf '{"schema":"same-cell.run.v3","run_id":"%s","attack":"%s","normal_ues":%d,"normal_shared_ru":false,"attack_slots":%d,"du_restarted_during_attack":false,"normal_recovery_signal_count":%d,"normal_restart_count":%d,"broker_restart_count":%d,"normal_healthy_before_attack_teardown":%s,"direct_detector_input":false,"ue_to_ran_path_required":true,"attack_exit_status":%d}\n' \
     "$RUN_ID" "$ATTACK" "$COUNT" "$ATTACK_SLOTS" \
-    "$NORMAL_RECOVERY_SIGNAL_COUNT" "$NORMAL_RESTART_COUNT" "$NORMAL_HEALTH_BEFORE_TEARDOWN" "$ATTACK_STATUS" >"$RUN_OUT/run.json"
+    "$NORMAL_RECOVERY_SIGNAL_COUNT" "$NORMAL_RESTART_COUNT" "$BROKER_RESTART_COUNT" \
+    "$NORMAL_HEALTH_BEFORE_TEARDOWN" "$ATTACK_STATUS" >"$RUN_OUT/run.json"
   (( ATTACK_STATUS == 0 )) || fail "공격 runner가 실패했습니다: status=$ATTACK_STATUS"
   if [[ $ATTACK == uplink-credential-flood || $ATTACK == nas-counter-desync ]]; then
     embed_self_live_evidence || fail "self-live same-cell 증거 봉인에 실패했습니다"

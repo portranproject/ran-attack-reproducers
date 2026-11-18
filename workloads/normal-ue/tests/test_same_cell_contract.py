@@ -130,7 +130,7 @@ class SameCellContractTests(unittest.TestCase):
             "if [[ $ACTION == start ]]; then", 1
         )[0]
         self.assertIn("SAME_CELL_PRESTART=1", run_section)
-        self.assertIn("NORMAL_UE_BROKER_PERSISTENT_ATTACK=1", run_section)
+        self.assertIn("NORMAL_UE_BROKER_PERSISTENT_ATTACK=1", source)
         self.assertIn("SAME_CELL_HEALTH_TIMEOUT_S + 30", run_section)
         self.assertIn("select_broker attack", run_section)
         self.assertLess(run_section.index("select_broker warmup"), run_section.index("select_broker attack"))
@@ -201,15 +201,18 @@ class SameCellContractTests(unittest.TestCase):
         self.assertNotIn('select_broker recover', wrapper)
         retire = wrapper.index('select_broker retire || fail "완료된 공격 slot 분리에 실패했습니다"')
         restart = wrapper.index('start_normal_group "$RUNTIME_CFG" "$RUN_ID" recovery-1', retire)
+        broker_restart = wrapper.index("start_persistent_broker", restart)
         health = wrapper.index('wait_healthy "$COUNT"', retire)
         release = wrapper.index(': >"$STATE/attack.release"', health)
         self.assertLess(retire, health)
         self.assertLess(health, restart)
-        self.assertLess(restart, release)
+        self.assertLess(restart, broker_restart)
+        self.assertLess(broker_restart, release)
         self.assertLess(health, release)
         self.assertNotIn('kill -USR1 "$NORMAL_PID"', wrapper)
         self.assertIn('"normal_recovery_signal_count":%d', wrapper)
         self.assertIn('"normal_restart_count":%d', wrapper)
+        self.assertIn('"broker_restart_count":%d', wrapper)
 
     def test_auth_timeout_uses_ten_independent_ru_attack_slots(self):
         source = (ROOT / "reproducers/authentication-timeout-exhaustion/bin/auth-stall-cell-run").read_text()

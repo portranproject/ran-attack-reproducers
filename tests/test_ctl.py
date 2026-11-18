@@ -225,6 +225,13 @@ class ControllerTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("빌드 준비됨", result.stdout)
 
+    def test_non_upstream_oai_baseline_is_rebuilt_from_tracked_patch(self):
+        source = (ROOT / "ctl.sh").read_text()
+        self.assertIn("materialize_local_oai_commit", source)
+        self.assertIn("oai-pucch-null-fix.patch", source)
+        self.assertIn("로컬 OAI 기준 커밋 재생성 해시가 다릅니다", source)
+        self.assertIn("6d6782b48484efd935c14e834832032743f9b138", source)
+
 
 if __name__ == "__main__":
     unittest.main()

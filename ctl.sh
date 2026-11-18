@@ -150,6 +150,41 @@ oai_commit() {
   esac
 }
 
+materialize_local_oai_commit() (
+  set -euo pipefail
+  local base=$1 target=$2
+  local parent=1c2f4d3c2e68181cdef9f426d161163147ad4b77
+  local expected=6d6782b48484efd935c14e834832032743f9b138
+  local patch=$ROOT/reproducers/rrc-signaling-storm/patch/oai-pucch-null-fix.patch
+  local temp work actual
+  [[ $target == "$expected" ]] || return 1
+  [[ -f $patch && ! -L $patch ]] || fail "로컬 OAI 기준 패치가 없습니다: $patch"
+  git -C "$base" cat-file -e "$parent^{commit}" 2>/dev/null \
+    || git -C "$base" fetch origin "$parent"
+  temp=$(mktemp -d)
+  work=$temp/work
+  cleanup() {
+    git -C "$base" worktree remove --force "$work" >/dev/null 2>&1 || true
+    rm -rf -- "$temp"
+  }
+  trap cleanup EXIT
+  git -C "$base" worktree add --detach "$work" "$parent" >/dev/null
+  git mailinfo "$temp/message" "$temp/mailpatch" <"$patch" >/dev/null
+  sed -i '1i fix (mac): skip PUCCH mux when HARQ uses common resource\n' "$temp/message"
+  git -C "$work" apply "$temp/mailpatch"
+  git -C "$work" add openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c
+  GIT_AUTHOR_NAME='Guido Casati' \
+  GIT_AUTHOR_EMAIL='guido.casati@openairinterface.org' \
+  GIT_AUTHOR_DATE='2026-09-02T15:59:31+02:00' \
+  GIT_COMMITTER_NAME='Codex' \
+  GIT_COMMITTER_EMAIL='codex@local.invalid' \
+  GIT_COMMITTER_DATE='2026-10-20T14:49:24+00:00' \
+    git -C "$work" commit -q -F "$temp/message"
+  actual=$(git -C "$work" rev-parse HEAD)
+  [[ $actual == "$expected" ]] \
+    || fail "로컬 OAI 기준 커밋 재생성 해시가 다릅니다: $actual"
+)
+
 built_marker() {
   case $1 in
     rrc-storm) echo target_occupancy ;;
@@ -215,9 +250,15 @@ ensure_worktree() {
   git -C "$base" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
     || fail "기준 OAI 저장소가 없습니다: $base (OAI_BASE로 지정 가능)"
   if ! git -C "$base" cat-file -e "$commit^{commit}" 2>/dev/null; then
-    echo "OAI 기준 커밋 가져오는 중: $commit"
-    git -C "$base" fetch origin "$commit" \
-      || fail "기준 커밋을 가져오지 못했습니다: $commit"
+    if [[ $commit == 6d6782b48484efd935c14e834832032743f9b138 ]]; then
+      echo "저장소 패치에서 OAI 안정화 기준 커밋 재생성 중: $commit"
+      materialize_local_oai_commit "$base" "$commit" \
+        || fail "로컬 OAI 기준 커밋을 재생성하지 못했습니다: $commit"
+    else
+      echo "OAI 기준 커밋 가져오는 중: $commit"
+      git -C "$base" fetch origin "$commit" \
+        || fail "기준 커밋을 가져오지 못했습니다: $commit"
+    fi
   fi
   mkdir -p "$(dirname "$target")"
   git -C "$base" worktree add --detach "$target" "$commit"

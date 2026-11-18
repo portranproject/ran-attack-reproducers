@@ -6,7 +6,7 @@ diff --git a/openair2/RRC/NR_UE/rrc_UE.c b/openair2/RRC/NR_UE/rrc_UE.c
  {
 +  static bool normal_reconnect_pending[MAX_NUM_NR_UE_INST];
    UNUSED(notUsed);
-@@ -3426,2 +3427,4 @@ void *rrc_nrue(void *notUsed)
+@@ -3426,2 +3427,3 @@ void *rrc_nrue(void *notUsed)
    case NR_RRC_MAC_RA_IND:
 +    normal_reconnect_pending[rrc->ue_id] = false;
      RRCLOG_D("Received %s: RA %s\n", ITTI_MSG_NAME(msg_p), NR_RRC_MAC_RA_IND(msg_p).RA_succeeded ? "successful" : "failed");

@@ -312,17 +312,18 @@ start_normal_group() {
   record_pid normal "$!"
 }
 start_placeholder_group() {
-  local generation=${1:-1} pid endpoint
+  local generation=${1:-1} config=${2:-$PLACEHOLDER_CFG} slot_count=${3:-$ATTACK_SLOTS}
+  local endpoint_offset=${4:-0} role=${5:-placeholder-group} pid endpoint
   normal_args; rss_args
-  setsid env RSS_SHARE_NUE="$ATTACK_SLOTS" "$NORMAL_UE_ATTACK_BIN" -O "$PLACEHOLDER_CFG" \
-    "${NORMAL_ARGS[@]}" "${RSS_ARGS[@]}" --num-ues "$ATTACK_SLOTS" --rss.max_duration_s 0 \
-    --rss.honor_reject 0 --rss.msg4_wait 1 --rss.probe_ues "$ATTACK_SLOTS" --rss.probe_delay_ms 86400000 \
+  setsid env RSS_SHARE_NUE="$slot_count" "$NORMAL_UE_ATTACK_BIN" -O "$config" \
+    "${NORMAL_ARGS[@]}" "${RSS_ARGS[@]}" --num-ues "$slot_count" --rss.max_duration_s 0 \
+    --rss.honor_reject 0 --rss.msg4_wait 1 --rss.probe_ues "$slot_count" --rss.probe_delay_ms 86400000 \
     --rss.probe_ra_only 0 --rss.probe_interval_ms 1000 --rss.phase_ms 0 \
     --rss.run_id "pg-$generation" --rss.log_file "$RUN_OUT/placeholders/group-$generation.jsonl" \
     >>"$RUN_OUT/placeholders/group.log" 2>&1 </dev/null 9>&- &
   pid=$!
-  record_pid placeholder-group "$pid"
-  for ((endpoint=1; endpoint<=ATTACK_SLOTS; endpoint++)); do
+  record_pid "$role" "$pid"
+  for ((endpoint=endpoint_offset + 1; endpoint<=endpoint_offset + slot_count; endpoint++)); do
     wait_port "$((2001 + 100 * endpoint))" || fail "placeholder group endpoint $endpoint가 준비되지 않았습니다"
   done
 }
@@ -381,8 +382,10 @@ if [[ $ACTION == run ]]; then
     "$NORMAL_CTL" prepare --config "$CONF" --count "$COUNT")
   if [[ $ATTACK == auth-timeout ]]; then
     mkdir -m 700 "$STATE/placeholders" "$RUN_OUT/placeholders"
-    PLACEHOLDER_CFG=$(SAME_CELL_NORMAL_STATE_DIR="$STATE/placeholders" NORMAL_UE_ZMQ_ENDPOINT_OFFSET=0 \
-      "$NORMAL_CTL" prepare --config "$CONF" --count "$ATTACK_SLOTS")
+    python3 "$ROOT/reproducers/authentication-timeout-exhaustion/analysis/multi_ru_config.py" \
+      "$NORMAL_UE_CFG" "$STATE/placeholders/group-1.conf" 5 0
+    python3 "$ROOT/reproducers/authentication-timeout-exhaustion/analysis/multi_ru_config.py" \
+      "$NORMAL_UE_CFG" "$STATE/placeholders/group-2.conf" 5 5
   fi
   resolve_pdu_session_id
 
@@ -403,7 +406,9 @@ if [[ $ACTION == run ]]; then
     local status=$? pid
     trap - EXIT INT TERM
     [[ -z $ATTACK_PID ]] || stop_group "$ATTACK_PID"
-    pid=$(owned_pid placeholder-group 2>/dev/null || true); [[ -z $pid ]] || stop_group "$pid"
+    for role in placeholder-group placeholder-group-1 placeholder-group-2; do
+      pid=$(owned_pid "$role" 2>/dev/null || true); [[ -z $pid ]] || stop_group "$pid"
+    done
     pid=$(owned_pid broker 2>/dev/null || true); [[ -z $pid ]] || stop_group "$pid"
     pid=$(owned_pid normal 2>/dev/null || true); [[ -z $pid ]] || stop_group "$pid"
     pid=$(owned_pid du 2>/dev/null || true); [[ -z $pid ]] || stop_group "$pid"
@@ -519,7 +524,8 @@ if [[ $ACTION == run ]]; then
       done
       if wait "$ATTACK_PID"; then ATTACK_STATUS=0; else ATTACK_STATUS=$?; fi
       ATTACK_PID=""
-      start_placeholder_group 1
+      start_placeholder_group 1 "$STATE/placeholders/group-1.conf" 5 0 placeholder-group-1
+      start_placeholder_group 2 "$STATE/placeholders/group-2.conf" 5 5 placeholder-group-2
       ATTACK_TEARDOWN_BEFORE_RECOVERY=true
     fi
     wait_healthy "$COUNT" "$SAME_CELL_RECOVERY_TIMEOUT_S" \

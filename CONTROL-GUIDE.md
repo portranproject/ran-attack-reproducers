@@ -128,6 +128,8 @@ gap 0, KPM 존재, 예상 RAISE 수, dashboard 수락과 child 기전 판정을 
 - `configured=true`, `lab_only=true`, target allowlist와 실행 상한
 - detector·telemetry 고정 commit과 실행 파일, detector config SHA-256
 - telemetry `period_ms=100`
+- p5의 경우 `credentials_file`의 `SSH_KEY`·`KNOWN_HOSTS`로 CU production 구성 원격 확인
+- DU의 공통 실행 명령과 L3-24·L3-14 증거 수집에 필요한 `tshark`
 - credential 파일이 있으면 권한 0600 이하
 - OTA는 SDR serial 두 개 이상과 `shielding_confirmed=true`
 

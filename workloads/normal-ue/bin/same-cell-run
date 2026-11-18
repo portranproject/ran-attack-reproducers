@@ -84,6 +84,7 @@ SAME_CELL_HEALTH_TIMEOUT_S=${SAME_CELL_HEALTH_TIMEOUT_S:-120}
 SAME_CELL_RECOVERY_TIMEOUT_S=${SAME_CELL_RECOVERY_TIMEOUT_S:-90}
 SAME_CELL_GNB_SETTLE_S=${SAME_CELL_GNB_SETTLE_S:-2}
 SAME_CELL_ATTACK_WARMUP_S=${SAME_CELL_ATTACK_WARMUP_S:-8}
+SAME_CELL_ATTACK_TIMEOUT_S=${SAME_CELL_ATTACK_TIMEOUT_S:-300}
 SAME_CELL_EXPERIMENTAL_SWITCH=${SAME_CELL_EXPERIMENTAL_SWITCH:-0}
 IP_CMD=${IP_CMD:-ip}
 PING_CMD=${PING_CMD:-ping}
@@ -122,6 +123,8 @@ for value in "$SAME_CELL_ENDPOINT_TIMEOUT_S" "$SAME_CELL_HEALTH_TIMEOUT_S" \
              "$SAME_CELL_RECOVERY_TIMEOUT_S" "$SAME_CELL_GNB_SETTLE_S" "$SAME_CELL_ATTACK_WARMUP_S"; do
   [[ $value =~ ^[0-9]+$ ]] || fail "timeout/settle 값은 정수여야 합니다"
 done
+[[ $SAME_CELL_ATTACK_TIMEOUT_S =~ ^[1-9][0-9]*$ && $SAME_CELL_ATTACK_TIMEOUT_S -le 600 ]] \
+  || fail "SAME_CELL_ATTACK_TIMEOUT_S는 1..600초여야 합니다"
 [[ $SAME_CELL_EXPERIMENTAL_SWITCH == 0 || $SAME_CELL_EXPERIMENTAL_SWITCH == 1 ]] \
   || fail "SAME_CELL_EXPERIMENTAL_SWITCH는 0 또는 1이어야 합니다"
 
@@ -492,8 +495,11 @@ if [[ $ACTION == run ]]; then
 
   NORMAL_HEALTH_BEFORE_TEARDOWN=null
   if [[ $ATTACK != uplink ]]; then
+    attack_wait_started=$SECONDS
     until [[ -f $STATE/attack.done && ! -L $STATE/attack.done ]]; do
       is_running "$ATTACK_PID" || fail "공격 runner가 완료 marker 전에 종료됐습니다"
+      (( SECONDS - attack_wait_started < SAME_CELL_ATTACK_TIMEOUT_S )) \
+        || fail "공격 runner 완료가 ${SAME_CELL_ATTACK_TIMEOUT_S}초를 초과했습니다"
       printf '%s\t%s\n' "$(date +%s%N)" "$(health "$COUNT")" >>"$RUN_OUT/normal-health.tsv"
       record_health during
       sleep 1
@@ -504,7 +510,10 @@ if [[ $ACTION == run ]]; then
     NORMAL_HEALTH_BEFORE_TEARDOWN=true
     ( set -o noclobber; : >"$STATE/attack.release" )
   fi
+  attack_exit_started=$SECONDS
   while is_running "$ATTACK_PID"; do
+    (( SECONDS - attack_exit_started < SAME_CELL_ATTACK_TIMEOUT_S )) \
+      || fail "공격 runner 종료가 ${SAME_CELL_ATTACK_TIMEOUT_S}초를 초과했습니다"
     [[ $ATTACK != uplink ]] \
       || { printf '%s\t%s\n' "$(date +%s%N)" "$(health "$COUNT")" >>"$RUN_OUT/normal-health.tsv"; record_health during; }
     sleep 1
@@ -598,6 +607,27 @@ if [[ $ACTION == start ]]; then
   exit 0
 fi
 
+if [[ $ACTION == stop ]]; then
+  for role in attack placeholder-group broker normal; do
+    pid=$(owned_pid "$role" 2>/dev/null || true)
+    [[ -z $pid ]] || stop_group "$pid"
+  done
+  bash -c "$NORMAL_UE_GNB_STOP_CMD" >/dev/null 2>&1 \
+    || fail "DU 종료 명령이 실패했습니다; 상태를 보존합니다"
+  stopped_at=$SECONDS
+  while pgrep -x odu >/dev/null 2>&1; do
+    (( SECONDS - stopped_at < SAME_CELL_ENDPOINT_TIMEOUT_S )) \
+      || fail "DU가 종료되지 않아 상태를 보존합니다"
+    sleep .2
+  done
+  for role in attack placeholder-group broker normal; do
+    owned_pid "$role" >/dev/null 2>&1 && fail "$role 프로세스가 남아 상태를 보존합니다"
+  done
+  clear_state
+  echo "종료됨: normal UE, placeholder/attack, broker, DU; CU/core는 유지"
+  exit 0
+fi
+
 read -r COUNT <"$STATE/count"
 read -r NORMAL_UE_PDU_SESSION_ID <"$STATE/pdu_session_id"
 read -r RUN_OUT <"$STATE/run_root"
@@ -616,16 +646,6 @@ if [[ $ACTION == status ]]; then
   [[ -n $NORMAL_PID && -n $BROKER_PID && -n $DU_PID ]] \
     && (( ok == COUNT && placeholders == ATTACK_SLOTS )) && state=healthy
   echo "state=$state normal=$ok/$COUNT placeholders=$placeholders/$ATTACK_SLOTS normal_pid=${NORMAL_PID:-down} broker_pid=${BROKER_PID:-down} du_pid=${DU_PID:-down}"
-  exit 0
-fi
-
-if [[ $ACTION == stop ]]; then
-  pid=$(owned_pid placeholder-group 2>/dev/null || true); [[ -z $pid ]] || stop_group "$pid"
-  [[ -z $BROKER_PID ]] || stop_group "$BROKER_PID"
-  [[ -z $NORMAL_PID ]] || stop_group "$NORMAL_PID"
-  [[ -z $DU_PID ]] || stop_group "$DU_PID"
-  clear_state
-  echo "종료됨: normal UE, placeholder, broker, DU; CU/core는 유지"
   exit 0
 fi
 

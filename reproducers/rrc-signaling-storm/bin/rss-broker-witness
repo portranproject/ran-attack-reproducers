@@ -554,6 +554,12 @@ all_active_ues_running() {
   done
 }
 
+GNB_RESTARTED=0
+stop_gnb() {
+  (( GNB_RESTARTED )) || return 0
+  bash -c "$GNB_STOP_CMD" 9>&- >>"$OUT/gnb_stop.txt" 2>&1 </dev/null || true
+  GNB_RESTARTED=0
+}
 stop_children() {
   (( STOPPED == 0 )) || return 0
   STOPPED=1
@@ -614,7 +620,14 @@ stop_children() {
     CHILD_REAPED[$i]=1
   done
 }
-trap stop_children EXIT
+cleanup() {
+  local status=$?
+  trap - EXIT INT TERM
+  stop_children
+  stop_gnb
+  exit "$status"
+}
+trap cleanup EXIT
 trap 'exit 130' INT TERM
 
 if pgrep -x nr-uesoftmodem >/dev/null 2>&1; then
@@ -647,6 +660,7 @@ restart_gnb() {
     echo "gNB restart failed" >&2
     return 1
   fi
+  GNB_RESTARTED=1
   local ready=0 ready_started=$SECONDS
   : >"$OUT/gnb_ready.txt"
   while (( SECONDS - ready_started < GNB_READY_TIMEOUT_S )); do
@@ -1156,6 +1170,7 @@ for ((i=1; i<=TOTAL_UE_PROCESSES; i++)); do
 done
 
 stop_children
+stop_gnb
 trap - EXIT
 
 SYNC=$SYNC_AT_GATE

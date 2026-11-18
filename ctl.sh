@@ -98,6 +98,13 @@ require_runnable_backend() {
     || fail "OTA 실행 adapter는 아직 미구현입니다. PORTING-GUIDE.md의 OTA 포팅 절차를 먼저 완료해야 합니다"
 }
 
+require_same_cell_dependencies() {
+  local command
+  for command in timeout tshark; do
+    command -v "$command" >/dev/null || fail "same-cell 자격 실행에는 $command 명령이 필요합니다"
+  done
+}
+
 config_file() {
   local dir; dir=$(module_dir "$1")
   case $1 in
@@ -150,7 +157,7 @@ built_marker() {
     uplink-dos) echo 'UPLINK_DOS_EMULATION event=service_request_mac_corrupted' ;;
     uplink-credential-flood) echo 'UPLINK_DOS_DETECTION event=registration_failure' ;;
     auth-timeout) echo 'AUTH_TIMEOUT_EXHAUSTION event=authentication_request_withheld' ;;
-    downlink-imsi) echo 'DOWNLINK_IMSI_EXTRACTOR event=identity_response_substituted' ;;
+    downlink-imsi) echo 'DOWNLINK_IMSI_EXTRACTOR event=%s' ;;
     ue-capability) echo 'UE_CAPABILITY_INJECTION event=%s' ;;
     nas-counter-desynchronization) echo 'NAS_COUNTER_DESYNC event=unsolicited_security_mode_reject' ;;
   esac
@@ -438,7 +445,7 @@ same_cell_metadata() {
 
 same_cell_run_one() {
   local attack=$1 mode=$2 run_id=$3 count=$4 enabled=$5 dry_run=$6
-  local expected config env_name runner scenario rule alias normal_conf run_root enable_value child_dir
+  local expected config env_name runner scenario rule alias normal_conf run_root enable_value child_dir phase_timeout
   local -a inner command
   attack=$(attack_id "$attack") || fail "알 수 없는 공격 ID: $1"
   read -r scenario rule alias < <(same_cell_metadata "$attack") \
@@ -477,7 +484,12 @@ same_cell_run_one() {
       command=(env LIVE_E2E_REQUIRE_SAME_CELL=1 "$ROOT/tools/p5-live-e2e" "$scenario" "$mode" "$run_id" "$rule" auto -- "${command[@]}")
     fi
   fi
+  phase_timeout=${SAME_CELL_PHASE_TIMEOUT_S:-900}
+  [[ $phase_timeout =~ ^[1-9][0-9]*$ && $phase_timeout -le 1800 ]] \
+    || fail "SAME_CELL_PHASE_TIMEOUT_S는 1..1800초여야 합니다"
+  command=(timeout --signal=TERM --kill-after=60s "${phase_timeout}s" "${command[@]}")
   if [[ $dry_run == 1 ]]; then print_command "${command[@]}"; return; fi
+  command -v timeout >/dev/null || fail "timeout 명령이 필요합니다"
   [[ -f $config && ! -L $config ]] || fail "설정이 없습니다. 먼저 실행: ./ctl.sh setup $attack"
   [[ -f $normal_conf && ! -L $normal_conf ]] || fail "normal UE 설정이 없습니다: $normal_conf"
   [[ -x $runner ]] || fail "runner가 없습니다: $runner"
@@ -581,6 +593,7 @@ same_cell_cli() {
       python3 "$REPROCTL" doctor --profile "$profile"
       load_profile_env "$profile"
       require_runnable_backend
+      require_same_cell_dependencies
       local normal_conf=${NORMAL_UE_CONF:-$ROOT/workloads/normal-ue/conf/p5.conf}
       "$NORMAL_UE" doctor --config "$normal_conf" --count 5
       for attack in rrc-storm auth-timeout blind-dos uplink-credential-flood downlink-imsi ue-capability nas-counter-desynchronization; do
@@ -607,6 +620,7 @@ same_cell_cli() {
         python3 "$REPROCTL" doctor --profile "$profile" >/dev/null
         load_profile_env "$profile"
         require_runnable_backend
+        require_same_cell_dependencies
       fi
       same_cell_run_one "$attack" "$mode" "$run_id" "$count" "$enabled" "$dry_run"
       ;;
@@ -630,6 +644,7 @@ same_cell_cli() {
         python3 "$REPROCTL" doctor --profile "$profile" >/dev/null
         load_profile_env "$profile"
         require_runnable_backend
+        require_same_cell_dependencies
       fi
       same_cell_campaign "$campaign_id" "$sets" "$count" "$enabled" "$dry_run"
       ;;

@@ -129,10 +129,23 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn("attack.ready", run_section)
         self.assertIn("clocked_attack_slots", run_section)
         self.assertIn("embed_self_live_evidence", run_section)
+        self.assertIn("SAME_CELL_ATTACK_TIMEOUT_S", run_section)
+        self.assertIn("공격 runner 완료가", run_section)
+        self.assertIn("공격 runner 종료가", run_section)
         self.assertIn('"normal_ue_coexistence"', source)
         restart = run_section.index('bash -c "$NORMAL_UE_GNB_RESTART_CMD"')
         self.assertLess(run_section.index("start_normal_group"), restart)
         self.assertLess(run_section.index('setsid "${COMMAND[@]}"'), restart)
+
+    def test_stop_recovers_a_partial_cold_run_without_placeholder_state(self):
+        source = SCRIPT.read_text()
+        stop = source.index("if [[ $ACTION == stop ]]; then")
+        placeholder = source.index('read -r PLACEHOLDER_CFG <"$STATE/placeholder_config"')
+        self.assertLess(stop, placeholder)
+        stop_section = source[stop:placeholder]
+        self.assertIn("for role in attack placeholder-group broker normal", stop_section)
+        self.assertIn('bash -c "$NORMAL_UE_GNB_STOP_CMD"', stop_section)
+        self.assertIn("상태를 보존합니다", stop_section)
 
     def test_credential_flood_starts_managed_du_before_ue(self):
         source = (ROOT / "reproducers/uplink-dos/bin/uplink-credential-flood-run").read_text()

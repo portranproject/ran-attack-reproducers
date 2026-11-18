@@ -158,6 +158,7 @@ class ControllerTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.count("실행 예정:"), 42)
+        self.assertEqual(result.stdout.count("timeout --signal=TERM --kill-after=60s 900s"), 42)
         for runner in (
             "rss-broker-witness", "auth-stall-cell-run", "blind-run",
             "uplink-credential-flood-run", "downlink-imsi-run",
@@ -175,6 +176,15 @@ class ControllerTest(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("--enable", result.stderr)
+
+    def test_same_cell_phase_timeout_is_bounded(self):
+        for value in ("0", "1801"):
+            result = self.run_ctl(
+                "same-cell", "run", "blind-dos", "--mode", "control", "--dry-run",
+                env=dict(os.environ, SAME_CELL_PHASE_TIMEOUT_S=value),
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("1..1800", result.stderr)
 
     def test_build_reuses_binary_with_module_marker(self):
         with tempfile.TemporaryDirectory() as directory:

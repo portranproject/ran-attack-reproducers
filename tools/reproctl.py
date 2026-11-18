@@ -270,6 +270,87 @@ def check_private_credentials(profile: dict[str, Any]) -> None:
         raise ReproError(f"credentials_file 권한은 0600 이하여야 합니다: {path}")
 
 
+def private_credentials(profile: dict[str, Any]) -> dict[str, str]:
+    check_private_credentials(profile)
+    raw = profile.get("credentials_file")
+    if raw is None:
+        return {}
+    values: dict[str, str] = {}
+    for number, source in enumerate(regular(Path(raw), "credentials_file").read_text(encoding="utf-8").splitlines(), 1):
+        line = source.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[7:].lstrip()
+        if "=" not in line:
+            raise ReproError(f"credentials_file:{number}는 NAME=VALUE 형식이어야 합니다")
+        name, encoded = line.split("=", 1)
+        if not ENV_NAME.fullmatch(name):
+            raise ReproError(f"credentials_file:{number} 변수명이 잘못됐습니다")
+        try:
+            tokens = shlex.split(encoded, comments=True, posix=True)
+        except ValueError as error:
+            raise ReproError(f"credentials_file:{number} 값이 잘못됐습니다: {error}") from error
+        if len(tokens) != 1 or "\n" in tokens[0]:
+            raise ReproError(f"credentials_file:{number} 값은 하나여야 합니다")
+        values[name] = tokens[0]
+    return values
+
+
+def p5_remote_components(profile: dict[str, Any]) -> dict[str, str]:
+    environment = profile["environment"]
+    credentials = private_credentials(profile)
+    host = environment.get("P5_CU_HOST", "")
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_-]*@[A-Za-z0-9.-]+", host):
+        raise ReproError("P5_CU_HOST는 user@host 형식이어야 합니다")
+    key = regular(Path(credentials.get("SSH_KEY", "")), "SSH_KEY")
+    known_hosts = regular(Path(credentials.get("KNOWN_HOSTS", "")), "KNOWN_HOSTS")
+    if stat.S_IMODE(key.stat().st_mode) & 0o077:
+        raise ReproError(f"SSH_KEY 권한은 0600 이하여야 합니다: {key}")
+    detector = profile["detector"]
+    telemetry = profile["telemetry"]
+    paths = {
+        "detector": detector["binary"],
+        "detector_config": detector["config"],
+        "telemetry": telemetry["binary"],
+    }
+    if any(not Path(value).is_absolute() for value in paths.values()):
+        raise ReproError("p5 production component 경로는 절대 경로여야 합니다")
+    payload = {
+        "paths": paths,
+        "detector_commit": detector["commit"],
+        "telemetry_commit": telemetry["commit"],
+    }
+    remote = r'''import hashlib,json,os,pathlib,sys
+request=json.loads(sys.argv[1]); result={}
+for name,raw in request["paths"].items():
+    path=pathlib.Path(raw)
+    if path.is_symlink() or not path.is_file(): raise SystemExit(f"missing production component: {name}")
+    if name != "detector_config" and not os.access(path, os.X_OK): raise SystemExit(f"component is not executable: {name}")
+    result[name+"_sha256"]=hashlib.sha256(path.read_bytes()).hexdigest()
+for name,expected in (("detector",request["detector_commit"]),("telemetry",request["telemetry_commit"])):
+    revision=pathlib.Path(request["paths"][name]).parent.parent/".deployed-revision"
+    if revision.is_symlink() or not revision.is_file() or revision.read_text().strip()!=expected:
+        raise SystemExit(f"deployed revision mismatch: {name}")
+print(json.dumps(result,sort_keys=True))'''
+    result = subprocess.run(
+        ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "StrictHostKeyChecking=yes",
+         "-o", f"UserKnownHostsFile={known_hosts}", "-i", str(key), host,
+         shlex.join(["python3", "-c", remote, json.dumps(payload, separators=(",", ":"))])],
+        text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    if result.returncode != 0:
+        raise ReproError(f"CU production component 확인 실패: {result.stderr.strip() or 'unknown error'}")
+    try:
+        verified = json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        raise ReproError("CU production component 응답이 JSON이 아닙니다") from error
+    expected = {"detector_sha256", "detector_config_sha256", "telemetry_sha256"}
+    if set(verified) != expected or any(not SHA256.fullmatch(str(verified[name])) for name in expected):
+        raise ReproError("CU production component 해시 응답이 잘못됐습니다")
+    return {name: str(value) for name, value in verified.items()}
+
+
 def detector_paths(profile: dict[str, Any]) -> tuple[Path, Path]:
     detector = profile["detector"]
     binary = regular(Path(os.environ.get("DETECTOR_BIN", detector["binary"])), "detector binary")
@@ -636,16 +717,22 @@ def command_doctor(profile_name: str) -> None:
     manifest_count = len(manifests())
     profile_path_value, profile = load_profile(profile_name)
     check_private_credentials(profile)
-    binary, config = detector_paths(profile)
-    telemetry_binary = regular(Path(profile["telemetry"]["binary"]), "telemetry binary")
-    if not os.access(telemetry_binary, os.X_OK):
-        raise ReproError(f"telemetry binary가 실행 가능하지 않습니다: {telemetry_binary}")
     print(f"OK reproducer checkout: {head}")
     print(f"OK manifest: {manifest_count}개")
     print(f"OK profile: {profile_path_value}")
-    print(f"OK detector: {binary} ({sha256(binary)})")
-    print(f"OK detector config: {config} ({sha256(config)})")
-    print(f"OK telemetry: {telemetry_binary} period_ms=100")
+    if profile["backend"] == "p5":
+        verified = p5_remote_components(profile)
+        print(f"OK detector(CU): {profile['detector']['binary']} ({verified['detector_sha256']})")
+        print(f"OK detector config(CU): {profile['detector']['config']} ({verified['detector_config_sha256']})")
+        print(f"OK telemetry(CU): {profile['telemetry']['binary']} ({verified['telemetry_sha256']}) period_ms=100")
+    else:
+        binary, config = detector_paths(profile)
+        telemetry_binary = regular(Path(profile["telemetry"]["binary"]), "telemetry binary")
+        if not os.access(telemetry_binary, os.X_OK):
+            raise ReproError(f"telemetry binary가 실행 가능하지 않습니다: {telemetry_binary}")
+        print(f"OK detector: {binary} ({sha256(binary)})")
+        print(f"OK detector config: {config} ({sha256(config)})")
+        print(f"OK telemetry: {telemetry_binary} period_ms=100")
 
 
 def command_checkout() -> None:

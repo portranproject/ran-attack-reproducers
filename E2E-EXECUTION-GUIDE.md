@@ -16,7 +16,9 @@
    시작·정리할 수 있지만 인스턴스를 생성·삭제하지 않는다.
 
 `doctor`는 Git checkout, 최소 자격 커밋, 추적 파일 변경 여부, 핵심 runner 해시,
-detector·telemetry 고정 버전을 검사한다. 하나라도 다르면 그 환경은 자격 검증 대상이 아니다.
+detector·telemetry 고정 버전을 검사한다. p5에서는 권한 0600의 `credentials_file`에 적힌
+`SSH_KEY`·`KNOWN_HOSTS`를 사용해 CU의 production 바이너리와 배포 revision을 원격 확인한다.
+DU에는 패킷 증거 수집용 `tshark`도 필요하다. 하나라도 다르면 그 환경은 자격 검증 대상이 아니다.
 
 ## 처음 설치하거나 업데이트할 때
 

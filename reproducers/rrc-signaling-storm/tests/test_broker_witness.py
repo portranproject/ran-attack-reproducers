@@ -1204,6 +1204,27 @@ class BrokerWitnessTests(unittest.TestCase):
         for fragment in required:
             self.assertIn(fragment, source)
 
+    def test_owned_gnb_is_stopped_on_success_and_failure(self):
+        source = SCRIPT.read_text()
+        self.assertIn("cleanup()", source)
+        self.assertIn("stop_children\n  stop_gnb\n  exit", source)
+        self.assertIn("stop_children\nstop_gnb\ntrap - EXIT", source)
+
+        successful_trace = self.root / "gnb-success.trace"
+        stop = f"echo stop >> {shlex.quote(str(successful_trace))}"
+        result = self.run_script(run_id="bw-gnb-cleanup", GNB_STOP_CMD=stop)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertEqual(successful_trace.read_text().splitlines(), ["stop", "stop"])
+
+        failed_trace = self.root / "gnb-failed-ready.trace"
+        stop = f"echo stop >> {shlex.quote(str(failed_trace))}"
+        result = self.run_script(
+            run_id="bw-gnb-ready-fail", GNB_STOP_CMD=stop,
+            GNB_READY_CMD="false", GNB_READY_TIMEOUT_S="1",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(failed_trace.read_text().splitlines(), ["stop", "stop"])
+
     def test_harness_launches_ue_endpoints_before_the_broker(self):
         source = SCRIPT.read_text()
         launch_ues = source.index('echo "== launching $BROKER_ATTACK_PROCESSES')

@@ -6,6 +6,7 @@ import pathlib
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -21,6 +22,31 @@ SPEC.loader.exec_module(REPROCTL_MODULE)
 
 
 class PlatformTest(unittest.TestCase):
+    def test_p5_doctor_checks_the_remote_production_components(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            key = root / "key.pem"
+            known = root / "known_hosts"
+            credentials = root / "p5.env"
+            key.write_text("fixture")
+            known.write_text("fixture")
+            credentials.write_text(f"SSH_KEY={key}\nKNOWN_HOSTS={known}\n")
+            key.chmod(0o600)
+            credentials.chmod(0o600)
+            profile = {
+                "environment": {"P5_CU_HOST": "ubuntu@cu.lab"},
+                "credentials_file": str(credentials),
+                "detector": {"binary": "/srv/detection/build/detector", "config": "/srv/detection/config/detector.json", "commit": "1" * 40},
+                "telemetry": {"binary": "/srv/telemetry/build/portran", "commit": "2" * 40},
+            }
+            hashes = {"detector_sha256": "a" * 64, "detector_config_sha256": "b" * 64, "telemetry_sha256": "c" * 64}
+            completed = subprocess.CompletedProcess([], 0, json.dumps(hashes), "")
+            with mock.patch.object(REPROCTL_MODULE.subprocess, "run", return_value=completed) as run:
+                self.assertEqual(REPROCTL_MODULE.p5_remote_components(profile), hashes)
+            command = run.call_args.args[0]
+            self.assertIn("ubuntu@cu.lab", command)
+            self.assertIn(f"UserKnownHostsFile={known}", command)
+
     def test_qualified_checkout_rejects_modified_deployment(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)

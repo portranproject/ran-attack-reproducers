@@ -11,6 +11,14 @@ SPEC.loader.exec_module(verify_live)
 
 
 class UnsolicitedRejectTest(unittest.TestCase):
+    def test_live_result_uses_selected_profile_and_reseals_public_output(self):
+        source = MODULE.read_text()
+        runner = (MODULE.parents[1] / "bin" / "nas-counter-desync-run").read_text()
+        self.assertIn('os.environ.get("RAN_REPRO_PROFILE_ID", "p5")', source)
+        self.assertNotIn('"profile": "p5"', source)
+        self.assertIn('tools/reproctl.py" seal "$FINAL" "$RUN_ID"', runner)
+        self.assertNotIn('report.md evidence_manifest.json', runner)
+
     def test_reject_without_prior_command_is_counted(self):
         events = [
             {"t_ms": 10, "cell_id": 1, "du_ue_id": 2, "cu_ue_id": 3, "crnti": 4,

@@ -28,6 +28,8 @@ class RegistrationFailureFloodTest(unittest.TestCase):
         self.assertIn('[[ -f $SAME_CELL_UE_GATE_FILE && ! -L $SAME_CELL_UE_GATE_FILE ]]', runner)
         self.assertIn("grep -Faq 'OAI_SAME_CELL_GATE_FILE' \"$OAI_BIN\"", runner)
         self.assertIn('OAI_SAME_CELL_GATE_FILE="$SAME_CELL_UE_GATE_FILE"', runner)
+        self.assertIn('tools/reproctl.py" seal "$FINAL" "$RUN_ID"', runner)
+        self.assertNotIn('report.md evidence_manifest.json', runner)
 
     def test_live_session_start_is_normalized(self):
         self.assertEqual(session_started_at("20261116T030405Z"), "2026-11-16T03:04:05Z")

@@ -347,9 +347,10 @@ cp "$OUT/live/detector-input.jsonl" "$OUT/observations.jsonl"
 python3 "$ROOT/analysis/verify_live.py" "$OUT" "$MODE" "$RUN_ID" \
   "$OAI_BIN" "$UE_CFG" "$UECAP" "$NAS_DESYNC_PATCH"
 mkdir -m 700 "$FINAL"
-for file in run.json observations.jsonl oracle.jsonl detector.jsonl verdict.json report.md evidence_manifest.json; do
+for file in run.json observations.jsonl oracle.jsonl detector.jsonl verdict.json report.md; do
   install -m 600 "$OUT/$file" "$FINAL/$file"
 done
+python3 "$ROOT/../../tools/reproctl.py" seal "$FINAL" "$RUN_ID"
 trap - EXIT INT TERM
 (( DU_STARTED == 0 )) || "$DU_CTL" stop >/dev/null 2>&1
 echo "완료됨: mode=$MODE live_protocol_path=true output=$FINAL raw=$OUT"

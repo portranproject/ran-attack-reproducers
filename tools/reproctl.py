@@ -549,6 +549,16 @@ def seal(run_dir: Path, run_id: str) -> dict[str, Any]:
     return value
 
 
+def command_seal(run_dir_value: str, run_id: str) -> None:
+    if not RUN_ID.fullmatch(run_id):
+        raise ReproError("RUN_ID가 잘못됐습니다")
+    run_dir = Path(run_dir_value)
+    if run_dir.is_symlink() or not run_dir.is_dir() or run_dir.name != run_id:
+        raise ReproError("봉인할 실행 디렉터리가 RUN_ID와 맞지 않습니다")
+    seal(run_dir, run_id)
+    print(f"sealed: {run_dir}")
+
+
 def signal_run(scenario_name: str, mode: str, run_id_value: str, profile_name: str, enabled: bool) -> Path:
     if not RUN_ID.fullmatch(run_id_value):
         raise ReproError("RUN_ID는 영문·숫자로 시작하고 ._-만 사용할 수 있습니다")
@@ -817,6 +827,9 @@ def main(argv: list[str] | None = None) -> int:
         child.add_argument("--json", action="store_true")
     sub.add_parser("validate")
     sub.add_parser("checkout")
+    seal_run = sub.add_parser("seal")
+    seal_run.add_argument("run_dir")
+    seal_run.add_argument("run_id")
     doctor = sub.add_parser("doctor")
     doctor.add_argument("--profile", required=True)
     env = sub.add_parser("env")
@@ -850,6 +863,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"manifest-validation: ok ({len(found)} modules)")
         elif args.command == "checkout":
             command_checkout()
+        elif args.command == "seal":
+            command_seal(args.run_dir, args.run_id)
         elif args.command == "doctor":
             command_doctor(args.profile)
         elif args.command == "env":

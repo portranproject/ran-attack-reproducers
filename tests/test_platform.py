@@ -22,6 +22,21 @@ SPEC.loader.exec_module(REPROCTL_MODULE)
 
 
 class PlatformTest(unittest.TestCase):
+    def test_seal_command_seals_only_the_public_contract(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run_id = "public-run-1"
+            root = pathlib.Path(directory) / run_id
+            root.mkdir()
+            for name in REPROCTL_MODULE.REQUIRED_FILES:
+                (root / name).write_text(name)
+            result = subprocess.run(
+                ["python3", str(REPROCTL), "seal", str(root), run_id],
+                text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            manifest = json.loads((root / "evidence_manifest.json").read_text())
+            self.assertEqual(set(manifest["files"]), set(REPROCTL_MODULE.REQUIRED_FILES))
+
     def test_p5_doctor_checks_the_remote_production_components(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)

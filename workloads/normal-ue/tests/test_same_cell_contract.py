@@ -174,6 +174,7 @@ class SameCellContractTests(unittest.TestCase):
 
     def test_stop_recovers_a_partial_cold_run_without_placeholder_state(self):
         source = SCRIPT.read_text()
+        self.assertEqual(source.count('stop_group "$ATTACK_PID" TERM'), 2)
         stop = source.index("if [[ $ACTION == stop ]]; then")
         placeholder = source.index('read -r PLACEHOLDER_CFG <"$STATE/placeholder_config"')
         self.assertLess(stop, placeholder)

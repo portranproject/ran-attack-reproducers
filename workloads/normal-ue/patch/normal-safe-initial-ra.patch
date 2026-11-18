@@ -1,0 +1,14 @@
+diff --git a/openair2/RRC/NR_UE/rrc_UE.c b/openair2/RRC/NR_UE/rrc_UE.c
+--- a/openair2/RRC/NR_UE/rrc_UE.c
++++ b/openair2/RRC/NR_UE/rrc_UE.c
+@@ -3519,8 +3519,10 @@ void *rrc_nrue(void *notUsed)
+       rrc->pending_initial_nas.length = req->nasMsg.length;
+       RRCLOG_I("Initial NAS UL: no SRB yet; buffered %u B for RRCSetupComplete dedicatedNAS (RRC state=%d)\n",
+                req->nasMsg.length,
+                rrc->nrRrcState);
++      const NR_UE_MAC_INST_t *mac = get_mac_inst(rrc->ue_id);
+       if (rrc->nrRrcState == RRC_STATE_IDLE_NR
++          && mac && mac->current_UL_BWP
+           && !nr_rss_probe_withheld((int)rrc->ue_id)) {
+         RA_trigger_t prev_trigger = rrc->ra_trigger;
+         rrc->ra_trigger = RRC_CONNECTION_SETUP;

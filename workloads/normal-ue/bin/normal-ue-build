@@ -16,6 +16,8 @@ PATCHES=(
   "$ROOT/workloads/normal-ue/patch/normal-multi-ru.patch"
   "$ROOT/workloads/normal-ue/patch/normal-probe-phase.patch"
   "$ROOT/workloads/normal-ue/patch/normal-tun-suffix.patch"
+  "$ROOT/workloads/normal-ue/patch/normal-reconnect-w38.patch"
+  "$ROOT/workloads/normal-ue/patch/normal-safe-initial-ra.patch"
 )
 
 [[ -n $OAI && $OAI != / ]] || { echo "안전하지 않은 OAI 경로입니다: $OAI" >&2; exit 1; }
@@ -51,7 +53,7 @@ git -C "$OAI" diff --check
 ( cd "$OAI/cmake_targets" && ./build_oai --nrUE -w ZMQ --ninja )
 
 [[ -x $BIN && -f $DEVLIB ]] || { echo "정상 UE 빌드 산출물이 없습니다" >&2; exit 1; }
-for marker in RSS_SHARE_NUE RSS_BROKER_CONTROL_FILE OAI_NORMAL_TUN_SUFFIX; do
+for marker in RSS_SHARE_NUE RSS_BROKER_CONTROL_FILE OAI_NORMAL_TUN_SUFFIX NORMAL_UE_RECOVERY; do
   grep -aFq "$marker" "$BIN" || { echo "정상 UE 바이너리에 마커가 없습니다: $marker" >&2; exit 1; }
 done
 grep -aFq RSS_ZMQ_TX_WAIT_US "$DEVLIB" \

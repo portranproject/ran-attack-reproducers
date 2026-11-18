@@ -217,19 +217,32 @@ health() {
   printf '%s\n' "$ok"
 }
 record_health() {
-  local phase=$1 iface tun_ok ping_ok timestamp
+  local phase=$1 output=${2:-$RUN_OUT/normal-health.jsonl} iface tun_ok ping_ok timestamp healthy=0
   timestamp=$(date +%s%N)
   for ((i=1; i<=COUNT; i++)); do
     iface="oaitun_ue${i}p${NORMAL_UE_PDU_SESSION_ID}"
     tun_ok=false; ping_ok=false
     if "$IP_CMD" -4 -o addr show "$iface" >/dev/null 2>&1; then
       tun_ok=true
-      "$PING_CMD" -n -I "$iface" -c 1 -W 1 "$NORMAL_UE_GATEWAY" >/dev/null 2>&1 && ping_ok=true || true
+      "$PING_CMD" -n -I "$iface" -c 1 -W 1 "$NORMAL_UE_GATEWAY" >/dev/null 2>&1 \
+        && { ping_ok=true; healthy=$((healthy + 1)); } || true
     fi
     printf '{"schema":"same-cell.normal-health.v1","run_id":"%s","phase":"%s","realtime_ns":%s,"ue":%d,"interface":"%s","tun_ok":%s,"ping_ok":%s}\n' \
       "$RUN_ID" "$phase" "$timestamp" "$i" "$iface" "$tun_ok" "$ping_ok" \
-      >>"$RUN_OUT/normal-health.jsonl"
+      >>"$output"
   done
+  (( healthy == COUNT ))
+}
+record_healthy() {
+  local phase=$1 sample="$RUN_OUT/.normal-health-$1.jsonl"
+  : >"$sample"
+  if record_health "$phase" "$sample"; then
+    cat "$sample" >>"$RUN_OUT/normal-health.jsonl"
+    rm -f -- "$sample"
+    return 0
+  fi
+  rm -f -- "$sample"
+  return 1
 }
 embed_self_live_evidence() {
   python3 - "$CHILD_OUTPUT" "$RUN_OUT/run.json" "$RUN_OUT/session.json" \
@@ -485,12 +498,11 @@ if [[ $ACTION == run ]]; then
   ( set -o noclobber; : >"$STATE/ran.ready" )
 
   started=$SECONDS
-  until [[ $(health "$COUNT") == "$COUNT" ]]; do
+  until record_healthy before; do
     is_running "$ATTACK_PID" || fail "공격 runner가 normal UE 준비 전에 종료됐습니다"
     (( SECONDS - started < SAME_CELL_HEALTH_TIMEOUT_S )) || fail "normal UE $COUNT/$COUNT 준비가 시간 초과했습니다"
     sleep 1
   done
-  record_health before
   if [[ -n $BASELINE_READY_FILE ]]; then
     ( set -o noclobber; date +%s%N >"$BASELINE_READY_FILE" ) \
       || fail "정상 UE 기준선 marker 게시에 실패했습니다"
@@ -525,7 +537,7 @@ if [[ $ACTION == run ]]; then
       (( SECONDS - attack_wait_started < SAME_CELL_ATTACK_TIMEOUT_S )) \
         || fail "공격 runner 완료가 ${SAME_CELL_ATTACK_TIMEOUT_S}초를 초과했습니다"
       printf '%s\t%s\n' "$(date +%s%N)" "$(health "$COUNT")" >>"$RUN_OUT/normal-health.tsv"
-      record_health during
+      record_health during || true
       sleep 1
     done
     select_broker retire || fail "완료된 공격 slot 분리에 실패했습니다"
@@ -533,9 +545,12 @@ if [[ $ACTION == run ]]; then
       kill -USR1 "$NORMAL_PID" || fail "normal UE 안전 재등록 신호 전송에 실패했습니다"
       NORMAL_RECOVERY_SIGNAL_COUNT=1
     fi
-    wait_healthy "$COUNT" "$SAME_CELL_RECOVERY_TIMEOUT_S" \
-      || fail "공격 UE clock 유지 중 normal UE가 $COUNT/$COUNT가 아닙니다"
-    record_health after
+    started=$SECONDS
+    until record_healthy after; do
+      (( SECONDS - started < SAME_CELL_RECOVERY_TIMEOUT_S )) \
+        || fail "공격 UE clock 유지 중 normal UE가 $COUNT/$COUNT가 아닙니다"
+      sleep 1
+    done
     NORMAL_HEALTH_BEFORE_TEARDOWN=true
     ( set -o noclobber; : >"$STATE/attack.release" )
   fi
@@ -544,7 +559,7 @@ if [[ $ACTION == run ]]; then
     (( SECONDS - attack_exit_started < SAME_CELL_ATTACK_TIMEOUT_S )) \
       || fail "공격 runner 종료가 ${SAME_CELL_ATTACK_TIMEOUT_S}초를 초과했습니다"
     [[ $ATTACK != uplink ]] \
-      || { printf '%s\t%s\n' "$(date +%s%N)" "$(health "$COUNT")" >>"$RUN_OUT/normal-health.tsv"; record_health during; }
+      || { printf '%s\t%s\n' "$(date +%s%N)" "$(health "$COUNT")" >>"$RUN_OUT/normal-health.tsv"; record_health during || true; }
     sleep 1
   done
   if wait "$ATTACK_PID"; then ATTACK_STATUS=0; else ATTACK_STATUS=$?; fi

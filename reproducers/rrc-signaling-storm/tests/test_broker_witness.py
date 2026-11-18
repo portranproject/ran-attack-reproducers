@@ -1225,6 +1225,12 @@ class BrokerWitnessTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(failed_trace.read_text().splitlines(), ["stop", "stop"])
 
+    def test_normal_pool_uses_the_normal_configuration_gnb_lifecycle(self):
+        source = SCRIPT.read_text()
+        block = source.split("if (( BROKER_NORMAL_POOL_QUALIFICATION )); then", 1)[1].split("fi", 1)[0]
+        for name in ("GNB_CONFIG", "GNB_STOP_CMD", "GNB_RESTART_CMD", "GNB_READY_CMD"):
+            self.assertIn(f"NORMAL_UE_{name}", block)
+
     def test_harness_launches_ue_endpoints_before_the_broker(self):
         source = SCRIPT.read_text()
         launch_ues = source.index('echo "== launching $BROKER_ATTACK_PROCESSES')

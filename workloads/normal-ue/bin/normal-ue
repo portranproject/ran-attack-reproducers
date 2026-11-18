@@ -26,6 +26,7 @@ done
   || { echo "안전하지 않은 profile 이름입니다: $PROFILE" >&2; exit 2; }
 CONF=${CONF:-$ROOT/workloads/normal-ue/conf/$PROFILE.conf}
 EXAMPLE=$ROOT/workloads/normal-ue/conf/p5.conf.example
+GNB_EXAMPLE=$ROOT/workloads/normal-ue/conf/du-broker-default.yaml.example
 
 if [[ $ACTION == help || $ACTION == -h || $ACTION == --help ]]; then
   echo "사용법: normal-ue setup|build|doctor|prepare|start|status|stop [--profile NAME] [--count N] [--config FILE]"
@@ -33,11 +34,46 @@ if [[ $ACTION == help || $ACTION == -h || $ACTION == --help ]]; then
 fi
 
 if [[ $ACTION == setup ]]; then
-  [[ ! -e $CONF ]] || { echo "설정 유지: $CONF"; exit 0; }
-  [[ -f $EXAMPLE ]] || { echo "설정 예제가 없습니다: $EXAMPLE" >&2; exit 1; }
-  install -d -m 700 "$(dirname "$CONF")"
-  install -m 600 "$EXAMPLE" "$CONF"
-  echo "설정 생성: $CONF"
+  if [[ -e $CONF || -L $CONF ]]; then
+    [[ -f $CONF && ! -L $CONF ]] || { echo "설정이 일반 파일이 아닙니다: $CONF" >&2; exit 1; }
+    echo "설정 유지: $CONF"
+  else
+    [[ -f $EXAMPLE && ! -L $EXAMPLE ]] || { echo "설정 예제가 없습니다: $EXAMPLE" >&2; exit 1; }
+    install -d -m 700 "$(dirname "$CONF")"
+    install -m 600 "$EXAMPLE" "$CONF"
+    echo "설정 생성: $CONF"
+  fi
+  PROFILE_ENV=$(python3 "$ROOT/tools/reproctl.py" env --profile "$PROFILE") \
+    || { echo "profile을 불러오지 못했습니다: $PROFILE" >&2; exit 1; }
+  while IFS= read -r line; do export "$line"; done <<<"$PROFILE_ENV"
+  # shellcheck source=/dev/null
+  . "$CONF"
+  if [[ -e $NORMAL_UE_GNB_CONFIG || -L $NORMAL_UE_GNB_CONFIG ]]; then
+    [[ -f $NORMAL_UE_GNB_CONFIG && ! -L $NORMAL_UE_GNB_CONFIG ]] \
+      || { echo "gNB 설정이 일반 파일이 아닙니다: $NORMAL_UE_GNB_CONFIG" >&2; exit 1; }
+    echo "gNB 설정 유지: $NORMAL_UE_GNB_CONFIG"
+  else
+    [[ -f $GNB_EXAMPLE && ! -L $GNB_EXAMPLE ]] || { echo "gNB 설정 예제가 없습니다: $GNB_EXAMPLE" >&2; exit 1; }
+    python3 - "$GNB_EXAMPLE" "$NORMAL_UE_GNB_CONFIG" "$P5_CU_PRIVATE_IP" "$P5_DU_PRIVATE_IP" <<'PY'
+import ipaddress
+import os
+import pathlib
+import sys
+
+template, target = map(pathlib.Path, sys.argv[1:3])
+cu, du = (str(ipaddress.ip_address(value)) for value in sys.argv[3:5])
+if not ipaddress.ip_address(cu).is_private or not ipaddress.ip_address(du).is_private:
+    raise SystemExit("CU/DU 주소는 격리 랩의 사설 IP여야 합니다")
+text = template.read_text(encoding="utf-8").replace("__CU_PRIVATE_IP__", cu).replace("__DU_PRIVATE_IP__", du)
+if "__" in text:
+    raise SystemExit("gNB 설정 예제에 치환되지 않은 값이 있습니다")
+target.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+with os.fdopen(fd, "w", encoding="utf-8") as output:
+    output.write(text)
+PY
+    echo "gNB 설정 생성: $NORMAL_UE_GNB_CONFIG"
+  fi
   echo "$PROFILE 경로와 가입자 설정을 확인한 뒤 doctor를 실행하세요."
   exit 0
 fi

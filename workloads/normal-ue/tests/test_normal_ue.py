@@ -1,3 +1,4 @@
+import json
 import os
 import pathlib
 import subprocess
@@ -116,6 +117,39 @@ class NormalUeTests(unittest.TestCase):
         result = subprocess.run([str(SCRIPT), "--help"], text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("normal-ue setup|build|doctor|prepare|start|status|stop", result.stdout)
+
+    def test_setup_materializes_private_lab_du_config(self):
+        profile_dir = self.root / "profiles"
+        profile_dir.mkdir()
+        profile = {
+            "schema": "ran-reproducer.profile.v1", "id": "clean", "backend": "p5",
+            "configured": True, "lab_only": True, "run_root": str(self.root / "runs"),
+            "environment": {
+                "P5_CU_HOST": "cu", "P5_DU_HOST": "du",
+                "P5_CU_PRIVATE_IP": "172.31.1.10", "P5_DU_PRIVATE_IP": "172.31.1.11",
+            },
+            "detector": {"commit": "1" * 40},
+            "telemetry": {"commit": "2" * 40, "period_ms": 100},
+            "limits": {"max_duration_s": 300, "max_ues": 20},
+            "target_allowlist": ["clean-lab"],
+        }
+        (profile_dir / "clean.json").write_text(json.dumps(profile))
+        target = self.root / "ocudu" / "du-broker-default.yaml"
+        setup_conf = self.root / "clean.conf"
+        setup_conf.write_text(f"NORMAL_UE_GNB_CONFIG={target}\n")
+        setup_conf.chmod(0o600)
+        result = subprocess.run(
+            [str(SCRIPT), "setup", "--profile", "clean", "--config", str(setup_conf)],
+            env={**os.environ, "RAN_REPRO_PROFILE_DIR": str(profile_dir)},
+            text=True,
+            capture_output=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(target.stat().st_mode & 0o777, 0o600)
+        payload = target.read_text()
+        self.assertIn("addrs: 172.31.1.10, bind_addrs: 172.31.1.11", payload)
+        self.assertIn("tx_port=tcp://127.0.0.1:2000,rx_port=tcp://127.0.0.1:2001", payload)
+        self.assertNotIn("__", payload)
 
     def test_clean_build_uses_the_complete_ordered_patch_stack(self):
         source = BUILD_SCRIPT.read_text()

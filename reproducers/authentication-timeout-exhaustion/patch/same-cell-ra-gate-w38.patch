@@ -74,17 +74,20 @@ diff --git a/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c b/openair2/LAYER2/NR_MA
 +    return false;
 +  const uint64_t now = auth_timeout_monotonic_ms();
 +  verifyMutex(pthread_mutex_lock(&auth_timeout_gate_mutex));
-+  if (auth_timeout_gate_open_ms == 0 && now - auth_timeout_gate_poll_ms >= 20) {
++  if (now - auth_timeout_gate_poll_ms >= 20) {
 +    auth_timeout_gate_poll_ms = now;
++    bool open = false;
 +    FILE *gate = fopen(path, "r");
 +    if (gate) {
 +      char mode[6];
-+      const bool open = fread(mode, 1, sizeof(mode), gate) == sizeof(mode)
-+                        && memcmp(mode, "attack", sizeof(mode)) == 0;
++      open = fread(mode, 1, sizeof(mode), gate) == sizeof(mode)
++             && memcmp(mode, "attack", sizeof(mode)) == 0;
 +      fclose(gate);
-+      if (open)
-+        auth_timeout_gate_open_ms = now;
 +    }
++    if (open && auth_timeout_gate_open_ms == 0)
++      auth_timeout_gate_open_ms = now;
++    else if (!open)
++      auth_timeout_gate_open_ms = 0;
 +  }
 +  const uint64_t opened_ms = auth_timeout_gate_open_ms;
 +  verifyMutex(pthread_mutex_unlock(&auth_timeout_gate_mutex));

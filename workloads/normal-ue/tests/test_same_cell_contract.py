@@ -235,6 +235,8 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn("auth_timeout_same_cell_ra_allowed(mac->ue_id)", gate)
         self.assertIn("mac->state == UE_RECEIVING_SIB && mac->current_UL_BWP", gate)
         self.assertIn("pthread_mutex_lock(&auth_timeout_gate_mutex)", gate)
+        self.assertIn("else if (!open)", gate)
+        self.assertIn("auth_timeout_gate_open_ms = 0", gate)
         self.assertIn("AUTH_TIMEOUT_RA_GATE event=released", gate)
         self.assertIn("if (!same_cell_gate || same_cell_gate[0] == '\\0')", gate)
         self.assertNotIn("usleep", gate)

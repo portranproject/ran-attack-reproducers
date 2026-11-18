@@ -14,7 +14,7 @@
       "workloads/normal-ue/patch/normal-multi-ru.patch": "422c6eabcc86f7c3e2d9171ef5d08b882f0a59bccda0a4782a4acb6a6a0103fa",
       "workloads/normal-ue/patch/normal-probe-phase.patch": "011b4c1cb1c06f95810f685025582568064f8ffbc8972aeac2f93b50bf3dd6f2",
       "workloads/normal-ue/patch/normal-reconnect-w38.patch": "fd8127a819bc1811df10bbda74e14bb8b4cc741dfecf15621e05d71c1df24eab",
-      "workloads/normal-ue/patch/normal-safe-initial-ra.patch": "5f8901577e34455a9c4f2da63af4c4a486347af15f11cd25bf130102db306341",
+      "workloads/normal-ue/patch/normal-safe-initial-ra.patch": "9ea65f02bafc9a10119d11058ce57893958588e7466a7618f3ee253fae0e81f2",
       "workloads/normal-ue/patch/normal-tun-suffix.patch": "748415a532e02b42ddc9f4a29ca01a1a4c4d35b0bf57a9facb3d26cbc9821ffd",
       "reproducers/rrc-signaling-storm/bin/rss-broker-witness": "d796d55c5ae1d56fbe8b80ca81070e987eff9b575732f8f3370f0c0cb23b9c90",
       "reproducers/rrc-signaling-storm/bin/rss-build": "71f19e29bc1c674c3c15c5db7a80d160fe6231debbd54b65ff8832726f561cee",

@@ -189,8 +189,11 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn('OAI_AUTH_TIMEOUT_GATE_BASE_MS="$gate_base_ms"', source)
         self.assertIn('OAI_AUTH_TIMEOUT_GATE_STEP_MS="$gate_step_ms"', source)
         self.assertIn('gate_base_ms=$((i * 25))', source)
+        self.assertIn('probe_ues=0', source)
+        self.assertIn('--rss.probe_ues "$probe_ues"', source)
         self.assertIn('"same_cell_ra_base_ms":[0,25]', source)
         self.assertIn('"same_cell_ra_step_ms":50', source)
+        self.assertIn('"rss_probe_ues":0 if same_cell=="1"', source)
 
     def test_auth_build_disables_ru_sharing_when_each_ue_has_a_ru(self):
         build = (ROOT / "reproducers/authentication-timeout-exhaustion/bin/auth-timeout-build").read_text()

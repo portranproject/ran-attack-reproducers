@@ -201,9 +201,9 @@ NORMAL_RECOVERY_DEADLINE_S=90
 NORMAL_REQUIRED_DURATION_MS=0
 if (( BROKER_NORMAL_POOL_QUALIFICATION )); then
   [[ $BROKER_ATTACK_PROCESSES == 6 && $BROKER_ATTACK_UES_PER_PROCESS == 2
-     && $BROKER_WITNESS_MULTI_RU == 1 && $BROKER_WITNESS_UES == 5
+     && $BROKER_WITNESS_MULTI_RU == 0 && $BROKER_WITNESS_UES == 5
      && $BROKER_WITNESS_RSS == 1 ]] \
-    || { echo "normal-pool qualification requires 6x2 load UEs and one 5-UE multi-RU witness" >&2; exit 1; }
+    || { echo "normal-pool qualification requires 6x2 load UEs and one 5-UE shared-RU witness" >&2; exit 1; }
   [[ $BROKER_NORMAL_HEALTH_TIMEOUT_S =~ ^[1-9][0-9]*$ ]] \
     || { echo "BROKER_NORMAL_HEALTH_TIMEOUT_S must be a positive integer" >&2; exit 1; }
   [[ $BROKER_NORMAL_ATTACK_DURATION_S =~ ^[1-9][0-9]*$ ]] && (( BROKER_NORMAL_ATTACK_DURATION_S <= 300 )) \

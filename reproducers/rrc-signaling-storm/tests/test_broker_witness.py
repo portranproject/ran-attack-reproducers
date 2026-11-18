@@ -352,12 +352,12 @@ class BrokerWitnessTests(unittest.TestCase):
             BROKER_ATTACK_UES_PER_PROCESS="2",
             BROKER_NORMAL_ATTACK_DURATION_S="1",
             BROKER_WITNESS_UES="5",
-            BROKER_WITNESS_MULTI_RU="1",
+            BROKER_WITNESS_MULTI_RU="0",
             BROKER_NORMAL_POOL_QUALIFICATION="1",
             BROKER_NORMAL_PDU_SESSION_ID="1",
             BROKER_NORMAL_CONF=str(self.normal_conf),
             BROKER_PY=str(DYNAMIC_BROKER),
-            FAKE_WITNESS_TX_PORT="3101",
+            FAKE_WITNESS_TX_PORT="2701",
             FAKE_DELAYED_MSG3="1",
         )
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
@@ -417,12 +417,12 @@ class BrokerWitnessTests(unittest.TestCase):
             BROKER_ATTACK_UES_PER_PROCESS="2",
             BROKER_NORMAL_ATTACK_DURATION_S="1",
             BROKER_WITNESS_UES="5",
-            BROKER_WITNESS_MULTI_RU="1",
+            BROKER_WITNESS_MULTI_RU="0",
             BROKER_NORMAL_POOL_QUALIFICATION="1",
             BROKER_NORMAL_PDU_SESSION_ID="1",
             BROKER_WITNESS_UE_CFG=str(self.witness_ue_cfg),
             BROKER_PY=str(DYNAMIC_BROKER),
-            FAKE_WITNESS_TX_PORT="3101",
+            FAKE_WITNESS_TX_PORT="2701",
         )
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         verdict = self.result("bw-normal-pool-control")
@@ -441,12 +441,12 @@ class BrokerWitnessTests(unittest.TestCase):
             BROKER_ATTACK_UES_PER_PROCESS="2",
             BROKER_NORMAL_ATTACK_DURATION_S="1",
             BROKER_WITNESS_UES="5",
-            BROKER_WITNESS_MULTI_RU="1",
+            BROKER_WITNESS_MULTI_RU="0",
             BROKER_NORMAL_POOL_QUALIFICATION="1",
             BROKER_NORMAL_PDU_SESSION_ID="1",
             BROKER_WITNESS_UE_CFG=str(self.witness_ue_cfg),
             BROKER_PY=str(DYNAMIC_BROKER),
-            FAKE_WITNESS_TX_PORT="3101",
+            FAKE_WITNESS_TX_PORT="2701",
         )
         self.assertNotEqual(result.returncode, 0)
         verdict = self.result("bw-normal-pool-no-ran")
@@ -477,7 +477,7 @@ class BrokerWitnessTests(unittest.TestCase):
                     BROKER_ATTACK_UES_PER_PROCESS="2",
                     BROKER_NORMAL_ATTACK_DURATION_S=attack_duration,
                     BROKER_WITNESS_UES="5",
-                    BROKER_WITNESS_MULTI_RU="1",
+                    BROKER_WITNESS_MULTI_RU="0",
                     BROKER_NORMAL_POOL_QUALIFICATION="1",
                     BROKER_NORMAL_PDU_SESSION_ID="1",
                     BROKER_PY=str(DYNAMIC_BROKER),

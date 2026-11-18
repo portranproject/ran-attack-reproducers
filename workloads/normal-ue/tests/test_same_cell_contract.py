@@ -135,7 +135,10 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn("SAME_CELL_VICTIM_TUN=oaitun_ue1", run_section)
         self.assertIn('공격 UE clock 유지 중 normal UE가 $COUNT/$COUNT가 아닙니다', run_section)
         self.assertIn('if [[ $ATTACK == auth-timeout ]]; then', run_section)
-        self.assertIn('select_broker attack "${ATTACK_SLOT_IDS[@]}"', run_section)
+        self.assertIn('select_broker recover "${ATTACK_SLOT_IDS[@]}"', run_section)
+        broker = source.split("select_broker()", 1)[1].split("if [[ $ACTION == run ]]", 1)[0]
+        self.assertIn("broker_mode=attack", broker)
+        self.assertNotIn("$mode\" \"$slots", broker)
         self.assertIn("normal_healthy_before_attack_teardown", run_section)
         placeholder_group = source.split("start_placeholder_group()", 1)[1].split("stop_placeholder_group()", 1)[0]
         self.assertIn('wait_process_port "$pid"', placeholder_group)

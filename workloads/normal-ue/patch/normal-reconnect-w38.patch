@@ -1,0 +1,148 @@
+diff --git a/executables/nr-uesoftmodem.c b/executables/nr-uesoftmodem.c
+--- a/executables/nr-uesoftmodem.c
++++ b/executables/nr-uesoftmodem.c
+@@ -10,6 +10,7 @@
+ #include <signal.h>
+ #include <errno.h>
+ #include <string.h>
++#include <sys/eventfd.h>
+ 
+ #include "T.h"
+ #include "common/oai_version.h"
+@@ -269,6 +270,37 @@ static void trigger_deregistration(int sig)
+   }
+ }
+ 
++static int normal_reconnect_event_fd = -1;
++
++static void request_normal_reconnect(void)
++{
++  for (int ue_inst = 0; ue_inst < NB_UE_INST; ue_inst++) {
++    MessageDef *msg = itti_alloc_new_message(TASK_NAS_NRUE, ue_inst, NAS_DEREGISTRATION_REQ);
++    NAS_DEREGISTRATION_REQ(msg).cause = AS_AUTHENTICATION_FAILURE;
++    itti_send_msg_to_task(TASK_NAS_NRUE, ue_inst, msg);
++  }
++}
++
++static void *normal_reconnect_worker(void *arg)
++{
++  (void)arg;
++  uint64_t requests;
++  while (read(normal_reconnect_event_fd, &requests, sizeof(requests)) == sizeof(requests)) {
++    while (requests-- > 0)
++      request_normal_reconnect();
++  }
++  return NULL;
++}
++
++static void trigger_normal_reconnect(int sig)
++{
++  (void)sig;
++  const int saved_errno = errno;
++  const uint64_t request = 1;
++  __attribute__((unused)) ssize_t unused = write(normal_reconnect_event_fd, &request, sizeof(request));
++  errno = saved_errno;
++}
++
+ void *nrue_ru_start_thread(void *arg)
+ {
+   (void)arg;
+@@ -496,6 +528,14 @@ int main(int argc, char **argv)
+   // wait for end of program
+   printf("Entering ITTI signals handler\n");
+   printf("TYPE <CTRL-C> TO TERMINATE\n");
++  normal_reconnect_event_fd = eventfd(0, EFD_CLOEXEC);
++  AssertFatal(normal_reconnect_event_fd >= 0, "eventfd failed: %s\n", strerror(errno));
++  pthread_t normal_reconnect_thread;
++  int reconnect_rc = pthread_create(&normal_reconnect_thread, NULL, normal_reconnect_worker, NULL);
++  AssertFatal(reconnect_rc == 0, "pthread_create failed: %s\n", strerror(reconnect_rc));
++  pthread_detach(normal_reconnect_thread);
++  signal(SIGUSR1, trigger_normal_reconnect);
++  LOG_I(PHY, "NORMAL_UE_RECOVERY signal=SIGUSR1 enabled=true\n");
+   itti_wait_tasks_end(trigger_deregistration);
+   LOG_W(NR_PHY, "Returned from ITTI signal handler\n");
+   oai_exit = 1;
+diff --git a/openair2/COMMON/as_message.h b/openair2/COMMON/as_message.h
+--- a/openair2/COMMON/as_message.h
++++ b/openair2/COMMON/as_message.h
+@@ -379,6 +379,7 @@ typedef struct nas_deregistration_req_s {
+ 
+ typedef struct nas_detach_req_s {
+   bool wait_release;
++  bool reconnect;
+ } nas_detach_req_t;
+ 
+ /**
+diff --git a/openair2/RRC/NR_UE/rrc_UE.c b/openair2/RRC/NR_UE/rrc_UE.c
+--- a/openair2/RRC/NR_UE/rrc_UE.c
++++ b/openair2/RRC/NR_UE/rrc_UE.c
+@@ -3414,7 +3414,8 @@ void *rrc_nrue(void *notUsed)
+     if (NAS_DETACH_REQ(msg_p).wait_release)
+       rrc->detach_after_release = true;
+     else {
+-      rrc->nrRrcState = RRC_STATE_DETACH_NR;
++      if (!NAS_DETACH_REQ(msg_p).reconnect)
++        rrc->nrRrcState = RRC_STATE_DETACH_NR;
+       NR_Release_Cause_t release_cause = OTHER;
+       nr_rrc_going_to_IDLE(rrc, release_cause, NULL);
+     }
+diff --git a/openair3/NAS/NR_UE/nr_nas_msg.c b/openair3/NAS/NR_UE/nr_nas_msg.c
+--- a/openair3/NAS/NR_UE/nr_nas_msg.c
++++ b/openair3/NAS/NR_UE/nr_nas_msg.c
+@@ -1981,11 +1981,12 @@ static void send_nas_initial_ul_transfer_req(nr_ue_nas_t *nas, const as_nas_info
+   itti_send_msg_to_task(TASK_RRC_NRUE, nas->UE_id, msg);
+ }
+ 
+-static void send_nas_detach_req(nr_ue_nas_t *nas, bool wait_release)
++static void send_nas_detach_req(nr_ue_nas_t *nas, bool wait_release, bool reconnect)
+ {
+   MessageDef *msg = itti_alloc_new_message(TASK_NAS_NRUE, nas->UE_id, NAS_DETACH_REQ);
+   nas_detach_req_t *req = &NAS_DETACH_REQ(msg);
+   req->wait_release = wait_release;
++  req->reconnect = reconnect;
+   itti_send_msg_to_task(TASK_RRC_NRUE, nas->UE_id, msg);
+ }
+ 
+@@ -2232,7 +2233,7 @@ static void handle_registration_reject(nr_ue_nas_t *nas, const byte_array_t *buf
+   free_fgs_registration_reject(&msg);
+   nas->fiveGMM_state = FGS_DEREGISTERED;
+   nas->termination_procedure = true;
+-  send_nas_detach_req(nas, false);
++  send_nas_detach_req(nas, false, false);
+ }
+ 
+ void *nas_nrue(void *args_p)
+@@ -2433,18 +2434,31 @@ void *nas_nrue(void *args_p)
+       case NAS_DEREGISTRATION_REQ: {
+         LOG_I(NAS, "[UE %ld] Received %s\n", nas->UE_id, ITTI_MSG_NAME(msg_p));
+         nas_deregistration_req_t *req = &NAS_DEREGISTRATION_REQ(msg_p);
++        if (req->cause == AS_AUTHENTICATION_FAILURE) {
++          nas->termination_procedure = false;
++          nas->fiveGMM_state = FGS_DEREGISTERED;
++          nas->fiveGMM_mode = FGS_IDLE;
++          send_nas_detach_req(nas, false, true);
++          as_nas_info_t initial_nas = {0};
++          generateRegistrationRequest(&initial_nas, nas, false);
++          if (initial_nas.length > 0) {
++            send_nas_initial_ul_transfer_req(nas, &initial_nas);
++            LOG_I(NAS, "[UE %ld] NORMAL_UE_RECOVERY registration requested\n", nas->UE_id);
++          }
++          break;
++        }
+         if (nas->guti) {
+           if (req->cause == AS_DETACH) {
+             nas->termination_procedure = true;
+-            send_nas_detach_req(nas, true);
++            send_nas_detach_req(nas, true, false);
+           }
+           as_nas_info_t initialNasMsg = {0};
+           generateDeregistrationRequest(nas, &initialNasMsg);
+           send_nas_uplink_data_req(nas, &initialNasMsg);
+         } else {
+           LOG_W(NAS, "No GUTI, cannot trigger deregistration request.\n");
+           if (req->cause == AS_DETACH)
+-            send_nas_detach_req(nas, false);
++            send_nas_detach_req(nas, false, false);
+         }
+       } break;
+ 

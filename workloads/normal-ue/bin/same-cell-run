@@ -565,6 +565,7 @@ if [[ $ACTION == run ]]; then
   if wait "$ATTACK_PID"; then ATTACK_STATUS=0; else ATTACK_STATUS=$?; fi
   ATTACK_PID=""
   select_broker standby || true
+  (( ATTACK_STATUS == 0 )) || fail "공격 runner가 실패했습니다: status=$ATTACK_STATUS"
   CHILD_OUTPUT=$(python3 - "$RUN_OUT/attack.stdout" <<'PY'
 import pathlib, re, sys
 text = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
@@ -578,7 +579,6 @@ PY
   printf '{"schema":"same-cell.run.v3","run_id":"%s","attack":"%s","normal_ues":%d,"normal_shared_ru":false,"attack_slots":%d,"du_restarted_during_attack":false,"normal_recovery_signal_count":%d,"normal_healthy_before_attack_teardown":%s,"direct_detector_input":false,"ue_to_ran_path_required":true,"attack_exit_status":%d}\n' \
     "$RUN_ID" "$ATTACK" "$COUNT" "$ATTACK_SLOTS" \
     "$NORMAL_RECOVERY_SIGNAL_COUNT" "$NORMAL_HEALTH_BEFORE_TEARDOWN" "$ATTACK_STATUS" >"$RUN_OUT/run.json"
-  (( ATTACK_STATUS == 0 )) || fail "공격 runner가 실패했습니다: status=$ATTACK_STATUS"
   if [[ $ATTACK == uplink-credential-flood || $ATTACK == nas-counter-desync ]]; then
     embed_self_live_evidence || fail "self-live same-cell 증거 봉인에 실패했습니다"
   fi

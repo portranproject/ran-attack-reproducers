@@ -164,6 +164,7 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn("SAME_CELL_ATTACK_TIMEOUT_S", run_section)
         self.assertIn("공격 runner 완료가", run_section)
         self.assertIn("공격 runner 종료가", run_section)
+        self.assertLess(run_section.index('ATTACK_STATUS == 0'), run_section.index('CHILD_OUTPUT=$('))
         self.assertIn('"normal_ue_coexistence"', source)
         restart = run_section.index('bash -c "$NORMAL_UE_GNB_RESTART_CMD"')
         self.assertLess(run_section.index("start_normal_group"), restart)

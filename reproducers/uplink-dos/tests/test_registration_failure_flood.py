@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from analysis.generate_l3_21_replay import generate
-from analysis.verify_registration_failure_live import failed_contexts, session_started_at
+from analysis.verify_registration_failure_live import failed_contexts, join_rotated_jsonl, session_started_at
 from analysis.verify_registration_failure_run import verify
 
 MODULE_ROOT = Path(__file__).resolve().parents[1]
@@ -33,6 +33,20 @@ class RegistrationFailureFloodTest(unittest.TestCase):
         self.assertEqual(session_started_at("20261116T030405Z"), "2026-11-16T03:04:05Z")
         with self.assertRaises(ValueError):
             session_started_at("2026-11-16T03:04:05Z")
+
+    def test_live_input_rotation_is_joined_in_order(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            current = root / "detector-input.jsonl"
+            (root / "detector-input.jsonl.20261118-180000").write_text('{"seq":1}\n')
+            current.write_text('{"seq":2}\n')
+            rows = join_rotated_jsonl(current, root / "observations.jsonl")
+        self.assertEqual([row["seq"] for row in rows], [1, 2])
+
+    def test_live_result_uses_the_selected_profile(self):
+        source = (MODULE_ROOT / "analysis/verify_registration_failure_live.py").read_text()
+        self.assertIn('os.environ.get("RAN_REPRO_PROFILE_ID", "p5")', source)
+        self.assertNotIn('"profile": "p5"', source)
 
     def make_run(self, root: Path, mode: str) -> None:
         generate(mode, f"test-{mode}", root)

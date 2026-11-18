@@ -30,7 +30,7 @@ runner는 Linux의 GNU 명령 동작을 사용한다. 다음 항목은 자동 �
 - OAI 빌드 의존성 및 고정 OAI commit
 - OCUDU 26.10 CU/DU와 Open5GS
 - ZMQ 포팅: GNU Radio와 ZeroMQ
-- 원문 수집 모듈: `tcpdump`, `tshark`
+- CU·DU 원문 수집 모듈: `tcpdump`, `tshark`
 - production detector `766f5569d0ddb425c14bf210a31c38ac60eceef9`
 - TeleRAN `7550153a58a993942303bd3d4a6cd635b664468b`, 실행 파일 `portran`
 

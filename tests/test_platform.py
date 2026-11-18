@@ -58,6 +58,7 @@ class PlatformTest(unittest.TestCase):
             command = run.call_args.args[0]
             self.assertIn("ubuntu@cu.lab", command)
             self.assertIn(f"UserKnownHostsFile={known}", command)
+            self.assertIn('("tcpdump","tshark")', command[-1])
 
     def test_live_e2e_settings_reject_mismatched_execution_tree(self):
         with tempfile.TemporaryDirectory() as directory:

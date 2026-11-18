@@ -141,7 +141,7 @@ gap 0, KPM 존재, 예상 RAISE 수, dashboard 수락과 child 기전 판정을 
 - telemetry `period_ms=100`
 - p5의 경우 `credentials_file`의 `SSH_KEY`·`KNOWN_HOSTS`로 CU production 구성 원격 확인
 - 실제 E2E 설정의 CU platform·dashboard CA·환경/node 라벨과 profile 경로 일치
-- DU의 공통 실행 명령과 L3-24·L3-14 증거 수집에 필요한 `tshark`
+- CU·DU의 공통 실행 명령과 L3-24·L3-14 증거 수집에 필요한 `tcpdump`·`tshark`
 - credential 파일이 있으면 권한 0600 이하
 - OTA는 SDR serial 두 개 이상과 `shielding_confirmed=true`
 

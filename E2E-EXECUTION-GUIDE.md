@@ -18,7 +18,7 @@
 `doctor`는 Git checkout, 최소 자격 커밋, 추적 파일 변경 여부, 핵심 runner 해시,
 detector·telemetry 고정 버전을 검사한다. p5에서는 권한 0600의 `credentials_file`에 적힌
 `SSH_KEY`·`KNOWN_HOSTS`를 사용해 CU의 production 바이너리와 배포 revision을 원격 확인한다.
-DU에는 패킷 증거 수집용 `tshark`도 필요하다. 하나라도 다르면 그 환경은 자격 검증 대상이 아니다.
+CU와 DU에는 패킷 증거 수집용 `tcpdump`·`tshark`가 필요하다. 하나라도 다르면 그 환경은 자격 검증 대상이 아니다.
 
 ## 처음 설치하거나 업데이트할 때
 
@@ -28,6 +28,13 @@ cd ran-attack-reproducers
 git switch main
 git pull --ff-only
 git status --short
+```
+
+CU와 DU에서 한 번씩 원문 수집 도구를 설치한다. `setup`은 시스템 패키지를 자동 설치하지 않는다.
+
+```bash
+sudo apt-get update
+sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y tcpdump tshark
 ```
 
 `git status --short` 출력은 비어 있어야 한다. p1은 다음처럼 profile과 실제 E2E 설정을 만든다.

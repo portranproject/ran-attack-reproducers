@@ -377,8 +377,10 @@ def p5_remote_components(profile: dict[str, Any]) -> dict[str, str]:
         "detector_commit": detector["commit"],
         "telemetry_commit": telemetry["commit"],
     }
-    remote = r'''import hashlib,json,os,pathlib,sys
+    remote = r'''import hashlib,json,os,pathlib,shutil,sys
 request=json.loads(sys.argv[1]); result={}
+for command in ("tcpdump","tshark"):
+    if shutil.which(command) is None: raise SystemExit(f"missing CU capture command: {command}")
 for name,raw in request["paths"].items():
     path=pathlib.Path(raw)
     if path.is_symlink() or not path.is_file(): raise SystemExit(f"missing production component: {name}")

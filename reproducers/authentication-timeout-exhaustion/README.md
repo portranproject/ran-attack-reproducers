@@ -98,7 +98,8 @@ broker 적용 확인 전에는 RA를 보류하고, 두 OAI 프로세스는 0 ms�
 1,000 ms 간격으로 첫 RA를 분산한다. 즉 10개 UE는 전체적으로 0.5초 간격으로 진입한다.
 이는 같은 sample clock에서 여러 UE가 같은 PRACH 시점에 몰리는 랩 동기화를 피하기 위한
 시작 오케스트레이션이며 공격 메시지·탐지 문턱은
-바꾸지 않는다. same-cell에서는 과거 RSS probe scheduler를 끄고 이 단일 RA 경로만 사용한다.
+바꾸지 않는다. same-cell에서는 과거 RSS probe scheduler를 끄고 RRCSetupComplete를 정상
+제출한 뒤 이 단일 RA 경로만 사용한다. 억제 대상은 Authentication Response뿐이다.
 gNB·코어·detector는 수정하지 않는다. 이 복원 경로는 p5 재자격 전까지
 미자격이다.
 

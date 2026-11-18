@@ -137,14 +137,14 @@ for ((i=0; i<PROCESS_COUNT; i++)); do
   python3 "$ROOT/analysis/multi_ru_config.py" \
     "${CONFIGS[$i]}" "$runtime_config" "$UES_PER_PROCESS" "$endpoint_offset"
   RUNTIME_CONFIGS+=("$runtime_config")
-  gate_base_ms=0; gate_step_ms=0; probe_ues=$UES_PER_PROCESS
-  if (( SAME_CELL_PRESTART )); then gate_base_ms=$((i * 500)); gate_step_ms=1000; probe_ues=0; fi
+  gate_base_ms=0; gate_step_ms=0; probe_ues=$UES_PER_PROCESS; completion_pct=0
+  if (( SAME_CELL_PRESTART )); then gate_base_ms=$((i * 500)); gate_step_ms=1000; probe_ues=0; completion_pct=100; fi
   setsid env OAI_AUTH_TIMEOUT_TRACE=1 OAI_AUTH_TIMEOUT_WITHHOLD=$ENABLE \
     OAI_AUTH_TIMEOUT_GATE_FILE="$SAME_CELL_UE_GATE_FILE" RSS_SHARE_NUE=$UES_PER_PROCESS \
     OAI_AUTH_TIMEOUT_GATE_BASE_MS="$gate_base_ms" OAI_AUTH_TIMEOUT_GATE_STEP_MS="$gate_step_ms" \
     "$OAI_BIN" -O "$runtime_config" --band 78 -C 3489420000 --numerology 1 -r 51 -E \
     --ue-scan-carrier --uecap_file "$UECAP" --device.name oai_zmqdevif \
-    --rss.enable 1 --rss.interval_ms 0 --rss.completion_pct 0 --rss.ack_gate 1 --rss.ra_gate 1 \
+    --rss.enable 1 --rss.interval_ms 0 --rss.completion_pct "$completion_pct" --rss.ack_gate 1 --rss.ra_gate 1 \
     --rss.gate_timeout_ms 500 --rss.target_occupancy 0 --rss.hold_ms 2000 --rss.msg4_ack 1 \
     --num-ues "$UES_PER_PROCESS" \
     --rss.max_duration_s 0 --rss.honor_reject 0 --rss.msg4_wait 1 --rss.probe_ues "$probe_ues" \
@@ -254,6 +254,7 @@ with open(path,"x") as f:
             "start_interval_ms":int(interval),"same_cell_ra_base_ms":[0,500] if same_cell=="1" else [0,0],
             "same_cell_ra_step_ms":1000 if same_cell=="1" else 0,
             "rss_probe_ues":0 if same_cell=="1" else int(per_process),
+            "rss_completion_pct":100 if same_cell=="1" else 0,
             "single_cell":True},f,sort_keys=True,separators=(",",":")); f.write("\n")
 PY
 python3 "$ROOT/analysis/verify_cell_flood.py" "$OUT" "$MODE" "$RUN_ID" "$UE_COUNT"

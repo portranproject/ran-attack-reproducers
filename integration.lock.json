@@ -15,7 +15,7 @@
       "reproducers/rrc-signaling-storm/bin/rss-build": "71f19e29bc1c674c3c15c5db7a80d160fe6231debbd54b65ff8832726f561cee",
       "reproducers/rrc-signaling-storm/bin/rss-doctor": "0f8624e8f05b68293742788860d6a76eb9408a0b264c02065d23b7f10fefcc9a",
       "reproducers/rrc-signaling-storm/patch/oai-broker-control-gate.patch": "fd54a5774b7f022cd36e5bcf4546eb2ea569a6dc4cab6470a13dd2552dabf75e",
-      "reproducers/authentication-timeout-exhaustion/bin/auth-stall-cell-run": "f89f6f8aaf6ddd877fd3e143d601a6292e4f7797b88a0062f7a73400cd241a81",
+      "reproducers/authentication-timeout-exhaustion/bin/auth-stall-cell-run": "1f658eb19c78db486a218184521e9e1153bcef72e3d3871cf84dd02dc9883712",
       "reproducers/authentication-timeout-exhaustion/analysis/multi_ru_config.py": "12c580f065565317b60358688e2625df45e02f703b03723fc556a19c8f50261c",
       "reproducers/authentication-timeout-exhaustion/bin/auth-timeout-build": "edfe5778131455ae7315c8a1f85beca97b24259ea333e1fd1fe318ca1a0afbb1",
       "reproducers/authentication-timeout-exhaustion/patch/ru-sharing-w38.patch": "b31d338d92efdf760b34d87f0b1dbde451bd4ee053a2a24e141186ffb4f4565a",

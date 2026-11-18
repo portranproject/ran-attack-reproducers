@@ -1,7 +1,7 @@
 diff --git a/openair2/RRC/NR_UE/rrc_timers_and_constants.c b/openair2/RRC/NR_UE/rrc_timers_and_constants.c
 --- a/openair2/RRC/NR_UE/rrc_timers_and_constants.c
 +++ b/openair2/RRC/NR_UE/rrc_timers_and_constants.c
-@@ -200,7 +200,7 @@ bool nr_rss_is_probe(int ue)
+@@ -200,6 +200,6 @@ bool nr_rss_is_probe(int ue)
  
  static uint64_t rss_probe_delay_ms(int ue, int base_ms)
  {

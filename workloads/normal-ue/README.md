@@ -53,7 +53,8 @@
 - 6개 룰의 clear는 RAISE+60초 고정이라 후 유지는 60초 + 여유보다 짧게 두지 않는다(p1 실측 2026-11-19).
 - 각 단일 실행(`same-cell run`과 campaign의 각 phase) 직전에 탐지 엔진 입력 기록 회전을 피한다. `SAME_CELL_HOUR_GUARD`(기본 1)가 켜져 있으면 남은 시간이 예상 실행 시간(`전 + 후 + SAME_CELL_HOUR_GUARD_MARGIN_S`, 기본 360초 → 480초) 이하일 때 다음 정각+10초까지 기다린다. 대기 시작·끝은 로그와 `run.json`의 `hour_guard`에 남는다. `SAME_CELL_HOUR_GUARD=0`이면 끈다.
 - `normal-hold.tsv`는 `p5-live-e2e`가 실행 디렉터리로 복사하고, self-live same-cell 경로는 공격 runner 증거에 복사해 `evidence_manifest.json`에 넣는다.
-- rrc 경로는 UE 프로세스를 `NORMAL_UE_STOP_GAP_S`(캠페인 기본 3초, 단일 run 0초) 간격으로 하나씩 INT하고, 10초 뒤 TERM, 다시 10초 뒤 KILL로 올린다. `same-cell-run`은 정상 UE 프로세스를 같은 INT→10초→TERM→10초→KILL 사다리로 끝낸다(5 logical UE가 한 프로세스라 프로세스 간격은 없다).
+- rrc 경로는 UE 프로세스를 `NORMAL_UE_STOP_GAP_S`(전역 기본 3초, `0`이면 동시) 간격으로 하나씩 INT하고, 10초 뒤 TERM, 다시 10초 뒤 KILL로 올린다. `same-cell-run`은 정상 UE 프로세스를 같은 INT→10초→TERM→10초→KILL 사다리로 끝낸다(5 logical UE가 한 프로세스라 프로세스 간격은 없다).
+- 유지(pre/post hold)와 순차 종료는 적용 범위가 다르다. 유지 30초·90초는 `same-cell campaign` 전용이고 단일 `same-cell run`은 0이다. 반면 UE를 한꺼번에 끄지 않고 간격을 두고 하나씩 내리는 순차 종료는 전역 기본값이다(`NORMAL_UE_STOP_GAP_S=3`).
 - 캠페인 기본값이면 회당 120초가 늘어나므로 42회 캠페인은 유지 구간만 약 84분 길어진다. 정각 회전 회피 대기는 위 자동 대기가 처리한다.
 
 ## 운영 계약과 제한

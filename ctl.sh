@@ -536,7 +536,7 @@ same_cell_run_one() {
     pre_hold=${SAME_CELL_NORMAL_PRE_HOLD_S:-0}
     post_hold=${SAME_CELL_NORMAL_POST_HOLD_S:-0}
   fi
-  stop_gap=${NORMAL_UE_STOP_GAP_S:-0}
+  stop_gap=${NORMAL_UE_STOP_GAP_S:-3}
   for value in "$pre_hold" "$post_hold" "$stop_gap" "$SAME_CELL_HOUR_GUARD_MARGIN_S"; do
     [[ $value =~ ^[0-9]+$ ]] || fail "유지·여유 시간은 0 이상의 정수여야 합니다: $value"
   done
@@ -602,13 +602,12 @@ same_cell_campaign() {
   [[ $count == 5 ]] || fail "L3 same-cell 자격은 정상 UE --count 5로 고정합니다"
   [[ $enabled == 1 ]] || fail "캠페인에는 명시적 --enable이 필요합니다"
   # 탐지팀 요청(2026-11-19 p4): 캠페인은 경보 clear까지 관측해야 하므로 정상 UE를 공격 전
-  # 30초·후 90초 유지하고 3초 간격으로 하나씩 내린다. 단일 same-cell run은 0(기존 동작)이며
-  # 사용자가 환경변수로 넘긴 값이 항상 우선한다.
+  # 30초·후 90초 유지한다. 이 유지는 campaign 전용이고, 순차 종료 간격은 runner 전역
+  # 기본값(3초)이다. 사용자가 환경변수로 넘긴 값이 항상 우선한다.
   export SAME_CELL_NORMAL_PRE_HOLD_S=${SAME_CELL_NORMAL_PRE_HOLD_S:-30}
   export SAME_CELL_NORMAL_POST_HOLD_S=${SAME_CELL_NORMAL_POST_HOLD_S:-90}
   export BROKER_NORMAL_PRE_HOLD_S=${BROKER_NORMAL_PRE_HOLD_S:-30}
   export BROKER_NORMAL_POST_HOLD_S=${BROKER_NORMAL_POST_HOLD_S:-90}
-  export NORMAL_UE_STOP_GAP_S=${NORMAL_UE_STOP_GAP_S:-3}
   for attack in "${attacks[@]}"; do
     for ((index=1; index<=sets; index++)); do
       run_id="sc-$campaign_id-$attack-control-$index"

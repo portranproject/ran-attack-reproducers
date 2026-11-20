@@ -226,6 +226,9 @@ class BrokerWitnessTests(unittest.TestCase):
             PING_CMD=str(self.stubs / "ping"),
             LOCK_FILE=str(self.root / "lock"),
             USE_SETSID="0",
+            # The product default (3 s) makes an 11-target teardown exceed the
+            # subprocess timeout; the stagger itself is covered by the root suite.
+            NORMAL_UE_STOP_GAP_S="0",
             FAKE_TRACE=str(self.trace),
             FAKE_TUN_STATE=str(self.tun_state),
         )
@@ -285,7 +288,8 @@ class BrokerWitnessTests(unittest.TestCase):
         )
         self.assertEqual(verdict["teardown"]["ue_exit_statuses"], [0] * 5)
         self.assertEqual(verdict["teardown"]["forced_kill_count"], 0)
-        self.assertEqual(verdict["teardown"]["ue_stop_signal"], "INTx2")
+        self.assertEqual(verdict["teardown"]["ue_stop_signal"], "INT")
+        self.assertEqual(verdict["teardown"]["grace_s"], 10)
         self.assertEqual(verdict["teardown"]["broker_stop_signal"], "INT")
 
     def test_primary_witness_supports_five_ues_and_a_separate_config(self):

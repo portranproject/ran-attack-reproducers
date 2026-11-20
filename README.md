@@ -2,6 +2,11 @@
 
 <div align="center">
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/portran-slogan-dark-transparent.png">
+  <img src="docs/assets/portran-slogan-light-transparent.png" alt="PortRAN — Passive security for the 5G RAN" width="560">
+</picture>
+
 # 기지국 공격 재현 도구
 
 팀 5G/O-RAN 테스트베드에서 기지국 공격을 재현하고 탐지·대응기 입력과 정답을 검증하는 도구 모음

@@ -1,0 +1,75 @@
+{
+  "schema": "ran-reproducer.references.v1",
+  "references": [
+    {
+      "id": "ref-rrc-storm",
+      "module": "rrc-signaling-storm",
+      "rule_ids": [
+        "L3-01-V"
+      ],
+      "label": "5g-rrc-storm 원본 OAI UE (RRCSetupComplete 미전송형)",
+      "source": {
+        "repository": "https://github.com/5gattacks/5g-rrc-storm",
+        "commit": "0e71f7aee24999b66d44e10db4612f96b5219d98",
+        "oai_commit": "92980ceb725a94dbfe97c509d16f1313eee083e0",
+        "license": "저장소에 라이선스 파일 없음 — 재배포하지 않고 랩 안에서만 빌드·실행"
+      },
+      "build": "reproducers/rrc-signaling-storm/reference/bin/build-reference",
+      "runner": "reproducers/rrc-signaling-storm/reference/bin/reference-run",
+      "bridge": "reproducers/rrc-signaling-storm/reference/bin/oai-rfsim-zmq-bridge",
+      "binaries": {
+        "attack": "/root/ref/oai-5g-rrc-storm-92980ce/cmake_targets/ran_build/build/nr-uesoftmodem",
+        "control": "/root/ref/nr-uesoftmodem-control"
+      },
+      "mode": "rfsim-bridge",
+      "control": "같은 OAI 커밋 92980ce를 원본 패치 없이 빌드한 UE. 원본에는 공격 on/off 노브가 없어 control은 무패치 빌드다.",
+      "attach": "원본 rfsim UE는 TCP c16만 말하므로 브리지가 같은 셀 ZMQ(cf_t)로 변환한다.",
+      "status": "동기 미달",
+      "status_detail": "2026-11-20 p1: 원본 패치 UE(sha256 5814a864…)와 무패치 control(9a268619…) 빌드 성공. ZMQ DL을 rfsim으로 변환해 브리지가 DL 샘플(23.04 Msps 상당)을 UE로 전달하는 단계까지 확인했으나, UE는 45초 내 초기 sync에 실패했다(`synch Failed` 반복). 브리지 변환을 numpy로 바꾸고 UL 블록을 0.5 ms로 맞춘 뒤에도 같은 지점에서 막혔다. 탐지 비교(control 1 + attack 1)는 실행하지 못했다.",
+      "evidence": {
+        "attack_sha256": "5814a864239deb2325ebe200e96851bd3274381fd4998f562b6f6e00a52758b6",
+        "control_sha256": "9a268619e04b3a0909dadb49dfd83ce797b0583322c981fcb7221bdc703cd181",
+        "observed": "DL flow ok, UE initial sync failed"
+      }
+    },
+    {
+      "id": "ref-blind-dos",
+      "module": "blind-dos",
+      "rule_ids": [
+        "L3-20"
+      ],
+      "label": "5GSEC/OAI-5G blind DoS 원본 UE",
+      "source": {
+        "repository": "https://github.com/5GSEC/OAI-5G",
+        "commit": "b631b577cc00929e50947a453dc5d4c2dcdfa887",
+        "license": "OAI Public License V1.1"
+      },
+      "build": "reproducers/blind-dos/reference/bin/build-reference",
+      "runner": null,
+      "bridge": "reproducers/rrc-signaling-storm/reference/bin/oai-rfsim-zmq-bridge",
+      "binaries": {
+        "attack": "/root/ref/oai-5gsec-b631b577/cmake_targets/ran_build/build/nr-uesoftmodem",
+        "control": null
+      },
+      "mode": "rfsim-bridge",
+      "control": "원본에 공격 on/off 노브가 없다. control은 `--blind-dos-attack` 없이 같은 바이너리를 실행하는 것이다.",
+      "attach": "원본 NR RRC 분기에 blind_dos_attack 경로가 있으나 `!IS_SOFTMODEM_RFSIM` 조건이라 rfsim에서는 공격 분기가 실행되지 않는다(고정 커밋 소스 확인). 셀 접속 전이며 탐지 비교 미검증.",
+      "status": "미검증",
+      "status_detail": "원본 NR RRC의 blind_dos_attack 분기는 `!IS_SOFTMODEM_RFSIM` 조건이라 rfsim에서 비활성이다(고정 커밋 소스 확인). OAI ZMQ 장치로 바꾸면 우리 broker의 srsRAN ZMQ 형식과 달라 브리지로 붙일 수 없다. 빌드도 완료하지 못했다."
+    }
+  ],
+  "no_public_attack": [
+    {
+      "source": "https://github.com/5GSEC/5G-Spector",
+      "commit": "63e94b9ad8860298894ed7a94e52f00faea02719",
+      "role": "O-RAN nRT-RIC 기반 L3 탐지 서비스(MobiFlow·MobieXpert)",
+      "finding": "공개 저장소에 공격 구현이 없다(README·Vagrantfile·그림만). 탐지 규칙은 xApp/논문에 있고 우리 production detector와 별개다."
+    },
+    {
+      "source": "https://github.com/5GSEC/OAI-5G",
+      "commit": "b631b577cc00929e50947a453dc5d4c2dcdfa887",
+      "role": "공격 플래그가 있는 OAI 포크",
+      "finding": "플래그는 bts-attack, blind-dos, dnlink-dos, uplink-dos, rep-conn, auth-sync, null-cipher-integ, dnlink-imsi-extr, uplink-imsi-extr, rrc-911이다. 모두 LTE EMM/RRC 계열이거나 NR RRC에서 rfsim 가드로 막혀 있어, 우리 5G L3 룰(L3-06·L3-14·L3-21·L3-24 등)에 그대로 대응하는 5G 구현은 없다."
+    }
+  ]
+}

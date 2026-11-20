@@ -781,6 +781,11 @@ usage() {
   ./ctl.sh same-cell campaign l3-live --profile NAME --sets 3 --count 5 --enable
   ./ctl.sh same-cell start -n SESSION_ID [--count 5]  # 정상 UE 개발 세션
   ./ctl.sh same-cell status|stop
+  ./ctl.sh reference list
+  ./ctl.sh reference build REF_ID --profile NAME
+  ./ctl.sh reference doctor REF_ID --profile NAME
+  ./ctl.sh reference run REF_ID --profile NAME --mode control|attack [--run-id ID] [--enable]
+  ./ctl.sh reference campaign REF_ID --profile NAME --sets N --enable
 
 ID 전체 목록: ./ctl.sh list
 MODE: control 또는 목록에 맞는 attack/emulation
@@ -802,6 +807,9 @@ main() {
       case ${2:-} in status|stop) ;; *) require_qualified_checkout ;; esac
       shift
       exec "$NORMAL_UE" "$@" ;;
+    reference)
+      shift
+      exec python3 "$ROOT/references/bin/reference-ctl" "$@" ;;
     same-cell)
       [[ -x $SAME_CELL ]] || fail "same-cell runner가 없습니다: $SAME_CELL"
       case ${2:-} in

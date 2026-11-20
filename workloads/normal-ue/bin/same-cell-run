@@ -642,7 +642,8 @@ if [[ $ACTION == run ]]; then
         AUTH_STALL_CELL_DIAGNOSTIC_MAX_ENDPOINTS="${SAME_CELL_DIAGNOSTIC_MAX_ENDPOINTS:-120}")
     fi
     # 원격 runner는 세션 리더로 띄우고 PID를 남긴다. 정리 때 그 프로세스 그룹을 종료한다.
-    remote_sh "exec setsid sh -c 'echo \$\$ > \"\$1\"; shift; exec \"\$@\"' sh '$REMOTE_STATE/runner.pid' $(printf '%q ' env "${remote_env[@]}" "${COMMAND[@]}")" \
+    # setsid -w: ssh가 원격 runner의 종료 상태를 기다린다(포크 후 즉시 반환 방지).
+    remote_sh "setsid -w sh -c 'echo \$\$ > \"\$1\"; shift; exec \"\$@\"' sh '$REMOTE_STATE/runner.pid' $(printf '%q ' env "${remote_env[@]}" "${COMMAND[@]}")" \
       >"$RUN_OUT/attack.stdout" 2>"$RUN_OUT/attack.stderr" </dev/null 9>&- &
   else
     setsid "${COMMAND[@]}" >"$RUN_OUT/attack.stdout" 2>"$RUN_OUT/attack.stderr" </dev/null 9>&- &

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Headless broker that folds one attack slot and N normal UE RUs into one cell."""
 
+import ipaddress
 import os
 import signal
 import threading
@@ -8,8 +9,39 @@ import threading
 from gnuradio import blocks, gr, zeromq
 
 
+def endpoint_indices(spec):
+    """1부터 세는 endpoint 번호 목록을 "1-10,12" 형태에서 읽는다."""
+    values = set()
+    for part in spec.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            if "-" in part:
+                first, last = (int(value) for value in part.split("-", 1))
+                if last < first:
+                    raise ValueError("endpoint 범위가 뒤집혔습니다")
+                values.update(range(first, last + 1))
+            else:
+                values.add(int(part))
+        except ValueError as exc:
+            raise ValueError("endpoint 번호 목록이 잘못됐습니다") from exc
+    if any(value < 1 for value in values):
+        raise ValueError("endpoint 번호는 1 이상이어야 합니다")
+    return frozenset(values)
+
+
+def _address(value, label):
+    try:
+        ipaddress.IPv4Address(value)
+    except ValueError as exc:
+        raise ValueError(f"{label}는 IPv4 주소여야 합니다") from exc
+    return value
+
+
 class SameCellBroker(gr.top_block):
-    def __init__(self, endpoint_count, attack_slots=0, persistent_attack=False):
+    def __init__(self, endpoint_count, attack_slots=0, persistent_attack=False,
+                 bind_addr="127.0.0.1", remote_ues=frozenset(), remote_host="127.0.0.1"):
         super().__init__("normal UE same-cell broker")
         self.timeout = 100
         self.hwm = -1
@@ -32,8 +64,9 @@ class SameCellBroker(gr.top_block):
         self.connect((self.uplink, 0), (du_ul, 0))
         for index in range(endpoint_count):
             port = 2100 + 100 * index
-            ul = zeromq.req_source(gr.sizeof_gr_complex, 1, f"tcp://127.0.0.1:{port + 1}", self.timeout, False, self.hwm, False)
-            dl = zeromq.rep_sink(gr.sizeof_gr_complex, 1, f"tcp://127.0.0.1:{port}", self.timeout, False, self.hwm, True)
+            ue_host = remote_host if index + 1 in remote_ues else "127.0.0.1"
+            ul = zeromq.req_source(gr.sizeof_gr_complex, 1, f"tcp://{ue_host}:{port + 1}", self.timeout, False, self.hwm, False)
+            dl = zeromq.rep_sink(gr.sizeof_gr_complex, 1, f"tcp://{bind_addr}:{port}", self.timeout, False, self.hwm, True)
             self.ue_ul.append(ul)
             self.ue_dl.append(dl)
             if index >= attack_slots:
@@ -118,8 +151,22 @@ def main():
     control_path = os.environ.get("NORMAL_UE_BROKER_CONTROL", "")
     persistent_attack = os.environ.get("NORMAL_UE_BROKER_PERSISTENT_ATTACK", "0") == "1"
     max_endpoints = int(os.environ.get("NORMAL_UE_BROKER_MAX_ENDPOINTS", "15"))
+    bind_addr = os.environ.get("NORMAL_UE_BROKER_BIND_ADDR", "127.0.0.1")
+    remote_host = os.environ.get("NORMAL_UE_BROKER_REMOTE_HOST", "")
+    remote_spec = os.environ.get("NORMAL_UE_BROKER_REMOTE_UES", "")
     if endpoint_count < 2 or endpoint_count > max_endpoints:
         raise SystemExit("NORMAL_UE_BROKER_ENDPOINTS must be 2..15")
+    try:
+        _address(bind_addr, "NORMAL_UE_BROKER_BIND_ADDR")
+        remote_ues = endpoint_indices(remote_spec) if remote_spec else frozenset()
+        if remote_ues:
+            if not persistent_attack:
+                raise ValueError("원격 UE는 persistent attack slot에서만 지원합니다")
+            _address(remote_host, "NORMAL_UE_BROKER_REMOTE_HOST")
+            if max(remote_ues) > endpoint_count:
+                raise ValueError("원격 endpoint 번호가 전체 endpoint 수를 넘습니다")
+    except ValueError as exc:
+        raise SystemExit(f"broker 원격 설정 오류: {exc}")
     if attack_slots < 0 or attack_slots >= endpoint_count:
         raise SystemExit("NORMAL_UE_BROKER_ATTACK_SLOTS must be 0..endpoint_count-1")
     if persistent_attack and attack_slots == 0:
@@ -128,7 +175,8 @@ def main():
         raise SystemExit("NORMAL_UE_BROKER_CONTROL must be an absolute non-symlink path")
     stopped = threading.Event()
     reset_attack = threading.Event()
-    flowgraph = SameCellBroker(endpoint_count, attack_slots, persistent_attack)
+    flowgraph = SameCellBroker(endpoint_count, attack_slots, persistent_attack,
+                               bind_addr, remote_ues, remote_host)
 
     def stop(_signum=None, _frame=None):
         stopped.set()

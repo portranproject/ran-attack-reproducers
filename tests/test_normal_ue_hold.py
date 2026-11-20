@@ -89,8 +89,8 @@ normal_hold {seconds} pre
             "if [[ $ACTION == start ]]; then", 1)[0]
         observation = 'until [[ -f $OBSERVATION_READY_FILE'
         pre = 'normal_hold "$SAME_CELL_NORMAL_PRE_HOLD_S" pre'
-        ready = 'set -o noclobber; : >"$STATE/normal.ready"'
-        release = 'set -o noclobber; : >"$STATE/attack.release"'
+        ready = "marker_publish normal.ready"
+        release = "marker_publish attack.release"
         post = 'normal_hold "$SAME_CELL_NORMAL_POST_HOLD_S" post'
         recovery = "NORMAL_HEALTH_BEFORE_TEARDOWN=true"
         self.assertLess(run.index(observation), run.index(pre))

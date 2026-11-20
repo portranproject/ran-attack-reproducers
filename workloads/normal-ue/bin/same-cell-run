@@ -15,6 +15,9 @@ COUNT=5
 ATTACK=""
 COMMAND=()
 PLACEHOLDER_CFG=""
+REMOTE=0
+REMOTE_STATE=""
+ATTACK_SSH_CMD=()
 
 [[ $STATE == /* && $STATE != / ]] || { echo "same-cell-run: 안전한 절대 상태 경로가 필요합니다" >&2; exit 2; }
 
@@ -118,6 +121,23 @@ if [[ -n ${SAME_CELL_DIAGNOSTIC_ATTACK_SLOTS:-} ]]; then
 fi
 TOTAL_ENDPOINTS=$((ATTACK_SLOTS + COUNT))
 
+# 진단 옵션: 공격 UE 프로세스만 별도 호스트에서 실행하고 broker는 이 DU에 둔다.
+# 기본값은 비어 있어 기존 127.0.0.1 경로가 그대로 쓰인다.
+ATTACK_SSH=${SAME_CELL_ATTACK_SSH:-}
+REMOTE_UE_IP=${SAME_CELL_REMOTE_UE_IP:-}
+REMOTE_BROKER_IP=${SAME_CELL_REMOTE_BROKER_IP:-}
+REMOTE_STATE=${SAME_CELL_REMOTE_STATE_DIR:-}
+if [[ -n $ATTACK_SSH || -n $REMOTE_UE_IP || -n $REMOTE_BROKER_IP ]]; then
+  [[ $ATTACK == auth-timeout ]] || fail "원격 공격 UE는 auth-timeout 진단에만 지원합니다"
+  [[ -n $ATTACK_SSH && -n $REMOTE_UE_IP && -n $REMOTE_BROKER_IP ]] \
+    || fail "원격 공격에는 SAME_CELL_ATTACK_SSH·SAME_CELL_REMOTE_UE_IP·SAME_CELL_REMOTE_BROKER_IP가 모두 필요합니다"
+  read -r -a ATTACK_SSH_CMD <<<"$ATTACK_SSH"
+  (( ${#ATTACK_SSH_CMD[@]} > 0 )) || fail "SAME_CELL_ATTACK_SSH가 비어 있습니다"
+  python3 -c 'import ipaddress,sys; [ipaddress.IPv4Address(v) for v in sys.argv[1:]]' "$REMOTE_UE_IP" "$REMOTE_BROKER_IP" \
+    || fail "원격 공격 UE/Broker 주소가 IPv4가 아닙니다"
+  REMOTE=1
+fi
+
 for command in flock python3 setsid "$IP_CMD" "$PING_CMD" "$SS_CMD"; do
   command -v "$command" >/dev/null || fail "$command가 필요합니다"
 done
@@ -206,6 +226,23 @@ stop_group() {
   kill -KILL -- "-$pid" 2>/dev/null || true
 }
 port_ready() { "$SS_CMD" -H -ltn 2>/dev/null | awk '{print $4}' | grep -Eq ":$1$"; }
+# 원격 공격 호스트는 ssh 한 줄 명령만 받으므로 인자 하나짜리 문자열로 보낸다.
+remote_sh() { "${ATTACK_SSH_CMD[@]}" "$1"; }
+remote_port_ready() { remote_sh "ss -H -ltn 2>/dev/null | awk '{print \$4}' | grep -Eq ':$1\$'"; }
+remote_marker() { remote_sh "test -f '$1' -a ! -L '$1'"; }
+remote_publish() { remote_sh "bash -c 'set -o noclobber; : > \"\$1\"' _ '$1'"; }
+remote_gate() { remote_sh "bash -c 'printf \"%s\\n\" \"\$1\" > \"\$2\"' _ '$1' '$REMOTE_STATE/attack-ue-gate'"; }
+remote_stop_runner() {
+  local pid
+  pid=$(remote_sh "cat '$REMOTE_STATE/runner.pid' 2>/dev/null" || true)
+  [[ $pid =~ ^[1-9][0-9]*$ ]] || return 0
+  remote_sh "bash -c 'kill -TERM -- -\$1 2>/dev/null || true' _ '$pid'" || true
+  for _ in {1..100}; do
+    remote_sh "bash -c 'kill -0 -- -\$1 2>/dev/null' _ '$pid'" || return 0
+    sleep .1
+  done
+  remote_sh "bash -c 'kill -KILL -- -\$1 2>/dev/null || true' _ '$pid'" || true
+}
 wait_port() {
   local port=$1 started=$SECONDS
   until port_ready "$port"; do
@@ -222,6 +259,14 @@ wait_process_port() {
   done
 }
 wait_attack_port() { wait_process_port "$ATTACK_PID" "$1"; }
+wait_remote_attack_port() {
+  local port=$1 started=$SECONDS
+  until remote_port_ready "$port"; do
+    is_running "$ATTACK_PID" || return 2
+    (( SECONDS - started < SAME_CELL_ENDPOINT_TIMEOUT_S )) || return 1
+    sleep .2
+  done
+}
 wait_port_free() {
   local port=$1 started=$SECONDS
   while port_ready "$port"; do
@@ -397,9 +442,15 @@ start_normal_group() {
   record_pid normal "$!"
 }
 start_persistent_broker() {
+  local -a remote_broker=()
+  if (( REMOTE )); then
+    # DL은 모든 인터페이스에 bind해 로컬 127.0.0.1 정상 UE와 원격 공격 UE를 함께 받는다.
+    remote_broker=(NORMAL_UE_BROKER_BIND_ADDR="${SAME_CELL_REMOTE_BIND_ADDR:-0.0.0.0}"
+      NORMAL_UE_BROKER_REMOTE_HOST="$REMOTE_UE_IP" NORMAL_UE_BROKER_REMOTE_UES="1-$ATTACK_SLOTS")
+  fi
   setsid env NORMAL_UE_BROKER_ENDPOINTS="$TOTAL_ENDPOINTS" \
     NORMAL_UE_BROKER_ATTACK_SLOTS="$ATTACK_SLOTS" NORMAL_UE_BROKER_PERSISTENT_ATTACK=1 \
-    NORMAL_UE_BROKER_CONTROL="$STATE/broker-control" python3 "$NORMAL_UE_BROKER_PY" \
+    NORMAL_UE_BROKER_CONTROL="$STATE/broker-control" "${remote_broker[@]}" python3 "$NORMAL_UE_BROKER_PY" \
     >>"$RUN_OUT/broker.log" 2>&1 </dev/null 9>&- &
   record_pid broker "$!"
   BROKER_PID=$(owned_pid broker) || fail "broker PID를 기록하지 못했습니다"
@@ -432,12 +483,33 @@ stop_placeholder_group() {
   unlink "$STATE/placeholder-group.pid"
   unlink "$STATE/placeholder-group.starttime"
 }
+write_gate() {
+  if (( REMOTE )); then
+    remote_gate "$1"
+  else
+    printf '%s\n' "$1" >"$STATE/attack-ue-gate"
+  fi
+}
+marker_present() {
+  if (( REMOTE )); then
+    remote_marker "$REMOTE_STATE/$1"
+  else
+    [[ -f $STATE/$1 && ! -L $STATE/$1 ]]
+  fi
+}
+marker_publish() {
+  if (( REMOTE )); then
+    remote_publish "$REMOTE_STATE/$1"
+  else
+    ( set -o noclobber; : >"$STATE/$1" )
+  fi
+}
 select_broker() {
   local mode=$1 before started=$SECONDS count slots=""
   shift
   [[ $mode == placeholder || $mode == standby || $mode == warmup || $mode == attack || $mode == retire ]] || return 1
   if [[ $mode == placeholder || $mode == standby || $mode == retire ]]; then
-    printf 'standby\n' >"$STATE/attack-ue-gate"
+    write_gate standby
   fi
   if [[ $mode == warmup || $mode == attack ]]; then
     slots=$(IFS=,; echo "$*")
@@ -450,7 +522,7 @@ select_broker() {
   while :; do
     count=$(grep -c '^SAME_CELL_SLOT_SELECTION ' "$RUN_OUT/broker.log" 2>/dev/null || true)
     if (( count > before )); then
-      [[ $mode != attack ]] || printf 'attack\n' >"$STATE/attack-ue-gate"
+      [[ $mode != attack ]] || write_gate attack
       return 0
     fi
     is_running "$BROKER_PID" || return 1
@@ -479,12 +551,24 @@ if [[ $ACTION == run ]]; then
   resolve_pdu_session_id
 
   ENDPOINTS_FILE="$STATE/attack-endpoints.txt"
-  for ((i=1; i<=ATTACK_SLOTS; i++)); do
-    printf 'tcp://127.0.0.1:%d tcp://127.0.0.1:%d\n' \
-      "$((2001 + 100 * i))" "$((2000 + 100 * i))" >>"$ENDPOINTS_FILE"
-  done
+  if (( REMOTE )); then
+    REMOTE_STATE=${REMOTE_STATE:-/tmp/ran-reproducer/same-cell-$RUN_ID}
+    [[ $REMOTE_STATE == /* && $REMOTE_STATE != / ]] || fail "원격 상태 경로는 절대 경로여야 합니다"
+    remote_sh "mkdir -p -m 700 '$REMOTE_STATE'" || fail "원격 상태 디렉터리를 만들지 못했습니다"
+    for ((i=1; i<=ATTACK_SLOTS; i++)); do
+      printf 'tcp://%s:%d tcp://%s:%d\n' \
+        "$REMOTE_UE_IP" "$((2001 + 100 * i))" "$REMOTE_BROKER_IP" "$((2000 + 100 * i))" >>"$ENDPOINTS_FILE"
+    done
+    remote_sh "bash -c 'umask 077; cat > \"\$1\"' _ '$REMOTE_STATE/attack-endpoints.txt'" <"$ENDPOINTS_FILE" \
+      || fail "원격 endpoint 목록을 전달하지 못했습니다"
+  else
+    for ((i=1; i<=ATTACK_SLOTS; i++)); do
+      printf 'tcp://127.0.0.1:%d tcp://127.0.0.1:%d\n' \
+        "$((2001 + 100 * i))" "$((2000 + 100 * i))" >>"$ENDPOINTS_FILE"
+    done
+  fi
   printf 'standby\n' >"$STATE/broker-control"
-  printf 'standby\n' >"$STATE/attack-ue-gate"
+  write_gate standby
 
   ATTACK_PID=""
   BROKER_PID=""
@@ -494,6 +578,7 @@ if [[ $ACTION == run ]]; then
   cleanup_cold_run() {
     local status=$? pid
     trap - EXIT INT TERM
+    (( REMOTE )) && remote_stop_runner
     [[ -z $ATTACK_PID ]] || stop_group "$ATTACK_PID" TERM
     pid=$(owned_pid broker 2>/dev/null || true); [[ -z $pid ]] || stop_group "$pid"
     pid=$(owned_pid normal 2>/dev/null || true); [[ -z $pid ]] || stop_normal_ue "$pid"
@@ -538,12 +623,39 @@ if [[ $ACTION == run ]]; then
   fi
   start_normal_group "$RUNTIME_CFG" "$RUN_ID"
   NORMAL_PID=$(owned_pid normal) || fail "normal UE PID를 기록하지 못했습니다"
-  setsid "${COMMAND[@]}" >"$RUN_OUT/attack.stdout" 2>"$RUN_OUT/attack.stderr" </dev/null 9>&- &
+  if (( REMOTE )); then
+    remote_env=(SAME_CELL_PRESTART=1 SAME_CELL_REMOTE_ATTACK=1
+      SAME_CELL_REMOTE_UE_IP="$REMOTE_UE_IP" SAME_CELL_REMOTE_BROKER_IP="$REMOTE_BROKER_IP"
+      SAME_CELL_AUTH_TIMEOUT_MANAGE_DU=0
+      SAME_CELL_RAN_READY_FILE="$REMOTE_STATE/ran.ready"
+      SAME_CELL_READY_FILE="$REMOTE_STATE/normal.ready"
+      SAME_CELL_ATTACK_READY_FILE="$REMOTE_STATE/attack.ready"
+      SAME_CELL_ATTACK_DONE_FILE="$REMOTE_STATE/attack.done"
+      SAME_CELL_RELEASE_FILE="$REMOTE_STATE/attack.release"
+      SAME_CELL_UE_GATE_FILE="$REMOTE_STATE/attack-ue-gate"
+      SAME_CELL_UE_ENDPOINTS_FILE="$REMOTE_STATE/attack-endpoints.txt")
+    if [[ -n ${SAME_CELL_DIAGNOSTIC_ATTACK_SLOTS:-} ]]; then
+      remote_env+=(AUTH_STALL_CELL_SCALE_UE_COUNT="$ATTACK_SLOTS"
+        AUTH_STALL_CELL_SCALE_PROCESS_COUNT=$(((ATTACK_SLOTS + 4) / 5))
+        AUTH_STALL_CELL_SCALE_UES_PER_PROCESS=5 AUTH_STALL_CELL_DIAGNOSTIC_SCALE=1
+        AUTH_STALL_CELL_DIAGNOSTIC_MAX_ENDPOINTS="${SAME_CELL_DIAGNOSTIC_MAX_ENDPOINTS:-120}")
+    fi
+    # 원격 runner는 세션 리더로 띄우고 PID를 남긴다. 정리 때 그 프로세스 그룹을 종료한다.
+    remote_sh "exec setsid sh -c 'echo \$\$ > \"\$1\"; shift; exec \"\$@\"' sh '$REMOTE_STATE/runner.pid' $(printf '%q ' env "${remote_env[@]}" "${COMMAND[@]}")" \
+      >"$RUN_OUT/attack.stdout" 2>"$RUN_OUT/attack.stderr" </dev/null 9>&- &
+  else
+    setsid "${COMMAND[@]}" >"$RUN_OUT/attack.stdout" 2>"$RUN_OUT/attack.stderr" </dev/null 9>&- &
+  fi
   ATTACK_PID=$!
   record_pid attack "$ATTACK_PID"
 
   for ((i=1; i<=TOTAL_ENDPOINTS; i++)); do
-    if ! wait_attack_port "$((2001 + 100 * i))"; then
+    if (( REMOTE && i <= ATTACK_SLOTS )); then
+      ready=0; wait_remote_attack_port "$((2001 + 100 * i))" || ready=$?
+    else
+      ready=0; wait_attack_port "$((2001 + 100 * i))" || ready=$?
+    fi
+    if (( ready )); then
       is_running "$ATTACK_PID" || fail "공격 runner가 endpoint 준비 전에 종료됐습니다"
       fail "UE endpoint $i 준비가 시간 초과했습니다"
     fi
@@ -563,7 +675,7 @@ if [[ $ACTION == run ]]; then
   (( ${#GNB_PIDS[@]} == 1 )) || fail "세션이 소유할 DU PID를 하나로 확정하지 못했습니다"
   record_pid du "${GNB_PIDS[0]}"
   DU_PID=${GNB_PIDS[0]}
-  ( set -o noclobber; : >"$STATE/ran.ready" )
+  marker_publish ran.ready || fail "same-cell RAN 준비 marker 게시에 실패했습니다"
 
   started=$SECONDS
   until record_healthy before; do
@@ -583,9 +695,9 @@ if [[ $ACTION == run ]]; then
   fi
   normal_hold "$SAME_CELL_NORMAL_PRE_HOLD_S" pre \
     || fail "전 유지 중 normal UE 프로세스가 종료됐습니다"
-  ( set -o noclobber; : >"$STATE/normal.ready" )
+  marker_publish normal.ready || fail "same-cell 정상 UE 준비 marker 게시에 실패했습니다"
   started=$SECONDS
-  until [[ -f $STATE/attack.ready && ! -L $STATE/attack.ready ]]; do
+  until marker_present attack.ready; do
     is_running "$ATTACK_PID" || fail "공격 runner가 활성화 준비 전에 종료됐습니다"
     (( SECONDS - started < SAME_CELL_HEALTH_TIMEOUT_S )) || fail "공격 runner readiness가 시간 초과했습니다"
     sleep .2
@@ -602,7 +714,7 @@ if [[ $ACTION == run ]]; then
   NORMAL_RECOVERY_SIGNAL_COUNT=0
   if [[ $ATTACK != uplink ]]; then
     attack_wait_started=$SECONDS
-    until [[ -f $STATE/attack.done && ! -L $STATE/attack.done ]]; do
+    until marker_present attack.done; do
       is_running "$ATTACK_PID" || fail "공격 runner가 완료 marker 전에 종료됐습니다"
       (( SECONDS - attack_wait_started < SAME_CELL_ATTACK_TIMEOUT_S )) \
         || fail "공격 runner 완료가 ${SAME_CELL_ATTACK_TIMEOUT_S}초를 초과했습니다"
@@ -626,7 +738,7 @@ if [[ $ACTION == run ]]; then
     NORMAL_HEALTH_BEFORE_TEARDOWN=true
     normal_hold "$SAME_CELL_NORMAL_POST_HOLD_S" post \
       || fail "후 유지 중 normal UE 프로세스가 종료됐습니다"
-    ( set -o noclobber; : >"$STATE/attack.release" )
+    marker_publish attack.release || fail "same-cell 종료 허가 marker 게시에 실패했습니다"
   fi
   attack_exit_started=$SECONDS
   while is_running "$ATTACK_PID"; do
@@ -647,8 +759,17 @@ matches = re.findall(r"(?:^|\s)output=(/[^\s]+)", text)
 print(matches[-1] if matches else "")
 PY
   ) || fail "공격 runner 출력 경로를 읽지 못했습니다"
-  [[ -n $CHILD_OUTPUT && -d $CHILD_OUTPUT && ! -L $CHILD_OUTPUT ]] \
-    || fail "공격 runner가 안전한 output 경로를 남기지 않았습니다"
+  if (( REMOTE )); then
+    remote_sh "test -d '$CHILD_OUTPUT' -a ! -L '$CHILD_OUTPUT'" \
+      || fail "원격 공격 runner가 안전한 output 경로를 남기지 않았습니다"
+    remote_sh "tar -C '$CHILD_OUTPUT' -cf - ." >"$RUN_OUT/remote-attacker.tar" \
+      || fail "원격 공격 산출물을 가져오지 못했습니다"
+    (( $(stat -c %s "$RUN_OUT/remote-attacker.tar") > 0 )) \
+      || fail "원격 공격 산출물이 비어 있습니다"
+  else
+    [[ -n $CHILD_OUTPUT && -d $CHILD_OUTPUT && ! -L $CHILD_OUTPUT ]] \
+      || fail "공격 runner가 안전한 output 경로를 남기지 않았습니다"
+  fi
   printf '%s\n' "$CHILD_OUTPUT" >"$RUN_OUT/child-output.txt"
   printf '{"schema":"same-cell.run.v3","run_id":"%s","attack":"%s","normal_ues":%d,"normal_shared_ru":false,"attack_slots":%d,"du_restarted_during_attack":false,"normal_recovery_signal_count":%d,"normal_healthy_before_attack_teardown":%s,"direct_detector_input":false,"ue_to_ran_path_required":true,"attack_exit_status":%d}\n' \
     "$RUN_ID" "$ATTACK" "$COUNT" "$ATTACK_SLOTS" \

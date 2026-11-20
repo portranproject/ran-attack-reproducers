@@ -104,6 +104,7 @@ install -m 600 profiles/live-e2e.example.conf /root/.config/ran-reproducer/<env>
 3. `./ctl.sh same-cell doctor --profile <env>`: 정상 UE 5대 풀과 L3 7종의 `same-cell` 실행 준비를 점검한다.
 4. `./ctl.sh same-cell run ...`: 정상 UE 5대와 단일 `same-cell` phase를 실행한다(`control`은 `--enable` 없이 먼저 실행한다).
 5. `./ctl.sh same-cell campaign l3-live ...`: L3 7종 `control → active` 3세트 통합 캠페인을 실행한다.
+6. `./tools/portran-attacker.sh` — 대화형 화면. 환경·profile·공격·작업을 골라 위 `same-cell` 공식 명령을 그대로 실행한다(`--dry-run`, `--no-anim`, `--help`).
 
 `same-cell` 결과는 `LIVE_E2E_RUN_ROOT`에 저장되고 `tools/verify_live_e2e.py`가 판정한다. `./ctl.sh replay|report|verify`는 `profile.run_root` 아래 `@common-signal` 7-파일 계약(AN fixture) 전용이며, 봉인된 요약은 [artifacts/README.md](artifacts/README.md), 전체 CLI와 합격 조건은 [실행 가이드](docs/E2E-EXECUTION-GUIDE.md)와 [컨트롤러 가이드](docs/CONTROL-GUIDE.md)를 따른다.
 

@@ -17,7 +17,12 @@ COMMAND=()
 PLACEHOLDER_CFG=""
 REMOTE=0
 REMOTE_STATE=""
-ATTACK_SSH_CMD=()
+REMOTE_SSH=()
+REMOTE_UE_HOSTS=()
+REMOTE_HOST_COUNT=0
+REMOTE_CHUNK=0
+SLOT_HOST=()
+ATTACK_PIDS=()
 
 [[ $STATE == /* && $STATE != / ]] || { echo "same-cell-run: 안전한 절대 상태 경로가 필요합니다" >&2; exit 2; }
 
@@ -122,6 +127,7 @@ fi
 TOTAL_ENDPOINTS=$((ATTACK_SLOTS + COUNT))
 
 # 진단 옵션: 공격 UE 프로세스만 별도 호스트에서 실행하고 broker는 이 DU에 둔다.
+# 여러 대를 쓰려면 SAME_CELL_ATTACK_SSH·SAME_CELL_REMOTE_UE_IP를 쉼표로 나열한다.
 # 기본값은 비어 있어 기존 127.0.0.1 경로가 그대로 쓰인다.
 ATTACK_SSH=${SAME_CELL_ATTACK_SSH:-}
 REMOTE_UE_IP=${SAME_CELL_REMOTE_UE_IP:-}
@@ -131,10 +137,18 @@ if [[ -n $ATTACK_SSH || -n $REMOTE_UE_IP || -n $REMOTE_BROKER_IP ]]; then
   [[ $ATTACK == auth-timeout ]] || fail "원격 공격 UE는 auth-timeout 진단에만 지원합니다"
   [[ -n $ATTACK_SSH && -n $REMOTE_UE_IP && -n $REMOTE_BROKER_IP ]] \
     || fail "원격 공격에는 SAME_CELL_ATTACK_SSH·SAME_CELL_REMOTE_UE_IP·SAME_CELL_REMOTE_BROKER_IP가 모두 필요합니다"
-  read -r -a ATTACK_SSH_CMD <<<"$ATTACK_SSH"
-  (( ${#ATTACK_SSH_CMD[@]} > 0 )) || fail "SAME_CELL_ATTACK_SSH가 비어 있습니다"
-  python3 -c 'import ipaddress,sys; [ipaddress.IPv4Address(v) for v in sys.argv[1:]]' "$REMOTE_UE_IP" "$REMOTE_BROKER_IP" \
+  IFS=, read -r -a REMOTE_SSH <<<"$ATTACK_SSH"
+  IFS=, read -r -a REMOTE_UE_HOSTS <<<"$REMOTE_UE_IP"
+  REMOTE_HOST_COUNT=${#REMOTE_SSH[@]}
+  [[ $REMOTE_HOST_COUNT == "${#REMOTE_UE_HOSTS[@]}" ]] \
+    || fail "SAME_CELL_ATTACK_SSH와 SAME_CELL_REMOTE_UE_IP 개수가 같아야 합니다"
+  python3 -c 'import ipaddress,sys; [ipaddress.IPv4Address(v) for v in sys.argv[1:]]' \
+    "$REMOTE_BROKER_IP" "${REMOTE_UE_HOSTS[@]}" \
     || fail "원격 공격 UE/Broker 주소가 IPv4가 아닙니다"
+  # 공격 슬롯을 호스트별로 균등 분배한다. UE 묶음이 5대이므로 나눈 값은 5의 배수여야 한다.
+  REMOTE_CHUNK=$(( (ATTACK_SLOTS + REMOTE_HOST_COUNT - 1) / REMOTE_HOST_COUNT ))
+  (( REMOTE_CHUNK > 0 && REMOTE_CHUNK % 5 == 0 )) \
+    || fail "호스트당 공격 슬롯 수가 5의 배수여야 합니다: $REMOTE_CHUNK"
   REMOTE=1
 fi
 
@@ -227,21 +241,28 @@ stop_group() {
 }
 port_ready() { "$SS_CMD" -H -ltn 2>/dev/null | awk '{print $4}' | grep -Eq ":$1$"; }
 # 원격 공격 호스트는 ssh 한 줄 명령만 받으므로 인자 하나짜리 문자열로 보낸다.
-remote_sh() { "${ATTACK_SSH_CMD[@]}" "$1"; }
-remote_port_ready() { remote_sh "ss -H -ltn 2>/dev/null | awk '{print \$4}' | grep -Eq ':$1\$'"; }
-remote_marker() { remote_sh "test -f '$1' -a ! -L '$1'"; }
-remote_publish() { remote_sh "bash -c 'set -o noclobber; : > \"\$1\"' _ '$1'"; }
-remote_gate() { remote_sh "bash -c 'printf \"%s\\n\" \"\$1\" > \"\$2\"' _ '$1' '$REMOTE_STATE/attack-ue-gate'"; }
+remote_sh() {
+  local index=$1 command=$2
+  local -a cmd
+  read -r -a cmd <<<"${REMOTE_SSH[$index]}"
+  "${cmd[@]}" "$command"
+}
+remote_port_ready() { remote_sh "$1" "ss -H -ltn 2>/dev/null | awk '{print \$4}' | grep -Eq ':$2\$'"; }
+remote_marker() { remote_sh "$1" "test -f '$2' -a ! -L '$2'"; }
+remote_publish() { remote_sh "$1" "bash -c 'set -o noclobber; : > \"\$1\"' _ '$2'"; }
+remote_gate() { remote_sh "$1" "bash -c 'printf \"%s\\n\" \"\$1\" > \"\$2\"' _ '$2' '$REMOTE_STATE/attack-ue-gate'"; }
 remote_stop_runner() {
-  local pid
-  pid=$(remote_sh "cat '$REMOTE_STATE/runner.pid' 2>/dev/null" || true)
-  [[ $pid =~ ^[1-9][0-9]*$ ]] || return 0
-  remote_sh "bash -c 'kill -TERM -- -\$1 2>/dev/null || true' _ '$pid'" || true
-  for _ in {1..100}; do
-    remote_sh "bash -c 'kill -0 -- -\$1 2>/dev/null' _ '$pid'" || return 0
-    sleep .1
+  local host=0 pid
+  for ((host=0; host<REMOTE_HOST_COUNT; host++)); do
+    pid=$(remote_sh "$host" "cat '$REMOTE_STATE/runner.pid' 2>/dev/null" || true)
+    [[ $pid =~ ^[1-9][0-9]*$ ]] || continue
+    remote_sh "$host" "bash -c 'kill -TERM -- -\$1 2>/dev/null || true' _ '$pid'" || true
+    for _ in {1..100}; do
+      remote_sh "$host" "bash -c 'kill -0 -- -\$1 2>/dev/null' _ '$pid'" || break
+      sleep .1
+    done
+    remote_sh "$host" "bash -c 'kill -KILL -- -\$1 2>/dev/null || true' _ '$pid'" || true
   done
-  remote_sh "bash -c 'kill -KILL -- -\$1 2>/dev/null || true' _ '$pid'" || true
 }
 wait_port() {
   local port=$1 started=$SECONDS
@@ -258,14 +279,22 @@ wait_process_port() {
     sleep .2
   done
 }
-wait_attack_port() { wait_process_port "$ATTACK_PID" "$1"; }
+wait_attack_port() { wait_process_port "${ATTACK_PIDS[0]}" "$1"; }
 wait_remote_attack_port() {
-  local port=$1 started=$SECONDS
-  until remote_port_ready "$port"; do
-    is_running "$ATTACK_PID" || return 2
+  local host=$1 port=$2 started=$SECONDS
+  until remote_port_ready "$host" "$port"; do
+    attack_running || return 2
     (( SECONDS - started < SAME_CELL_ENDPOINT_TIMEOUT_S )) || return 1
     sleep .2
   done
+}
+attack_running() {
+  local pid
+  ((${#ATTACK_PIDS[@]})) || return 1
+  for pid in "${ATTACK_PIDS[@]}"; do
+    is_running "$pid" && return 0
+  done
+  return 1
 }
 wait_port_free() {
   local port=$1 started=$SECONDS
@@ -443,10 +472,17 @@ start_normal_group() {
 }
 start_persistent_broker() {
   local -a remote_broker=()
+  local host first last map=""
   if (( REMOTE )); then
     # DL은 모든 인터페이스에 bind해 로컬 127.0.0.1 정상 UE와 원격 공격 UE를 함께 받는다.
+    for ((host=0; host<REMOTE_HOST_COUNT; host++)); do
+      first=$((host * REMOTE_CHUNK + 1))
+      last=$(( (host + 1) * REMOTE_CHUNK ))
+      (( last <= ATTACK_SLOTS )) || last=$ATTACK_SLOTS
+      map+="${first}-${last}=${REMOTE_UE_HOSTS[$host]},"
+    done
     remote_broker=(NORMAL_UE_BROKER_BIND_ADDR="${SAME_CELL_REMOTE_BIND_ADDR:-0.0.0.0}"
-      NORMAL_UE_BROKER_REMOTE_HOST="$REMOTE_UE_IP" NORMAL_UE_BROKER_REMOTE_UES="1-$ATTACK_SLOTS")
+      NORMAL_UE_BROKER_REMOTE_HOSTS="${map%,}")
   fi
   setsid env NORMAL_UE_BROKER_ENDPOINTS="$TOTAL_ENDPOINTS" \
     NORMAL_UE_BROKER_ATTACK_SLOTS="$ATTACK_SLOTS" NORMAL_UE_BROKER_PERSISTENT_ATTACK=1 \
@@ -484,22 +520,27 @@ stop_placeholder_group() {
   unlink "$STATE/placeholder-group.starttime"
 }
 write_gate() {
+  local host
   if (( REMOTE )); then
-    remote_gate "$1"
+    for ((host=0; host<REMOTE_HOST_COUNT; host++)); do remote_gate "$host" "$1"; done
   else
     printf '%s\n' "$1" >"$STATE/attack-ue-gate"
   fi
 }
 marker_present() {
+  local host
   if (( REMOTE )); then
-    remote_marker "$REMOTE_STATE/$1"
-  else
-    [[ -f $STATE/$1 && ! -L $STATE/$1 ]]
+    for ((host=0; host<REMOTE_HOST_COUNT; host++)); do
+      remote_marker "$host" "$REMOTE_STATE/$1" || return 1
+    done
+    return 0
   fi
+  [[ -f $STATE/$1 && ! -L $STATE/$1 ]]
 }
 marker_publish() {
+  local host
   if (( REMOTE )); then
-    remote_publish "$REMOTE_STATE/$1"
+    for ((host=0; host<REMOTE_HOST_COUNT; host++)); do remote_publish "$host" "$REMOTE_STATE/$1"; done
   else
     ( set -o noclobber; : >"$STATE/$1" )
   fi
@@ -554,13 +595,24 @@ if [[ $ACTION == run ]]; then
   if (( REMOTE )); then
     REMOTE_STATE=${REMOTE_STATE:-/tmp/ran-reproducer/same-cell-$RUN_ID}
     [[ $REMOTE_STATE == /* && $REMOTE_STATE != / ]] || fail "원격 상태 경로는 절대 경로여야 합니다"
-    remote_sh "mkdir -p -m 700 '$REMOTE_STATE'" || fail "원격 상태 디렉터리를 만들지 못했습니다"
-    for ((i=1; i<=ATTACK_SLOTS; i++)); do
-      printf 'tcp://%s:%d tcp://%s:%d\n' \
-        "$REMOTE_UE_IP" "$((2001 + 100 * i))" "$REMOTE_BROKER_IP" "$((2000 + 100 * i))" >>"$ENDPOINTS_FILE"
+    for ((host=0; host<REMOTE_HOST_COUNT; host++)); do
+      remote_sh "$host" "mkdir -p -m 700 '$REMOTE_STATE'" \
+        || fail "원격 상태 디렉터리를 만들지 못했습니다: $((host + 1))번 호스트"
+      first=$((host * REMOTE_CHUNK + 1))
+      last=$(( (host + 1) * REMOTE_CHUNK ))
+      (( last <= ATTACK_SLOTS )) || last=$ATTACK_SLOTS
+      (( first <= last )) || fail "원격 공격 호스트에 배정된 슬롯이 없습니다: $((host + 1))번"
+      host_endpoints="$RUN_OUT/attack-endpoints-$((host + 1)).txt"
+      : >"$host_endpoints"
+      for ((i=first; i<=last; i++)); do
+        SLOT_HOST[$i]=$host
+        printf 'tcp://%s:%d tcp://%s:%d\n' \
+          "${REMOTE_UE_HOSTS[$host]}" "$((2001 + 100 * i))" "$REMOTE_BROKER_IP" "$((2000 + 100 * i))" \
+          >>"$host_endpoints"
+      done
+      remote_sh "$host" "bash -c 'umask 077; cat > \"\$1\"' _ '$REMOTE_STATE/attack-endpoints.txt'" <"$host_endpoints" \
+        || fail "원격 endpoint 목록을 전달하지 못했습니다: $((host + 1))번 호스트"
     done
-    remote_sh "bash -c 'umask 077; cat > \"\$1\"' _ '$REMOTE_STATE/attack-endpoints.txt'" <"$ENDPOINTS_FILE" \
-      || fail "원격 endpoint 목록을 전달하지 못했습니다"
   else
     for ((i=1; i<=ATTACK_SLOTS; i++)); do
       printf 'tcp://127.0.0.1:%d tcp://127.0.0.1:%d\n' \
@@ -571,6 +623,7 @@ if [[ $ACTION == run ]]; then
   write_gate standby
 
   ATTACK_PID=""
+  ATTACK_PIDS=()
   BROKER_PID=""
   NORMAL_PID=""
   DU_PID=""
@@ -579,6 +632,7 @@ if [[ $ACTION == run ]]; then
     local status=$? pid
     trap - EXIT INT TERM
     (( REMOTE )) && remote_stop_runner
+    for pid in "${ATTACK_PIDS[@]}"; do [[ -z $pid ]] || stop_group "$pid" TERM; done
     [[ -z $ATTACK_PID ]] || stop_group "$ATTACK_PID" TERM
     pid=$(owned_pid broker 2>/dev/null || true); [[ -z $pid ]] || stop_group "$pid"
     pid=$(owned_pid normal 2>/dev/null || true); [[ -z $pid ]] || stop_normal_ue "$pid"
@@ -624,41 +678,52 @@ if [[ $ACTION == run ]]; then
   start_normal_group "$RUNTIME_CFG" "$RUN_ID"
   NORMAL_PID=$(owned_pid normal) || fail "normal UE PID를 기록하지 못했습니다"
   if (( REMOTE )); then
-    remote_env=(SAME_CELL_PRESTART=1 SAME_CELL_REMOTE_ATTACK=1
-      SAME_CELL_REMOTE_UE_IP="$REMOTE_UE_IP" SAME_CELL_REMOTE_BROKER_IP="$REMOTE_BROKER_IP"
-      SAME_CELL_AUTH_TIMEOUT_MANAGE_DU=0
-      SAME_CELL_RAN_READY_FILE="$REMOTE_STATE/ran.ready"
-      SAME_CELL_READY_FILE="$REMOTE_STATE/normal.ready"
-      SAME_CELL_ATTACK_READY_FILE="$REMOTE_STATE/attack.ready"
-      SAME_CELL_ATTACK_DONE_FILE="$REMOTE_STATE/attack.done"
-      SAME_CELL_RELEASE_FILE="$REMOTE_STATE/attack.release"
-      SAME_CELL_UE_GATE_FILE="$REMOTE_STATE/attack-ue-gate"
-      SAME_CELL_UE_ENDPOINTS_FILE="$REMOTE_STATE/attack-endpoints.txt"
-      SAME_CELL_AUTH_READY_TIMEOUT_S=$((SAME_CELL_HEALTH_TIMEOUT_S + 30 + SAME_CELL_NORMAL_PRE_HOLD_S + SAME_CELL_NORMAL_POST_HOLD_S)))
-    if [[ -n ${SAME_CELL_DIAGNOSTIC_ATTACK_SLOTS:-} ]]; then
-      remote_env+=(AUTH_STALL_CELL_SCALE_UE_COUNT="$ATTACK_SLOTS"
-        AUTH_STALL_CELL_SCALE_PROCESS_COUNT=$(((ATTACK_SLOTS + 4) / 5))
-        AUTH_STALL_CELL_SCALE_UES_PER_PROCESS=5 AUTH_STALL_CELL_DIAGNOSTIC_SCALE=1
-        AUTH_STALL_CELL_DIAGNOSTIC_MAX_ENDPOINTS="${SAME_CELL_DIAGNOSTIC_MAX_ENDPOINTS:-120}")
-    fi
-    # 원격 runner는 세션 리더로 띄우고 PID를 남긴다. 정리 때 그 프로세스 그룹을 종료한다.
-    # setsid -w: ssh가 원격 runner의 종료 상태를 기다린다(포크 후 즉시 반환 방지).
-    remote_sh "setsid -w sh -c 'echo \$\$ > \"\$1\"; shift; exec \"\$@\"' sh '$REMOTE_STATE/runner.pid' $(printf '%q ' env "${remote_env[@]}" "${COMMAND[@]}")" \
-      >"$RUN_OUT/attack.stdout" 2>"$RUN_OUT/attack.stderr" </dev/null 9>&- &
+    # 호스트마다 자기 슬롯만 실행한다. 설정·endpoint는 전역 번호를 유지해 한 셀에 겹치지 않는다.
+    for ((host=0; host<REMOTE_HOST_COUNT; host++)); do
+      first=$((host * REMOTE_CHUNK + 1))
+      last=$(( (host + 1) * REMOTE_CHUNK ))
+      (( last <= ATTACK_SLOTS )) || last=$ATTACK_SLOTS
+      host_ues=$((last - first + 1))
+      remote_env=(SAME_CELL_PRESTART=1 SAME_CELL_REMOTE_ATTACK=1
+        SAME_CELL_REMOTE_UE_IP="${REMOTE_UE_HOSTS[$host]}" SAME_CELL_REMOTE_BROKER_IP="$REMOTE_BROKER_IP"
+        SAME_CELL_AUTH_TIMEOUT_MANAGE_DU=0
+        SAME_CELL_RAN_READY_FILE="$REMOTE_STATE/ran.ready"
+        SAME_CELL_READY_FILE="$REMOTE_STATE/normal.ready"
+        SAME_CELL_ATTACK_READY_FILE="$REMOTE_STATE/attack.ready"
+        SAME_CELL_ATTACK_DONE_FILE="$REMOTE_STATE/attack.done"
+        SAME_CELL_RELEASE_FILE="$REMOTE_STATE/attack.release"
+        SAME_CELL_UE_GATE_FILE="$REMOTE_STATE/attack-ue-gate"
+        SAME_CELL_UE_ENDPOINTS_FILE="$REMOTE_STATE/attack-endpoints.txt"
+        SAME_CELL_AUTH_READY_TIMEOUT_S=$((SAME_CELL_HEALTH_TIMEOUT_S + 30 + SAME_CELL_NORMAL_PRE_HOLD_S + SAME_CELL_NORMAL_POST_HOLD_S)))
+      if [[ -n ${SAME_CELL_DIAGNOSTIC_ATTACK_SLOTS:-} ]]; then
+        remote_env+=(AUTH_STALL_CELL_SCALE_UE_COUNT="$host_ues"
+          AUTH_STALL_CELL_SCALE_PROCESS_COUNT=$((host_ues / 5))
+          AUTH_STALL_CELL_SCALE_UES_PER_PROCESS=5 AUTH_STALL_CELL_DIAGNOSTIC_SCALE=1
+          AUTH_STALL_CELL_SCALE_ENDPOINT_OFFSET=$((first - 1))
+          AUTH_STALL_CELL_SCALE_CONFIG_OFFSET=$(((first - 1) / 5))
+          AUTH_STALL_CELL_DIAGNOSTIC_MAX_ENDPOINTS="${SAME_CELL_DIAGNOSTIC_MAX_ENDPOINTS:-120}")
+      fi
+      # 원격 runner는 세션 리더로 띄우고 PID를 남긴다. 정리 때 그 프로세스 그룹을 종료한다.
+      # setsid -w: ssh가 원격 runner의 종료 상태를 기다린다(포크 후 즉시 반환 방지).
+      remote_sh "$host" "setsid -w sh -c 'echo \$\$ > \"\$1\"; shift; exec \"\$@\"' sh '$REMOTE_STATE/runner.pid' $(printf '%q ' env "${remote_env[@]}" "${COMMAND[@]}")" \
+        >"$RUN_OUT/attack-$((host + 1)).stdout" 2>"$RUN_OUT/attack-$((host + 1)).stderr" </dev/null 9>&- &
+      ATTACK_PIDS+=("$!")
+    done
   else
     setsid "${COMMAND[@]}" >"$RUN_OUT/attack.stdout" 2>"$RUN_OUT/attack.stderr" </dev/null 9>&- &
+    ATTACK_PIDS+=("$!")
   fi
-  ATTACK_PID=$!
+  ATTACK_PID=${ATTACK_PIDS[0]}
   record_pid attack "$ATTACK_PID"
 
   for ((i=1; i<=TOTAL_ENDPOINTS; i++)); do
     if (( REMOTE && i <= ATTACK_SLOTS )); then
-      ready=0; wait_remote_attack_port "$((2001 + 100 * i))" || ready=$?
+      ready=0; wait_remote_attack_port "${SLOT_HOST[$i]}" "$((2001 + 100 * i))" || ready=$?
     else
       ready=0; wait_attack_port "$((2001 + 100 * i))" || ready=$?
     fi
     if (( ready )); then
-      is_running "$ATTACK_PID" || fail "공격 runner가 endpoint 준비 전에 종료됐습니다"
+      attack_running || fail "공격 runner가 endpoint 준비 전에 종료됐습니다"
       fail "UE endpoint $i 준비가 시간 초과했습니다"
     fi
   done
@@ -669,7 +734,7 @@ if [[ $ACTION == run ]]; then
   GNB_RESTARTED=1
   started=$SECONDS
   until bash -c "$NORMAL_UE_GNB_READY_CMD" >/dev/null 2>&1; do
-    is_running "$ATTACK_PID" || fail "공격 runner가 DU 준비 전에 종료됐습니다"
+    attack_running || fail "공격 runner가 DU 준비 전에 종료됐습니다"
     (( SECONDS - started < SAME_CELL_HEALTH_TIMEOUT_S )) || fail "DU readiness가 시간 초과했습니다"
     sleep 1
   done
@@ -681,7 +746,7 @@ if [[ $ACTION == run ]]; then
 
   started=$SECONDS
   until record_healthy before; do
-    is_running "$ATTACK_PID" || fail "공격 runner가 normal UE 준비 전에 종료됐습니다"
+    attack_running || fail "공격 runner가 normal UE 준비 전에 종료됐습니다"
     (( SECONDS - started < SAME_CELL_HEALTH_TIMEOUT_S )) || fail "normal UE $COUNT/$COUNT 준비가 시간 초과했습니다"
     sleep 1
   done
@@ -690,7 +755,7 @@ if [[ $ACTION == run ]]; then
       || fail "정상 UE 기준선 marker 게시에 실패했습니다"
     started=$SECONDS
     until [[ -f $OBSERVATION_READY_FILE && ! -L $OBSERVATION_READY_FILE ]]; do
-      is_running "$ATTACK_PID" || fail "관측 시작 전에 공격 runner가 종료됐습니다"
+      attack_running || fail "관측 시작 전에 공격 runner가 종료됐습니다"
       (( SECONDS - started < SAME_CELL_HEALTH_TIMEOUT_S )) || fail "live E2E 관측 시작이 시간 초과했습니다"
       sleep .2
     done
@@ -700,7 +765,7 @@ if [[ $ACTION == run ]]; then
   marker_publish normal.ready || fail "same-cell 정상 UE 준비 marker 게시에 실패했습니다"
   started=$SECONDS
   until marker_present attack.ready; do
-    is_running "$ATTACK_PID" || fail "공격 runner가 활성화 준비 전에 종료됐습니다"
+    attack_running || fail "공격 runner가 활성화 준비 전에 종료됐습니다"
     (( SECONDS - started < SAME_CELL_HEALTH_TIMEOUT_S )) || fail "공격 runner readiness가 시간 초과했습니다"
     sleep .2
   done
@@ -717,7 +782,7 @@ if [[ $ACTION == run ]]; then
   if [[ $ATTACK != uplink ]]; then
     attack_wait_started=$SECONDS
     until marker_present attack.done; do
-      is_running "$ATTACK_PID" || fail "공격 runner가 완료 marker 전에 종료됐습니다"
+      attack_running || fail "공격 runner가 완료 marker 전에 종료됐습니다"
       (( SECONDS - attack_wait_started < SAME_CELL_ATTACK_TIMEOUT_S )) \
         || fail "공격 runner 완료가 ${SAME_CELL_ATTACK_TIMEOUT_S}초를 초과했습니다"
       printf '%s\t%s\n' "$(date +%s%N)" "$(health "$COUNT")" >>"$RUN_OUT/normal-health.tsv"
@@ -743,36 +808,49 @@ if [[ $ACTION == run ]]; then
     marker_publish attack.release || fail "same-cell 종료 허가 marker 게시에 실패했습니다"
   fi
   attack_exit_started=$SECONDS
-  while is_running "$ATTACK_PID"; do
+  while attack_running; do
     (( SECONDS - attack_exit_started < SAME_CELL_ATTACK_TIMEOUT_S )) \
       || fail "공격 runner 종료가 ${SAME_CELL_ATTACK_TIMEOUT_S}초를 초과했습니다"
     [[ $ATTACK != uplink ]] \
       || { printf '%s\t%s\n' "$(date +%s%N)" "$(health "$COUNT")" >>"$RUN_OUT/normal-health.tsv"; record_health during || true; }
     sleep 1
   done
-  if wait "$ATTACK_PID"; then ATTACK_STATUS=0; else ATTACK_STATUS=$?; fi
+  ATTACK_STATUS=0
+  for pid in "${ATTACK_PIDS[@]}"; do
+    if wait "$pid"; then :; else status=$?; (( ATTACK_STATUS == 0 )) && ATTACK_STATUS=$status; fi
+  done
   ATTACK_PID=""
+  ATTACK_PIDS=()
   select_broker standby || true
   (( ATTACK_STATUS == 0 )) || fail "공격 runner가 실패했습니다: status=$ATTACK_STATUS"
-  CHILD_OUTPUT=$(python3 - "$RUN_OUT/attack.stdout" <<'PY'
+  child_output() {
+    python3 - "$1" <<'PY'
 import pathlib, re, sys
 text = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
 matches = re.findall(r"(?:^|\s)output=(/[^\s]+)", text)
 print(matches[-1] if matches else "")
 PY
-  ) || fail "공격 runner 출력 경로를 읽지 못했습니다"
+  }
+  : >"$RUN_OUT/child-output.txt"
   if (( REMOTE )); then
-    remote_sh "test -d '$CHILD_OUTPUT' -a ! -L '$CHILD_OUTPUT'" \
-      || fail "원격 공격 runner가 안전한 output 경로를 남기지 않았습니다"
-    remote_sh "tar -C '$CHILD_OUTPUT' -cf - ." >"$RUN_OUT/remote-attacker.tar" \
-      || fail "원격 공격 산출물을 가져오지 못했습니다"
-    (( $(stat -c %s "$RUN_OUT/remote-attacker.tar") > 0 )) \
-      || fail "원격 공격 산출물이 비어 있습니다"
+    for ((host=0; host<REMOTE_HOST_COUNT; host++)); do
+      CHILD_OUTPUT=$(child_output "$RUN_OUT/attack-$((host + 1)).stdout") \
+        || fail "공격 runner 출력 경로를 읽지 못했습니다"
+      remote_sh "$host" "test -d '$CHILD_OUTPUT' -a ! -L '$CHILD_OUTPUT'" \
+        || fail "원격 공격 runner가 안전한 output 경로를 남기지 않았습니다: $((host + 1))번 호스트"
+      remote_sh "$host" "tar -C '$CHILD_OUTPUT' -cf - ." >"$RUN_OUT/remote-attacker-$((host + 1)).tar" \
+        || fail "원격 공격 산출물을 가져오지 못했습니다: $((host + 1))번 호스트"
+      (( $(stat -c %s "$RUN_OUT/remote-attacker-$((host + 1)).tar") > 0 )) \
+        || fail "원격 공격 산출물이 비어 있습니다: $((host + 1))번 호스트"
+      printf '%s\n' "$CHILD_OUTPUT" >>"$RUN_OUT/child-output.txt"
+    done
   else
+    CHILD_OUTPUT=$(child_output "$RUN_OUT/attack.stdout") \
+      || fail "공격 runner 출력 경로를 읽지 못했습니다"
     [[ -n $CHILD_OUTPUT && -d $CHILD_OUTPUT && ! -L $CHILD_OUTPUT ]] \
       || fail "공격 runner가 안전한 output 경로를 남기지 않았습니다"
+    printf '%s\n' "$CHILD_OUTPUT" >"$RUN_OUT/child-output.txt"
   fi
-  printf '%s\n' "$CHILD_OUTPUT" >"$RUN_OUT/child-output.txt"
   printf '{"schema":"same-cell.run.v3","run_id":"%s","attack":"%s","normal_ues":%d,"normal_shared_ru":false,"attack_slots":%d,"du_restarted_during_attack":false,"normal_recovery_signal_count":%d,"normal_healthy_before_attack_teardown":%s,"direct_detector_input":false,"ue_to_ran_path_required":true,"attack_exit_status":%d}\n' \
     "$RUN_ID" "$ATTACK" "$COUNT" "$ATTACK_SLOTS" \
     "$NORMAL_RECOVERY_SIGNAL_COUNT" "$NORMAL_HEALTH_BEFORE_TEARDOWN" "$ATTACK_STATUS" >"$RUN_OUT/run.json"

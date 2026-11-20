@@ -40,6 +40,8 @@ SAME_CELL_ATTACK_DONE_FILE=${SAME_CELL_ATTACK_DONE_FILE:-}
 SAME_CELL_RELEASE_FILE=${SAME_CELL_RELEASE_FILE:-}
 SAME_CELL_UE_GATE_FILE=${SAME_CELL_UE_GATE_FILE:-}
 REMOTE_ATTACK=${SAME_CELL_REMOTE_ATTACK:-0}
+ENDPOINT_OFFSET=${AUTH_STALL_CELL_SCALE_ENDPOINT_OFFSET:-0}
+CONFIG_OFFSET=${AUTH_STALL_CELL_SCALE_CONFIG_OFFSET:-0}
 ZMQ_TX_HOST=${SAME_CELL_REMOTE_UE_IP:-127.0.0.1}
 ZMQ_RX_HOST=${SAME_CELL_REMOTE_BROKER_IP:-127.0.0.1}
 
@@ -62,6 +64,9 @@ fi
 [[ $MANAGE_RAN == 0 || $MANAGE_RAN == 1 ]] || fail "SAME_CELL_AUTH_TIMEOUT_MANAGE_DU는 0 또는 1이어야 합니다"
 [[ $SAME_CELL_PRESTART == 0 || $SAME_CELL_PRESTART == 1 ]] || fail "SAME_CELL_PRESTART는 0 또는 1이어야 합니다"
 [[ $REMOTE_ATTACK == 0 || $REMOTE_ATTACK == 1 ]] || fail "SAME_CELL_REMOTE_ATTACK은 0 또는 1이어야 합니다"
+# 여러 공격 호스트가 한 셀에 붙을 때 endpoint·설정 번호가 겹치지 않게 하는 전역 오프셋이다.
+[[ $ENDPOINT_OFFSET =~ ^[0-9]+$ ]] || fail "AUTH_STALL_CELL_SCALE_ENDPOINT_OFFSET은 0 이상 정수여야 합니다"
+[[ $CONFIG_OFFSET =~ ^[0-9]+$ ]] || fail "AUTH_STALL_CELL_SCALE_CONFIG_OFFSET은 0 이상 정수여야 합니다"
 if (( REMOTE_ATTACK )); then
   python3 -c 'import ipaddress,sys; [ipaddress.IPv4Address(v) for v in sys.argv[1:]]' "$ZMQ_TX_HOST" "$ZMQ_RX_HOST" \
     || fail "원격 공격 UE/Broker 주소가 IPv4가 아닙니다"
@@ -94,7 +99,8 @@ if (( SAME_CELL_PRESTART )); then
 fi
 for command in flock python3 setsid stdbuf; do command -v "$command" >/dev/null || fail "$command가 필요합니다"; done
 ATTACKER_CONFIGS_FILE=${AUTH_STALL_CELL_SCALE_CONFIGS_FILE:-$ATTACKER_CONFIGS_FILE}
-mapfile -t CONFIGS < <(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$ATTACKER_CONFIGS_FILE" | head -n "$PROCESS_COUNT")
+mapfile -t CONFIGS < <(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$ATTACKER_CONFIGS_FILE" \
+  | tail -n +"$((CONFIG_OFFSET + 1))" | head -n "$PROCESS_COUNT")
 (( ${#CONFIGS[@]} == PROCESS_COUNT )) || fail "UE 프로세스별 설정이 필요합니다"
 for file in "${CONFIGS[@]}"; do [[ -f $file && ! -L $file ]] || fail "UE 설정이 안전하지 않습니다: $file"; done
 
@@ -151,7 +157,7 @@ marker='AUTH_TIMEOUT_EXHAUSTION event=authentication_response_submitted'
 for ((i=0; i<PROCESS_COUNT; i++)); do
   runtime_config="$OUT/ue-$((i + 1)).conf"
   if (( SAME_CELL_PRESTART )); then
-    endpoint_offset=$((i * UES_PER_PROCESS))
+    endpoint_offset=$((ENDPOINT_OFFSET + i * UES_PER_PROCESS))
   elif (( i == 0 )); then
     endpoint_offset=$UES_PER_PROCESS
   else

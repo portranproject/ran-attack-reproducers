@@ -32,7 +32,7 @@ def _broker_helpers():
     keep += [
         node
         for node in tree.body
-        if isinstance(node, ast.FunctionDef) and node.name in {"endpoint_indices", "_address"}
+        if isinstance(node, ast.FunctionDef) and node.name in {"endpoint_indices", "endpoint_hosts", "_address"}
     ]
     namespace = {}
     exec(compile(ast.Module(body=keep, type_ignores=[]), str(BROKER), "exec"), namespace)
@@ -52,11 +52,20 @@ class RemoteBrokerEndpointTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 helpers["_address"](bad, "X")
 
-    def test_remote_host_only_for_listed_endpoints(self):
+    def test_remote_slot_host_map(self):
+        helpers = _broker_helpers()
+        parse = helpers["endpoint_hosts"]
+        assert parse("1-2=172.31.1.12,3=172.31.1.13") == {
+            1: "172.31.1.12", 2: "172.31.1.12", 3: "172.31.1.13"
+        }
+        assert parse("") == {}
+        for bad in ("172.31.1.12", "1-2=host", "1=172.31.1.12,1=172.31.1.13", "0=172.31.1.12"):
+            with self.assertRaises(ValueError):
+                parse(bad)
         text = BROKER.read_text(encoding="utf-8")
-        assert 'ue_host = remote_host if index + 1 in remote_ues else "127.0.0.1"' in text
+        assert 'ue_host = (remote_hosts or {}).get(index + 1, "127.0.0.1")' in text
         assert 'os.environ.get("NORMAL_UE_BROKER_BIND_ADDR", "127.0.0.1")' in text
-        assert 'os.environ.get("NORMAL_UE_BROKER_REMOTE_UES", "")' in text
+        assert 'os.environ.get("NORMAL_UE_BROKER_REMOTE_HOSTS", "")' in text
 
 
 class MultiRuHostTest(unittest.TestCase):
@@ -105,10 +114,26 @@ class RemoteRunnerGateTest(unittest.TestCase):
         for name in ("SAME_CELL_ATTACK_SSH", "SAME_CELL_REMOTE_UE_IP", "SAME_CELL_REMOTE_BROKER_IP"):
             assert f'{name}:-' in text
         assert "원격 공격 UE는 auth-timeout 진단에만 지원합니다" in text
+        assert 'IFS=, read -r -a REMOTE_SSH' in text
+        assert 'IFS=, read -r -a REMOTE_UE_HOSTS' in text
+        assert 'SAME_CELL_ATTACK_SSH와 SAME_CELL_REMOTE_UE_IP 개수가 같아야 합니다' in text
+        assert "호스트당 공격 슬롯 수가 5의 배수여야 합니다" in text
         runner = AUTH_RUNNER.read_text(encoding="utf-8")
         assert "SAME_CELL_REMOTE_ATTACK" in runner
         assert "AUTH_STALL_CELL_ZMQ_TX_HOST" in runner
         assert "원격 same-cell endpoint 순서" in runner
+        assert 'AUTH_STALL_CELL_SCALE_ENDPOINT_OFFSET' in runner
+        assert 'AUTH_STALL_CELL_SCALE_CONFIG_OFFSET' in runner
+
+    def test_remote_slots_are_split_per_host(self):
+        text = SAME_CELL.read_text(encoding="utf-8")
+        assert "REMOTE_CHUNK=$(( (ATTACK_SLOTS + REMOTE_HOST_COUNT - 1) / REMOTE_HOST_COUNT ))" in text
+        assert 'SLOT_HOST[$i]=$host' in text
+        assert 'AUTH_STALL_CELL_SCALE_ENDPOINT_OFFSET=$((first - 1))' in text
+        assert 'AUTH_STALL_CELL_SCALE_CONFIG_OFFSET=$(((first - 1) / 5))' in text
+        assert 'NORMAL_UE_BROKER_REMOTE_HOSTS="${map%,}"' in text
+        # 기본(로컬) 경로는 그대로 127.0.0.1을 쓴다.
+        assert "remote_broker=()" in text
 
 
 class NoSensitiveLiteralsTest(unittest.TestCase):

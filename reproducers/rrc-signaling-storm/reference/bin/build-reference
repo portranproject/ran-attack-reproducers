@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# 원본 5g-rrc-storm UE를 고정 커밋에서 수정 없이 빌드한다.
+set -euo pipefail
+REF_REPO=${REF_REPO:-/root/ref/5g-rrc-storm}
+REF_OAI=${REF_OAI:-/root/ref/oai-5g-rrc-storm-92980ce}
+REF_COMMIT=${REF_COMMIT:-0e71f7aee24999b66d44e10db4612f96b5219d98}
+OAI_COMMIT=${OAI_COMMIT:-92980ceb725a94dbfe97c509d16f1313eee083e0}
+fail() { echo "build-reference(rrc-storm): $*" >&2; exit 1; }
+command -v git >/dev/null || fail "git이 필요합니다"
+if [[ ! -d $REF_REPO/.git ]]; then
+  mkdir -p "$(dirname "$REF_REPO")"
+  git clone https://github.com/5gattacks/5g-rrc-storm "$REF_REPO"
+fi
+git -C "$REF_REPO" checkout -q "$REF_COMMIT"
+[[ $(git -C "$REF_REPO" rev-parse HEAD) == "$REF_COMMIT" ]] || fail "원본 커밋이 다릅니다"
+if [[ ! -d $REF_OAI/.git ]]; then
+  mkdir -p "$(dirname "$REF_OAI")"
+  git clone https://github.com/OPENAIRINTERFACE/openairinterface5g "$REF_OAI"
+fi
+git -C "$REF_OAI" checkout -q "$OAI_COMMIT"
+[[ $(git -C "$REF_OAI" rev-parse HEAD) == "$OAI_COMMIT" ]] || fail "OAI 커밋이 다릅니다"
+if ! git -C "$REF_OAI" apply --check "$REF_REPO/storm-attack.patch"; then
+  fail "원본 패치가 기준 OAI에 적용되지 않습니다 (수정하지 않고 중단)"
+fi
+git -C "$REF_OAI" apply "$REF_REPO/storm-attack.patch"
+( cd "$REF_OAI/cmake_targets" && ./build_oai -I >/tmp/ref-rrc-install.log 2>&1 && ./build_oai --nrUE --ninja >/tmp/ref-rrc-build.log 2>&1 )
+BIN="$REF_OAI/cmake_targets/ran_build/build/nr-uesoftmodem"
+[[ -x $BIN ]] || fail "빌드 산출물이 없습니다: $BIN"
+# 원본 공격 분기가 실제로 들어갔는지 확인한다.
+grep -Faq "rrc_storm" "$BIN" || fail "원본 공격 분기 마커가 없습니다"
+sha256sum "$BIN"

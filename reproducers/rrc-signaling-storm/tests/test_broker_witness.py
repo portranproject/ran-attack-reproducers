@@ -151,7 +151,7 @@ class BrokerWitnessTests(unittest.TestCase):
             "if [[ -n ${FAKE_UE_TEARDOWN_CRASH_RUN:-} && $run == ${FAKE_UE_TEARDOWN_CRASH_RUN} ]]; then\n"
             "  exec python3 -c 'import os,signal,time; signal.signal(signal.SIGINT, lambda *_: (print(\"Segmentation fault\", flush=True), os._exit(139))); time.sleep(20)'\n"
             "fi\n"
-            "exec python3 -c 'import os,signal,time; n=[0]; signal.signal(signal.SIGINT, lambda *_: (n.__setitem__(0,n[0]+1), os._exit(0) if n[0] > 1 else None)); time.sleep(20)'\n"
+            "exec python3 -c 'import os,signal,time; n=[0]; signal.signal(signal.SIGINT, lambda *_: (n.__setitem__(0,n[0]+1), os._exit(0) if n[0] > 0 else None)); time.sleep(20)'\n"
         )
         self.ue.chmod(0o755)
         self.normal_conf = self.root / "normal.conf"

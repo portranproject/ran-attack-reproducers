@@ -23,13 +23,23 @@ def function_text(path, name):
 
 
 class NormalUeHoldTests(unittest.TestCase):
-    def test_both_runners_default_to_30_and_90_seconds(self):
+    def test_runners_default_to_no_hold_and_campaigns_set_it(self):
         same = SAME_CELL.read_text()
         broker = BROKER.read_text()
-        self.assertIn("SAME_CELL_NORMAL_PRE_HOLD_S=${SAME_CELL_NORMAL_PRE_HOLD_S:-30}", same)
-        self.assertIn("SAME_CELL_NORMAL_POST_HOLD_S=${SAME_CELL_NORMAL_POST_HOLD_S:-90}", same)
-        self.assertIn("BROKER_NORMAL_PRE_HOLD_S=${BROKER_NORMAL_PRE_HOLD_S:-30}", broker)
-        self.assertIn("BROKER_NORMAL_POST_HOLD_S=${BROKER_NORMAL_POST_HOLD_S:-90}", broker)
+        self.assertIn("SAME_CELL_NORMAL_PRE_HOLD_S=${SAME_CELL_NORMAL_PRE_HOLD_S:-0}", same)
+        self.assertIn("SAME_CELL_NORMAL_POST_HOLD_S=${SAME_CELL_NORMAL_POST_HOLD_S:-0}", same)
+        self.assertIn("BROKER_NORMAL_PRE_HOLD_S=${BROKER_NORMAL_PRE_HOLD_S:-0}", broker)
+        self.assertIn("BROKER_NORMAL_POST_HOLD_S=${BROKER_NORMAL_POST_HOLD_S:-0}", broker)
+        campaign = CTL.read_text().split("same_cell_campaign()", 1)[1].split(
+            "list_attacks()", 1)[0]
+        for line in (
+            "export SAME_CELL_NORMAL_PRE_HOLD_S=${SAME_CELL_NORMAL_PRE_HOLD_S:-30}",
+            "export SAME_CELL_NORMAL_POST_HOLD_S=${SAME_CELL_NORMAL_POST_HOLD_S:-90}",
+            "export BROKER_NORMAL_PRE_HOLD_S=${BROKER_NORMAL_PRE_HOLD_S:-30}",
+            "export BROKER_NORMAL_POST_HOLD_S=${BROKER_NORMAL_POST_HOLD_S:-90}",
+            "export NORMAL_UE_STOP_GAP_S=${NORMAL_UE_STOP_GAP_S:-3}",
+        ):
+            self.assertIn(line, campaign)
 
     def test_zero_hold_keeps_the_previous_behavior(self):
         for path, name in ((SAME_CELL, "normal_hold"), (BROKER, "normal_hold")):
@@ -100,7 +110,7 @@ normal_hold {seconds} pre
         body = function_text(BROKER, "normal_hold")
         self.assertIn('(( deadline <= DEADLINE - 10 )) || deadline=$((DEADLINE - 10))', body)
         self.assertIn("BROKER_NORMAL_PRE_HOLD_S + BROKER_NORMAL_ATTACK_DURATION_S", source)
-        self.assertIn("NORMAL_RECOVERY_DEADLINE_S + BROKER_NORMAL_POST_HOLD_S + 10", source)
+        self.assertIn("NORMAL_RECOVERY_DEADLINE_S + BROKER_NORMAL_POST_HOLD_S)", source)
 
     def test_ready_timeout_covers_both_holds(self):
         source = SAME_CELL.read_text()
@@ -147,7 +157,7 @@ normal_hold {seconds} pre
         self.assertLess(stop.index('targets+=("$i")'), stop.index('targets+=("$BROKER_INDEX")'))
         self.assertLess(stop.index("kill -INT"), stop.index("kill -TERM"))
         self.assertLess(stop.index("kill -TERM"), stop.index("kill -KILL"))
-        self.assertIn("NORMAL_UE_STOP_GAP_S=${NORMAL_UE_STOP_GAP_S:-3}", source)
+        self.assertIn("NORMAL_UE_STOP_GAP_S=${NORMAL_UE_STOP_GAP_S:-0}", source)
         self.assertIn("sleep 0.2", stop)
         self.assertNotIn("sleep 0.2\n  for i in \"${UE_CHILD_INDEXES[@]}\"; do", stop)
 
@@ -200,12 +210,32 @@ normal_hold {seconds} pre
                 "--mode", "attack", "--run-id", "deadline-1", "--enable", "--dry-run"]
         default = subprocess.run(base, text=True, capture_output=True, env=dict(os.environ))
         self.assertEqual(default.returncode, 0, default.stderr)
-        self.assertIn(" -d 370", default.stdout)
+        self.assertIn(" -d 240", default.stdout)
         shifted_env = dict(os.environ, BROKER_NORMAL_PRE_HOLD_S="45", BROKER_NORMAL_POST_HOLD_S="120")
         shifted = subprocess.run(base, text=True, capture_output=True, env=shifted_env)
         self.assertEqual(shifted.returncode, 0, shifted.stderr)
-        self.assertIn(" -d 415", shifted.stdout)
-        self.assertNotIn(" -d 370", shifted.stdout)
+        self.assertIn(" -d 405", shifted.stdout)
+        self.assertNotIn(" -d 240", shifted.stdout)
+
+    def test_campaign_dry_run_carries_the_holds_to_every_runner(self):
+        result = subprocess.run(
+            ["bash", str(CTL), "same-cell", "campaign", "l3-live", "--campaign-id", "holds",
+             "--sets", "3", "--count", "5", "--enable", "--dry-run"],
+            text=True, capture_output=True, env=dict(os.environ),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rrc = [line for line in result.stdout.splitlines() if "rss-broker-witness" in line]
+        self.assertEqual(len(rrc), 6)
+        for line in rrc:
+            self.assertIn("BROKER_NORMAL_PRE_HOLD_S=30", line)
+            self.assertIn("BROKER_NORMAL_POST_HOLD_S=90", line)
+            self.assertIn("NORMAL_UE_STOP_GAP_S=3", line)
+            self.assertIn(" -d 360", line)
+        normal = [line for line in result.stdout.splitlines() if "blind-run" in line]
+        self.assertTrue(normal, result.stdout)
+        for line in normal:
+            self.assertIn("SAME_CELL_NORMAL_PRE_HOLD_S=30", line)
+            self.assertIn("SAME_CELL_NORMAL_POST_HOLD_S=90", line)
 
     def test_normal_hold_evidence_is_copied_and_sealed(self):
         wrapper = (ROOT / "tools/p5-live-e2e").read_text()

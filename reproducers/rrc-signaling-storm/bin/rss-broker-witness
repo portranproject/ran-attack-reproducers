@@ -106,9 +106,9 @@ BROKER_NORMAL_POOL_QUALIFICATION=${BROKER_NORMAL_POOL_QUALIFICATION:-0}
 BROKER_NORMAL_HEALTH_TIMEOUT_S=${BROKER_NORMAL_HEALTH_TIMEOUT_S:-120}
 BROKER_NORMAL_ATTACK_DURATION_S=${BROKER_NORMAL_ATTACK_DURATION_S:-30}
 BROKER_NORMAL_PDU_SESSION_ID=${BROKER_NORMAL_PDU_SESSION_ID:-}
-BROKER_NORMAL_PRE_HOLD_S=${BROKER_NORMAL_PRE_HOLD_S:-30}
-BROKER_NORMAL_POST_HOLD_S=${BROKER_NORMAL_POST_HOLD_S:-90}
-NORMAL_UE_STOP_GAP_S=${NORMAL_UE_STOP_GAP_S:-3}
+BROKER_NORMAL_PRE_HOLD_S=${BROKER_NORMAL_PRE_HOLD_S:-0}
+BROKER_NORMAL_POST_HOLD_S=${BROKER_NORMAL_POST_HOLD_S:-0}
+NORMAL_UE_STOP_GAP_S=${NORMAL_UE_STOP_GAP_S:-0}
 BROKER_WITNESS_PHASE_MS=${BROKER_WITNESS_PHASE_MS:-0}
 BROKER_WITNESS_RETRY_MS=${BROKER_WITNESS_RETRY_MS:-1000}
 BROKER_WITNESS_HONOR_REJECT=${BROKER_WITNESS_HONOR_REJECT:-0}
@@ -225,7 +225,7 @@ if (( BROKER_NORMAL_POOL_QUALIFICATION )); then
     || { echo "normal-pool qualification requires normal-tun-suffix.patch in the witness UE binary" >&2; exit 1; }
   grep -Faq RSS_BROKER_CONTROL_FILE "$BROKER_ATTACK_UE_BIN" \
     || { echo "normal-pool qualification requires the broker control gate in the attack UE binary" >&2; exit 1; }
-  NORMAL_REQUIRED_DURATION_MS=$(((BROKER_NORMAL_HEALTH_TIMEOUT_S + BROKER_NORMAL_PRE_HOLD_S + BROKER_NORMAL_ATTACK_DURATION_S + NORMAL_RECOVERY_DEADLINE_S + BROKER_NORMAL_POST_HOLD_S + 10) * 1000))
+  NORMAL_REQUIRED_DURATION_MS=$(((BROKER_NORMAL_HEALTH_TIMEOUT_S + BROKER_NORMAL_PRE_HOLD_S + BROKER_NORMAL_ATTACK_DURATION_S + NORMAL_RECOVERY_DEADLINE_S + BROKER_NORMAL_POST_HOLD_S) * 1000))
   (( DURATION_S * 1000 >= NORMAL_REQUIRED_DURATION_MS )) || {
     required_s=$(((NORMAL_REQUIRED_DURATION_MS + 999) / 1000))
     echo "normal-pool qualification requires -d >= $required_s seconds for 5/5 startup, pre-hold, attack, 90-second recovery, and post-hold" >&2
@@ -617,7 +617,7 @@ stop_children() {
   local i pid target status forced alive gap targets=()
   gap=$NORMAL_UE_STOP_GAP_S
   for i in "${UE_CHILD_INDEXES[@]}"; do targets+=("$i"); done
-  [[ -z ${BROKER_INDEX:-} ]] || targets+=("$BROKER_INDEX")
+  (( BROKER_INDEX < 0 )) || targets+=("$BROKER_INDEX")
   # OAI's first INT starts NAS deregistration; the previous second INT only
   # 0.2 s later skipped that graceful path and stopped every UE at once.  Signal
   # one process at a time so the cell does not see a detach burst, then escalate

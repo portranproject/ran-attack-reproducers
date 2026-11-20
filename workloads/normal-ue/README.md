@@ -47,14 +47,14 @@
 
 ## 정상 UE 유지(pre/post hold)
 
-- 공격 전 30초(`SAME_CELL_NORMAL_PRE_HOLD_S`)와 공격 종료·정상 UE 회복(5/5) 뒤 90초(`SAME_CELL_NORMAL_POST_HOLD_S`)를 정상 UE 5대로 유지한다. 탐지기가 경보 `clear`를 보낼 시간을 벌기 위해서다.
+- `same-cell campaign`은 공격 전 30초(`SAME_CELL_NORMAL_PRE_HOLD_S`)와 공격 종료·정상 UE 회복(5/5) 뒤 90초(`SAME_CELL_NORMAL_POST_HOLD_S`)를 정상 UE 5대로 유지한다. 탐지기가 경보 `clear`를 보낼 시간을 벌기 위해서다. 단일 `same-cell run`의 기본값은 0(이전 동작)이고, 환경변수로 넘긴 값은 campaign에서도 그대로 우선한다.
 - 유지 중 매초 건강 수를 실행 디렉터리의 `normal-hold.tsv`에 남긴다. 두 값을 0으로 두면 이전 동작과 같다.
-- 유지 시간만큼 자식 runner의 release 대기(`SAME_CELL_READY_TIMEOUT_S`)를 `120 + 30 + 전 + 후`초로 늘린다. rrc 경로는 `BROKER_NORMAL_PRE/POST_HOLD_S`를 쓰고 브로커 기한은 `240 + 전 + 후 + 10`초로 계산한다(기본 370초). blind 공격자 target 게이트도 `240 + 전 + 후`초로 늘린다.
+- 유지 시간만큼 자식 runner의 release 대기(`SAME_CELL_READY_TIMEOUT_S`)를 `120 + 30 + 전 + 후`초로 늘린다. rrc 경로는 `BROKER_NORMAL_PRE/POST_HOLD_S`를 쓰고 브로커 기한은 `240 + 전 + 후`초로 계산한다(캠페인 기본 360초, 유지 0이면 240초). blind 공격자 target 게이트도 `240 + 전 + 후`초로 늘린다.
 - 6개 룰의 clear는 RAISE+60초 고정이라 후 유지는 60초 + 여유보다 짧게 두지 않는다(p1 실측 2026-11-19).
 - 각 단일 실행(`same-cell run`과 campaign의 각 phase) 직전에 탐지 엔진 입력 기록 회전을 피한다. `SAME_CELL_HOUR_GUARD`(기본 1)가 켜져 있으면 남은 시간이 예상 실행 시간(`전 + 후 + SAME_CELL_HOUR_GUARD_MARGIN_S`, 기본 360초 → 480초) 이하일 때 다음 정각+10초까지 기다린다. 대기 시작·끝은 로그와 `run.json`의 `hour_guard`에 남는다. `SAME_CELL_HOUR_GUARD=0`이면 끈다.
 - `normal-hold.tsv`는 `p5-live-e2e`가 실행 디렉터리로 복사하고, self-live same-cell 경로는 공격 runner 증거에 복사해 `evidence_manifest.json`에 넣는다.
-- rrc 경로는 UE 프로세스를 `NORMAL_UE_STOP_GAP_S`(기본 3초) 간격으로 하나씩 INT하고, 10초 뒤 TERM, 다시 10초 뒤 KILL로 올린다. `same-cell-run`은 정상 UE 프로세스를 같은 INT→10초→TERM→10초→KILL 사다리로 끝낸다(5 logical UE가 한 프로세스라 프로세스 간격은 없다).
-- 기본값이면 회당 120초가 늘어나므로 42회 캠페인은 유지 구간만 약 84분 길어진다. 정각 회전 회피 대기는 위 자동 대기가 처리한다.
+- rrc 경로는 UE 프로세스를 `NORMAL_UE_STOP_GAP_S`(캠페인 기본 3초, 단일 run 0초) 간격으로 하나씩 INT하고, 10초 뒤 TERM, 다시 10초 뒤 KILL로 올린다. `same-cell-run`은 정상 UE 프로세스를 같은 INT→10초→TERM→10초→KILL 사다리로 끝낸다(5 logical UE가 한 프로세스라 프로세스 간격은 없다).
+- 캠페인 기본값이면 회당 120초가 늘어나므로 42회 캠페인은 유지 구간만 약 84분 길어진다. 정각 회전 회피 대기는 위 자동 대기가 처리한다.
 
 ## 운영 계약과 제한
 

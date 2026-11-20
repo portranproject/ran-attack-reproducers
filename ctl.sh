@@ -530,17 +530,18 @@ same_cell_run_one() {
   [[ $SAME_CELL_HOUR_GUARD == 0 || $SAME_CELL_HOUR_GUARD == 1 ]] \
     || fail "SAME_CELL_HOUR_GUARD는 0 또는 1이어야 합니다"
   if [[ $attack == rrc-storm ]]; then
-    pre_hold=${BROKER_NORMAL_PRE_HOLD_S:-30}
-    post_hold=${BROKER_NORMAL_POST_HOLD_S:-90}
+    pre_hold=${BROKER_NORMAL_PRE_HOLD_S:-0}
+    post_hold=${BROKER_NORMAL_POST_HOLD_S:-0}
   else
-    pre_hold=${SAME_CELL_NORMAL_PRE_HOLD_S:-30}
-    post_hold=${SAME_CELL_NORMAL_POST_HOLD_S:-90}
+    pre_hold=${SAME_CELL_NORMAL_PRE_HOLD_S:-0}
+    post_hold=${SAME_CELL_NORMAL_POST_HOLD_S:-0}
   fi
-  for value in "$pre_hold" "$post_hold" "$SAME_CELL_HOUR_GUARD_MARGIN_S"; do
+  stop_gap=${NORMAL_UE_STOP_GAP_S:-0}
+  for value in "$pre_hold" "$post_hold" "$stop_gap" "$SAME_CELL_HOUR_GUARD_MARGIN_S"; do
     [[ $value =~ ^[0-9]+$ ]] || fail "유지·여유 시간은 0 이상의 정수여야 합니다: $value"
   done
   hour_guard_expected=$((pre_hold + post_hold + SAME_CELL_HOUR_GUARD_MARGIN_S))
-  broker_deadline=$((240 + pre_hold + post_hold + 10))
+  broker_deadline=$((240 + pre_hold + post_hold))
   if [[ $mode == control ]]; then
     [[ $enabled == 0 ]] || fail "control에는 --enable을 붙이지 않습니다"
     enable_value=0
@@ -558,6 +559,7 @@ same_cell_run_one() {
       BROKER_ATTACK_UES_PER_PROCESS=2 BROKER_WITNESS_MULTI_RU=1 BROKER_WITNESS_UES=5
       BROKER_WITNESS_PHASE_MS=3000
       BROKER_START_GNB_LAST=1 BROKER_NORMAL_POOL_QUALIFICATION=1 BROKER_NORMAL_ATTACK_DURATION_S=30
+      "BROKER_NORMAL_PRE_HOLD_S=$pre_hold" "BROKER_NORMAL_POST_HOLD_S=$post_hold" "NORMAL_UE_STOP_GAP_S=$stop_gap"
       BROKER_PY="$ROOT/workloads/normal-ue/tools/same_cell_broker.py"
       "BROKER_CMD=exec env NORMAL_UE_BROKER_ENDPOINTS=11 QT_QPA_PLATFORM=offscreen python3 '$ROOT/workloads/normal-ue/tools/same_cell_broker.py'"
       "$runner" "$mode" -n "$run_id" -d "$broker_deadline")
@@ -567,7 +569,8 @@ same_cell_run_one() {
     env_name=$(config_env "$attack")
     runner=$(run_binary "$attack")
     inner=(env "$env_name=$config" "$runner" "$mode" -n "$run_id" -e "$enable_value")
-    command=(env "$env_name=$config" "$SAME_CELL" run "$alias" -n "$run_id" --count "$count"
+    command=(env "SAME_CELL_NORMAL_PRE_HOLD_S=$pre_hold" "SAME_CELL_NORMAL_POST_HOLD_S=$post_hold"
+      "$env_name=$config" "$SAME_CELL" run "$alias" -n "$run_id" --count "$count"
       --config "$normal_conf" -- "${inner[@]}")
     if [[ $attack != uplink-credential-flood && $attack != nas-counter-desynchronization ]]; then
       command=(env LIVE_E2E_REQUIRE_SAME_CELL=1 LIVE_E2E_WAIT_FOR_BASELINE=1
@@ -598,6 +601,14 @@ same_cell_campaign() {
   (( sets == 3 )) || fail "L3 same-cell 자격은 --sets 3으로 고정합니다"
   [[ $count == 5 ]] || fail "L3 same-cell 자격은 정상 UE --count 5로 고정합니다"
   [[ $enabled == 1 ]] || fail "캠페인에는 명시적 --enable이 필요합니다"
+  # 탐지팀 요청(2026-11-19 p4): 캠페인은 경보 clear까지 관측해야 하므로 정상 UE를 공격 전
+  # 30초·후 90초 유지하고 3초 간격으로 하나씩 내린다. 단일 same-cell run은 0(기존 동작)이며
+  # 사용자가 환경변수로 넘긴 값이 항상 우선한다.
+  export SAME_CELL_NORMAL_PRE_HOLD_S=${SAME_CELL_NORMAL_PRE_HOLD_S:-30}
+  export SAME_CELL_NORMAL_POST_HOLD_S=${SAME_CELL_NORMAL_POST_HOLD_S:-90}
+  export BROKER_NORMAL_PRE_HOLD_S=${BROKER_NORMAL_PRE_HOLD_S:-30}
+  export BROKER_NORMAL_POST_HOLD_S=${BROKER_NORMAL_POST_HOLD_S:-90}
+  export NORMAL_UE_STOP_GAP_S=${NORMAL_UE_STOP_GAP_S:-3}
   for attack in "${attacks[@]}"; do
     for ((index=1; index<=sets; index++)); do
       run_id="sc-$campaign_id-$attack-control-$index"

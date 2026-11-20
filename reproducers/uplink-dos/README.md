@@ -69,6 +69,10 @@ UPLINK_CONF=conf/uplink.conf bin/uplink-run emulation -n ul-emu -e 1
 
 경계 회귀 전용 합성 fixture 실행기는 `bin/uplink-credential-flood-fixture-run`이며, `bin/uplink-profile`은 레거시 단발형용 CU idle 전환 프로필 적용·해시 원복에 사용한다.
 
+## dashboard 전송 시점
+
+기본값 `CU_DASHBOARD_FOLLOW=0`은 지금과 같이 실행이 끝난 뒤 `dashboard_sender.py --once` 한 번만 전송한다. `CU_DASHBOARD_FOLLOW=1`이면 `start_live()` 끝에서 같은 `sender.json`·같은 `sudo -u` 사용자로 전송기를 따라가기 모드로 띄우고(`sender.pid`), 종료 시 telemetry·detector를 내린 뒤 SIGTERM·최대 10초 대기로 멈추고 `--once`로 나머지 줄을 이어 보낸다(`sender.stdout`·`sender.log` 이어쓰기). 합격 기준은 두 모드 모두 같다.
+
 ## 합격 기준
 
 - **`L3-21` control**: 완전한 `RRC → RegistrationReject` 연결 1개, 수락 0, `L3-21` 경보 0건.

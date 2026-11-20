@@ -36,6 +36,7 @@ POST_CHILD_S=${LIVE_E2E_POST_CHILD_S:-4}
 REQUIRE_SAME_CELL=${LIVE_E2E_REQUIRE_SAME_CELL:-0}
 WAIT_FOR_BASELINE=${LIVE_E2E_WAIT_FOR_BASELINE:-0}
 BASELINE_TIMEOUT_S=${LIVE_E2E_BASELINE_TIMEOUT_S:-180}
+CU_DASHBOARD_FOLLOW=${CU_DASHBOARD_FOLLOW:-0}
 DETECTOR_COMMIT=766f5569d0ddb425c14bf210a31c38ac60eceef9
 
 fail() { echo "p5-live-e2e: $*" >&2; exit 2; }
@@ -47,6 +48,9 @@ fail() { echo "p5-live-e2e: $*" >&2; exit 2; }
 [[ $WAIT_FOR_BASELINE == 0 || $WAIT_FOR_BASELINE == 1 ]] || fail "LIVE_E2E_WAIT_FOR_BASELINE은 0 또는 1이어야 합니다"
 [[ $BASELINE_TIMEOUT_S =~ ^[1-9][0-9]*$ && $BASELINE_TIMEOUT_S -le 600 ]] \
   || fail "LIVE_E2E_BASELINE_TIMEOUT_S는 1..600초여야 합니다"
+[[ $CU_DASHBOARD_FOLLOW == 0 || $CU_DASHBOARD_FOLLOW == 1 ]] || fail "CU_DASHBOARD_FOLLOW는 0 또는 1이어야 합니다"
+[[ $CU_DASHBOARD_FOLLOW == 0 ]] || (( WAIT_FOR_BASELINE )) \
+  || fail "CU_DASHBOARD_FOLLOW=1은 웜업 구간을 건너뛰는 LIVE_E2E_WAIT_FOR_BASELINE=1에서만 쓸 수 있습니다"
 [[ $CHILD_DIR == auto || $CHILD_DIR == /* && $CHILD_DIR != / ]] \
   || fail "CHILD_DIR은 auto 또는 안전한 절대 경로여야 합니다"
 [[ $RUN_ROOT == /* && $RUN_ROOT != / && $CU_LIVE_RUN_ROOT == /* && $CU_LIVE_RUN_ROOT != / ]] || fail "run root가 안전하지 않습니다"
@@ -129,9 +133,9 @@ REMOTE
 }
 
 reset_detector_after_baseline() {
-  ssh "${ssh_args[@]}" "$CU_HOST" sudo bash -s -- "$CU_OUT" "$CU_OWNER" "$CU_PLATFORM_ROOT" <<'REMOTE'
+  ssh "${ssh_args[@]}" "$CU_HOST" sudo bash -s -- "$CU_OUT" "$CU_OWNER" "$CU_PLATFORM_ROOT" "$CU_DASHBOARD_FOLLOW" <<'REMOTE'
 set -euo pipefail
-out=$1 owner=$2 platform=$3
+out=$1 owner=$2 platform=$3 follow=$4
 sock=/run/ran-detect/$(basename "$out").sock
 pid=$(cat "$out/detector.pid")
 kill -INT -- "-$pid" 2>/dev/null || kill -INT "$pid" 2>/dev/null || true
@@ -160,14 +164,19 @@ done
 grep -q '"type":"hello"' "$out/detector-input.jsonl" 2>/dev/null \
   || { echo "telemetry reconnect hello timeout" >&2; exit 2; }
 chown -R "$owner:$owner" "$out"
+if (( follow )); then
+  setsid sudo -u "$owner" python3 "$platform/detection/tools/dashboard_sender.py" \
+    --config "$out/sender.json" >>"$out/sender.stdout" 2>>"$out/sender.log" </dev/null &
+  echo $! >"$out/sender.pid"
+fi
 REMOTE
 }
 
 stop_live() {
   (( LIVE_STARTED )) || return 0
-  ssh "${ssh_args[@]}" "$CU_HOST" sudo bash -s -- "$CU_OUT" "$CU_OWNER" "$CU_PLATFORM_ROOT" <<'REMOTE'
+  ssh "${ssh_args[@]}" "$CU_HOST" sudo bash -s -- "$CU_OUT" "$CU_OWNER" "$CU_PLATFORM_ROOT" "$CU_DASHBOARD_FOLLOW" <<'REMOTE'
 set -u
-out=$1 owner=$2 platform=$3
+out=$1 owner=$2 platform=$3 follow=$4
 for role in telemetry detector; do
   [[ -f $out/$role.pid ]] || continue
   pid=$(cat "$out/$role.pid")
@@ -175,9 +184,16 @@ for role in telemetry detector; do
   for _ in {1..100}; do kill -0 "$pid" 2>/dev/null || break; sleep .1; done
   kill -0 "$pid" 2>/dev/null && kill -KILL -- "-$pid" 2>/dev/null || true
 done
+if (( follow )) && [[ -f $out/sender.pid ]]; then
+  spid=$(cat "$out/sender.pid")
+  kill -TERM -- "-$spid" 2>/dev/null || kill -TERM "$spid" 2>/dev/null || true
+  for _ in {1..100}; do kill -0 "$spid" 2>/dev/null || break; sleep .1; done
+  kill -0 "$spid" 2>/dev/null \
+    && echo "follow sender가 10초 안에 끝나지 않았습니다. 상태 파일 잠금으로 --once가 5로 실패할 수 있습니다" >&2
+fi
 set +e
 sudo -u "$owner" python3 "$platform/detection/tools/dashboard_sender.py" --config "$out/sender.json" --once \
-  >"$out/sender.stdout" 2>"$out/sender.log"
+  >>"$out/sender.stdout" 2>>"$out/sender.log"
 echo $? >"$out/sender.exit"
 set -e
 chown -R "$owner:$owner" "$out"

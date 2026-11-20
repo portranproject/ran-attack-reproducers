@@ -22,9 +22,10 @@ while getopts "e:n:h" option; do
 done
 
 RUN_ROOT=${AUTH_STALL_CELL_RUN_ROOT:-$ROOT/runs-cell}
-UE_COUNT=${AUTH_STALL_CELL_UE_COUNT:-10}
-PROCESS_COUNT=${AUTH_STALL_CELL_PROCESS_COUNT:-2}
-UES_PER_PROCESS=${AUTH_STALL_CELL_UES_PER_PROCESS:-5}
+UE_COUNT=${AUTH_STALL_CELL_SCALE_UE_COUNT:-${AUTH_STALL_CELL_UE_COUNT:-10}}
+PROCESS_COUNT=${AUTH_STALL_CELL_SCALE_PROCESS_COUNT:-${AUTH_STALL_CELL_PROCESS_COUNT:-2}}
+UES_PER_PROCESS=${AUTH_STALL_CELL_SCALE_UES_PER_PROCESS:-${AUTH_STALL_CELL_UES_PER_PROCESS:-5}}
+DIAGNOSTIC_SCALE=${AUTH_STALL_CELL_DIAGNOSTIC_SCALE:-0}
 READY_TIMEOUT_S=${SAME_CELL_AUTH_READY_TIMEOUT_S:-${AUTH_STALL_CELL_READY_TIMEOUT_S:-120}}
 POST_MARKER_S=${AUTH_STALL_CELL_POST_MARKER_S:-5}
 START_INTERVAL_MS=${AUTH_STALL_CELL_START_INTERVAL_MS:-50}
@@ -40,6 +41,7 @@ SAME_CELL_RELEASE_FILE=${SAME_CELL_RELEASE_FILE:-}
 SAME_CELL_UE_GATE_FILE=${SAME_CELL_UE_GATE_FILE:-}
 
 fail() { echo "auth-stall-cell-run: $*" >&2; exit 2; }
+[[ $DIAGNOSTIC_SCALE == 0 || $DIAGNOSTIC_SCALE == 1 ]] || fail "AUTH_STALL_CELL_DIAGNOSTIC_SCALE는 0 또는 1이어야 합니다"
 [[ $MODE == control || $MODE == attack ]] || fail "mode는 control 또는 attack이어야 합니다"
 [[ $ENABLE == 0 || $ENABLE == 1 ]] || fail "-e는 0 또는 1이어야 합니다"
 [[ $MODE == control && $ENABLE == 0 || $MODE == attack && $ENABLE == 1 ]] \
@@ -49,9 +51,11 @@ fail() { echo "auth-stall-cell-run: $*" >&2; exit 2; }
 for value in "$UE_COUNT" "$PROCESS_COUNT" "$UES_PER_PROCESS" "$READY_TIMEOUT_S" "$POST_MARKER_S" "$START_INTERVAL_MS"; do
   [[ $value =~ ^[1-9][0-9]*$ ]] || fail "UE 수와 시간 값은 양의 정수여야 합니다"
 done
-(( UE_COUNT == 10 )) || fail "production L3-01-O 자격시험은 UE 10개로 고정합니다"
-(( PROCESS_COUNT * UES_PER_PROCESS == UE_COUNT )) || fail "프로세스×UE 수가 10이어야 합니다"
-(( PROCESS_COUNT == 2 && UES_PER_PROCESS == 5 )) || fail "자격시험 실행 모양은 2×5로 고정합니다"
+(( PROCESS_COUNT * UES_PER_PROCESS == UE_COUNT )) || fail "프로세스×UE 수가 UE_COUNT와 다릅니다"
+if (( DIAGNOSTIC_SCALE == 0 )); then
+  (( UE_COUNT == 10 )) || fail "production L3-01-O 자격시험은 UE 10개로 고정합니다"
+  (( PROCESS_COUNT == 2 && UES_PER_PROCESS == 5 )) || fail "자격시험 실행 모양은 2×5로 고정합니다"
+fi
 [[ $MANAGE_RAN == 0 || $MANAGE_RAN == 1 ]] || fail "SAME_CELL_AUTH_TIMEOUT_MANAGE_DU는 0 또는 1이어야 합니다"
 [[ $SAME_CELL_PRESTART == 0 || $SAME_CELL_PRESTART == 1 ]] || fail "SAME_CELL_PRESTART는 0 또는 1이어야 합니다"
 (( SAME_CELL_PRESTART == 0 || MANAGE_RAN == 0 )) || fail "same-cell prestart는 외부 RAN lifecycle이 필요합니다"
@@ -69,7 +73,7 @@ fi
 if (( SAME_CELL_PRESTART )); then
   [[ -f $ENDPOINTS_FILE && ! -L $ENDPOINTS_FILE ]] || fail "same-cell endpoint 파일이 안전하지 않습니다"
   mapfile -t endpoint_rows <"$ENDPOINTS_FILE"
-  (( ${#endpoint_rows[@]} == UE_COUNT )) || fail "same-cell 인증 미응답형은 독립 RU endpoint 10개가 필요합니다"
+  (( ${#endpoint_rows[@]} == UE_COUNT )) || fail "same-cell 인증 미응답형은 UE 수만큼 독립 RU endpoint가 필요합니다"
   for path in "$SAME_CELL_RAN_READY_FILE" "$SAME_CELL_READY_FILE" "$SAME_CELL_ATTACK_READY_FILE" \
               "$SAME_CELL_ATTACK_DONE_FILE" "$SAME_CELL_RELEASE_FILE" "$SAME_CELL_UE_GATE_FILE"; do
     [[ $path == /* ]] || fail "same-cell marker는 절대 경로여야 합니다"
@@ -80,6 +84,7 @@ if (( SAME_CELL_PRESTART )); then
     || fail "same-cell 인증 UE 바이너리에 RA gate가 없습니다"
 fi
 for command in flock python3 setsid stdbuf; do command -v "$command" >/dev/null || fail "$command가 필요합니다"; done
+ATTACKER_CONFIGS_FILE=${AUTH_STALL_CELL_SCALE_CONFIGS_FILE:-$ATTACKER_CONFIGS_FILE}
 mapfile -t CONFIGS < <(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$ATTACKER_CONFIGS_FILE" | head -n "$PROCESS_COUNT")
 (( ${#CONFIGS[@]} == PROCESS_COUNT )) || fail "UE 프로세스별 설정이 필요합니다"
 for file in "${CONFIGS[@]}"; do [[ -f $file && ! -L $file ]] || fail "UE 설정이 안전하지 않습니다: $file"; done
@@ -233,7 +238,7 @@ while :; do
   done
   (( ready == UE_COUNT )) && break
   for pid in "${PIDS[@]}"; do running "$pid" || { EARLY_EXIT=$((EARLY_EXIT + 1)); fail "UE가 목표 NAS 메시지 전에 종료됐습니다"; }; done
-  (( SECONDS - started < READY_TIMEOUT_S )) || fail "UE 10개의 목표 NAS 메시지가 시간 초과했습니다: $ready/10"
+  (( SECONDS - started < READY_TIMEOUT_S )) || fail "UE 전체의 목표 NAS 메시지가 시간 초과했습니다: $ready/10"
   sleep .2
 done
 sleep "$POST_MARKER_S"

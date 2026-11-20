@@ -109,6 +109,11 @@ if [[ $ACTION == run ]]; then
 else
   ATTACK_SLOTS=4
 fi
+if [[ -n ${SAME_CELL_DIAGNOSTIC_ATTACK_SLOTS:-} ]]; then
+  [[ $ATTACK == auth-timeout && $SAME_CELL_DIAGNOSTIC_ATTACK_SLOTS =~ ^[1-9][0-9]*$ ]] \
+    || fail "SAME_CELL_DIAGNOSTIC_ATTACK_SLOTS는 auth-timeout의 양의 정수여야 합니다"
+  ATTACK_SLOTS=$SAME_CELL_DIAGNOSTIC_ATTACK_SLOTS
+fi
 TOTAL_ENDPOINTS=$((ATTACK_SLOTS + COUNT))
 
 for command in flock python3 setsid "$IP_CMD" "$PING_CMD" "$SS_CMD"; do
@@ -455,7 +460,8 @@ select_broker() {
 if [[ $ACTION == run ]]; then
   [[ $RUN_ID =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$ ]] || fail "안전한 run id가 필요합니다"
   [[ $COUNT =~ ^[1-9][0-9]*$ && $COUNT -le 7 ]] || fail "count는 1..7이어야 합니다"
-  (( TOTAL_ENDPOINTS <= 15 )) || fail "공격 UE endpoint와 normal UE 합계는 15 이하여야 합니다"
+  (( TOTAL_ENDPOINTS <= ${SAME_CELL_DIAGNOSTIC_MAX_ENDPOINTS:-15} )) \
+    || fail "공격 UE endpoint와 normal UE 합계가 허용 한도를 넘었습니다: $TOTAL_ENDPOINTS"
   [[ ! -e $STATE ]] || fail "same-cell 상태 디렉터리가 이미 있습니다: $STATE"
   pgrep -x nr-uesoftmodem >/dev/null 2>&1 && fail "기존 OAI UE가 있습니다"
   mkdir -m 700 "$STATE"
@@ -522,6 +528,12 @@ if [[ $ACTION == run ]]; then
   export SAME_CELL_UE_TX_ENDPOINT="$SAME_CELL_VICTIM_TX_ENDPOINT"
   export SAME_CELL_UE_RX_ENDPOINT="$SAME_CELL_VICTIM_RX_ENDPOINT"
 
+  if [[ -n ${SAME_CELL_DIAGNOSTIC_ATTACK_SLOTS:-} ]]; then
+    export AUTH_STALL_CELL_SCALE_UE_COUNT="$ATTACK_SLOTS"
+    export AUTH_STALL_CELL_SCALE_PROCESS_COUNT=$(((ATTACK_SLOTS + 4) / 5))
+    export AUTH_STALL_CELL_SCALE_UES_PER_PROCESS=5
+    export AUTH_STALL_CELL_DIAGNOSTIC_SCALE=1
+  fi
   start_normal_group "$RUNTIME_CFG" "$RUN_ID"
   NORMAL_PID=$(owned_pid normal) || fail "normal UE PID를 기록하지 못했습니다"
   setsid "${COMMAND[@]}" >"$RUN_OUT/attack.stdout" 2>"$RUN_OUT/attack.stderr" </dev/null 9>&- &
@@ -682,6 +694,12 @@ if [[ $ACTION == start ]]; then
   printf '%s\n' "$PLACEHOLDER_CFG" >"$STATE/placeholder_config"
   printf 'placeholder\n' >"$STATE/broker-control"
   resolve_pdu_session_id
+  if [[ -n ${SAME_CELL_DIAGNOSTIC_ATTACK_SLOTS:-} ]]; then
+    export AUTH_STALL_CELL_SCALE_UE_COUNT="$ATTACK_SLOTS"
+    export AUTH_STALL_CELL_SCALE_PROCESS_COUNT=$(((ATTACK_SLOTS + 4) / 5))
+    export AUTH_STALL_CELL_SCALE_UES_PER_PROCESS=5
+    export AUTH_STALL_CELL_DIAGNOSTIC_SCALE=1
+  fi
   start_normal_group "$RUNTIME_CFG" "$RUN_ID"
   start_placeholder_group 1
   for ((i=1; i<=TOTAL_ENDPOINTS; i++)); do wait_port "$((2001 + 100 * i))" || fail "UE endpoint $i 준비가 시간 초과했습니다"; done
@@ -739,6 +757,11 @@ read -r NORMAL_UE_PDU_SESSION_ID <"$STATE/pdu_session_id"
 read -r RUN_OUT <"$STATE/run_root"
 read -r PLACEHOLDER_CFG <"$STATE/placeholder_config"
 [[ $COUNT =~ ^[1-9][0-9]*$ && $NORMAL_UE_PDU_SESSION_ID =~ ^[1-9][0-9]*$ ]] || fail "same-cell 세션 상태가 잘못됐습니다"
+if [[ -n ${SAME_CELL_DIAGNOSTIC_ATTACK_SLOTS:-} ]]; then
+  [[ $ATTACK == auth-timeout && $SAME_CELL_DIAGNOSTIC_ATTACK_SLOTS =~ ^[1-9][0-9]*$ ]] \
+    || fail "SAME_CELL_DIAGNOSTIC_ATTACK_SLOTS는 auth-timeout의 양의 정수여야 합니다"
+  ATTACK_SLOTS=$SAME_CELL_DIAGNOSTIC_ATTACK_SLOTS
+fi
 TOTAL_ENDPOINTS=$((ATTACK_SLOTS + COUNT))
 NORMAL_PID=$(owned_pid normal 2>/dev/null || true)
 BROKER_PID=$(owned_pid broker 2>/dev/null || true)

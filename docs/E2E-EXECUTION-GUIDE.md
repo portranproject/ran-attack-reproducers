@@ -87,6 +87,7 @@ install -m 600 profiles/live-e2e.example.conf /root/.config/ran-reproducer/p1-li
 - dashboard 수락 `1건 이상`·거절 `0건`
 - runner·바이너리·설정·증거 SHA-256 봉인
 - (`same-cell`) 정상 UE 5대의 공격 전·종료 직전 Registration·PDU·ping `5/5` 봉인
+- **dashboard 전송 시점**: 기본값 `CU_DASHBOARD_FOLLOW=0`에서는 실행이 끝난 뒤 `dashboard_sender.py --once` 한 번만 전송한다. `CU_DASHBOARD_FOLLOW=1`은 관측이 시작되는 지점(`tools/p5-live-e2e`는 baseline 뒤 detector 재기동 직후, L3-21·L3-06 runner는 `start_live()` 끝)에서 전송기를 따라가기 모드로 띄워 경보·KPM을 실행 중에 보내고, 종료 시 telemetry·detector를 내린 뒤 SIGTERM으로 멈추고 `--once`로 나머지를 이어 보낸다(같은 `sender.json`, `sender.stdout`·`sender.log`는 이어쓰기). `tools/p5-live-e2e`는 `LIVE_E2E_WAIT_FOR_BASELINE=1`에서만 켤 수 있다. 검증 판정 기준은 두 모드 모두 같다.
 
 2026-11-19 p1 clean-origin에서는 이 절차로 L3 7종 42/42를 통과했다([p1 자격 기록](../artifacts/p1-clean-origin-live-e2e-20261119/README.md)). p1·p5 자격을 p4나 OTA 자격으로 복사하지 않는다.
 

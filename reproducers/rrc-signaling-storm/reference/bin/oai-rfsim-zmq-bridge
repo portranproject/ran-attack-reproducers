@@ -86,6 +86,8 @@ def dl_loop(sock, ctx):
             req.send(b"\x00")
             data = req.recv()
             n = len(data) // 8
+            if sent == 0:
+                sys.stderr.write(f"bridge: first dl block n={n}\n"); sys.stderr.flush()
             if n == 0:
                 continue
             payload = cf_to_c16(data)
@@ -109,6 +111,7 @@ def main():
     sys.stderr.write(f"bridge: listening {TCP_HOST}:{TCP_PORT}\n")
     sys.stderr.flush()
     sock, _ = srv.accept()
+    sys.stderr.write("bridge: accepted\n"); sys.stderr.flush()
     sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
     # OAI rfsim client waits for the server's first block before it starts.
     sock.sendall(HEADER.pack(1, 1, 0, 0, 0) + b"\x00" * 4)
@@ -120,6 +123,9 @@ def main():
             if hdr is None:
                 break
             size, nbant, ts, _ov, _of = HEADER.unpack(hdr)
+            if not globals().get("_ul_logged"):
+                sys.stderr.write(f"bridge: first ul block size={size} ant={nbant} ts={ts}\n"); sys.stderr.flush()
+                globals()["_ul_logged"] = True
             body = recv_exact(sock, size * nbant * 4)
             if body is None:
                 break

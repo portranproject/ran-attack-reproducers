@@ -86,6 +86,8 @@ SAME_CELL_RECOVERY_TIMEOUT_S=${SAME_CELL_RECOVERY_TIMEOUT_S:-90}
 SAME_CELL_GNB_SETTLE_S=${SAME_CELL_GNB_SETTLE_S:-2}
 SAME_CELL_ATTACK_WARMUP_S=${SAME_CELL_ATTACK_WARMUP_S:-8}
 SAME_CELL_ATTACK_TIMEOUT_S=${SAME_CELL_ATTACK_TIMEOUT_S:-300}
+SAME_CELL_NORMAL_PRE_HOLD_S=${SAME_CELL_NORMAL_PRE_HOLD_S:-0}
+SAME_CELL_NORMAL_POST_HOLD_S=${SAME_CELL_NORMAL_POST_HOLD_S:-0}
 SAME_CELL_EXPERIMENTAL_SWITCH=${SAME_CELL_EXPERIMENTAL_SWITCH:-0}
 BASELINE_READY_FILE=${LIVE_E2E_BASELINE_READY_FILE:-}
 OBSERVATION_READY_FILE=${LIVE_E2E_OBSERVATION_READY_FILE:-}
@@ -129,9 +131,12 @@ grep -Eq 'tx_port=tcp://[^, ]*:2000([, ]|$)' "$NORMAL_UE_GNB_CONFIG" \
 grep -Eq 'rx_port=tcp://[^, ]*:2001([, ]|$)' "$NORMAL_UE_GNB_CONFIG" \
   || fail "DU RX가 broker port 2001을 사용해야 합니다"
 for value in "$SAME_CELL_ENDPOINT_TIMEOUT_S" "$SAME_CELL_HEALTH_TIMEOUT_S" \
-             "$SAME_CELL_RECOVERY_TIMEOUT_S" "$SAME_CELL_GNB_SETTLE_S" "$SAME_CELL_ATTACK_WARMUP_S"; do
-  [[ $value =~ ^[0-9]+$ ]] || fail "timeout/settle 값은 정수여야 합니다"
+             "$SAME_CELL_RECOVERY_TIMEOUT_S" "$SAME_CELL_GNB_SETTLE_S" "$SAME_CELL_ATTACK_WARMUP_S" \
+             "$SAME_CELL_NORMAL_PRE_HOLD_S" "$SAME_CELL_NORMAL_POST_HOLD_S"; do
+  [[ $value =~ ^[0-9]+$ ]] || fail "timeout/settle/hold 값은 정수여야 합니다"
 done
+(( SAME_CELL_NORMAL_PRE_HOLD_S <= 600 && SAME_CELL_NORMAL_POST_HOLD_S <= 600 )) \
+  || fail "SAME_CELL_NORMAL_PRE/POST_HOLD_S는 600초 이하여야 합니다"
 [[ $SAME_CELL_ATTACK_TIMEOUT_S =~ ^[1-9][0-9]*$ && $SAME_CELL_ATTACK_TIMEOUT_S -le 600 ]] \
   || fail "SAME_CELL_ATTACK_TIMEOUT_S는 1..600초여야 합니다"
 [[ $SAME_CELL_EXPERIMENTAL_SWITCH == 0 || $SAME_CELL_EXPERIMENTAL_SWITCH == 1 ]] \
@@ -171,6 +176,17 @@ owned_pid() {
   actual=$(pid_starttime "$pid")
   [[ -n $actual && $actual == "$expected" ]] || return 1
   echo "$pid"
+}
+stop_normal_ue() {
+  local pid=$1
+  is_running "$pid" || return 0
+  # normal UE 5대는 한 OAI 프로세스다. 첫 INT의 NAS deregistration이 끝날
+  # 시간을 주고, 그래도 남으면 TERM, 마지막에만 KILL로 올린다.
+  kill -INT -- "-$pid" 2>/dev/null || true
+  for _ in {1..50}; do is_running "$pid" || return 0; sleep .2; done
+  kill -TERM -- "-$pid" 2>/dev/null || true
+  for _ in {1..50}; do is_running "$pid" || return 0; sleep .2; done
+  kill -KILL -- "-$pid" 2>/dev/null || true
 }
 stop_group() {
   local pid=$1 signal=${2:-INT}
@@ -244,17 +260,33 @@ record_healthy() {
   rm -f -- "$sample"
   return 1
 }
+normal_hold() {
+  local seconds=$1 phase=$2 deadline healthy
+  (( seconds > 0 )) || return 0
+  deadline=$((SECONDS + seconds))
+  while (( SECONDS < deadline )); do
+    is_running "$NORMAL_PID" || return 1
+    healthy=$(health "$COUNT")
+    printf '%s\t%s\t%s\n' "$(date +%s%N)" "$phase" "$healthy" >>"$RUN_OUT/normal-hold.tsv"
+    sleep 1
+  done
+}
 embed_self_live_evidence() {
   python3 - "$CHILD_OUTPUT" "$RUN_OUT/run.json" "$RUN_OUT/session.json" \
-    "$RUN_OUT/normal-health.jsonl" "$RUN_OUT/broker.log" <<'PY'
+    "$RUN_OUT/normal-health.jsonl" "$RUN_OUT/broker.log" "$RUN_OUT/normal-hold.tsv" <<'PY'
 import hashlib
 import json
+import os
 import pathlib
 import sys
 
-child, wrapper_path, session_path, health_path, broker_path = map(pathlib.Path, sys.argv[1:])
+child, wrapper_path, session_path, health_path, broker_path, hold_path = map(pathlib.Path, sys.argv[1:])
 paths = [child / name for name in ("run.json", "oracle.jsonl", "verdict.json", "report.md", "evidence_manifest.json")]
 paths += [wrapper_path, session_path, health_path, broker_path]
+if hold_path.is_symlink():
+    raise SystemExit("same-cell normal-hold.tsv가 심볼릭 링크입니다")
+if hold_path.is_file():
+    paths.append(hold_path)
 if any(path.is_symlink() or not path.is_file() for path in paths):
     raise SystemExit("same-cell 최종 증거 파일이 안전하지 않습니다")
 health = [json.loads(line) for line in health_path.read_text(encoding="utf-8").splitlines() if line]
@@ -268,6 +300,19 @@ summary = {
     "normal_health": health,
     "broker_sha256": hashlib.sha256(broker_path.read_bytes()).hexdigest(),
 }
+hour_guard = {}
+for variable, key in (("HOUR_GUARD_WAIT_STARTED_AT", "wait_started_at"),
+                      ("HOUR_GUARD_WAIT_ENDED_AT", "wait_ended_at")):
+    value = os.environ.get(variable, "")
+    if value:
+        hour_guard[key] = value
+waited = os.environ.get("HOUR_GUARD_WAIT_S", "")
+if waited:
+    if not waited.isdigit():
+        raise SystemExit("정각 대기 시간이 잘못됐습니다")
+    hour_guard["waited_s"] = int(waited)
+if hour_guard:
+    summary["hour_guard"] = hour_guard
 run = json.loads((child / "run.json").read_text(encoding="utf-8"))
 run["same_cell"] = summary
 (child / "run.json").write_text(json.dumps(run, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -282,6 +327,13 @@ verdict.setdefault("dimensions", {})["normal_ue_coexistence"] = "pass"
 with (child / "report.md").open("a", encoding="utf-8") as output:
     output.write("- 같은 DU·셀 정상 UE 공격 전/후: `5/5`, `5/5`\n")
 manifest = json.loads((child / "evidence_manifest.json").read_text(encoding="utf-8"))
+if hold_path.is_file():
+    target = child / "same-cell-normal-hold.tsv"
+    if target.exists() or target.is_symlink():
+        raise SystemExit("same-cell normal-hold.tsv 증거가 이미 있습니다")
+    target.write_bytes(hold_path.read_bytes())
+    manifest["files"][target.name] = {"size": target.stat().st_size,
+                                      "sha256": hashlib.sha256(target.read_bytes()).hexdigest()}
 for name in ("run.json", "oracle.jsonl", "verdict.json", "report.md"):
     path = child / name
     manifest["files"][name] = {"size": path.stat().st_size, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
@@ -436,7 +488,7 @@ if [[ $ACTION == run ]]; then
     trap - EXIT INT TERM
     [[ -z $ATTACK_PID ]] || stop_group "$ATTACK_PID" TERM
     pid=$(owned_pid broker 2>/dev/null || true); [[ -z $pid ]] || stop_group "$pid"
-    pid=$(owned_pid normal 2>/dev/null || true); [[ -z $pid ]] || stop_group "$pid"
+    pid=$(owned_pid normal 2>/dev/null || true); [[ -z $pid ]] || stop_normal_ue "$pid"
     pid=$(owned_pid du 2>/dev/null || true); [[ -z $pid ]] || stop_group "$pid"
     (( GNB_RESTARTED == 0 )) || bash -c "$NORMAL_UE_GNB_STOP_CMD" >/dev/null 2>&1 || true
     clear_state 2>/dev/null || true
@@ -453,7 +505,9 @@ if [[ $ACTION == run ]]; then
   export SAME_CELL_ATTACK_DONE_FILE="$STATE/attack.done"
   export SAME_CELL_RELEASE_FILE="$STATE/attack.release"
   export SAME_CELL_UE_GATE_FILE="$STATE/attack-ue-gate"
-  export SAME_CELL_READY_TIMEOUT_S=$((SAME_CELL_HEALTH_TIMEOUT_S + 30))
+  export SAME_CELL_READY_TIMEOUT_S=$((SAME_CELL_HEALTH_TIMEOUT_S + 30 + SAME_CELL_NORMAL_PRE_HOLD_S + SAME_CELL_NORMAL_POST_HOLD_S))
+  # blind control은 target 게이트를 열지 않으므로 공격 UE 기동~teardown을 게이트 기한이 덮어야 한다.
+  export SAME_CELL_ATTACKER_GATE_TIMEOUT_S=$((240 + SAME_CELL_NORMAL_PRE_HOLD_S + SAME_CELL_NORMAL_POST_HOLD_S))
   export P5_EXTERNAL_RAN=1 SAME_CELL_UE_ENDPOINTS_FILE="$ENDPOINTS_FILE"
   export SAME_CELL_DU_LOG="$NORMAL_UE_GNB_LOG" SAME_CELL_GNB_CONFIG="$NORMAL_UE_GNB_CONFIG"
   export SAME_CELL_BLIND_MANAGE_DU=0 SAME_CELL_UPLINK_MANAGE_RAN=0 SAME_CELL_CREDENTIAL_FLOOD_MANAGE_RAN=0
@@ -513,6 +567,8 @@ if [[ $ACTION == run ]]; then
       sleep .2
     done
   fi
+  normal_hold "$SAME_CELL_NORMAL_PRE_HOLD_S" pre \
+    || fail "전 유지 중 normal UE 프로세스가 종료됐습니다"
   ( set -o noclobber; : >"$STATE/normal.ready" )
   started=$SECONDS
   until [[ -f $STATE/attack.ready && ! -L $STATE/attack.ready ]]; do
@@ -554,6 +610,8 @@ if [[ $ACTION == run ]]; then
       sleep 1
     done
     NORMAL_HEALTH_BEFORE_TEARDOWN=true
+    normal_hold "$SAME_CELL_NORMAL_POST_HOLD_S" post \
+      || fail "후 유지 중 normal UE 프로세스가 종료됐습니다"
     ( set -o noclobber; : >"$STATE/attack.release" )
   fi
   attack_exit_started=$SECONDS
@@ -603,7 +661,7 @@ if [[ $ACTION == start ]]; then
     (( START_COMPLETE )) && return 0
     pid=$(owned_pid placeholder-group 2>/dev/null || true); [[ -z $pid ]] || stop_group "$pid"
     pid=$(owned_pid broker 2>/dev/null || true); [[ -z $pid ]] || stop_group "$pid"
-    pid=$(owned_pid normal 2>/dev/null || true); [[ -z $pid ]] || stop_group "$pid"
+    pid=$(owned_pid normal 2>/dev/null || true); [[ -z $pid ]] || stop_normal_ue "$pid"
     (( GNB_RESTARTED == 0 )) || bash -c "$NORMAL_UE_GNB_STOP_CMD" >/dev/null 2>&1 || true
     clear_state 2>/dev/null || true
     exit "$status"
@@ -658,7 +716,7 @@ fi
 if [[ $ACTION == stop ]]; then
   for role in attack placeholder-group broker normal; do
     pid=$(owned_pid "$role" 2>/dev/null || true)
-    [[ -z $pid ]] || stop_group "$pid"
+    [[ -z $pid ]] || if [[ $role == normal ]]; then stop_normal_ue "$pid"; else stop_group "$pid"; fi
   done
   bash -c "$NORMAL_UE_GNB_STOP_CMD" >/dev/null 2>&1 \
     || fail "DU 종료 명령이 실패했습니다; 상태를 보존합니다"

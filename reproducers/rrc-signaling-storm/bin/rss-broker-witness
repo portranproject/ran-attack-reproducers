@@ -106,6 +106,9 @@ BROKER_NORMAL_POOL_QUALIFICATION=${BROKER_NORMAL_POOL_QUALIFICATION:-0}
 BROKER_NORMAL_HEALTH_TIMEOUT_S=${BROKER_NORMAL_HEALTH_TIMEOUT_S:-120}
 BROKER_NORMAL_ATTACK_DURATION_S=${BROKER_NORMAL_ATTACK_DURATION_S:-30}
 BROKER_NORMAL_PDU_SESSION_ID=${BROKER_NORMAL_PDU_SESSION_ID:-}
+BROKER_NORMAL_PRE_HOLD_S=${BROKER_NORMAL_PRE_HOLD_S:-0}
+BROKER_NORMAL_POST_HOLD_S=${BROKER_NORMAL_POST_HOLD_S:-0}
+NORMAL_UE_STOP_GAP_S=${NORMAL_UE_STOP_GAP_S:-0}
 BROKER_WITNESS_PHASE_MS=${BROKER_WITNESS_PHASE_MS:-0}
 BROKER_WITNESS_RETRY_MS=${BROKER_WITNESS_RETRY_MS:-1000}
 BROKER_WITNESS_HONOR_REJECT=${BROKER_WITNESS_HONOR_REJECT:-0}
@@ -140,7 +143,7 @@ LOCK_FILE=${LOCK_FILE:-/tmp/rss-broker-witness.lock}
 USE_SETSID=${USE_SETSID:-1}
 SETSID_BIN=${SETSID_BIN:-setsid}
 
-for value in WITNESS_DELAY_MS BROKER_ATTACK_MAX_DURATION_S BROKER_ATTACK_START_DELAY_MS BROKER_ATTACK_START_STRIDE_MS GNB_SETTLE_S UE_BEFORE_BROKER_S; do
+for value in WITNESS_DELAY_MS BROKER_ATTACK_MAX_DURATION_S BROKER_ATTACK_START_DELAY_MS BROKER_ATTACK_START_STRIDE_MS GNB_SETTLE_S UE_BEFORE_BROKER_S BROKER_NORMAL_PRE_HOLD_S BROKER_NORMAL_POST_HOLD_S NORMAL_UE_STOP_GAP_S; do
   [[ ${!value} =~ ^[0-9]+$ ]] || { echo "$value must be a non-negative integer" >&2; exit 1; }
 done
 for value in BROKER_ATTACK_MSG4_WAIT BROKER_WITNESS_HONOR_REJECT BROKER_START_GNB_LAST; do
@@ -159,6 +162,8 @@ done
   || { echo "BROKER_ATTACK_PHASE_MS must be 0..5000" >&2; exit 1; }
 [[ $BROKER_ATTACK_UES_PER_PROCESS =~ ^[1-9][0-9]*$ ]] && (( BROKER_ATTACK_UES_PER_PROCESS <= 16 )) \
   || { echo "BROKER_ATTACK_UES_PER_PROCESS must be 1..16" >&2; exit 1; }
+(( NORMAL_UE_STOP_GAP_S <= 60 )) \
+  || { echo "NORMAL_UE_STOP_GAP_S must be 0..60" >&2; exit 1; }
 [[ $BROKER_WITNESS_UES =~ ^[1-9][0-9]*$ ]] && (( BROKER_WITNESS_UES <= 16 )) \
   || { echo "BROKER_WITNESS_UES must be 1..16" >&2; exit 1; }
 [[ $BROKER_WITNESS_PHASE_MS =~ ^[0-9]+$ ]] && (( BROKER_WITNESS_PHASE_MS <= 5000 )) \
@@ -214,14 +219,16 @@ if (( BROKER_NORMAL_POOL_QUALIFICATION )); then
     || { echo "BROKER_NORMAL_HEALTH_TIMEOUT_S must be a positive integer" >&2; exit 1; }
   [[ $BROKER_NORMAL_ATTACK_DURATION_S =~ ^[1-9][0-9]*$ ]] && (( BROKER_NORMAL_ATTACK_DURATION_S <= 300 )) \
     || { echo "BROKER_NORMAL_ATTACK_DURATION_S must be 1..300" >&2; exit 1; }
+  (( BROKER_NORMAL_PRE_HOLD_S <= 600 && BROKER_NORMAL_POST_HOLD_S <= 600 )) \
+    || { echo "BROKER_NORMAL_PRE/POST_HOLD_S must be 0..600" >&2; exit 1; }
   grep -Faq OAI_NORMAL_TUN_SUFFIX "$BROKER_WITNESS_UE_BIN" \
     || { echo "normal-pool qualification requires normal-tun-suffix.patch in the witness UE binary" >&2; exit 1; }
   grep -Faq RSS_BROKER_CONTROL_FILE "$BROKER_ATTACK_UE_BIN" \
     || { echo "normal-pool qualification requires the broker control gate in the attack UE binary" >&2; exit 1; }
-  NORMAL_REQUIRED_DURATION_MS=$(((BROKER_NORMAL_HEALTH_TIMEOUT_S + BROKER_NORMAL_ATTACK_DURATION_S + NORMAL_RECOVERY_DEADLINE_S) * 1000))
+  NORMAL_REQUIRED_DURATION_MS=$(((BROKER_NORMAL_HEALTH_TIMEOUT_S + BROKER_NORMAL_PRE_HOLD_S + BROKER_NORMAL_ATTACK_DURATION_S + NORMAL_RECOVERY_DEADLINE_S + BROKER_NORMAL_POST_HOLD_S) * 1000))
   (( DURATION_S * 1000 >= NORMAL_REQUIRED_DURATION_MS )) || {
     required_s=$(((NORMAL_REQUIRED_DURATION_MS + 999) / 1000))
-    echo "normal-pool qualification requires -d >= $required_s seconds for 5/5 startup, attack, and 90-second recovery" >&2
+    echo "normal-pool qualification requires -d >= $required_s seconds for 5/5 startup, pre-hold, attack, 90-second recovery, and post-hold" >&2
     exit 1
   }
 fi
@@ -365,7 +372,7 @@ MULTI_RU_TOPOLOGY_JSON=""
 (( BROKER_WITNESS_MULTI_RU == 0 )) || MULTI_RU_TOPOLOGY_JSON=",\"zmq_endpoints\":$BROKER_ENDPOINTS"
 NORMAL_POOL_ROLE_JSON=""
 if (( BROKER_NORMAL_POOL_QUALIFICATION )); then
-  NORMAL_POOL_ROLE_JSON=",\"normal_pool\":{\"enabled\":true,\"ues\":5,\"same_du_cell\":true,\"pdu_session_id\":$BROKER_NORMAL_PDU_SESSION_ID,\"health_timeout_s\":$BROKER_NORMAL_HEALTH_TIMEOUT_S,\"attack_duration_s\":$BROKER_NORMAL_ATTACK_DURATION_S,\"recovery_deadline_s\":$NORMAL_RECOVERY_DEADLINE_S,\"required_duration_ms\":$NORMAL_REQUIRED_DURATION_MS,\"clocked_attack_slots\":true,\"uplink_gate\":\"broker\",\"direct_detector_input\":false,\"ue_to_ran_path_required\":true}"
+  NORMAL_POOL_ROLE_JSON=",\"normal_pool\":{\"enabled\":true,\"ues\":5,\"same_du_cell\":true,\"pdu_session_id\":$BROKER_NORMAL_PDU_SESSION_ID,\"health_timeout_s\":$BROKER_NORMAL_HEALTH_TIMEOUT_S,\"pre_hold_s\":$BROKER_NORMAL_PRE_HOLD_S,\"attack_duration_s\":$BROKER_NORMAL_ATTACK_DURATION_S,\"recovery_deadline_s\":$NORMAL_RECOVERY_DEADLINE_S,\"post_hold_s\":$BROKER_NORMAL_POST_HOLD_S,\"required_duration_ms\":$NORMAL_REQUIRED_DURATION_MS,\"clocked_attack_slots\":true,\"uplink_gate\":\"broker\",\"direct_detector_input\":false,\"ue_to_ran_path_required\":true}"
 fi
 
 PIDS=()
@@ -522,6 +529,21 @@ record_normal_pool_health() {
   done
 }
 
+normal_hold() {
+  local seconds=$1 phase=$2 deadline healthy
+  (( seconds > 0 )) || return 0
+  deadline=$((SECONDS + seconds))
+  # Keep the last 10 s for teardown inside the runner deadline (-d).
+  (( deadline <= DEADLINE - 10 )) || deadline=$((DEADLINE - 10))
+  while (( SECONDS < deadline )); do
+    is_running "$BROKER_PID" || return 1
+    all_active_ues_running || return 1
+    healthy=$(normal_pool_health)
+    printf '%s\t%s\t%s\n' "$(date +%s%N)" "$phase" "$healthy" >>"$OUT/normal-hold.tsv"
+    sleep 1
+  done
+}
+
 select_persistent_attack() {
   local mode=$1 before started=$SECONDS count slots="1,2,3,4,5,6"
   [[ $mode == standby || $mode == warmup || $mode == attack ]] || return 1
@@ -590,33 +612,31 @@ stop_children() {
   if [[ -n $PING_PID ]]; then
     kill -INT "$PING_PID" 2>/dev/null || true
     wait "$PING_PID" 2>/dev/null || true
+    PING_PID=""
   fi
-  local i pid target status forced alive
-  for ((i=${#PIDS[@]}-1; i>=0; i--)); do
+  local i pid target status forced alive gap targets=()
+  gap=$NORMAL_UE_STOP_GAP_S
+  for i in "${UE_CHILD_INDEXES[@]}"; do targets+=("$i"); done
+  (( BROKER_INDEX < 0 )) || targets+=("$BROKER_INDEX")
+  # OAI's first INT starts NAS deregistration; the previous second INT only
+  # 0.2 s later skipped that graceful path and stopped every UE at once.  Signal
+  # one process at a time so the cell does not see a detach burst, then escalate
+  # TERM and KILL only for stragglers.  The broker stops last, after the UEs.
+  for i in "${targets[@]}"; do
     (( ${CHILD_REAPED[$i]:-0} == 0 )) || continue
     pid=${PIDS[$i]}
     target=$pid
     (( GROUPED[$i] )) && target="-$pid"
-    kill -INT -- "$target" 2>/dev/null || true
+    if is_running "$pid"; then
+      kill -INT -- "$target" 2>/dev/null || true
+    fi
+    (( gap == 0 )) || sleep "$gap"
   done
-  # OAI w38 deliberately uses the first INT/TERM for NAS deregistration and
-  # prints "Press ^C again".  A second signal is its supported immediate-stop
-  # path.  The old one-signal/one-second sequence either crashed in init_RA or
-  # forced every UE through SIGKILL.  The GNU Radio broker needs only one INT.
-  sleep 0.2
-  for i in "${UE_CHILD_INDEXES[@]}"; do
-    (( ${CHILD_REAPED[$i]:-0} == 0 )) || continue
-    pid=${PIDS[$i]}
-    target=$pid
-    (( GROUPED[$i] )) && target="-$pid"
-    is_running "$pid" && kill -INT -- "$target" 2>/dev/null || true
-  done
-  for _ in {1..25}; do
+  for _ in {1..50}; do
     alive=0
-    for i in "${!PIDS[@]}"; do
+    for i in "${targets[@]}"; do
       (( ${CHILD_REAPED[$i]:-0} == 0 )) || continue
-      pid=${PIDS[$i]}
-      if is_running "$pid"; then
+      if is_running "${PIDS[$i]}"; then
         alive=1
         break
       fi
@@ -624,7 +644,28 @@ stop_children() {
     (( alive )) || break
     sleep 0.2
   done
-  for ((i=${#PIDS[@]}-1; i>=0; i--)); do
+  for i in "${targets[@]}"; do
+    (( ${CHILD_REAPED[$i]:-0} == 0 )) || continue
+    pid=${PIDS[$i]}
+    target=$pid
+    (( GROUPED[$i] )) && target="-$pid"
+    if is_running "$pid"; then
+      kill -TERM -- "$target" 2>/dev/null || true
+    fi
+  done
+  for _ in {1..50}; do
+    alive=0
+    for i in "${targets[@]}"; do
+      (( ${CHILD_REAPED[$i]:-0} == 0 )) || continue
+      if is_running "${PIDS[$i]}"; then
+        alive=1
+        break
+      fi
+    done
+    (( alive )) || break
+    sleep 0.2
+  done
+  for i in "${targets[@]}"; do
     (( ${CHILD_REAPED[$i]:-0} == 0 )) || continue
     pid=${PIDS[$i]}
     target=$pid
@@ -644,6 +685,7 @@ stop_children() {
     CHILD_REAPED[$i]=1
   done
 }
+
 cleanup() {
   local status=$?
   trap - EXIT INT TERM
@@ -960,6 +1002,11 @@ if (( BROKER_NORMAL_POOL_QUALIFICATION && NORMAL_BEFORE_HEALTHY )) && [[ -n $BAS
   done
 fi
 
+if (( BROKER_NORMAL_POOL_QUALIFICATION && NORMAL_BEFORE_HEALTHY && !BROKER_EARLY_EXIT && !EARLY_EXIT )); then
+  normal_hold "$BROKER_NORMAL_PRE_HOLD_S" pre \
+    || { echo "normal UE pre-hold failed" >&2; exit 1; }
+fi
+
 if (( BROKER_NORMAL_POOL_QUALIFICATION && SYNC_READY && !BROKER_EARLY_EXIT
       && !EARLY_EXIT && !NORMAL_PRE_ATTACK_FAILED )); then
   if [[ $MODE == attack ]]; then
@@ -1195,6 +1242,11 @@ if (( BROKER_NORMAL_POOL_QUALIFICATION )) && [[ $MODE == control ]]; then
   NORMAL_RECOVERY_HEALTHY_UES=$(normal_pool_health)
   (( NORMAL_RECOVERY_HEALTHY_UES != BROKER_WITNESS_UES )) || NORMAL_RECOVERY_HEALTHY=1
   record_normal_pool_health after
+fi
+
+if (( BROKER_NORMAL_POOL_QUALIFICATION && NORMAL_RECOVERY_HEALTHY && !BROKER_EARLY_EXIT && !EARLY_EXIT )); then
+  normal_hold "$BROKER_NORMAL_POST_HOLD_S" post \
+    || { echo "normal UE post-hold failed" >&2; exit 1; }
 fi
 
 is_running "$BROKER_PID" || BROKER_EARLY_EXIT=1

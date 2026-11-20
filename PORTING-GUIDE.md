@@ -1,82 +1,47 @@
 # 다른 테스트베드로 포팅하는 방법
 
-## 먼저 알아둘 결론
+이 저장소는 임의의 PC에서 바로 실행되는 설치형 제품이 아니다. 현재 자격이 확인된 환경은 Linux x86-64, OAI 2026.w38 UE, OCUDU 26.10 CU/DU, Open5GS, GNU Radio ZMQ 가상 RF로 구성된 `p5`와 clean-origin에서 재설치한 `p1`이다.
 
-이 저장소는 **임의의 PC에서 바로 실행되는 설치형 제품이 아니다.** 현재 자격이 끝난 환경은
-Linux x86-64, OAI 2026.w38 UE, OCUDU 26.10 CU/DU, Open5GS, GNU Radio ZMQ 가상 RF로
-구성한 p5와 clean-origin에서 새로 설치한 p1이다. AWS 자체에 종속된 공격 로직은 없지만,
-각 runner의 경로·원격 제어·로그 parser는 이 스택을 기준으로 한다.
+## 환경별 지원 범위
 
-| 옮길 환경 | 현재 상태 | 필요한 작업 |
+| 대상 환경 | 현재 상태 | 필요한 작업 |
 |---|---|---|
-| p1 clean-origin | 자격 완료 | 정상 UE 5대 same-cell L3 7종 42/42, 상세는 p1 자격 기록 |
-| 같은 OAI·OCUDU·Open5GS의 다른 ZMQ 호스트 | 포팅 가능, 환경별 미자격 | profile·모듈 conf의 절대경로·IP·SSH hook 변경 후 control부터 재검증 |
-| 노트북+USRP+차폐박스 OTA | adapter 미구현 | ZMQ 장치 인자를 USRP로 교체하고 RF inventory·gain·clock·차폐 doctor 및 로그 수집 hook 구현 |
-| 다른 gNB·코어 | backend 개발 필요 | build/run adapter와 F1/N2 로그 parser 교체, 기존 oracle·artifact 계약 유지 |
+| `p1` clean-origin | 자격 완료 | 정상 UE 5대 same-cell L3 7종 42/42 ([p1 자격 기록](artifacts/p1-clean-origin-live-e2e-20261119/README.md)) |
+| `p5` ZMQ | 자격 완료 | 개별·live L3 7종 통과 ([p5 운영](#p5-운영-체크리스트)) |
+| `p4` 등 동일 스택 ZMQ 호스트 | 포팅 가능, 미자격 | `backend: "p5"` profile·모듈 conf·credential 작성 후 control부터 재검증 |
+| 노트북+USRP+차폐박스 OTA | adapter 미구현 | USRP UE/DU run adapter 구현 및 RF inventory·차폐 게이트 적용 ([OTA 운영](#차폐-ota-운영-체크리스트)) |
+| 다른 gNB·코어 | 백엔드 개발 필요 | build/run adapter와 F1/N2 로그 parser 교체(기존 oracle·artifact 계약 유지) |
 | macOS·Windows 네이티브 | 미지원 | Linux VM 또는 별도 Linux 호스트 사용 |
 
-`qualified`는 p5 또는 p1에서 실제 통과한 자격이다. 다른 환경에 저장소를 복사했다고 그
-환경까지 qualified가 되지는 않는다. p1 결과는
-[clean-origin 자격 기록](artifacts/p1-clean-origin-live-e2e-20261119/)을 따른다.
-
-ZIP·`scp` 파일 복사본은 사용하지 않는다. 대상 호스트에서 Git clone 또는 `git pull
---ff-only`로 갱신하고 `doctor`가 현재 checkout과 핵심 runner 해시를 확인하게 한다. 공식
-runner가 없으면 포팅 실패이며 수동 스크립트를 새로 작성해 대체하지 않는다.
+`p1` 또는 `p5` 자격을 다른 환경으로 복사해 적지 않는다. 대상 호스트에서는 반드시 Git clone과 `git pull --ff-only`로 깨끗한 checkout을 유지한다(ZIP/`scp` 복사본 불가).
 
 ## 호스트 선행조건
 
-runner는 Linux의 GNU 명령 동작을 사용한다. 다음 항목은 자동 설치하지 않는다.
+runner는 Linux GNU 명령을 사용하며 아래 패키지를 자동 설치하지 않는다.
 
-- Bash, Python 3.10 이상, Git, GNU coreutils, `flock`, `setsid`, `pgrep`, `jq`
+- Bash, Python 3.10 이상, Git, GNU coreutils, `flock`, `setsid`, `pgrep`, `jq`, `timeout`, `sha256sum`
 - OpenSSH client와 고정 `known_hosts`
-- OAI 빌드 의존성 및 고정 OAI commit
+- OAI 빌드 의존성 및 기준 OAI 저장소(`OAI_BASE`)
 - OCUDU 26.10 CU/DU와 Open5GS
-- ZMQ 포팅: GNU Radio와 ZeroMQ
-- CU·DU 원문 수집 모듈: `tcpdump`, `tshark`
-- production detector `766f5569d0ddb425c14bf210a31c38ac60eceef9`
-- TeleRAN `7550153a58a993942303bd3d4a6cd635b664468b`, 실행 파일 `portran`
+- ZMQ 환경: GNU Radio와 ZeroMQ
+- 패킷 도구: CU `tcpdump`·`tshark`, DU `tshark`
+- 고정 production 컴포넌트(`integration.lock.json`):
+  - detector `766f5569d0ddb425c14bf210a31c38ac60eceef9`
+  - TeleRAN `7550153a58a993942303bd3d4a6cd635b664468b` (`portran`, `period_ms=100`)
+  - dashboard `01a1a44a12ed7b3b6a1fe7465849d1f3daa41e20`
 
-CU와 DU가 나뉜 구성은 SSH로 CU 로그와 N2 원문을 수집한다. 개인키·가입자 설정·실제
-profile과 module conf는 Git 밖에 두고 권한을 0600 이하로 설정한다.
+## 같은 스택의 다른 ZMQ 호스트 포팅 (`p1`·`p4`·커스텀)
 
-## 같은 스택의 다른 ZMQ 환경
+1. DU/공격 UE 호스트에 저장소를 clone하고 `git status --short`가 비어 있는지 확인한다.
+2. `profiles/p1.example.json`, `profiles/p4.example.json`, `profiles/p5.example.json` 중 하나를 같은 디렉터리(또는 `RAN_REPRO_PROFILE_DIR`)의 `<profile>.json`(`0600`)으로 복사해 `configured=true`, CU/DU endpoint, detector·telemetry·run 경로를 채운다. (`p4`는 `backend`를 `"p5"`로 유지한다.)
+3. Git 밖에 권한 `0600` 이하의 `credentials_file`(`SSH_KEY`, `KNOWN_HOSTS`)과 `LIVE_E2E_CONF`(`profiles/live-e2e.example.conf` 참고)를 만들고 두 파일의 SSH 경로를 일치시킨다. `CU_DASHBOARD_ENV`는 소문자·숫자·하이픈만 사용한다.
+4. 모듈별 `conf/*.conf`를 준비하거나 profile `environment`에 외부 절대경로를 지정한다.
+   - 지원 키: `RSS_CONF`, `BLIND_CONF`, `UPLINK_CONF`, `AUTH_STALL_CELL_CONF`, `DOWNLINK_IMSI_CONF`, `UE_CAPABILITY_CONF`, `NAS_DESYNC_CONF`, `NORMAL_UE_CONF`
+   - 추가 경로 키: `OAI_BASE`, `RRC_OAI`, `BLIND_OAI`, `UPLINK_OAI`, `AUTH_TIMEOUT_OAI`, `DOWNLINK_IMSI_OAI`, `UE_CAPABILITY_OAI`, `NAS_DESYNC_OAI`
+5. `./ctl.sh normal-ue setup --profile <name>`과 `./ctl.sh normal-ue build --profile <name>`으로 정상 UE 5대 설정·빌드를 준비한다.
+6. `./ctl.sh setup all --profile <name>` → `./ctl.sh doctor --profile <name>` → `./ctl.sh same-cell doctor --profile <name>`을 통과한 뒤 [E2E 실행 가이드](docs/E2E-EXECUTION-GUIDE.md) 순서로 `control → active`를 검증한다.
 
-1. 저장소를 DU/공격 UE 실행 호스트에 clone하고 `git switch main && git pull --ff-only`를
-   실행한다. `git status --short`는 비어 있어야 한다.
-2. OAI 기준 저장소를 준비하고 `OAI_BASE`를 실제 절대경로로 지정한다.
-3. `profiles/p5.example.json`을 별도 profile 디렉터리에 복사해 `configured=true`, CU/DU
-   endpoint, detector·telemetry·run 경로를 실제 값으로 바꾼다.
-4. 모듈별 conf를 Git 밖에 만들고 아래 profile environment 키로 절대경로를 연결한다.
-5. `doctor → setup → control → active` 순서로 실행한다. control이 등록·PDU·ping과
-   telemetry gap 0을 통과하기 전에는 공격을 실행하지 않는다.
-
-p4에서는 `profiles/p4.example.json`을 `profiles/p4.json`으로 복사한다. `backend` 이름은
-현재 ZMQ adapter 호환을 위해 `p5`로 유지하되 profile ID와 endpoint·allowlist·credential
-경로는 p4 값으로 채운다. 이후 다음 명령이 실패하면 공격을 실행하지 않는다.
-
-```bash
-./ctl.sh doctor --profile p4
-```
-
-과거 개별 자격에서 L3-01-O는 `auth-stall-cell-run`의 `2프로세스×5 UE`, L3-20은 direct
-2-cell runner를 사용했다. 현재 정상 UE 5대 통합 자격은 두 모듈을 포함해 반드시
-`./ctl.sh same-cell campaign l3-live`로 실행한다. 자세한 실행표는
-[E2E 실행 가이드](E2E-EXECUTION-GUIDE.md)를 따른다. 2026-11-19 p1 clean-origin 이관은
-이 경로로 42/42를 통과했다.
-
-profile에서 사용할 수 있는 module conf 키는 다음과 같다.
-
-| 모듈 | profile environment 키 |
-|---|---|
-| RRC 컨텍스트 고갈 | `RSS_CONF` |
-| Blind DoS | `BLIND_CONF` |
-| 상향 DoS·L3-21 | `UPLINK_CONF` |
-| 인증 응답 미전송 | `AUTH_TIMEOUT_CONF` |
-| 하향 식별자 노출 | `DOWNLINK_IMSI_CONF` |
-| UE Capability | `UE_CAPABILITY_CONF` |
-| NAS 카운터 비동기화 | `NAS_DESYNC_CONF` |
-
-예:
+모듈 `conf/*.conf`의 `DU_CTL`, `CU_CTL`, `CORE_CONTAINER`, 네트워크 인터페이스, ZMQ endpoint, TUN 이름도 새 호스트에 맞게 검토해야 한다.
 
 ```json
 "environment": {
@@ -90,40 +55,40 @@ profile에서 사용할 수 있는 module conf 키는 다음과 같다.
 }
 ```
 
-```bash
-export RAN_REPRO_PROFILE_DIR=/etc/ran-reproducer/profiles
-./ctl.sh doctor blind-dos --profile lab-zmq
-./ctl.sh setup blind-dos --profile lab-zmq
-./ctl.sh run blind-dos control blind-control-1 --profile lab-zmq
-./ctl.sh run blind-dos attack blind-attack-1 --profile lab-zmq --enable
-```
-
-profile은 경로를 전달할 뿐 OCUDU/Open5GS를 설치하거나 가입자·SSH key를 만들지 않는다.
-모듈 conf의 `DU_CTL`, `CU_CTL`, `CORE_CONTAINER`, interface, ZMQ endpoint와 TUN 이름도 새
-환경에 맞게 검토해야 한다.
-
 ## OTA 포팅
 
-현재 `./ctl.sh setup|run|campaign --profile ota`는 실패하도록 막혀 있다. 아래 adapter가
-없는 상태에서 p5용 ZMQ 설정을 OTA로 오인해 실행하지 않기 위해서다.
+현재 `./ctl.sh setup|run|campaign --profile ota` 및 `same-cell run|campaign`은 p5 ZMQ 설정을 OTA로 오인 실행하지 않도록 실패한다(`ctl.sh:96-99`). OTA를 포팅할 때는 아래 순서를 따른다.
 
-1. `profiles/ota.example.json`에 실제 SDR serial, clock source, gain 상한을 기록한다.
-2. RF 케이블·감쇠기·차폐박스를 사람이 확인한 뒤에만 `shielding_confirmed=true`로 바꾼다.
-3. 각 protocol 모듈에 USRP용 UE 인자와 DU RF 설정을 전달하는 run adapter를 만든다.
-4. F1/N2 수집과 UE oracle을 기존 `run_id`·monotonic timestamp로 조인한다.
-5. 정상 UE attach·Registration·PDU·ping을 먼저 통과시킨다.
-6. control→attack/emulation을 3세트 실행해 새 환경의 artifact를 별도로 봉인한다.
+1. `profiles/ota.example.json`을 `profiles/ota.json`(`0600`)으로 복사해 실제 SDR serial, clock source, gain 상한을 기록한다(추적되는 `.example.json`은 수정하지 않는다).
+2. 사람이 RF 케이블·감쇠기·차폐박스를 점검한 뒤에만 `shielding_confirmed=true`로 바꾼다.
+3. 각 Uu 모듈에 USRP용 UE 인자와 DU RF 설정을 전달하는 OTA run adapter를 구현한다.
+4. F1/N2 수집과 UE oracle을 `run_id`·단조 타임스탬프로 조인한다.
+5. 정상 UE attach·Registration·PDU·ping 통과 후 `control → active` 3세트를 봉인한다. RF 원인이 없는 결과 에뮬레이션은 OTA에서도 `rf_cause_observed=false`를 유지한다.
 
-RF 원인이 없는 결과 에뮬레이션은 OTA에서 실행됐더라도
-`rf_cause_observed=false`를 유지한다.
+## p5 운영 체크리스트
+
+- **인스턴스 원칙**: 기본 자원 상한은 `role=cu` 1대와 `role=du` 1대다. 과거 `rss-smooth-lane` 인스턴스는 서비스 거부 재현을 위해 다시 켜지 않으며, stopped 상태의 같은 세트 인스턴스를 모두 켜는 제어판 `start`는 기본 검증에 직접 쓰지 않는다. 실행 전후 EC2 tag·state와 CU/DU instance ID를 읽기 전용으로 조회하고, 종료 시 같은 두 ID만 `stopped`인지 확인한다.
+- **실행 전 점검**: `./ctl.sh doctor --profile p5` 기본 `target=all`은 manifest 13개, CU 원격 production 컴포넌트(detector `766f5569...`·TeleRAN `7550153a...` `period_ms=100`·`tcpdump`/`tshark`), checkout·runner 해시와 **로컬 모듈 14개(OAI 빌드 8개 포함)의 conf와 UE 바이너리**까지 확인한다. 특정 모듈만 점검하려면 `./ctl.sh doctor <ID> --profile p5`를 쓰고, `same-cell` 실행 전에는 `./ctl.sh same-cell doctor --profile p5`를 통과한다.
+- **실행·정리·자격 범위**: 정상 CU→DU 기동과 정상 UE attach·PDU·ping을 확인한 뒤 `control`을 먼저 실행하고 `active`에는 `--enable`을 붙인다. 중단·timeout 후에는 UE·broker·DU·TeleRAN·detector 잔존 프로세스가 없는지와 설정 원복을 확인한다. 대용량 원시 로그는 p5 원격에 두고 Git에는 요약·판정·SHA-256만 남긴다. p5에서는 L3 7종 모두 개별 또는 live E2E matched 3/3을 통과했으며([5종 E2E 요약](artifacts/p5-live-e2e-five-20261117/README.md)), AN fixture 6종은 공격 1.0 자격 범위 밖의 회귀 replay로만 유지한다.
+
+## 차폐 OTA 운영 체크리스트
+
+공통 OTA run adapter는 아직 구현되지 않았고 실제 SDR inventory와 차폐 확인이 없으므로 모든 OTA 자격은 `pending`이다(`ctl.sh:96-99` 차단 유지). adapter 구현 뒤 승인 절차는 다음과 같다.
+
+1. `profiles/ota.json`(`0600`)에 공격 UE와 O-DU SDR의 서로 다른 serial, clock source, gain 상한을 기록한다.
+2. RF 케이블·감쇠기·차폐박스가 외부 누설을 막는지 사람이 직접 점검한 뒤에만 `shielding_confirmed=true`로 바꾼다.
+3. `./ctl.sh doctor --profile ota`로 SDR inventory, `credentials_file` 권한, detector·telemetry 경로와 `period_ms=100`을 확인한다.
+4. 공격 기능을 끈 정상 UE로 attach·Registration·PDU·ping과 TeleRAN `gap=0`을 먼저 통과시킨다.
+5. Uu 프로토콜 모듈(L3 7종)만 matched `control → attack/emulation` 3세트를 실행하고 매 세트 뒤 정상 회복을 확인한다.
+6. p5 ZMQ와 OTA의 메시지 흐름, input gap, detector 지연을 비교 기록한다.
+
+RF 원인이 없는 AN `detector-input-emulation` 모듈은 OTA에서 실행하지 않고 `not-applicable`로 둔다. 결과 에뮬레이션 모듈(`L3-24`, `L3-14`, `L3-06`, `uplink-dos`)은 OTA에서 동작하더라도 RF overshadowing·MITM을 별도 계측하지 않았다면 `rf_cause_observed=false`를 유지한다.
 
 ## 포팅 완료 조건
 
-- gNB·코어·detector에 공격 성공을 보상하는 수정이 없다.
-- 동일 manifest rule ID와 공통 run/verdict/evidence 구조를 유지한다.
-- control과 active run의 바이너리·설정·runner 해시가 같다.
-- telemetry `period_ms=100`, sequence 연속, gap 0, timestamp 비역행을 확인한다.
-- production detector 기본 설정에서 control 0/3, active 3/3을 확인한다.
-- UE·코어 oracle은 detector 출력 봉인 뒤에만 조인한다.
-- 새 환경의 한계와 `live_protocol_path_observed`, `rf_cause_observed`,
-  `service_denial_observed`를 사실대로 기록한다.
+- gNB·코어·detector에 공격 성공을 유도하는 코드/timer/capacity 수정이 없다.
+- 동일 `rule_ids`와 `run`/`verdict`/`evidence` 계약을 유지한다.
+- `control`과 `active` 실행의 바이너리·설정·runner SHA-256이 일치한다.
+- TeleRAN `period_ms=100`, sequence 연속, `gap=0`, 타임스탬프 비역행을 만족한다.
+- production detector 기본 설정에서 `control` 0/3, `active` 3/3을 확인한다.
+- UE·코어 oracle은 detector 출력 봉인 뒤에만 조인하고 `live_protocol_path_observed`, `rf_cause_observed`, `service_denial_observed`를 사실대로 기록한다.

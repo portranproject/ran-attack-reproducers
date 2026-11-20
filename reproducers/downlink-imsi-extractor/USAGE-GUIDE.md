@@ -11,13 +11,13 @@
 
 ## 빌드
 
-깨끗한 OAI w38 작업 트리에서 실행한다.
+깨끗한 OAI w38(`6d6782b48484efd935c14e834832032743f9b138`) 작업 트리에서 실행한다(또는 `./ctl.sh setup downlink-imsi --profile <p1|p5>` 사용).
 
 ```bash
 OAI=/root/OAI-downlink-imsi-w38 bin/downlink-imsi-build
 ```
 
-빌드 스크립트는 기준 커밋, 패치 clean apply, 바이너리의 control/emulation 마커를
+빌드 스크립트는 기준 커밋, `patch/downlink-imsi-ue-w38.patch` 및 `../../workloads/normal-ue/patch/same-cell-ra-gate-w38.patch` clean apply, 바이너리의 control/emulation/gate 마커를
 fail-closed로 확인한다. 패치 기본값은 off다.
 
 ## 설정
@@ -27,8 +27,7 @@ cp conf/p5-zmq.conf.example conf/downlink-imsi.conf
 chmod 600 conf/downlink-imsi.conf
 ```
 
-실제 키 파일은 저장소 밖에 둔다. CU/core를 먼저 준비하고, DU에는 기존 UE·DU 프로세스가
-없어야 한다. 실행기는 매 run마다 DU를 재시작해 ZMQ socket 상태를 초기화한다.
+`conf/p5-zmq.conf.example`의 `UECAP` 기본값이 `/root/OAI-uplink-dos-w38/...`로 남아 있으므로 복사본에서 `/root/OAI-downlink-imsi-w38/...`로 수정한다. 실제 키 파일은 저장소 밖에 둔다. CU/core를 먼저 준비하고, DU에는 기존 UE·DU 프로세스가 없어야 한다. 실행기는 매 run마다 DU를 재시작해 ZMQ socket 상태를 초기화한다.
 
 ## 단일 실행
 
@@ -52,7 +51,7 @@ DOWNLINK_IMSI_CONF=conf/downlink-imsi.conf \
 ```
 
 순서는 `control → emulation`을 세 번 반복한다. 각 child는 독립 `verdict.json`과
-`evidence_manifest.json`으로 봉인되고, 마지막에 matched 설정 해시와 3/3을 검증한다.
+`evidence_manifest.json`으로 봉인되고, 마지막에 matched 설정 해시와 3/3을 검증한다. 정상 UE 5대 `same-cell` E2E는 `./ctl.sh same-cell run downlink-imsi --profile <p1|p5> --mode <control|emulation> --run-id <id> [--enable]`을 사용하며, `p1q9-20261119`에서 6/6 통과했다.
 
 ## 탐지 사용
 

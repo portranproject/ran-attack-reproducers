@@ -1,6 +1,6 @@
 # 사용 가이드 — RRC signaling storm 재현기
 
-> 상태: **2026-11-02 동결**
+> 상태: **2026-11-02 동결** (단독 `rss-run` 기준). 정상 UE 5대 통합 E2E 실행은 `./ctl.sh same-cell run rrc-storm` 또는 `./ctl.sh same-cell campaign l3-live`를 사용하며, p1 6/6 결과는 [p1 clean-origin L3 7종 E2E](../../../artifacts/p1-clean-origin-live-e2e-20261119/README.md)에 있다.
 >
 > 용도: 격리된 팀 소유 ZMQ 테스트베드에서 RRC 분석기의 입력·정답·판정을 분리해 평가
 >
@@ -259,9 +259,9 @@ latency는 동일 clock이거나 offset+uncertainty 증거가 있을 때만 계�
 
 ## 8. 사용 금지 경로와 금지 주장
 
-- `rss-broker-witness`는 서비스 acceptance에 쓰지 않는다. 5-UE 대조군 15회 중
+- `rss-broker-witness`의 초기 5-UE 개발용 설정은 서비스 acceptance에 쓰지 않는다. 5-UE 대조군 15회 중
   5/5 sync는 5회, 의미상 유효 control은 3회뿐이었고 유효 런의 ping loss도
-  0.833333%~93.5484%였다.
+  0.833333%~93.5484%였다. (참고: 이후 `ctl.sh same-cell` 자격 경로는 `rss-broker-witness`에 `BROKER_WITNESS_MULTI_RU=1`과 `workloads/normal-ue/tools/same_cell_broker.py`의 독립 virtual RU 5개 조합을 적용해 p1 L3-01-V 6/6을 통과했다.)
 - 로컬 `BROKER_SAME_WITNESS_CYCLE` 구현은 단위 테스트만 있는 **p5 미실측 초안**이다.
   운영 기능이나 30초 동일-UE 회복 증거로 소개하지 않는다.
 - hold32의 CU 200·witness 17/17 거절 결과는 기본 cleanup 공격 성공으로 쓰지 않는다.
@@ -285,7 +285,7 @@ latency는 동일 clock이거나 offset+uncertainty 증거가 있을 때만 계�
 4. p5를 사용했다면 인스턴스 상태가 실제 `stopped`인지 확인했다.
 5. raw 정답과 분석기 입력의 접근 권한을 분리했다.
 
-라벨 필드의 정확한 의미는 [LABEL-CONTRACT.md](LABEL-CONTRACT.md), 실행기 옵션과
-산출물은 [../README.md](../README.md), 현재 성능 원문은
+라벨 필드의 정확한 의미는 [LABEL-CONTRACT.md](LABEL-CONTRACT.md), 상세 옵션·파라미터는
+[REFERENCE.md](REFERENCE.md), 실행기 요약은 [../README.md](../README.md), 기본 cleanup 원문은
 [기본 cleanup D6 증거](../../../artifacts/p5-default-cleanup-rate-v2-20261030/README.md)를
 기준으로 한다.

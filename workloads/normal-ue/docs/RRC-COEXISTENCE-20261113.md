@@ -1,5 +1,7 @@
 # 정상 UE 5대와 RRC storm 공존 실측 (2026-11-13)
 
+> 이 문서는 2026-11-13 단일 공존 실측 기록이다. 최신 3세트 반복 `same-cell` 통합 자격은 [정상 UE README](../README.md) 및 [p1 자격 기록](../../../artifacts/p1-clean-origin-live-e2e-20261119/README.md)을 따른다.
+
 ## 결론
 
 p5의 같은 DU·셀에서 정상 UE 5대를 먼저 Registration·PDU·ping 5/5로 만든 뒤 RRC storm을

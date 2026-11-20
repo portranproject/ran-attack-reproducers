@@ -1,4 +1,6 @@
-
+> **보존 기록 (2026-10-16~11-02 p5 RSS 실험 메모)** — 이 문서는 `## 16.`부터 시작하는 발췌본이며 앞선 절(`§5`, `§11.3`, `§13`, `§14`)은 포함되지 않는다.
+> 본문 안의 `./ctl.sh up`, `collect.sh`, `deploy.sh`, `run_attack.sh` 명령과 스크립트는 현재 저장소에서 제거됐다.
+> 현행 환경 포팅·E2E 실행 절차는 [PORTING-GUIDE.md](../../PORTING-GUIDE.md)와 [docs/E2E-EXECUTION-GUIDE.md](../E2E-EXECUTION-GUIDE.md)를 본다.
 
 ---
 
@@ -61,7 +63,6 @@
 ```json
 {"type":"event","run_id":"RG1","ue":0,"seq":17,"t_ns":...,"air_ms":...,"event":"attempt_start", ...}
 ```
-
 
 ---
 

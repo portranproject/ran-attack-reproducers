@@ -1,98 +1,89 @@
-# Uplink DoS 재현 도구
+# 무효·위조 자격증명 실패 플러드형 상향 DoS (L3-21)
 
-상향 DoS의 서로 다른 관측면 두 가지를 분리한다. 실제 RF 송신 세기 경쟁은 만들지 않으며
-모든 판정에 `rf_overshadowing_observed=false`를 남긴다.
+수정 OAI UE 1대가 10초 안에 서로 다른 10개 RAN 연결에서 `RegistrationRequest → RegistrationReject` 실패를 생성해 탐지 룰 `L3-21`을 검증하는 프로토콜 재현 모듈이다. 같은 디렉터리에 단발 NAS `Service Request` MAC 1비트 변조용 구버전 시나리오(`uplink-dos`, `emulation`)도 함께 보관한다.
 
-| 시나리오 | 구현 | 용도 |
-|---|---|---|
-| 단발 NAS 무결성 손상형 | 실제 OAI UE→ZMQ→OCUDU→Open5GS 경로에서 최초 `Service Request` MAC 1비트 변조 | NAS MAC 실패와 서비스 손실·회복 관측 |
-| 무효·위조 자격증명 실패 플러드형 | 수정 OAI UE가 실제 ZMQ→DU/CU 경로에서 10개 연결의 `RegistrationRequest→RegistrationReject` 생성 | 탐지 룰 L3-21 branch 1 검증 |
+| 항목 | 값 |
+|---|---|
+| 룰 ID | `L3-21` |
+| `reproducer.json` id | `uplink-credential-flood` |
+| `ctl.sh` ID / 별칭 | `uplink-credential-flood` (`credential-flood`, `uplink-l3-21`) · 레거시: `uplink-dos` (`uplink`) |
+| 재현 수준 (`reproduction_level`) | `protocol` (`L3-21`) · 레거시: `protocol-result-emulation` (`uplink-dos`) |
+| active 모드 (`active_mode`) | `attack` (`L3-21`) · 레거시: `emulation` (`uplink-dos`) |
+| 자격 현황 | `p1` same-cell 6/6 통과 (`p1q9-20261119`), `p5` same-cell 6/6 통과, `OTA` pending |
 
-두 시나리오는 같은 공격명이지만 신호가 다르다. 단발 MAC 손상형은 AMF가 조용히 폐기해
-L3-21이 세는 Reject 메시지가 0건이다. 실패 플러드형은 10초 안 서로 다른 실패 연결 10개를
-만들어 production 기본 임계값을 직접 만족한다.
+> 격리된 팀 소유 테스트베드 전용이다. `-e 1` 또는 `--enable` 없이는 공격·에뮬레이션이 비활성이다.
 
-## 구현 방식
+## 동작 요약
 
-OAI 2026.w38 UE가 등록 후 idle 상태에서 최초 `Service Request`를 만들면, 에뮬레이션
-실행에 한해 계산이 끝난 NAS MAC의 한 비트를 정확히 한 번 뒤집는다. 가짜 gNB·코어
-로그를 주입하지 않는다. 수정되지 않은 OCUDU와 Open5GS가 실제 메시지를 처리하므로
-Open5GS의 `NAS MAC verification failed`, UE의 `Service Reject`, 피해 ping 손실이 원문에
-남는다. 다음 paging에서는 변조가 소진돼 같은 UE PID가 정상 `Service Request`로 회복한다.
+```text
+무효 자격증명 OAI UE (1대)    OCUDU DU/CU / Open5GS          TeleRAN → detector
+   │ 10초 내 10개 새 RAN 연결  │                                │
+   │ RRCSetupComplete + RegistrationRequest                    │
+   │─────────────────────────>│───────────────────────────────>│ (F1/N2 100 ms)
+   │ RegistrationReject (10건)│                                │
+   │<─────────────────────────│───────────────────────────────>│ L3-21 branch 1 RAISE
+```
 
-에뮬레이션은 기본적으로 꺼져 있다. `emulation -e 1`을 함께 지정해야만 켜진다.
+- **`L3-21` 실패 플러드형 (`uplink-credential-flood`)**: control(`-e 0`)은 실패 연결 1건만 만들고, attack(`-e 1`)은 10초 창 내 10건의 `RegistrationReject`를 생성해 production 기준 `max(5, ceil(96×0.1))=10`을 만족한다.
+- **레거시 단발 MAC 변조형 (`uplink-dos`)**: 등록 후 idle 상태의 첫 `Service Request` 계산 완료 MAC 1비트를 1회 변조해 Open5GS `NAS MAC verification failed`와 피해 ping 손실·회복을 관측한다(AMF가 조용히 폐기하므로 Reject 0건, L3-21 미탐은 변형 불일치).
+- **OAI UE-only 패치**: 기준 커밋 `6d6782b48484efd935c14e834832032743f9b138`에 `bin/uplink-build`가 3개 패치(`patch/uplink-dos-emulator-w38.patch`, `patch/uplink-credential-flood-w38.patch`, `../../workloads/normal-ue/patch/same-cell-ra-gate-w38.patch`)를 적용한다. OCUDU·Open5GS 소스와 timer/capacity는 수정하지 않는다.
 
-## 현재 성능: 단발 NAS 무결성 손상형
+## 실행 방법
 
-2026-11-05 p5 direct 1-cell ZMQ의
-`p5-uplink-final-v5-20261105` matched control→emulation 3세트가 모두 통과했다.
+### 통합 컨트롤러 (`ctl.sh`)
 
-| 항목 | control 3회 | emulation 3회 |
-|---|---:|---:|
-| baseline ping | 모두 5/5 | 모두 5/5 |
-| MAC 변조 | 모두 0회 | 모두 정확히 1회 |
-| impact ping 성공 | 5/5, 4/5, 3/5 | 모두 0/5 |
-| Open5GS MAC 실패 | 0회 | 각 실행에서 확인 |
-| 같은 PID 회복 | 모두 5회 연속 성공 | 모두 5회 연속 성공 |
-| crash/강제 종료 | 0/0 | 0/0 |
+```bash
+./ctl.sh setup uplink-credential-flood --profile p1
+./ctl.sh doctor uplink-credential-flood --profile p1
 
-게시용 결과와 원격 원문 해시는
-[p5 ZMQ 실측](artifacts/p5-zmq-protocol-impact-20261105/)에 있다.
+# L3-21 단발 및 matched 3세트 캠페인
+./ctl.sh run uplink-credential-flood control l321-ctrl-01 --profile p5
+./ctl.sh run uplink-credential-flood attack l321-atk-01 --profile p5 --enable
+./ctl.sh campaign uplink-credential-flood l321-camp-01 --profile p5 --enable
 
-## 현재 성능: 무효·위조 자격증명 실패 플러드형
+# 정상 UE 5대 same-cell E2E 실행 (p1/p5)
+./ctl.sh same-cell run uplink-credential-flood --profile p1 --mode control --run-id sc-l321-ctrl-1
+./ctl.sh same-cell run uplink-credential-flood --profile p1 --mode attack --run-id sc-l321-atk-1 --enable
 
-2026-11-11 p5에서 무가입 랩 식별자로 실제 F1 `RegistrationReject` 5건을 2.260초 안에
-관측했다. 이 PCAP의 SHA-256은
-`f3222e81d0cef1904159e724ead95e831a8aefa847761069e8cbdbcc264609e6`이다. 다만 OAI의
-반복 RRC 재접속이 PHY에서 불안정해 이 live 경로는 반복 캠페인 기능으로 승인하지 않았다.
+# 레거시 단발 MAC 변조 시나리오 (p5 direct)
+./ctl.sh run uplink-dos control ul-ctrl-01 --profile p5
+./ctl.sh run uplink-dos emulation ul-emu-01 --profile p5 --enable
+```
 
-과거에는 같은 메시지 순서의 탐지 입력 에뮬레이션만 3/3 검증했다. 현재 runner는 이를
-회귀 fixture로 강등하고, 수정 OAI UE가 10개의 새 RAN 컨텍스트를 만드는 실제
-`UE→ZMQ→DU/CU→TeleRAN→production detector` 경로를 사용한다. 최신 production 기준은
-`n_fail_th=10`, `fail_accept_wait_ms=3000`이다. 2026-11-16 정상 UE 5대 same-cell
-control→attack 3세트가 모두 통과했고 attack은 각각 L3-21 경보 1회, 정상 health 5/5였다.
-결과는 [L3-21 live same-cell 실측](artifacts/p5-l3-21-live-same-cell-20261116/)에 있다.
+### 직접 실행 (`bin/`)
 
-## 단발 NAS 무결성 손상형 합격 기준
+설정은 `conf/uplink.conf.example`을 `conf/uplink.conf`(`UPLINK_CONF`)로 복사해 사용한다.
 
-- control: baseline 5/5, 변조 0회, paging 구간 성공 3/5 이상·연속 손실 2회 이하,
-  같은 PID 회복 5회 연속, crash/강제 종료 0
-- emulation: baseline 5/5, 변조 정확히 1회, CU의 두 번째 `InitialUEMessage`, AMF의
-  `Service request`와 정확한 `NAS MAC verification failed`, UE의 `Service Reject`,
-  impact ping 5회 연속 손실, 같은 PID 회복 5회 연속, crash/강제 종료 0
-- campaign: 고정 순서 `control → emulation` 3세트의 child 6개가 모두 통과
+```bash
+OAI=/root/OAI-uplink-dos-w38 bin/uplink-build
 
-control에서 허용하는 1~2개 손실은 idle UE paging 연결 시간이며 지속 장애로 보지 않는다.
-emulation은 같은 1초 probe에서 5개 전부 실패해야 한다.
+# L3-21 실패 플러드 (control|attack)
+UPLINK_CONF=conf/uplink.conf bin/uplink-credential-flood-run control -n l321-ctrl -e 0
+UPLINK_CONF=conf/uplink.conf bin/uplink-credential-flood-run attack -n l321-atk -e 1
+UPLINK_CONF=conf/uplink.conf bin/uplink-credential-flood-campaign -n l321-camp -e 1
 
-## 무효·위조 자격증명 실패 플러드형 합격 기준
+# 레거시 단발 MAC 변조 (control|emulation; CU idle 프로필 적용·원복 필요)
+UPLINK_CONF=conf/uplink.conf bin/uplink-run control -n ul-ctrl -e 0
+UPLINK_CONF=conf/uplink.conf bin/uplink-run emulation -n ul-emu -e 1
+```
 
-- control: 완전한 RRC→등록 거절 연결 1개, 수락 0, L3-21 경보 0
-- attack: 완전한 연결 10개, `RegistrationRequest`·`RegistrationReject` 각 10건,
-  거절 간격 10초 미만, 수락 0
-- 탐지: production 기본 설정에서 L3-21 `branch=1` RAISE 정확히 1회
-- campaign: 고정 순서 `control → attack` 3세트의 child 6개가 모두 통과
-- 모든 결과: `live_protocol_path_observed=true`, `rf_overshadowing_observed=false`
+경계 회귀 전용 합성 fixture 실행기는 `bin/uplink-credential-flood-fixture-run`이며, `bin/uplink-profile`은 레거시 단발형용 CU idle 전환 프로필 적용·해시 원복에 사용한다.
 
-## 구성
+## 합격 기준
 
-- `patch/uplink-dos-emulator-w38.patch`: UE-only 단발 NAS MAC 변조
-- `bin/uplink-build`: 전용 clean OAI 작업 트리 빌드와 마커 검증
-- `bin/uplink-run`: 단일 control/emulation 수집·종료·판정
-- `bin/uplink-campaign`: matched 3세트 실행
-- `bin/uplink-credential-flood-run`: L3-21 실제 UE·TeleRAN·탐지 엔진 실행
-- `bin/uplink-credential-flood-fixture-run`: 9/10건 탐지 임계 회귀 fixture
-- `bin/uplink-credential-flood-campaign`: L3-21 matched 3세트 실행
-- `bin/uplink-profile`: CU의 짧은 idle 전환 프로필 적용·해시 원복
-- `analysis/export_labels.py`: child 원문 독립 판정
-- `analysis/verify_campaign.py`: 6개 child와 원문 SHA-256 집계
-- `analysis/normalize_registration_failures.py`: 실제 F1 PCAP TSV를 같은 탐지 입력으로 변환
-- `conf/uplink.conf.example`: p5 ZMQ 예시
-- [사용 가이드](USAGE-GUIDE.md): 준비·실행·원복·탐지 입력 절차
+- **`L3-21` control**: 완전한 `RRC → RegistrationReject` 연결 1개, 수락 0, `L3-21` 경보 0건.
+- **`L3-21` attack**: 10초 미만 간격의 서로 다른 실패 연결 10개(`RegistrationRequest`/`RegistrationReject` 각 10건), 수락 0, TeleRAN 100 ms / gap 0 / KPM 존재, production `L3-21` `branch=1` RAISE 1건, dashboard 수락 ≥ 1건·거절 0건, same-cell 정상 UE 5대 전후 ping 5/5.
+- **`L3-21` `verdict.json` 필드**: `passed=true`, `live_protocol_path_observed=true`, `rf_cause_observed=false`, `service_denial_observed=false`.
+- **레거시 `uplink-dos` (`emulation`)**: baseline ping 5/5, MAC 변조 정확히 1회, AMF `NAS MAC verification failed`, impact ping 5회 연속 손실, 동일 PID 회복 5/5, `rf_overshadowing_observed=false`, crash/forced kill 0건.
 
-## 주장 범위
+## 한계 및 금지 주장
 
-단발형에는 **p5 ZMQ에서 uplink DoS의 NAS·서비스 영향을 실제 망 경로로 에뮬레이션했다**고
-말할 수 있다. 실패 플러드형은 **수정 UE가 실제 망 경로에서 L3-21 입력을 만들고 production
-탐지기가 matched 3/3으로 검출했다**고 말할 수 있다. 이는 한 UE가 만든 10개 RAN
-컨텍스트이며 10대 UE나 RF 송신 우위를 뜻하지 않는다. 실 SDR OTA와 상용망 일반화는 미검증이다.
+- **RF 송신 우위 미관측**: 실제 uplink RF overshadowing을 만들지 않았으며 `rf_overshadowing_observed` / `rf_cause_observed`는 항상 `false`다.
+- **물리 UE 1대 기준**: `L3-21`은 수정 UE 1대가 만든 10개 RAN 연결이며 물리 UE 10대나 서비스 거부를 뜻하지 않는다(`service_denial` `not_observed`).
+- **OTA·상용망 미검증**: ZMQ 환경 검증만 완료됐으며 실 SDR OTA와 상용망 일반화는 검증하지 않았다.
+
+## 관련 문서 및 근거
+
+- 동반 문서: [사용 가이드](USAGE-GUIDE.md), [탐지 계약](DETECTION-CONTRACT.md), [계보](PROVENANCE.md)
+- p1 same-cell 42/42 자격: [p1 clean-origin L3 7종 E2E](../../artifacts/p1-clean-origin-live-e2e-20261119/README.md)
+- 모듈 세부 증거: [L3-21 p5 same-cell 실측](artifacts/p5-l3-21-live-same-cell-20261116/README.md), [레거시 MAC 변조 p5 실측](artifacts/p5-zmq-protocol-impact-20261105/README.md), [L3-21 입력 에뮬레이션 회귀](artifacts/p5-l3-21-input-emulation-20261111/README.md)

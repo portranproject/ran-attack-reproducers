@@ -1,5 +1,7 @@
 # ZMQ 브로커 (다중 UE 독립 접속) — 설계와 현재 상태
 
+> **역사적 진단 기록 (2026-10):** 커스텀 C ZMQ 브로커는 폐기됐으며 현재는 GNU Radio flowgraph(`same_cell_broker.py`)를 사용한다. 현재 실행·자격 기준은 [../README.md](../README.md)와 [사용 가이드](USAGE-GUIDE.md)를 따른다.
+
 2026-10-28.
 
 ## 왜 필요한가

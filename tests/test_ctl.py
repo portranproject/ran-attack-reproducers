@@ -180,7 +180,8 @@ class ControllerTest(unittest.TestCase):
             and "BROKER_WITNESS_MULTI_RU=1" in line
             and "BROKER_WITNESS_PHASE_MS=3000" in line
             and "NORMAL_UE_BROKER_ENDPOINTS=11" in line
-            and "-d 240" in line
+            and "-d 360" in line
+            and "BROKER_NORMAL_PRE_HOLD_S=30" in line
             for line in rrc_lines
         ))
 

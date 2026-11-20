@@ -1,3 +1,7 @@
+> **보존 기록 (2026-10-20 p5 RSS 전용 메모)** — 이 문서는 초기 RSS(L3-01-V) 개발 당시의 p5 ZMQ 환경 제약 기록이다.
+> 단일 라디오 포트쌍·정상 UE 동시 접속 불가 한계와 `./ctl.sh status` 명령은 현재 구조에서 해소·변경됐다.
+> 현행 공존 구조·주장 경계·최신 E2E 결과는 [workloads/normal-ue/README.md](../../workloads/normal-ue/README.md), [docs/ATTACK-CATALOG.md#주장과-한계](../ATTACK-CATALOG.md#주장과-한계), [p1 clean-origin 결과](../../artifacts/p1-clean-origin-live-e2e-20261119/README.md)를 본다.
+
 # RRC 재현 도구 개발 중 확인한 테스트베드의 한계
 
 2026-10-20 실험 기록 기준 · p5 환경(EC2 2대, CU/DU 분리, ZMQ 가상 RF)

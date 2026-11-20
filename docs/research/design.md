@@ -238,7 +238,7 @@ Msg5를 보낸 경로는 NGAP `InitialUEMessage`와 NAS 등록을 만들므로 R
 
 > "// TODO: communicate with NGAP" [[27](#ref27), L97]
 
-그래서 **Msg5를 보내지 않는 이 RRCSetupComplete 미전송형에서는** 같은 식별자를 반복해도 OCUDU의 수락·거부가 달라지지 않고 탐지기 특징만 바뀐다(코드 판독). 반면 **Blind DoS**는 Msg3의 ue-Identity에 피해 단말의 5G-S-TMSI를 넣고 이후 절차를 AMF까지 진행해 그 단말의 연결을 방해하는 별도 표적 공격 가설이다 [[7](#ref7), §3]. `fixed_tmsi`에 값을 넣는 것만으로 공격이 성립하는 것은 아니다. 과거 등록의 만료 값 실험에서는 차단에 실패했고, 같은 등록 수명 안의 현재 유효 값과 AMF 컨텍스트 충돌은 아직 미검증이다. 용량을 고갈시키는 RRCSetupComplete 미전송형과 달리 특정 단말을 노리므로, 기본에서 제외하고 [Blind DoS 모듈](reproducers/blind-dos/README.md)의 별도 대조군·합격 기준으로만 검증한다.
+그래서 **Msg5를 보내지 않는 이 RRCSetupComplete 미전송형에서는** 같은 식별자를 반복해도 OCUDU의 수락·거부가 달라지지 않고 탐지기 특징만 바뀐다(코드 판독). 반면 **Blind DoS**는 Msg3의 ue-Identity에 피해 단말의 5G-S-TMSI를 넣고 이후 절차를 AMF까지 진행해 그 단말의 연결을 방해하는 별도 표적 공격 가설이다 [[7](#ref7), §3]. `fixed_tmsi`에 값을 넣는 것만으로 공격이 성립하는 것은 아니다. 과거 등록의 만료 값 실험에서는 차단에 실패했고, 같은 등록 수명 안의 현재 유효 값과 AMF 컨텍스트 충돌은 아직 미검증이다. 용량을 고갈시키는 RRCSetupComplete 미전송형과 달리 특정 단말을 노리므로, 기본에서 제외하고 [Blind DoS 모듈](../../reproducers/blind-dos/README.md)의 별도 대조군·합격 기준으로만 검증한다.
 
 **실행 중 변경 주입처(후속).** OAI는 UE telnet CLI 서버 `telnetsrv_ciUE.c`의 `cicmds[]`에 [[13](#ref13), L232] `force_rlf`·`force_crnti_ra`·`deregistration` 등 실행 중 명령 선례가 있다. 다만 (a) telnet 서버는 **기본 빌드에 포함되지 않아** `--build-lib telnetsrv`로 따로 빌드하고, 실행할 때 `--telnetsrv` 옵션을 줘야 한다 [[28](#ref28), L4][[28](#ref28), L25]. (b) 기존 핸들러는 인스턴스 0만 건드린다(`get_NR_UE_rrc_inst(0)`, `get_mac_inst(0)`) [[13](#ref13), L143][[13](#ref13), L154]. telnet 서버는 등록된 변수를 get/set 명령으로 읽고 쓰는 기능을 제공하고 [[29](#ref29), L3], `telnetsrv_ciUE.c`의 변수 표 `civars[]`는 현재 비어 있다 [[13](#ref13), L245]. 그래서 이 빈 `civars[]`에 int 변수(interval/enable)를 등록해 get/set으로 노출하는 쪽이 새 명령보다 가볍다(추론). 어느 쪽이든 1회 재빌드가 필요하다(추론).
 
@@ -285,7 +285,7 @@ RRCSetupComplete 미전송형의 핵심은 `nr_rrc_ue_decode_ccch`의 **rrcSetup
 
 ## 8. 실행 기록·라벨 스키마
 
-[methodology.md](methodology.md) §5 및 구현된 [라벨 계약 v1](reproducers/rrc-signaling-storm/docs/LABEL-CONTRACT.md)과 정렬한다 [[3](#ref3), §5]. 실행기는 **per-run 메타데이터 1건 + per-event raw 정답 N건**을 먼저 남긴다. 종료 뒤 exporter가 raw 이벤트를 `(run_id, ue, seq)`로 묶어 **per-attempt 정답 1건**으로 정규화한다. raw 정답과 정규화 정답은 탐지기 입력에서 분리한다.
+[methodology.md](methodology.md) §5 및 구현된 [라벨 계약 v1](../../reproducers/rrc-signaling-storm/docs/LABEL-CONTRACT.md)과 정렬한다 [[3](#ref3), §5]. 실행기는 **per-run 메타데이터 1건 + per-event raw 정답 N건**을 먼저 남긴다. 종료 뒤 exporter가 raw 이벤트를 `(run_id, ue, seq)`로 묶어 **per-attempt 정답 1건**으로 정규화한다. raw 정답과 정규화 정답은 탐지기 입력에서 분리한다.
 
 **per-run** (`run.json`, 실행 1건당 객체 1개)
 
@@ -368,7 +368,7 @@ RRCSetup HARQ-ACK 억제형의 기계 값으로 보존한다. 새 문서와 사�
 - **시각.** 시각은 UE 호스트의 epoch ns 정수 하나로 통일하고 `clock_sync`에 방법·offset·uncertainty·증거 SHA-256을 둔다. offset이나 uncertainty가 없으면 호스트 간 latency는 `null`/`unscorable`이다.
 - **물리 변수.** `ta_cmd`는 UE가 이미 파싱하는 RAR의 TA(Timing Advance) 명령이다. TA는 gNB가 단말과의 거리에 맞춰 상향 송신 시점을 얼마나 조정할지 RAR로 알려 주는 값이다 [[18](#ref18), §6.2.3]. KAUST는 TA가 단말을 식별할 만큼 정밀하지는 않지만 비슷한 거리에서 온 요청을 묶을 수 있다고 보고, TA 구간(버킷)별 미완료 연결 수로 의심 구간을 골라 완화했다 [[19](#ref19), §IV-B][[19](#ref19), §VI-B]. 같은 자리의 공격자는 매 시도 비슷한 TA를 받을 것이므로(추론) `ta_cmd`는 탐지 특징 후보로 기록한다. 다만 정지 단말도 TA가 몇 값 사이에서 흔들린다는 보고가 있다 [[7](#ref7), §4.3]. gNB 측 TA·RSSI(Received Signal Strength Indicator, 수신 신호 세기)는 DU 로그·탐지 쪽 값이다. 송신 이득·위치·이동 여부와 UE가 잰 RSRP(Reference Signal Received Power, 기준 신호 수신 전력)는 per-run `radio`에 두고, 캡처 손실은 분석기 운영자가 `capture_loss_pct`에 채운다 [[7](#ref7), §7 R6][[3](#ref3), §5].
 - 정답 훅: Msg3 `nr_Msg3_transmitted` [[20](#ref20), L966], Msg4 수신 rrcSetup case [[6](#ref6), L2508], **Msg4 ACK scheduler 예약/억제 `nr_ue_pucch_scheduler`** [[21](#ref21), L1818], 경합 해소 성공 `nr_ra_succeeded` [[20](#ref20), L1052], Msg5 PDCP 제출 `nr_rrc_process_rrcsetup` 경로 [[6](#ref6), L2284], 재시도 `handle_t300_expiry` [[6](#ref6), L3849]. UE 예약은 DU ACK 자체가 아니다.
-- 탐지기에는 F1/eBPF 텔레메트리만 주고 `run.json`·raw/normalized 정답·OCUDU 진단 로그는 채점 전까지 분리해 SHA-256으로 봉인한다 [[3](#ref3), §4]. 탐지·대응·효과 출력은 [라벨 계약 v1](reproducers/rrc-signaling-storm/docs/LABEL-CONTRACT.md)을 따른다.
+- 탐지기에는 F1/eBPF 텔레메트리만 주고 `run.json`·raw/normalized 정답·OCUDU 진단 로그는 채점 전까지 분리해 SHA-256으로 봉인한다 [[3](#ref3), §4]. 탐지·대응·효과 출력은 [라벨 계약 v1](../../reproducers/rrc-signaling-storm/docs/LABEL-CONTRACT.md)을 따른다.
 
 ## 9. 단계별 구현·검증 계획
 
@@ -392,7 +392,7 @@ M1b의 (ii) 설정 프로필이 효과가 있는 이유는 다음과 같다. SIB
 | **M4 UE 재시작 반복형 비교** | 정상 UE 재시작·접속 반복 | 각 시도 Msg4·Msg5·NAS 도달점으로 라벨. 정상 고부하와 구별. 다중 UE 시 ZMQ 제약 선확인(§10) |
 | **M5 분석기 연동** | JSONL 라벨 export | exporter와 fail-closed 검증은 구현·실기 통과했다. 남은 일은 분석기 F1 탭이 RRCSetupComplete 미전송형의 개별 메시지·release를 포착해 `tc_rnti`·`ue_identity`로 조인하고, 캡처 손실·시계 오차와 정상/UE 재시작 반복형 부하 오경보를 기록하는 것이다. |
 
-대응 폐루프 [[3](#ref3), §6]는 팀이 **설치본에서 실제 가능한 조치 인터페이스**를 지정한 뒤 별도로 평가한다. 기존 E2/core 경로가 RRCSetupComplete 미전송형에 닿지 않는 이유와 p5 ZMQ에서 검증한 정적 CSI-DTX RLF hardening은 [대응 경로 감사](reproducers/rrc-signaling-storm/docs/RESPONSE-PATH-AUDIT.md)에 분리했다. 이는 외부 탐지기가 호출한 조치가 아니므로, M1~M5의 RRCSetupComplete 미전송형 결과는 **탐지 검증과 정적 hardening 실험**으로만 보고한다.
+대응 폐루프 [[3](#ref3), §6]는 팀이 **설치본에서 실제 가능한 조치 인터페이스**를 지정한 뒤 별도로 평가한다. 기존 E2/core 경로가 RRCSetupComplete 미전송형에 닿지 않는 이유와 p5 ZMQ에서 검증한 정적 CSI-DTX RLF hardening은 [대응 경로 감사](../../reproducers/rrc-signaling-storm/docs/RESPONSE-PATH-AUDIT.md)에 분리했다. 이는 외부 탐지기가 호출한 조치가 아니므로, M1~M5의 RRCSetupComplete 미전송형 결과는 **탐지 검증과 정적 hardening 실험**으로만 보고한다.
 
 ## 10. 리스크·열린 결정
 
@@ -409,7 +409,7 @@ M1b의 (ii) 설정 프로필이 효과가 있는 이유는 다음과 같다. SIB
 | **RRCReject 뒤 정지** | OCUDU 기본 `RRCReject`에는 `waitTime`이 없고 [[1](#ref1), §8], OAI w40 UE는 그 경우 T302를 걸지 않으며 자체 재시도 경로도 확인되지 않았다 [[6](#ref6), L2439]. 컨트롤러 재시도로 우회하고 `rrc_reject_wait_time_s`를 기록 | M1a에서 확인 |
 | **RRCSetupRequest 후 중단형 점유** | p5에서 구현·실측 완료. 기본 capacity-96에서는 CSI-DTX RLF가 약 2.86초에 해제해 probe가 연결됐고, capacity 불변 hold32 실험 프로필의 G35에서는 probe 11/11이 DU 자원 부족으로 거부됐다. 같은 프로세스 ZMQ 결과이며 OTA는 미검증 | OTA에서 독립 witness 재검증 |
 | **DU 거부 단계 가시성** | 수립 가능 수 고갈 후 DU가 UE 생성을 거부하면 F1 Initial UL RRC도 E2SM-KPM(E2 Service Model – Key Performance Measurement, near-RT RIC가 E2 인터페이스로 gNB에서 받는 성능 카운터 [[1](#ref1), §2.8])의 `ConnEstabAtt`(RRC 연결 수립 시도 수)도 안 나감 → **F1 탭·KPM에 안 보이고 DU 로그/scheduler metrics에만** 보임 [[1](#ref1), §8] | 분석기 운영자와 공유 |
-| **동적 actuator 부재** | 정적 CSI-DTX RLF20은 RRCSetupComplete 미전송형을 조기 해제했지만 셀 전체에 항상 적용된다. CU-CP의 UE별 FIFO 때문에 탐지 후 CU release가 진행 중 Setup을 앞지를 수 없고 [[36](#ref36), L17], 기존 E2 slice·handover와 core 경로도 RRCSetupComplete 미전송형에 닿지 않는다. 근거는 표 아래와 [대응 경로 감사](reproducers/rrc-signaling-storm/docs/RESPONSE-PATH-AUDIT.md)에 있다 | 팀 조치 인터페이스 지정 |
+| **동적 actuator 부재** | 정적 CSI-DTX RLF20은 RRCSetupComplete 미전송형을 조기 해제했지만 셀 전체에 항상 적용된다. CU-CP의 UE별 FIFO 때문에 탐지 후 CU release가 진행 중 Setup을 앞지를 수 없고 [[36](#ref36), L17], 기존 E2 slice·handover와 core 경로도 RRCSetupComplete 미전송형에 닿지 않는다. 근거는 표 아래와 [대응 경로 감사](../../reproducers/rrc-signaling-storm/docs/RESPONSE-PATH-AUDIT.md)에 있다 | 팀 조치 인터페이스 지정 |
 | **5gattacks 라이선스** | LICENSE 없음, private testbed 전용 명시. 포크·재배포 전 저자 허가·인용 필요 [[9](#ref9)]. salam 포크는 Firecell 계열 [[31](#ref31)] | 법적 검토 |
 | **베이스 band 결정** | OAI(TDD는 공식 튜토리얼 근거 [[4](#ref4)], FDD는 OCUDU interop 미확인)·srsUE(FDD 전용 [[5](#ref5)]) 선택이 팀 셀 설정에 의존 | 팀 셀 확정 |
 
@@ -428,7 +428,7 @@ M1b의 (ii) 설정 프로필이 효과가 있는 이유는 다음과 같다. SIB
 
 <a id="ref1"></a>[1] 내부 문서, [rss-theory.md](rss-theory.md) §2~§8(OCUDU 수치의 단일 출처는 §8).
 
-<a id="ref2"></a>[2] 내부 문서, [AGENTS.md](AGENTS.md) '팀 프로젝트', '공격 모듈: RRC signaling storm (동결)' 및 '작업 원칙'.
+<a id="ref2"></a>[2] 내부 문서, [AGENTS.md](../../AGENTS.md) '팀 프로젝트', '공격 모듈: RRC signaling storm (동결)' 및 '작업 원칙'.
 
 <a id="ref3"></a>[3] 내부 문서, [methodology.md](methodology.md) §2·§4·§5·§6.
 

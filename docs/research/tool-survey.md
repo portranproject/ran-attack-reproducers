@@ -325,7 +325,7 @@ KAUST는 이 실패를 OTA 환경으로 한정하지 않았다. 에뮬레이션�
 
 ## 참고문헌
 
-[1] 내부 문서, [AGENTS.md](AGENTS.md) — '이 디렉토리는 무엇인가', '공격 모듈: RRC signaling storm (동결)', '동결 후 팀 결정', '미확인/리스크', '작업 원칙'.
+[1] 내부 문서, [AGENTS.md](../../AGENTS.md) — '이 디렉토리는 무엇인가', '공격 모듈: RRC signaling storm (동결)', '동결 후 팀 결정', '미확인/리스크', '작업 원칙'.
 [2] OCUDU Documentation, "Building a 5G network with the OpenAirInterface UE," accessed 2026-10-13. https://docs.ocudu.org/tutorials/oaiue/  
 [3] OCUDU Documentation, "Deploying a CU/DU split over F1," accessed 2026-10-13. https://docs.ocudu.org/tutorials/cu_du_split/  
 [4] 5gattacks, "5g-rrc-storm" (README, scripts/), commit 0e71f7a (2026-06-09), accessed 2026-10-13. https://github.com/5gattacks/5g-rrc-storm  

@@ -29,5 +29,5 @@
 | 3 | 0 | 10 | 0 | 456 | 38 | 0 | 0 |
 
 판정과 한계는
-[`rss-storm/docs/CURATED-VALIDATION-20261030.md`](../../rss-storm/docs/CURATED-VALIDATION-20261030.md)를
+[`reproducers/rrc-signaling-storm/docs/CURATED-VALIDATION-20261030.md`](../../reproducers/rrc-signaling-storm/docs/CURATED-VALIDATION-20261030.md)를
 따른다. 특히 OCUDU의 `ConRes CE ACKed` 문자열은 실제 ACK 증거가 아니다.

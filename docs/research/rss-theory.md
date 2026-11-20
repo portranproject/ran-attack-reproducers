@@ -556,7 +556,7 @@ Nguyen의 OAI 단말과 gNB는 RF 시뮬레이션된 무선 인터페이스로 �
 
 ### 7.3 OCUDU에서는 어떤가
 
-OCUDU는 OAI와 다르게 동작했다. OCUDU는 경합 해소 타이머가 만료되면 스케줄러에서 해당 단말을 비활성화하기만 하며 [21, L434], p5 ZMQ의 RRCSetupRequest 후 중단형 구현은 실제 MAC Msg3와 CU 요청을 10/10 exact join했다. capacity 96 실험에서도 Msg3-only 컨텍스트 96개를 채웠고, 실험 전용 hold 프로필을 쓴 G35에서는 10.13초 동안 정상 probe 11/11이 CU까지 도달한 뒤 `DU is not able to serve the UE`로 거절됐다. 다만 기본 RLF 정책에서는 CSI-DTX가 먼저 컨텍스트를 해제해 지속 거부가 성립하지 않았다. 근거와 한계는 §8.3과 [capacity-96 실측](artifacts/p5-msg3-cap96-20261030/README.md)에 있다. 그러므로 KAUST의 RRCSetupRequest 후 중단형 실패를 OCUDU의 기대치로 그대로 옮기지 않는다 [11, §2].
+OCUDU는 OAI와 다르게 동작했다. OCUDU는 경합 해소 타이머가 만료되면 스케줄러에서 해당 단말을 비활성화하기만 하며 [21, L434], p5 ZMQ의 RRCSetupRequest 후 중단형 구현은 실제 MAC Msg3와 CU 요청을 10/10 exact join했다. capacity 96 실험에서도 Msg3-only 컨텍스트 96개를 채웠고, 실험 전용 hold 프로필을 쓴 G35에서는 10.13초 동안 정상 probe 11/11이 CU까지 도달한 뒤 `DU is not able to serve the UE`로 거절됐다. 다만 기본 RLF 정책에서는 CSI-DTX가 먼저 컨텍스트를 해제해 지속 거부가 성립하지 않았다. 근거와 한계는 §8.3과 [capacity-96 실측](../../artifacts/p5-msg3-cap96-20261030/README.md)에 있다. 그러므로 KAUST의 RRCSetupRequest 후 중단형 실패를 OCUDU의 기대치로 그대로 옮기지 않는다 [11, §2].
 
 ## 8. OCUDU에 대입
 
@@ -582,10 +582,10 @@ OCUDU의 사실은 커밋 `440cdbb`(기본 브랜치 `dev`의 끝)에서 읽었�
 
 | 항목 | OCUDU 동작 | 기본값 | 상태·근거 |
 |---|---|---|---|
-| 보유 시간 | CU-CP의 RRC 설정 트랜잭션 제한 시간 = SIB1 `t300` + CU-CP `rrc_procedure_guard_time_ms`. 단, DU RLF가 먼저 F1 release를 보낼 수 있다 | 1000 + 1000 ms ≈ **2초** | 소스에서 유도. p5 G26에서는 늘린 CU 제한 시간보다 CSI-DTX RLF가 먼저 걸려 첫 컨텍스트가 2.857초에 해제됐다 [7, L41], [22, L1070–L1073], [19, L238–L241], [capacity-96 실측](artifacts/p5-msg3-cap96-20261030/README.md) |
-| 타임아웃 후 | `no_reply` 실패로 기록하고 해제를 요청한다. NG 컨텍스트가 없으므로 NGAP 해제 요청을 건너뛰고, SRB1 `RRCRelease`를 담은 F1 UE Context Release Command를 보낸다. DU는 RRC 컨테이너 전달 ACK를 최대 120 ms 기다린 뒤 단말을 삭제한다 | — | 코드 확인. p5 CU200 hold 프로필에서 미완료 context 수명을 약 32초로 실측했다. 기본·OTA 수명은 별도다 [7, L62–L66], [46, L29–L41], [25, L986–L994], [47, L78–L86], [36, L39–L62], [48, L33], [CU200 실측](artifacts/p5-cu200-3cell-20261030/README.md) |
-| 먼저 걸리는 한도 | DU 셀별 수립 가능 수 + 거절용 64개(설명은 표 앞 문단) | 수립 가능 수 = min(SR, CSI, SRS 자원, 2048−64). 이 식은 **상한일 뿐**이며 실제 값은 더 낮을 수 있다. 앱 기본 셀(`dl_f_ref_arfcn` 536020, 부반송파 간격 15 kHz, 20 MHz)은 대역을 따로 지정하지 않으면 OCUDU 대역표에서 이 ARFCN이 처음 맞는 n7(FDD 대역)으로 정해진다. 이전 판은 이 셀의 상한을 약 160, 30 kHz TDD 기본 패턴은 약 96으로 추정했다 | 상한 식은 코드 확인. p5 TDD 셀은 기동 로그의 SR 96·CSI 96과 실제 점유 96으로 확인했다. 약 160은 이전 판의 미측정 추정이다. **다른 셀은 DU 기동 CONFIG 로그로 다시 확인한다** [18, L133–L146, L197–L212], [45, L65–L69], [44, L18], [22, L1376–L1382], [43, L57, L181, L820–L838], [capacity-96 실측](artifacts/p5-msg3-cap96-20261030/README.md) |
-| CU-CP 단말 상한 | `max_nof_ues` | 기본 8192, p5 시험 설정 200 | 단일 DU 셀 96보다 뒤에 걸리지만 세 공격 셀로 200에 도달했다. 인공 hold32를 쓴 p5 V4 진단에서 200 점유가 15.68초 연속 유지됐다 [19, L526], [CU200 진단](artifacts/p5-cu200-3cell-20261030/README.md) |
+| 보유 시간 | CU-CP의 RRC 설정 트랜잭션 제한 시간 = SIB1 `t300` + CU-CP `rrc_procedure_guard_time_ms`. 단, DU RLF가 먼저 F1 release를 보낼 수 있다 | 1000 + 1000 ms ≈ **2초** | 소스에서 유도. p5 G26에서는 늘린 CU 제한 시간보다 CSI-DTX RLF가 먼저 걸려 첫 컨텍스트가 2.857초에 해제됐다 [7, L41], [22, L1070–L1073], [19, L238–L241], [capacity-96 실측](../../artifacts/p5-msg3-cap96-20261030/README.md) |
+| 타임아웃 후 | `no_reply` 실패로 기록하고 해제를 요청한다. NG 컨텍스트가 없으므로 NGAP 해제 요청을 건너뛰고, SRB1 `RRCRelease`를 담은 F1 UE Context Release Command를 보낸다. DU는 RRC 컨테이너 전달 ACK를 최대 120 ms 기다린 뒤 단말을 삭제한다 | — | 코드 확인. p5 CU200 hold 프로필에서 미완료 context 수명을 약 32초로 실측했다. 기본·OTA 수명은 별도다 [7, L62–L66], [46, L29–L41], [25, L986–L994], [47, L78–L86], [36, L39–L62], [48, L33], [CU200 실측](../../artifacts/p5-cu200-3cell-20261030/README.md) |
+| 먼저 걸리는 한도 | DU 셀별 수립 가능 수 + 거절용 64개(설명은 표 앞 문단) | 수립 가능 수 = min(SR, CSI, SRS 자원, 2048−64). 이 식은 **상한일 뿐**이며 실제 값은 더 낮을 수 있다. 앱 기본 셀(`dl_f_ref_arfcn` 536020, 부반송파 간격 15 kHz, 20 MHz)은 대역을 따로 지정하지 않으면 OCUDU 대역표에서 이 ARFCN이 처음 맞는 n7(FDD 대역)으로 정해진다. 이전 판은 이 셀의 상한을 약 160, 30 kHz TDD 기본 패턴은 약 96으로 추정했다 | 상한 식은 코드 확인. p5 TDD 셀은 기동 로그의 SR 96·CSI 96과 실제 점유 96으로 확인했다. 약 160은 이전 판의 미측정 추정이다. **다른 셀은 DU 기동 CONFIG 로그로 다시 확인한다** [18, L133–L146, L197–L212], [45, L65–L69], [44, L18], [22, L1376–L1382], [43, L57, L181, L820–L838], [capacity-96 실측](../../artifacts/p5-msg3-cap96-20261030/README.md) |
+| CU-CP 단말 상한 | `max_nof_ues` | 기본 8192, p5 시험 설정 200 | 단일 DU 셀 96보다 뒤에 걸리지만 세 공격 셀로 200에 도달했다. 인공 hold32를 쓴 p5 V4 진단에서 200 점유가 15.68초 연속 유지됐다 [19, L526], [CU200 진단](../../artifacts/p5-cu200-3cell-20261030/README.md) |
 | CU-CP 비활동 타이머 | `inactivity_timer`(설정 주석상 초 단위). 어떤 조건에서 적용되는지는 확인하지 않았다(미확인) | 120초 | 기본값만 코드 확인 [19, L529–L530]. 재현기가 완료 시도를 해제하는 수단 후보로 [design.md](design.md) §4가 참조한다 [13, §4] |
 | `RRCReject` `waitTime` | CU-CP `rrc_reject_wait_time_s`(1~16초, 선택, CLI `--rrc_reject_wait_time_s`). 설정하지 않으면 `waitTime` 없이 `RRCReject`를 보낸다 | **미송신** | 코드 확인 [19, L242–L245], [49, L527–L528], [25, L968–L982] |
 | `ra-ContentionResolutionTimer` | DU가 SIB1 `RACH-ConfigCommon`에 넣는 값 | **64 ms** | 코드 확인. DU 앱 설정(YAML/CLI)에는 노출되지 않는다. 이번 개정에서 `dev`(`440cdbb`)와 `main`(`920f88c`) 두 브랜치의 `apps/`를 검색했을 때 경합 해소 관련 이름은 스케줄러 지표(`conres_timer_expired` 등)뿐이고 설정 항목은 없었다 [38, L115–L116] |
@@ -607,7 +607,7 @@ OCUDU는 경합 해소 타이머가 만료되면 스케줄러에서 단말을 �
 
 실행 결과는 이 코드 판독을 절반만 확인했다. RRCSetupRequest 후 중단형은 p5에서 MAC-confirmed Msg3 뒤 OCUDU의 CU 요청까지 도달했고, 실제 capacity 96을 채웠다. 그러나 기본 `pucch.max_consecutive_kos=100`에서는 Msg3 뒤 CSI를 내지 않는 UE가 약 1.8초 만에 RLF로 판정되고 기본 `t310=1000ms` 뒤 F1 release가 나갔다. G26 첫 컨텍스트의 실제 보유시간은 2.857초였고, RLF expiry 622건 중 613건(98.6%)이 CSI-DTX 원인이었다. 즉 RRCSetupRequest 후 중단형의 수명은 CU 타임아웃 하나로만 설명할 수 없다.
 
-G35는 capacity를 96으로 유지하고 `max_consecutive_kos=2000`, `t300=2000`, CU guard 30000ms로 조기 정리를 관측창 뒤로 미룬 실험 전용 프로필을 썼다. 그 조건에서는 공격 컨텍스트 96개가 probe 관측창 끝까지 살아 있었고, probe 11개의 TC-RNTI가 모두 CU 요청과 자원 거절에 exact join됐으며 Msg4·Msg5·연결은 0건이었다. 이는 **hold32의 10.13초 관측창에서 RRCSetupRequest 후 중단형의 DU 자원 거부가 이어진 진단**이며, 기본 운영값이나 독립 OTA 정상 UE의 DoS를 입증하지 않는다. 상세는 [capacity-96 실측](artifacts/p5-msg3-cap96-20261030/README.md)에 있다.
+G35는 capacity를 96으로 유지하고 `max_consecutive_kos=2000`, `t300=2000`, CU guard 30000ms로 조기 정리를 관측창 뒤로 미룬 실험 전용 프로필을 썼다. 그 조건에서는 공격 컨텍스트 96개가 probe 관측창 끝까지 살아 있었고, probe 11개의 TC-RNTI가 모두 CU 요청과 자원 거절에 exact join됐으며 Msg4·Msg5·연결은 0건이었다. 이는 **hold32의 10.13초 관측창에서 RRCSetupRequest 후 중단형의 DU 자원 거부가 이어진 진단**이며, 기본 운영값이나 독립 OTA 정상 UE의 DoS를 입증하지 않는다. 상세는 [capacity-96 실측](../../artifacts/p5-msg3-cap96-20261030/README.md)에 있다.
 
 #### 8.3.1 DU ACK 확인 RRCSetupComplete 미전송형의 CU 200 hold32 진단
 
@@ -618,7 +618,7 @@ DU ACK 확인 RRCSetupComplete 미전송형을 합계 176건 만들었다. CU �
 약 2초 정리시간을 32초로 늘리고 첫 만료 전에 끝낸 인공 hold 진단이므로, 공격률이
 기본 해제율을 이겼다는 service-denial 성공 증거는 아니다. 실행기는 측정된 첫
 context 만료 뒤의 동작을 이 결과에 섞지 않도록 32초보다 긴 실행을 거부한다. 상세는
-[CU200 진단](artifacts/p5-cu200-3cell-20261030/README.md)에 있다.
+[CU200 진단](../../artifacts/p5-cu200-3cell-20261030/README.md)에 있다.
 
 #### 8.3.2 기본 cleanup rate-v2의 실패
 
@@ -629,7 +629,7 @@ context 만료 뒤의 동작을 이 결과에 섞지 않도록 32초보다 긴 �
 독립 정상 witness는 첫 distinct 시도만 거절된 뒤 Registration·PDU와 ping 437/438에
 성공했다. 따라서 `R × T_hold ≥ N_cap`의 `R`은 송신 요청률이 아니라 **실제 admission된
 컨텍스트 생성률**이어야 하고, 평균이 아니라 짧은 시간창마다 cleanup률을 넘어야 한다.
-원문은 [기본 cleanup 재검증](artifacts/p5-default-cleanup-rate-v2-20261030/README.md)에 있다.
+원문은 [기본 cleanup 재검증](../../artifacts/p5-default-cleanup-rate-v2-20261030/README.md)에 있다.
 
 ### 8.4 KPM 가시성
 
@@ -677,7 +677,7 @@ context 만료 뒤의 동작을 이 결과에 섞지 않도록 32초보다 긴 �
 
 ## 참고문헌
 
-[1] 내부 문서, [AGENTS.md](AGENTS.md) — 팀 프로젝트 개요, RRC signaling storm 공격 모듈, 확정 사항·열린 결정·리스크.
+[1] 내부 문서, [AGENTS.md](../../AGENTS.md) — 팀 프로젝트 개요, RRC signaling storm 공격 모듈, 확정 사항·열린 결정·리스크.
 [2] A. Abou Hasna, A. El Falou, "Experimental Validation and Mitigation of RRC Storm Attacks in 5G Cellular Networks," arXiv:2608.16441v2, 2026. https://arxiv.org/html/2608.16441
 [3] D. K. Nguyen, R. El Malki, F. Rebecchi, "RRC Signaling Storm Detection in O-RAN," arXiv:2504.15738v1, 2025. https://arxiv.org/html/2504.15738  
 [4] 3GPP TS 38.321 V16.18.0, "NR; Medium Access Control (MAC) protocol specification," ETSI TS 138 321, 2025. https://www.etsi.org/deliver/etsi_ts/138300_138399/138321/16.18.00_60/ts_138321v161800p.pdf  

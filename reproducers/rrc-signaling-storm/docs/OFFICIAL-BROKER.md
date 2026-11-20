@@ -1,5 +1,7 @@
 # 공식 srsRAN GNU Radio 브로커로 다중 UE 재현 (2026-10-29)
 
+> **역사적 진단 기록 (2026-10):** 이 문서는 초기 GNU Radio 브로커 검증 기록이다. 현재 same-cell 실행·자격 기준은 [../README.md](../README.md)와 [사용 가이드](USAGE-GUIDE.md)를 따른다.
+
 ## 결론
 
 srsRAN이 제공하는 GNU Radio 다중 UE flowgraph를 확장한 broker가 우리 OCUDU gNB +

@@ -101,7 +101,8 @@ class SameCellContractTests(unittest.TestCase):
         self.assertIn("ul_gate.set_k", broker)
         self.assertIn("dl_gate = blocks.multiply_const_cc(1.0)", broker)
         self.assertIn("NORMAL_UE_BROKER_PERSISTENT_ATTACK", broker)
-        self.assertIn("endpoint_count > 15", broker)
+        self.assertIn("endpoint_count > max_endpoints", broker)
+        self.assertIn('NORMAL_UE_BROKER_MAX_ENDPOINTS", "15"', broker)
         self.assertIn('mode == "warmup"', broker)
         self.assertIn("attack slots must be warmed first", broker)
         method = broker.split("def select_attack_slots", 1)[1].split("\n\n", 1)[0]
@@ -143,7 +144,7 @@ class SameCellContractTests(unittest.TestCase):
         placeholder_group = source.split("start_placeholder_group()", 1)[1].split("stop_placeholder_group()", 1)[0]
         self.assertIn('wait_process_port "$pid"', placeholder_group)
         self.assertIn('if [[ $ATTACK != uplink ]]; then', run_section)
-        self.assertIn("TOTAL_ENDPOINTS <= 15", run_section)
+        self.assertIn("TOTAL_ENDPOINTS <= ${SAME_CELL_DIAGNOSTIC_MAX_ENDPOINTS:-15}", run_section)
         self.assertIn("TOTAL_ENDPOINTS=$((ATTACK_SLOTS + COUNT))", source)
         self.assertIn("auth-timeout) ATTACK_SLOTS=10", source)
         self.assertIn("SAME_CELL_AUTH_RECOVERY_TIMEOUT_S:-240", source)

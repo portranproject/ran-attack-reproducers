@@ -24,8 +24,8 @@ INFO로 출력하고, 정상 인증 때 OPc·AMF·Ki·SQN·RAND·IK·CK·RES·AU
 필드 이름만 보고한다.
 
 ```bash
-python3 rss-storm/analysis/check_sensitive_artifacts.py
-python3 rss-storm/analysis/check_sensitive_history.py
+python3 reproducers/rrc-signaling-storm/analysis/check_sensitive_artifacts.py
+python3 reproducers/rrc-signaling-storm/analysis/check_sensitive_history.py
 ```
 
 첫 명령은 현재 tracked·untracked 파일을, 둘째 명령은 모든 로컬 ref에서 도달 가능한

@@ -1,5 +1,7 @@
 # p5 동일 셀 정상 UE 풀 자격 검증 (2026-11-13)
 
+> 이 문서는 2026-11-13 단독 5-UE 풀 검증 기록이다. L3 7종 통합 `same-cell` 자격 현황과 최신 사용법은 [정상 UE README](../README.md) 및 [p1 자격 기록](../../../artifacts/p1-clean-origin-live-e2e-20261119/README.md)을 따른다.
+
 ## 판정
 
 동일 DU·셀에서 공격용 quiet endpoint 1개와 정상 UE용 독립 virtual RU/ZMQ endpoint 5개를

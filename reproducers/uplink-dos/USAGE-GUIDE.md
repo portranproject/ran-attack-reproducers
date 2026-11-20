@@ -25,7 +25,7 @@ git -C /root/OAI worktree add --detach /root/OAI-uplink-dos-w38 \
 OAI=/root/OAI-uplink-dos-w38 ./bin/uplink-build
 ```
 
-빌드 결과에는 에뮬레이션 마커가 있어야 하며 기본값은 off다.
+`bin/uplink-build`는 `6d6782b48484efd935c14e834832032743f9b138` 트리에 3개 패치(`patch/uplink-dos-emulator-w38.patch`, `patch/uplink-credential-flood-w38.patch`, `../../workloads/normal-ue/patch/same-cell-ra-gate-w38.patch`)를 적용한다. 빌드 결과에는 에뮬레이션·플러드·same-cell gate 마커가 있어야 하며 기본값은 off다.
 
 ## 3. CU idle 프로필
 
@@ -93,13 +93,13 @@ UPLINK_CONF=conf/uplink.conf ./bin/uplink-credential-flood-campaign \
   -n l321-campaign-YYYYMMDD -e 1
 ```
 
-통합 컨트롤러에서는 공격 ID `uplink-credential-flood`를 사용한다.
+통합 컨트롤러에서는 공격 ID `uplink-credential-flood`를 사용한다. 정상 UE 5대 `same-cell` E2E는 `p5`와 `p1`(`p1q9-20261119`)에서 모두 6/6 통과했다.
 
 ```bash
 ./ctl.sh run uplink-credential-flood attack l321-smoke --enable
 ./ctl.sh campaign uplink-credential-flood l321-campaign --enable
-./ctl.sh same-cell run uplink-credential-flood -n l321-same --count 5 -- \
-  ./reproducers/uplink-dos/bin/uplink-credential-flood-run attack -n l321-same -e 1
+./ctl.sh same-cell run uplink-credential-flood --profile p1 --mode control --run-id l321-same-ctrl
+./ctl.sh same-cell run uplink-credential-flood --profile p1 --mode attack --run-id l321-same-atk --enable
 ```
 
 이 경로는 OAI UE를 실행해 실제 ZMQ→DU/CU→TeleRAN 입력을 production detector에 전달한다.

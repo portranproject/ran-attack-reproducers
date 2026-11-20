@@ -1,5 +1,7 @@
 # p5 단일 셀 공격 hot-swap 검증 (2026-11-13)
 
+> 이 문서는 2026-11-13~16 이력 기록이며, 이후 L3 7종 통합 자격은 [정상 UE README](../README.md) 및 [p1 자격 기록](../../../artifacts/p1-clean-origin-live-e2e-20261119/README.md)이 대체한다. 현행 코드(`tools/same_cell_broker.py`, `bin/same-cell-run`)는 아래 세 지점에서 11-16 절과 다르다: (1) `dl_gate=1.0` 고정이고 `ul_gate`만 `0.0↔1.0` 전환, (2) `auth-timeout`은 `ATTACK_SLOTS=10`, (3) `hot-run` 하위 명령은 없음(`SAME_CELL_EXPERIMENTAL_SWITCH` 분기는 비도달).
+
 ## 결론
 
 **모든 공격을 같은 cell ID에서 실행하는 것은 가능하다.** 현재 승인하지 않는 것은 같은

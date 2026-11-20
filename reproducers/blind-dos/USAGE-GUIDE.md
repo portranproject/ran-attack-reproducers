@@ -16,8 +16,9 @@ G5 판정을 읽는 절차다. 외부 망이나 비차폐 RF에서는 실행하�
 단일 attack 통과만으로 캠페인 성공은 아니다. 같은 설정의 control→attack을 사전 고정한
 N세트 모두 통과해야 G5다. 기본 N은 3이다.
 
-현재 검증 범위는 p5 direct 2-cell ZMQ와 랩 oracle 입력이다. 식별자 획득, 지속 차단,
-OTA 성능은 검증하지 않는다.
+현재 검증 범위는 p5 direct 2-cell ZMQ(G5 3/3, E2E 6/6)와 `p1` clean-origin 정상 UE 5대 same-cell E2E(`p1q9-20261119` 6/6)이다. 비특권 식별자 획득(G6), 지속 차단(G7), OTA 성능은 검증하지 않는다.
+
+> `same-cell` E2E 실행은 `./ctl.sh same-cell run blind-dos --profile <p1|p5> --mode <control|attack> --run-id <id> [--enable]`을 사용한다. 아래 절차는 직접 `bin/blind-run` / `bin/blind-campaign`(p5 direct 2-cell) 기준이다.
 
 ## 2. 준비물
 
@@ -42,7 +43,7 @@ OAI=/root/OAI-blind-dos-w38 \
   reproducers/blind-dos/bin/blind-build
 ```
 
-빌드기는 다음을 검사한다.
+`bin/blind-build`는 `patch/blind-ue-w38.patch`와 `../authentication-timeout-exhaustion/patch/same-cell-ra-gate-w38.patch`를 순서대로 적용하고 다음을 검사한다.
 
 - OAI HEAD가 고정 commit인지
 - worktree가 clean인지

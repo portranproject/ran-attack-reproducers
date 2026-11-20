@@ -124,7 +124,7 @@ RRCResume 반복형의 메시지 방향에 유의해야 한다. 단말이 보내
 > "// Timeout before ConRes CE could be ACKed: deactivate UE." [20, L434]
 > (번역) ConRes CE가 ACK되기 전에 타임아웃되면 UE를 비활성화한다.
 
-여기서 비활성화(deactivate)는 스케줄러가 그 UE의 논리 채널을 끄고 HARQ 재전송을 취소한다는 뜻이다 [21, L36–L46]. 실측에서는 그보다 뒤의 CSI-DTX RLF가 기본 100회에 도달하고 `t310=1000ms`가 끝난 뒤 DU가 F1 release를 보냈다. 기본 capacity-96 프로필의 실제 첫 context 수명은 약 2.86초였고 정상 probe가 빈틈으로 접속했다. 실험 전용 hold32 프로필은 capacity를 바꾸지 않고 이 정리 경계를 관측창 뒤로 미뤄 G35의 10.13초 관측창 거부를 만들었다. 이는 기본 cleanup의 공격 성공 증거가 아니다. 상세 수치와 설정 SHA는 [capacity-96 artifact](artifacts/p5-msg3-cap96-20261030/README.md)를 따른다.
+여기서 비활성화(deactivate)는 스케줄러가 그 UE의 논리 채널을 끄고 HARQ 재전송을 취소한다는 뜻이다 [21, L36–L46]. 실측에서는 그보다 뒤의 CSI-DTX RLF가 기본 100회에 도달하고 `t310=1000ms`가 끝난 뒤 DU가 F1 release를 보냈다. 기본 capacity-96 프로필의 실제 첫 context 수명은 약 2.86초였고 정상 probe가 빈틈으로 접속했다. 실험 전용 hold32 프로필은 capacity를 바꾸지 않고 이 정리 경계를 관측창 뒤로 미뤄 G35의 10.13초 관측창 거부를 만들었다. 이는 기본 cleanup의 공격 성공 증거가 아니다. 상세 수치와 설정 SHA는 [capacity-96 artifact](../../artifacts/p5-msg3-cap96-20261030/README.md)를 따른다.
 
 **OCUDU에서의 DU ACK 확인 RRCSetupComplete 미전송형(경로 실측 완료, 공격 성공 미완료).** 최종 UE 바이너리의 세 공격 셀은
 Msg4를 복호하고 DU HARQ ACK가 exact join된 DU ACK 확인 RRCSetupComplete 미전송형을 합계 176건 만들었고,
@@ -133,7 +133,7 @@ Msg5는 0건이었다. CU의 설정 한도 200을 바꾸지 않은 채 재구성
 17/17회 `RRCReject`를 받았다. 부하 전 같은 4셀 control은 모두 RRC를 완료했다.
 그러나 기본 약 2초 context 수명을 32초로 늘리고 첫 만료 전에 끝낸 결과다. 따라서
 공격자가 기본 해제율보다 빠르게 컨텍스트를 만들었다는 성공 증거가 아니며, 원문
-로그·설정·해시는 [CU200 V4 진단](artifacts/p5-cu200-3cell-20261030/README.md)으로만 사용한다.
+로그·설정·해시는 [CU200 V4 진단](../../artifacts/p5-cu200-3cell-20261030/README.md)으로만 사용한다.
 
 **기본 cleanup rate-v2 재검증(공격 성공 실패).** 한 공격 프로세스의 6개 UE와 별도
 full-service witness를 쓴 D4에서 F1 제공률은 48.652/s로 정리율 39.407/s보다 높았다.
@@ -142,7 +142,7 @@ full-service witness를 쓴 D4에서 F1 제공률은 48.652/s로 정리율 39.40
 0.885초였으며 정상 witness는 첫 distinct 시도만 거절된 뒤 Registration·PDU와 ping
 437/438에 성공했다. 따라서 판정식의 `R`은 전송 요청률이 아니라 **실제 admission된
 컨텍스트 생성률**이어야 하고, 평균뿐 아니라 짧은 창마다 cleanup률을 넘어야 한다.
-원문과 계산은 [기본 cleanup 실패 분석](artifacts/p5-default-cleanup-rate-v2-20261030/README.md)에 있다.
+원문과 계산은 [기본 cleanup 실패 분석](../../artifacts/p5-default-cleanup-rate-v2-20261030/README.md)에 있다.
 
 **구현 범위 밖의 절차.** 본 문서는 핸드오버, 페이징, NAS 등록 폭주, E2/F1 인터페이스에 메시지를 직접 쏟아붓는 공격을 현재의 단일 셀 UE 재현기의 구현 범위 밖으로 둔다. 재현기 설계도 핸드오버·페이징·NAS 등록 폭주와 F1/CU 경계 직접 주입을 비목표로 정했다 [22, §2]. 핸드오버는 연결 중인 단말을 다른 셀로 옮기는 절차이고 [5, §9.2.3.1], 페이징은 망이 `RRC_IDLE`·`RRC_INACTIVE` 단말을 호출하는 절차다 [5, §9.2.5]. 특히 srsUE는 5G SA(Standalone, LTE 도움 없이 5G만으로 동작하는 모드)에서 핸드오버를 지원하지 않는다고 공식 문서에 명시되어 있다 [23, 'Limitations'].
 
@@ -249,7 +249,7 @@ TeleRAN은 eBPF 필터와 사용자 공간의 ASN.1(Abstract Syntax Notation One
 
 따라서 Nguyen 논문의 100 ms 미만 탐지 시간 [15, §VII-B]을 우리 시스템에 적용하지 않는다. KPM 기반 탐지는 이 1초 하한에 묶이고, F1 탭 기반 탐지라 해도 그 수치는 OAI RF 시뮬레이터와 모의 카운터 조건에서 나온 것이기 때문이다(아래 'Nguyen 비율 특징의 의미').
 
-**정답과 탐지 입력의 분리.** CU의 F1-C 탭은 PRACH와 HARQ ACK의 정답이 될 수 없다(§3). OCUDU는 계층별 로그와 MAC·RLC 계층, 그리고 NGAP·N3·E1AP·F1AP·E2AP 인터페이스의 패킷 캡처(PCAP)를 출력할 수 있다 [28, 'Logs', 'PCAPs']. 여기서 N3 캡처는 OCUDU 설정상 NG-U(GTP-U) 캡처이며 [29, L206–L207], NG-U는 gNB와 코어의 UPF 사이 사용자평면 인터페이스다 [5, §4.3.1.1]. E1AP는 CU-CP와 CU-UP 사이 E1 인터페이스 [6, §6.1.2]의 응용 프로토콜이고, E2AP는 E2 인터페이스의 응용 프로토콜이다. 본 프로젝트는 이 출력을 **검증용 정답으로만** 사용하고 탐지기 입력과 분리한다. 구현된 [라벨 계약 v1](reproducers/rrc-signaling-storm/docs/LABEL-CONTRACT.md)은 UE raw event를 시도별로 묶되, DU ACK가 시도별로 조인되기 전에는 최종 `canonical_a`를 `null`로 남긴다. 또 OCUDU에서는 RRCSetupComplete 미전송형과 RRCSetupRequest 후 중단형의 CU F1-C 시퀀스가 같을 수 있으므로 [4, §8], 두 시나리오를 F1-C 탭만으로 구별할 수 있다고 가정하지 않고 UE 쪽 정답으로 후보 라벨을 붙인다(추론).
+**정답과 탐지 입력의 분리.** CU의 F1-C 탭은 PRACH와 HARQ ACK의 정답이 될 수 없다(§3). OCUDU는 계층별 로그와 MAC·RLC 계층, 그리고 NGAP·N3·E1AP·F1AP·E2AP 인터페이스의 패킷 캡처(PCAP)를 출력할 수 있다 [28, 'Logs', 'PCAPs']. 여기서 N3 캡처는 OCUDU 설정상 NG-U(GTP-U) 캡처이며 [29, L206–L207], NG-U는 gNB와 코어의 UPF 사이 사용자평면 인터페이스다 [5, §4.3.1.1]. E1AP는 CU-CP와 CU-UP 사이 E1 인터페이스 [6, §6.1.2]의 응용 프로토콜이고, E2AP는 E2 인터페이스의 응용 프로토콜이다. 본 프로젝트는 이 출력을 **검증용 정답으로만** 사용하고 탐지기 입력과 분리한다. 구현된 [라벨 계약 v1](../../reproducers/rrc-signaling-storm/docs/LABEL-CONTRACT.md)은 UE raw event를 시도별로 묶되, DU ACK가 시도별로 조인되기 전에는 최종 `canonical_a`를 `null`로 남긴다. 또 OCUDU에서는 RRCSetupComplete 미전송형과 RRCSetupRequest 후 중단형의 CU F1-C 시퀀스가 같을 수 있으므로 [4, §8], 두 시나리오를 F1-C 탭만으로 구별할 수 있다고 가정하지 않고 UE 쪽 정답으로 후보 라벨을 붙인다(추론).
 
 **Nguyen 비율 특징의 의미.** Nguyen 등의 탐지 특징 R1 = N_5 / N_3과 R2 = N_5 / N_4는 각각 Msg5 수를 Msg3 수로, Msg5 수를 Msg4 수로 나눈 비율이다 [15, §VI]. 여기서 N_k는 한 슬라이딩 창 안에서 관측한 Msgk의 개수이며 [15, §VII-B], 앞 문단의 N3 인터페이스와는 무관한 표기다. Nguyen은 R1을 완료된(또는 미완료된) RRC 설정 절차의 비율로 설명하지만 [15, §VI], 실제 계산은 한 창 안의 메시지 수 비율이므로 [15, §VII-B] 시도별 완료율과 같지 않다(추론). Nguyen 스스로 Msg4와 Msg5 사이에 자연스러운 지연이 있다고 적었으므로 [15, §VII-B], 우리가 같은 특징을 쓰려면 Msg4→Msg5 지연, 창 경계, 분모가 0인 창을 처리하는 규칙을 정해야 한다(추론). 논문의 임계값 0.5 [15, §VI], 625 ms 창 [15, §VII-A], 약 90 ms 탐지 [15, §VII-B]는 OAI gNB·UE를 RF 시뮬레이션으로 연결하고 [15, §III-C] 정상 부하를 절단 포아송(truncated Poisson) 분포로 모사한 조건의 결과다 [15, §VII-A].
 
@@ -262,7 +262,7 @@ TeleRAN은 eBPF 필터와 사용자 공간의 ASN.1(Abstract Syntax Notation One
 
 **첫 구현에 필요한 제어.** 노브(knob)는 실험자가 조절하는 입력 파라미터다. 본 문서는 첫 구현의 제어를 다음으로 제한한다: 시나리오, 시작·종료, 시도 간격(설정값과 실제 Msg3/s를 분리해 기록), 안전한 최대 지속시간, 정상 UE 기준선. 버스트, 완료 비율, 초기 UE identity 정책은 RRCSetupComplete 미전송형이 성립한 뒤에만 추가한다. 이 순서는 재현기 설계의 1차/후속 노브 구분과 같다 [22, §5]. 노브의 형태는 프로세스를 띄울 때 주는 "실행 시작 인자"와 실행 도중 바꾸는 "실행 중 변경"으로 구분한다 [22, §5]. 공개된 5gattacks 공격 패치의 재시도 간격은 둘 중 어느 것도 아닌 **빌드 시 상수**다. 패치는 재시도 타이머를 `nr_timer_setup(&tac->attack_rach_timer, 10, 10)`으로 소스에 고정해 두므로, 간격을 바꾸려면 다시 빌드해야 한다 [17, L280]. 두 인자는 목표값(target) 10과 tick당 증가량(step) 10이므로, 이 타이머는 첫 tick에 만료된다 [4, §5]. KAUST가 추정한 공격 시도율은 약 25회/초(시도당 40 ms)였다 [10, §VI-B]. 런타임 요청률·완료율·identity 노브도 없다 [18, §4].
 
-표 3은 실행마다 남겨야 할 값과 그 목적이다. 각 행은 서로 다른 오류 원인을 가려내기 위한 것이며, 레코드 형식은 [design.md](design.md) §8과 구현된 [라벨 계약 v1](reproducers/rrc-signaling-storm/docs/LABEL-CONTRACT.md)에서 정한다 [22, §8].
+표 3은 실행마다 남겨야 할 값과 그 목적이다. 각 행은 서로 다른 오류 원인을 가려내기 위한 것이며, 레코드 형식은 [design.md](design.md) §8과 구현된 [라벨 계약 v1](../../reproducers/rrc-signaling-storm/docs/LABEL-CONTRACT.md)에서 정한다 [22, §8].
 
 표 3. 실행마다 기록할 값
 
@@ -368,7 +368,7 @@ Abdelrahman과 Gelenbe의 3G 연구는 3G 표준인 UMTS(Universal Mobile Teleco
 
 [1] A. Tabiban, H. A. Alameddine, M. A. Salahuddin, R. Boutaba, "Signaling Storm in O-RAN: Challenges and Research Opportunities," IEEE Communications Magazine (accepted manuscript), 2024. https://rboutaba.cs.uwaterloo.ca/Papers/Journals/2023/TabibanCommMag23.pdf
 
-[2] 내부 문서, [AGENTS.md](AGENTS.md) — 팀 프로젝트 개요, 서브태스크 목표·결정, 작업 원칙.
+[2] 내부 문서, [AGENTS.md](../../AGENTS.md) — 팀 프로젝트 개요, 서브태스크 목표·결정, 작업 원칙.
 
 [3] H. Wen, V. Yegneswaran, P. Porras, A. Gehani, P. Sharma, Z. Lin, "Towards Bridging the Telemetry Gap for Security Applications in 6G OpenRANs via eBPF," NDSS Workshop on Security and Privacy of Next-Generation Networks (FutureG), 2026. https://www.csl.sri.com/users/gehani/papers/FutureG-2026.eBPF.pdf
 

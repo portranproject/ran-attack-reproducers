@@ -1,60 +1,78 @@
 # 요청되지 않은 NAS SecurityModeReject 결과 (L3-06)
 
-## 무엇을 재현하는가
+OAI UE가 선행 NAS `SecurityModeCommand` 없이 상향 `SecurityModeReject`를 한 번 송신해, 5GReasoner 계열 Uplink NAS Counter Desynchronization의 탐지 입력 신호를 실제 UE→RAN→TeleRAN→detector 경로로 재현하는 에뮬레이션 모듈이다.
 
-5GReasoner의 원 공격은 MITM 기지국이 피해 UE에 무결성이 틀린 NAS
-`SecurityModeCommand`를 반복 전송하고 UE의 `SecurityModeReject`를 정상 망에 전달하지 않아,
-UE와 AMF의 상향 NAS counter를 어긋나게 만드는 공격이다.
+| 항목 | 값 |
+|---|---|
+| 룰 ID | `L3-06` |
+| `reproducer.json` id | `nas-counter-desynchronization` |
+| `ctl.sh` ID / 별칭 | `nas-counter-desynchronization` (`l3-06`) |
+| 재현 수준 (`reproduction_level`) | `protocol-result-emulation` |
+| active 모드 (`active_mode`) | `emulation` |
+| 자격 현황 | `p1` same-cell 6/6 통과 (`p1q9-20261119`), `p5` direct 1-cell 6/6 통과 (`p5` same-cell 미승인), `OTA` pending |
 
-현재 p5는 UE와 정상 gNB가 1:1로 연결된 ZMQ 환경이라 MITM·메시지 차단과 256회 counter
-증가를 만들 수 없다. 따라서 이 모듈은 공격 원인이 아니라 탐지 문서 L3-06이 요구하는
-**요청되지 않은 상향 `SecurityModeReject` 결과**를 실제 프로토콜 경로로 재현한다.
+> 격리된 팀 소유 테스트베드 전용이다. `-e 1` 또는 `--enable` 없이는 정상 `Authentication Response`를 제출한다.
+
+## 동작 요약
 
 ```text
-control:   AuthenticationRequest → AuthenticationResponse → 정상 등록/PDU/ping
-emulation: AuthenticationRequest → SecurityModeReject(1회) → UE→DU/CU→TeleRAN→detector
+OAI UE                       OCUDU DU/CU / Open5GS          TeleRAN → detector
+   │ Authentication Request  │                                │
+   │<────────────────────────│                                │
+   │ (control)   AuthenticationResponse → 정상 등록/PDU/ping  │
+   │ (emulation) SecurityModeReject(1회) ────────────────────>│ L3-06 RAISE
 ```
 
-UE 패치만 사용한다. OCUDU DU/CU, Open5GS, TeleRAN, production detector의 소스와 임계값은
-바꾸지 않는다. `observations.jsonl`은 TeleRAN 원문과 detector recorder의 SHA-256이 같아야
-통과하며, 직접 생성한 `ue_evt`·`kpm2`를 detector에 주입하지 않는다.
+- **control** (`-e 0`): 정상 `Authentication Response`와 Registration·PDU·ping을 수행하며 `SecurityModeReject`는 0건이다.
+- **emulation** (`-e 1`): `OAI_NAS_DESYNC_RESULT_EMULATE=1`로 선행 NAS `SecurityModeCommand` 없이 상향 `SecurityModeReject`를 1회 송신한다. OCUDU DU/CU, Open5GS, TeleRAN, production detector 소스와 임계값은 수정하지 않는다.
+- **OAI UE-only 패치**: 기준 커밋 `6d6782b48484efd935c14e834832032743f9b138`에 `bin/nas-counter-desync-build`가 2개 패치(`patch/nas-counter-desync-result-w38.patch`, `../../workloads/normal-ue/patch/same-cell-ra-gate-w38.patch`)를 적용한다.
 
-## 성공 조건
+## 실행 방법
 
-- control: `SecurityModeReject=0`, L3-06 경보 0, Registration·PDU·ping 성공
-- emulation: 실제 상향 `SecurityModeReject=1`, 그보다 앞선 NAS `SecurityModeCommand=0`,
-  production L3-06 RAISE 1회, 대시보드 전송 성공
-- 공통: 100 ms TeleRAN hello, seq 연속, gap 0, KPM 존재, UE crash 0
-- 주장 고정: `live_protocol_path_observed=true`, `mitm_observed=false`,
-  `invalid_smc_received_observed=false`, `nas_counter_wrap_observed=false`
-
-서비스 거부는 합격 조건이 아니다. 원 공격 전체를 재현했다고도 주장하지 않는다.
-
-## 실행
+### 통합 컨트롤러 (`ctl.sh`)
 
 ```bash
-./ctl.sh setup l3-06 --profile p5
+./ctl.sh setup l3-06 --profile p1
+./ctl.sh doctor l3-06 --profile p1
+
+# 단발 및 matched 3세트 캠페인 (p5 direct 1-cell)
 ./ctl.sh run l3-06 control l3-06-control --profile p5
 ./ctl.sh run l3-06 emulation l3-06-emulation --profile p5 --enable
 ./ctl.sh campaign l3-06 l3-06-matched --profile p5 --enable
+
+# 정상 UE 5대 same-cell E2E 실행 (p1)
+./ctl.sh same-cell run l3-06 --profile p1 --mode control --run-id sc-l306-ctrl-1
+./ctl.sh same-cell run l3-06 --profile p1 --mode emulation --run-id sc-l306-emu-1 --enable
 ```
 
-same-cell 진입점은 제공하지만 p5 자격은 미승인이다. 2026-11-17 정상 배경 5대+L3-06 UE
-1대와 4대+1대 control 모두 broker 전환 뒤 정상 풀 health가 회복되지 않았다. direct 1셀
-자격과 섞어 주장하지 않는다. 진단 실행은 다음과 같다.
+### 직접 실행 (`bin/`)
+
+설정은 `conf/nas-counter-desync.conf.example`을 복사한 `conf/nas-counter-desync.conf`(`NAS_DESYNC_CONF`)를 사용한다.
 
 ```bash
-./ctl.sh same-cell run nas-counter-desync -n l3-06-same-cell --count 5 -- \
-  ./ctl.sh run l3-06 emulation l3-06-same-cell --enable
+OAI=/root/OAI-nas-desync-w38 bin/nas-counter-desync-build
+NAS_DESYNC_CONF=conf/nas-counter-desync.conf bin/nas-counter-desync-run control -n l306-ctrl -e 0
+NAS_DESYNC_CONF=conf/nas-counter-desync.conf bin/nas-counter-desync-run emulation -n l306-emu -e 1
+NAS_DESYNC_CONF=conf/nas-counter-desync.conf bin/nas-counter-desync-campaign -n l306-camp -e 1
 ```
 
-## 근거와 한계
+## 합격 기준
 
-- [5GReasoner](https://syed-rafiul-hussain.github.io/wp-content/uploads/2019/10/5GReasoner.pdf):
-  Uplink NAS Counter Desynchronization의 MITM·invalid SMC·reject drop·counter divergence 원형
-- [5G-SPECTOR](https://dev.ndss-symposium.org/wp-content/uploads/2024-527-paper.pdf):
-  NAS/RRC 메시지 수준 관측으로 공격 흔적을 탐지하는 계보
+- **control**: `SecurityModeReject=0`, `L3-06` 경보 0건, Registration·PDU·ping 성공.
+- **emulation**: 실제 상향 `SecurityModeReject=1`, 선행 NAS `SecurityModeCommand=0`, `observations.jsonl`의 TeleRAN 원문/detector recorder SHA-256 일치, TeleRAN 100 ms / gap 0 / KPM 존재, production `L3-06` RAISE 1건, dashboard 수락 ≥ 1건·거절 0건, same-cell 정상 UE 5대 전후 ping 5/5, UE crash 0건.
+- **campaign**: 고정 순서 `control → emulation` 3세트 모두 통과.
+- **고정 주장 필드 (`verdict.json`)**: `passed=true`, `live_protocol_path_observed=true`, `mitm_observed=false`, `invalid_smc_received_observed=false`, `nas_counter_wrap_observed=false`, `service_denial_observed=false`.
 
-실 SDR OTA, MITM relay, 잘못된 SMC의 실제 수신, 8-bit sequence wrap, 이후 정상 uplink NAS
-폐기와 지속 DoS, 정상 UE same-cell 공존은 미검증이다. p5 direct 1셀 matched 결과는
-[2026-11-17 자격 기록](artifacts/p5-live-result-20261117/)에 있다.
+## 한계 및 금지 주장
+
+- **원 공격 원인 미재현**: MITM 기지국, 무결성이 틀린 `SecurityModeCommand` 실제 수신, 8-bit NAS sequence wrap-around, 이후 정상 상향 NAS 폐기는 재현·관측하지 않는다.
+- **서비스 거부 미관측**: `service_denial`은 `not_observed`이며 합격 조건이 아니다.
+- **p5 vs p1 same-cell 구분**: `p1` clean-origin 정상 UE 5대 same-cell E2E(`p1q9-20261119`)는 6/6 통과했다. 반면 2026-11-17 p5 same-cell 실험에서는 broker 전환 뒤 정상 풀 health가 회복되지 않았으므로 p5 direct 1-cell 자격과 p5 same-cell을 섞어 주장하지 않는다.
+- **OTA·상용망 미검증**: 실 SDR 차폐 OTA와 상용망 일반화는 검증하지 않았다.
+
+## 관련 문서 및 근거
+
+- 동반 문서: [계보](PROVENANCE.md)
+- p1 same-cell 42/42 자격: [p1 clean-origin L3 7종 E2E](../../artifacts/p1-clean-origin-live-e2e-20261119/README.md)
+- p5 direct 1-cell 자격: [2026-11-17 자격 기록](artifacts/p5-live-result-20261117/README.md)
+- 참고 문헌: [5GReasoner](https://syed-rafiul-hussain.github.io/wp-content/uploads/2019/10/5GReasoner.pdf), [5G-SPECTOR](https://dev.ndss-symposium.org/wp-content/uploads/2024-527-paper.pdf)

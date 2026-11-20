@@ -37,7 +37,9 @@ OAI 2026.w38 `openair3/NAS/NR_UE/nr_nas_msg.c`에는 이미 다음 구현이 있
 
 따라서 새 encoder나 별도 NAS 구조체를 만들지 않는다. 공격 모드의 첫 Authentication
 Request에서만 기존 `generateIdentityResponse(..., FGS_MOBILE_IDENTITY_SUCI)`를 호출하고,
-이후 재전송은 정상 처리하지 않고 관측 종료까지 유지한다.
+이후 재전송은 정상 처리하지 않고 관측 종료까지 유지한다. `bin/downlink-imsi-build`는
+`patch/downlink-imsi-ue-w38.patch`와 same-cell RA gate용
+`../../workloads/normal-ue/patch/same-cell-ra-gate-w38.patch`를 함께 적용한다.
 
 런타임 노브는 두 개만 둔다.
 

@@ -1,66 +1,77 @@
-# 보안 전 UE Capability Information 주입
+# 보안 전 UE Capability Information 주입 (L3-14)
 
-이 모듈은 **UE Capability Hijacking 계열의 탐지 관측치**를 p5 direct 1-cell ZMQ의 실제
-UE→PDCP/RLC/MAC→DU→F1→CU 경로로 만든다. OAI UE가 `RRCSetupComplete`를 보낸 직후,
-아직 `SecurityModeCommand`를 받기 전에 표준 `UECapabilityInformation`을 한 번 주입한다.
-OCUDU·Open5GS 소스와 timer/capacity는 수정하지 않는다.
+OAI UE가 `RRCSetupComplete`를 보낸 직후, 아직 `SecurityModeCommand`와 `UECapabilityEnquiry`를 받기 전에 표준 `UECapabilityInformation`을 상향으로 1회 주입해 탐지 룰 `L3-14`의 보안 전 관측 신호를 재현하는 에뮬레이션 모듈이다.
 
-중요한 범위 구분은 다음과 같다.
+| 항목 | 값 |
+|---|---|
+| 룰 ID | `L3-14` |
+| `reproducer.json` id | `ue-capability-hijacking` |
+| `ctl.sh` ID / 별칭 | `ue-capability` (`ue-capability-hijacking`, `capability`) |
+| 재현 수준 (`reproduction_level`) | `protocol-observation-emulation` |
+| active 모드 (`active_mode`) | `emulation` |
+| 자격 현황 | `p1` same-cell 6/6 통과 (`p1q9-20261119`), `p5` E2E 6/6 통과, `OTA` pending |
 
-- 원 논문의 Capability Hijacking은 가짜 기지국/MITM이 **AS 보안 설정 전**
-  `UECapabilityEnquiry`를 중계하고, UE 응답의 category·band·feature를 변조해 정상 망에
-  전달하는 공격이다.
-- 이 모듈은 MITM과 무선 중계를 만들지 않는다. 현재 p5의 1:1 ZMQ와 정상 OCUDU는 그
-  공격 조건을 제공하지 않으므로, 탐지 규칙이 소비하는 **보안 전·선행 질의 없는 상향
-  Capability Information**만 재현한다.
-- 따라서 합격해도 `mitm_relay_observed=false`, `capability_content_modified=false`,
-  `capability_downgrade_accepted=false`다. 이름에 Hijacking 계열을 쓰되 완전한 공격
-  성공으로 부르지 않는다.
+> 격리된 팀 소유 테스트베드 전용이다. `-e 1` 또는 `--enable` 없이는 보안 전 주입이 비활성이다.
 
-## 근거와 공개 코드 사용 범위
+## 동작 요약
 
-- [Shaik 등의 Capability Hijacking 연구 원문](https://zenodo.org/records/4671828/files/New%20vulnerabilities%20in%204G%20and%205G%20cellular%20access%20networkprotocols%20%20exposing%20device%20capabilities.pdf)은 LTE 실험에서 보안 전 capability 질의·응답의 평문성과 MITM 변조 영향을 보였다.
-- [3GPP TS 38.331 공식 보관소](https://www.3gpp.org/ftp/Specs/archive/38_series/38.331/)는 5G NR의 `UECapabilityEnquiry`와 `UECapabilityInformation` 메시지를 정의한다.
-- [OAI 2026.w38의 UE RRC 구현](https://gitlab.eurecom.fr/oai/openairinterface5g/-/blob/1c2f4d3c2e68181cdef9f426d161163147ad4b77/openair2/RRC/NR_UE/rrc_UE.c)은 표준 Capability Information 인코더와 SRB1 전송 경로를 제공한다. 이 모듈은 그 공개 경로를 재사용한다.
-- [팀 탐지 규칙 L3-14](https://github.com/portranproject/detection/blob/766f5569d0ddb425c14bf210a31c38ac60eceef9/src/core/rules/cap_hijack.cpp)는 보안 전 하향 Enquiry와 선행 질의 없는 보안 전 상향 Information을 별도 분기로 본다.
+```text
+OAI UE                       OCUDU DU/CU (F1AP)
+   │ RRCSetupComplete            │
+   │────────────────────────────>│
+   │ UECapabilityInformation     │ (emulation 1회, security OFF, 선행 Enquiry 없음)
+   │────────────────────────────>│
+   │ SecurityModeCommand / 이후 정상 capability 절차
+```
 
-공개된 공격 도구를 복사한 것은 아니다. 조사 범위에서는 원 논문의 MITM 구현 소스가
-공개된 것을 확인하지 못했다. 이 저장소가 추가한 부분은 OAI w38용 opt-in one-shot 주입,
-기본 OFF 안전장치, F1 PCAP 정규화, CU/DU UE ID exact join, 정상 대조군·3회 캠페인,
-oracle 분리와 fail-closed 판정이다.
+- **control** (`-e 0`): 주입 없이 보안 뒤 정상 `UECapabilityEnquiry → UECapabilityInformation`과 Registration·PDU·ping을 수행한다.
+- **emulation** (`-e 1`): `OAI_UE_CAPABILITY_INJECT=1`로 UE 인스턴스당 1회 표준 인코더를 호출한다. capability payload는 변조하지 않는다.
+- **OAI UE-only 패치**: 기준 커밋 `6d6782b48484efd935c14e834832032743f9b138`에 `bin/ue-capability-build`가 2개 패치(`patch/ue-capability-injection-w38.patch`, `../../workloads/normal-ue/patch/same-cell-ra-gate-w38.patch`)를 적용한다. OCUDU·Open5GS 소스와 timer/capacity는 수정하지 않는다.
 
-## 성공 조건
+## 실행 방법
 
-단일 emulation이 통과하려면 모두 만족해야 한다.
+### 통합 컨트롤러 (`ctl.sh`)
 
-1. 같은 `(GNB_DU_UE_F1AP_ID, GNB_CU_UE_F1AP_ID)`에서 `RRCSetupComplete` 뒤
-   `UECapabilityInformation`이 상향으로 관측된다.
-2. 그 Information보다 앞선 `UECapabilityEnquiry`와 `SecurityModeCommand`가 없다.
-3. UE one-shot marker가 정확히 1회이며 F1 PCAP 해시와 원문이 일치한다.
-4. UE crash와 강제 종료가 없다.
+```bash
+./ctl.sh setup ue-capability --profile p1
+./ctl.sh doctor ue-capability --profile p1
 
-control은 주입 marker와 보안 전 Capability Information이 없어야 하고 Registration,
-PDU Session, ping이 모두 성공해야 한다. 최종 캠페인은 `control → emulation` 3세트가
-동일 UE 바이너리·설정·gNB·core 해시로 모두 통과해야 한다. 서비스 저하와 capability
-강등 수락은 성공 조건이 아니다.
+# 단발 및 matched 3세트 캠페인 (p5 direct)
+./ctl.sh run ue-capability control cap-ctrl-01 --profile p5
+./ctl.sh run ue-capability emulation cap-emu-01 --profile p5 --enable
+./ctl.sh campaign ue-capability cap-camp-01 --profile p5 --enable
 
-## 구성
+# 정상 UE 5대 same-cell E2E 실행 (p1/p5)
+./ctl.sh same-cell run ue-capability --profile p1 --mode control --run-id sc-cap-ctrl-1
+./ctl.sh same-cell run ue-capability --profile p1 --mode emulation --run-id sc-cap-emu-1 --enable
+```
 
-- `patch/ue-capability-injection-w38.patch`: OAI UE opt-in one-shot 패치
-- `bin/ue-capability-build`: 고정 commit 확인·패치·ZMQ UE 빌드
-- `bin/ue-capability-run`: F1 capture, control/emulation 실행, 증거 봉인
-- `bin/ue-capability-campaign`: matched 3세트 실행
-- `analysis/normalize_f1.py`: F1 메시지를 탐지 입력 JSONL로 변환
-- `analysis/verify_run.py`, `verify_campaign.py`: 주장 경계와 합격 조건 검증
-- `DETECTION-CONTRACT.md`: 탐지 입력·oracle·라벨 계약
-- `USAGE-GUIDE.md`: 준비·실행·결과 해석
+### 직접 실행 (`bin/`)
 
-2026-11-11 `p5-ue-capability-final-20261111` matched control→emulation 3세트가 모두
-통과했다. control은 정상 capability 교환과 Registration·PDU·ping 3/3, emulation은
-보안 전 unsolicited Information 각 1건과 이후 정상 Information 각 1건, 서비스 정상
-3/3, crash/forced kill 0이었다. 원문 해시는
-[p5 실측 기록](artifacts/p5-zmq-pre-security-information-20261111/)을 따른다.
+설정은 `conf/p5-zmq.conf.example`을 복사한 `conf/ue-capability.conf`(`UE_CAPABILITY_CONF`)를 사용한다. 직접 빌드 전에는 `6d6782b4...` 기준 worktree가 미리 준비돼 있어야 한다(없으면 `./ctl.sh setup ue-capability` 사용).
 
-2026-11-17에는 같은 runner를 실제 F1→TeleRAN→production detector→dashboard와 함께
-실행했다. 대조군 L3-14 경보 0건, emulation RAISE 1건을 matched 3/3 반복했으며 공통
-판정과 봉인 해시는 [E2E 자격 요약](../../artifacts/p5-live-e2e-five-20261117/)에 있다.
+```bash
+OAI=/root/OAI-ue-capability-w38 bin/ue-capability-build
+UE_CAPABILITY_CONF=conf/ue-capability.conf bin/ue-capability-run control -n cap-ctrl -e 0
+UE_CAPABILITY_CONF=conf/ue-capability.conf bin/ue-capability-run emulation -n cap-emu -e 1
+UE_CAPABILITY_CONF=conf/ue-capability.conf bin/ue-capability-campaign -n cap-camp -e 1
+```
+
+## 합격 기준
+
+- **control**: 주입 marker 0회, 보안 전 `UECapabilityInformation` 0건, Registration·PDU·ping 성공, `L3-14` 경보 0건.
+- **emulation**: 동일 `(GNB_DU_UE_F1AP_ID, GNB_CU_UE_F1AP_ID)`에서 `RRCSetupComplete` 뒤 선행 `UECapabilityEnquiry`·`SecurityModeCommand` 없는 `UECapabilityInformation` 1건, `verdict.json`에서 `passed=true`, `pre_security_injection_observed=true`, `unsolicited_information_observed=true`, `mitm_relay_observed=false`, TeleRAN 100 ms / gap 0 / KPM 존재, production `L3-14` RAISE 1건, dashboard 수락 ≥ 1건·거절 0건, same-cell 정상 UE 5대 전후 ping 5/5.
+- **campaign**: 고정 순서 `control → emulation` 3세트 모두 통과.
+
+## 한계 및 금지 주장
+
+- **MITM·내용 변조·강등 미관측**: 가짜 기지국/MITM relay, capability 내용 변조, gNB의 강등 수락은 재현하지 않는다(`mitm_relay_observed=false`).
+- **서비스 거부 미관측**: 정상 서비스 유지가 관측됐으며 `service_denial`은 `not_observed`다.
+- **OTA·상용망 미검증**: ZMQ 환경 검증만 완료됐으며 실 SDR OTA와 상용망 일반화는 검증하지 않았다.
+
+## 관련 문서 및 근거
+
+- 동반 문서: [설계](DESIGN.md), [사용 가이드](USAGE-GUIDE.md), [탐지 계약](DETECTION-CONTRACT.md), [계보](PROVENANCE.md)
+- p1 same-cell 42/42 자격: [p1 clean-origin L3 7종 E2E](../../artifacts/p1-clean-origin-live-e2e-20261119/README.md)
+- p5 E2E 자격: [p5 L3 5종 E2E](../../artifacts/p5-live-e2e-five-20261117/README.md)
+- 모듈 세부 증거: [p5 1-cell 3/3 실측](artifacts/p5-zmq-pre-security-information-20261111/README.md)

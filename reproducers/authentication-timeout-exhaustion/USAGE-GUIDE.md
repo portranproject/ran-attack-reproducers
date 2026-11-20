@@ -2,11 +2,9 @@
 
 ## 1. 현재 상태
 
-OAI UE 패치, 다중 UICC 가입자 중복 검사, OCUDU·Open5GS 로그 조인, direct multi-cell ZMQ
-phase driver, 단일·캠페인 판정과 SHA-256 봉인을 구현했다. p5에서 정상 대조군과 인증 응답
-미전송 기전, 공격자 6명의 동시 pre-auth 컨텍스트를 확인했다. 이 부하에서는 witness 서비스
-거부가 발생하지 않았다. 별도 한 셀 10 UE 경로는 실제 TeleRAN→production detector
-matched 3/3을 통과했다. 서비스 거부는 완료 조건으로 요구하지 않는다.
+p5에서 정상 대조군과 인증 응답 미전송 기전, 공격자 6명의 동시 pre-auth 컨텍스트를 확인했다.
+별도 한 셀 10 UE 경로(`auth-stall-cell-run`)는 p5 단독 E2E 3/3에 이어 `p1` clean-origin 정상 UE 5대
+same-cell E2E(`p1q9-20261119`)에서도 matched 3/3(총 6/6)을 통과했다. 서비스 거부는 완료 조건으로 요구하지 않는다.
 
 ## 2. 전제
 
@@ -24,6 +22,8 @@ git -C /root/OAI worktree add --detach /root/OAI-auth-timeout-w38 \
   6d6782b48484efd935c14e834832032743f9b138
 OAI=/root/OAI-auth-timeout-w38 ./bin/auth-timeout-build
 ```
+
+`bin/auth-timeout-build`는 `6d6782b48484efd935c14e834832032743f9b138` 트리에 4개 패치(`ru-sharing-w38.patch`, `workloads/normal-ue/patch/normal-multi-ru.patch`, `auth-timeout-ue-w38.patch`, `same-cell-ra-gate-w38.patch`)를 순서대로 적용한 뒤 빌드한다.
 
 `OAI_AUTH_TIMEOUT_WITHHOLD=1`일 때만 Authentication Request 처리를 생략한다. 환경변수가
 없거나 `1`이 아니면 기존 OAI 동작 그대로 Authentication Response를 보낸다.
@@ -119,8 +119,12 @@ AUTH_TIMEOUT_CONF=conf/auth-timeout.conf \
 ### production L3-01-O 한 셀 자격 실행
 
 `auth-stall-cell-run`은 각 OAI 프로세스에 독립 virtual RU/ZMQ endpoint 5개를 설정하고,
-2프로세스의 총 10개 endpoint를 broker로 한 DU·셀에 합친다. 실제 가입자 설정 목록은 Git
-밖에 두고 예제 설정을 복사해 경로만 채운다. 현재 복원 경로는 p5 재자격 전까지 미자격이다.
+2프로세스의 총 10개 endpoint를 broker로 한 DU·셀에 합친다. 내부 판정은
+`analysis/verify_cell_flood.py`를 호출하며(`reproducer.json`의 `analyze`/`verify` 항목은
+direct 4-cell용 `normalize_p5.py`/`verify_evidence.py` 기준이다), 정상 UE 5대와 함께하는
+E2E 자격은 `./ctl.sh same-cell run auth-timeout` 또는 `./ctl.sh same-cell campaign l3-live`로
+실행한다(`p1q9-20261119`에서 6/6 통과). 실제 가입자 설정 목록은 Git 밖에 두고 예제 설정을
+복사해 경로만 채운다.
 
 ```bash
 cp conf/auth-stall-cell.conf.example conf/auth-stall-cell.conf

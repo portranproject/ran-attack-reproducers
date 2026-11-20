@@ -29,4 +29,4 @@
 - SHA-256 대상 JSON·JSONL·로그·판정문
 - 검증 바이너리의 계보를 고정한 patch와 branch 이름
 
-새 실행 순서와 용어는 [사용 가이드](../rss-storm/docs/USAGE-GUIDE.md)를 따른다.
+새 실행 순서와 용어는 [사용 가이드](../reproducers/rrc-signaling-storm/docs/USAGE-GUIDE.md)를 따른다.

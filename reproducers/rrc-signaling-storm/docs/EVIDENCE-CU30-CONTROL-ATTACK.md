@@ -36,6 +36,8 @@
 
 ## 재현 명령
 
+> **주의 (현재 `bin/rss-run` 계약 차이):** 아래 당시 공격 명령은 `RSS_SHARE_NUE=5`와 `-u 6`을 함께 전달한다. 현재 `bin/rss-run`은 부분 공유 배치를 금지하므로 `RSS_SHARE_NUE == NUM_UES`가 아니면 거부한다([REFERENCE.md](REFERENCE.md) 참고).
+>
 ```
 # 대조군
 RSS_CONF=/dev/null PROBE_UES=1 PROBE_RA_ONLY=1 \

@@ -82,9 +82,9 @@ fingerprint를 만들며, runner는 두 fingerprint가 같으면 프로세스를
 
 ## 4. OAI 패치 범위
 
-기준 commit은 `6d6782b48484efd935c14e834832032743f9b138`다. 최종 패치는
-`patch/blind-ue-w38.patch`, SHA-256은
-`5ee58d5b0009431dbddbba0c08f0dbe25f46c7b4d48f06a9accdb88c06b3697a`다.
+기준 commit은 `6d6782b48484efd935c14e834832032743f9b138`다. `bin/blind-build`는
+`patch/blind-ue-w38.patch`(SHA-256 `5ee58d5b0009431dbddbba0c08f0dbe25f46c7b4d48f06a9accdb88c06b3697a`)와
+same-cell RA gate용 `../authentication-timeout-exhaustion/patch/same-cell-ra-gate-w38.patch`를 함께 적용한다.
 
 | 옵션 | 대상 | 의미 | 기본값 |
 |---|---|---|---|

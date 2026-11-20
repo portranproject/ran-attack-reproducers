@@ -1,32 +1,82 @@
 #!/usr/bin/env bash
-# 원본 OAI rfsim UE를 같은-셀 broker 슬롯에 붙이는 실행 래퍼.
-# 원본 바이너리와 공격 로직은 수정하지 않고, RF만 TCP rfsim <-> ZMQ로 변환한다.
+# 원본 OAI rfsim UE를 같은-셀 ZMQ 슬롯에 붙이는 실행 래퍼.
+# 원본 바이너리와 공격 로직은 수정하지 않고 RF만 TCP rfsim <-> ZMQ로 변환한다.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+MODE=${1:-}
 RUN_ID=${2:-ref-run}
+RUN_DIR=${REFERENCE_RUN_DIR:-/var/lib/ran-reproducer/runs/reference/$RUN_ID}
 DURATION_S=${REFERENCE_DURATION_S:-120}
 BRIDGE="$ROOT/bin/oai-rfsim-zmq-bridge"
-DEFAULT_BIN=/root/ref/oai-5g-rrc-storm-92980ce/cmake_targets/ran_build/build/nr-uesoftmodem
-BIN=${REFERENCE_UE_BIN:-$DEFAULT_BIN}
+ATTACK_BIN=${REFERENCE_UE_BIN:-/root/ref/oai-5g-rrc-storm-92980ce/cmake_targets/ran_build/build/nr-uesoftmodem}
+CONTROL_BIN=${REFERENCE_UE_BIN_CONTROL:-/root/ref/nr-uesoftmodem-control}
 CFG=${REFERENCE_UE_CFG:-/root/p1-secrets/ref-01.conf}
 BRIDGE_TCP_PORT=${BRIDGE_TCP_PORT:-4043}
-case ${1:-} in
-  control|attack) ;;
+case $MODE in
+  control) BIN=$CONTROL_BIN ;;
+  attack) BIN=$ATTACK_BIN ;;
   *) echo "사용법: $0 control|attack RUN_ID" >&2; exit 2 ;;
 esac
 [[ -f $BIN && -x $BIN ]] || { echo "reference UE 바이너리가 없습니다: $BIN" >&2; exit 2; }
 [[ -f $CFG && ! -L $CFG ]] || { echo "reference UE 설정이 없습니다: $CFG" >&2; exit 2; }
-[[ -f $BRIDGE && -x $BRIDGE ]] || { echo "rfsim 브리지가 없습니다: $BRIDGE" >&2; exit 2; }
+[[ -x $BRIDGE ]] || { echo "rfsim 브리지가 없습니다: $BRIDGE" >&2; exit 2; }
+[[ ! -e $RUN_DIR ]] || { echo "실행 디렉터리가 이미 있습니다: $RUN_DIR" >&2; exit 2; }
+mkdir -p "$RUN_DIR"
+UE_LOG="$RUN_DIR/ue.log"
+BRIDGE_LOG="$RUN_DIR/bridge.log"
 export BRIDGE_TCP_PORT
-python3 "$BRIDGE" >/tmp/reference-bridge.log 2>&1 &
+python3 "$BRIDGE" >"$BRIDGE_LOG" 2>&1 &
 BRIDGE_PID=$!
-cleanup() { kill -INT -- "-$UE_PID" 2>/dev/null || true; sleep .5; kill -KILL -- "-$UE_PID" 2>/dev/null || true; kill "$BRIDGE_PID" 2>/dev/null || true; }
 UE_PID=
+cleanup() {
+  [[ -n $UE_PID ]] && { kill -INT -- "-$UE_PID" 2>/dev/null || true; sleep 1; kill -KILL -- "-$UE_PID" 2>/dev/null || true; }
+  kill "$BRIDGE_PID" 2>/dev/null || true
+  wait "$BRIDGE_PID" 2>/dev/null || true
+}
 trap cleanup EXIT INT TERM
 sleep 1
-setsid "$BIN" -O "$CFG" --rfsim --rfsimulator.serveraddr 127.0.0.1 \
-  --rfsimulator.serverport "$BRIDGE_TCP_PORT" --band 78 -C 3489420000 \
-  --numerology 1 -r 51 -E --ue-fo-compensation \
-  >/tmp/reference-ue.log 2>&1 &
+setsid timeout --signal=INT "$DURATION_S" "$BIN" -O "$CFG" --rfsim \
+  --rfsimulator.serveraddr 127.0.0.1 --rfsimulator.serverport "$BRIDGE_TCP_PORT" \
+  --band 78 -C 3489420000 --numerology 1 -r 51 -E --ue-fo-compensation \
+  >"$UE_LOG" 2>&1 &
 UE_PID=$!
-wait "$UE_PID" 2>/dev/null || true
+set +e
+wait "$UE_PID"
+rc=$?
+set -e
+UE_PID=
+sleep 1
+python3 - "$RUN_DIR" "$MODE" "$rc" "$DURATION_S" "$BIN" "$CFG" <<'PY'
+import hashlib, json, pathlib, re, sys
+run_dir, mode, rc, duration, binary, config = sys.argv[1:7]
+log = (pathlib.Path(run_dir) / "ue.log").read_text(encoding="utf-8", errors="replace")
+setup_request = len(re.findall(r"Generation of RRCSetupRequest", log))
+setup_rx = len(re.findall(r"Received NR_RRCSetup", log))
+setup_complete = len(re.findall(r"Generating RRCSetupComplete", log))
+if mode == "control":
+    passed = setup_complete >= 1
+    reason = "control: RRCSetupComplete 생성 확인" if passed else "control: RRCSetupComplete 미관측"
+else:
+    passed = setup_request >= 3 and setup_complete == 0
+    reason = ("attack: 반복 RRCSetupRequest %d회, RRCSetupComplete 0" % setup_request
+              if passed else
+              "attack: 반복 RRCSetupRequest %d회, RRCSetupComplete %d" % (setup_request, setup_complete))
+sha = lambda path: hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()
+record = {
+    "schema": "ran-reproducer.reference-run.v1",
+    "mode": mode, "duration_s": int(duration), "exit_code": int(rc),
+    "binary": {"path": binary, "sha256": sha(binary)},
+    "config_sha256": sha(config),
+    "markers": {"rrc_setup_request": setup_request, "rrc_setup_rx": setup_rx,
+                "rrc_setup_complete": setup_complete},
+    "passed": bool(passed), "reason": reason,
+    "detector": "not-run: 레퍼런스 실행은 production detector 판정을 대신하지 않는다",
+}
+target = pathlib.Path(run_dir)
+(target / "run.json").write_text(json.dumps(record, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+(target / "verdict.json").write_text(json.dumps(
+    {"passed": bool(passed), "reason": reason, "markers": record["markers"]},
+    ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+print(reason)
+sys.exit(0 if passed else 5)
+PY

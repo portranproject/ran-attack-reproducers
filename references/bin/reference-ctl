@@ -1,0 +1,211 @@
+#!/usr/bin/env python3
+"""레퍼런스 도구(외부 공개 구현)를 우리 셀에서 실행하는 별도 네임스페이스.
+
+우리 공격 모듈(`./ctl.sh same-cell`)과 분리한다. ATTACKS·공식 자격 경로·판정을
+바꾸지 않으며, 레퍼런스 결과를 우리 도구의 자격으로 쓰지 않는다.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import socket
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+MANIFEST = ROOT / "references" / "manifest.json"
+PROFILE_DIR = Path(os.environ.get("RAN_REPRO_PROFILE_DIR", ROOT / "profiles"))
+DEFAULTS = {
+    "DL_CONNECT": "tcp://127.0.0.1:4556",
+    "UL_BIND": "tcp://127.0.0.1:4557",
+    "TCP_PORT": "4043",
+}
+
+
+class RefError(Exception):
+    pass
+
+
+def load_manifest() -> dict:
+    value = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    if value.get("schema") != "ran-reproducer.references.v1" or not value.get("references"):
+        raise RefError("references/manifest.json 스키마가 잘못됐습니다")
+    return value
+
+
+def reference(ref_id: str) -> dict:
+    for item in load_manifest()["references"]:
+        if item["id"] == ref_id:
+            return item
+    raise RefError(f"레퍼런스가 없습니다: {ref_id}")
+
+
+def profile(name: str) -> dict:
+    path = PROFILE_DIR / f"{name}.json"
+    if not path.is_file():
+        raise RefError(f"profile이 없습니다: {path}")
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if value.get("schema") != "ran-reproducer.profile.v1":
+        raise RefError(f"profile 스키마가 잘못됐습니다: {path}")
+    return value
+
+
+def run_root(profile_value: dict, run_id: str) -> Path:
+    root = Path(os.environ.get("RAN_REPRO_RUN_ROOT", profile_value["run_root"]))
+    target = root / "reference" / run_id
+    if target.exists():
+        raise RefError(f"실행 디렉터리가 이미 있습니다: {target}")
+    target.mkdir(parents=True)
+    return target
+
+
+def endpoint(env_name: str, profile_value: dict) -> str:
+    ref = (profile_value.get("reference") or {}).get("cell", {})
+    if env_name == "DL_CONNECT":
+        return os.environ.get("BRIDGE_DL_CONNECT") or ref.get("dl") or DEFAULTS[env_name]
+    return os.environ.get("BRIDGE_UL_BIND") or ref.get("ul") or DEFAULTS[env_name]
+
+
+def doctor(item: dict, profile_value: dict) -> dict:
+    checks: list[tuple[str, bool, str]] = []
+    for label, path in (("runner", item.get("runner")), ("build", item.get("build")),
+                        ("bridge", item.get("bridge"))):
+        ok = bool(path) and (ROOT / path).is_file()
+        checks.append((label, ok, str(ROOT / path) if path else "정의 없음"))
+    for mode in ("attack", "control"):
+        binary = (item.get("binaries") or {}).get(mode)
+        ok = bool(binary) and Path(binary).is_file() and os.access(binary, os.X_OK)
+        checks.append((f"binary:{mode}", ok, binary or "정의 없음"))
+    config = Path(os.environ.get("REFERENCE_UE_CFG", "/root/p1-secrets/ref-01.conf"))
+    checks.append(("ue-config", config.is_file(), str(config)))
+    try:
+        import numpy  # noqa: F401
+        checks.append(("numpy", True, "import ok"))
+    except ImportError:
+        checks.append(("numpy", False, "브리지 변환에 numpy가 필요합니다"))
+    for name in ("BRIDGE_DL_CONNECT", "BRIDGE_UL_BIND"):
+        value = endpoint(name, profile_value)
+        host, port = value.rsplit(":", 1)
+        reachable = False
+        try:
+            with socket.create_connection((host.replace("tcp://", ""), int(port)), timeout=2):
+                reachable = True
+        except OSError:
+            pass
+        checks.append((name, reachable, value))
+    return {"id": item["id"], "profile": profile_value["id"],
+            "checks": [{"name": n, "ok": o, "detail": d} for n, o, d in checks],
+            "ok": all(o for _, o, _ in checks)}
+
+
+def cmd_list(_: argparse.Namespace) -> int:
+    data = load_manifest()
+    print(f"{'ID':14} {'RULE':10} {'상태':8} 원본")
+    for item in data["references"]:
+        print(f"{item['id']:14} {','.join(item['rule_ids']):10} {item['status']:8} "
+              f"{item['source']['repository']}@{item['source']['commit'][:10]}")
+    print("\n공개 공격 구현 없음:")
+    for row in data.get("no_public_attack", []):
+        print(f"- {row['source']}@{row['commit'][:10]}: {row['finding']}")
+    return 0
+
+
+def cmd_build(args: argparse.Namespace) -> int:
+    item = reference(args.ref_id)
+    value = profile(args.profile)
+    if not shutil.which("git"):
+        raise RefError("git이 필요합니다")
+    result = subprocess.run(["bash", str(ROOT / item["build"])], cwd=ROOT)
+    return result.returncode
+
+
+def cmd_doctor(args: argparse.Namespace) -> int:
+    value = profile(args.profile)
+    item = reference(args.ref_id)
+    report = doctor(item, value)
+    print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+    return 0 if report["ok"] else 4
+
+
+def cmd_run(args: argparse.Namespace) -> int:
+    item = reference(args.ref_id)
+    value = profile(args.profile)
+    if args.mode == "attack" and not args.enable:
+        raise RefError("attack은 --enable이 필요합니다")
+    if not item.get("runner"):
+        raise RefError(f"{item['id']}는 아직 runner가 없습니다: {item.get('status_detail')}")
+    run_id = args.run_id or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    target = run_root(value, run_id)
+    env = dict(os.environ)
+    env.update({
+        "REFERENCE_UE_BIN": item["binaries"]["attack"],
+        "REFERENCE_UE_BIN_CONTROL": str(item["binaries"].get("control") or ""),
+        "BRIDGE_DL_CONNECT": endpoint("DL_CONNECT", value),
+        "BRIDGE_UL_BIND": endpoint("UL_BIND", value),
+        "BRIDGE_TCP_PORT": os.environ.get("BRIDGE_TCP_PORT", DEFAULTS["TCP_PORT"]),
+        "REFERENCE_RUN_DIR": str(target),
+        "REFERENCE_DURATION_S": str(args.duration),
+    })
+    result = subprocess.run(
+        ["bash", str(ROOT / item["runner"]), args.mode, run_id], cwd=ROOT, env=env
+    )
+    verdict = target / "verdict.json"
+    if verdict.is_file():
+        print(verdict.read_text(encoding="utf-8"), end="")
+    return 0 if result.returncode == 0 else 5
+
+
+def cmd_campaign(args: argparse.Namespace) -> int:
+    item = reference(args.ref_id)
+    value = profile(args.profile)
+    if not args.enable:
+        raise RefError("campaign은 --enable이 필요합니다")
+    for index in range(1, args.sets + 1):
+        for mode in ("control", "attack"):
+            run_id = f"{args.ref_id}-{mode}-{index}"
+            code = cmd_run(argparse.Namespace(
+                ref_id=item["id"], profile=args.profile, mode=mode, enable=True,
+                run_id=run_id, duration=args.duration))
+            if code != 0:
+                print(f"campaign: {run_id} 실패(rc={code})", file=sys.stderr)
+                return code
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest="command", required=True)
+    sub.add_parser("list")
+    for name in ("build", "doctor"):
+        child = sub.add_parser(name)
+        child.add_argument("ref_id")
+        child.add_argument("--profile", required=True)
+    child = sub.add_parser("run")
+    child.add_argument("ref_id")
+    child.add_argument("--profile", required=True)
+    child.add_argument("--mode", choices=("control", "attack"), required=True)
+    child.add_argument("--run-id")
+    child.add_argument("--duration", type=int, default=120)
+    child.add_argument("--enable", action="store_true")
+    child = sub.add_parser("campaign")
+    child.add_argument("ref_id")
+    child.add_argument("--profile", required=True)
+    child.add_argument("--sets", type=int, default=1)
+    child.add_argument("--duration", type=int, default=120)
+    child.add_argument("--enable", action="store_true")
+    args = parser.parse_args(argv)
+    handlers = {"list": cmd_list, "build": cmd_build, "doctor": cmd_doctor,
+                "run": cmd_run, "campaign": cmd_campaign}
+    try:
+        return handlers[args.command](args)
+    except (OSError, RefError, json.JSONDecodeError) as error:
+        print(f"reference-ctl: {error}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

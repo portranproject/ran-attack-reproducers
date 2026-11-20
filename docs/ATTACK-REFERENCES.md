@@ -83,3 +83,59 @@
 - `L3-20` Blind DoS, `L3-01-O` 인증 응답 미전송형, `L3-21` 실패 플러드는 공개 연구·표준·실측 원문에 맞춰 OAI w38 구현·오케스트레이션·판정기를 새로 만들었다.
 - `L3-24`, `L3-14`, `L3-06`, 레거시 `uplink-dos`는 원래 RF·MITM 원인 대신 실제 프로토콜 경로의 결과 또는 관측을 UE에서 재현했다.
 - AN 6종은 논문 기반 메시지 시퀀스를 detector에 재생하는 회귀 fixture이며 실제 공격 UE나 RF 공격이 아니다.
+
+## 레퍼런스 도구 실행 (외부 공개 구현, 2026-11-20)
+
+우리 재현 모듈과 섞지 않기 위해 `./ctl.sh reference` 네임스페이스로 분리했다. 목록·원본
+커밋·룰 대응의 단일 출처는 [`references/manifest.json`](../references/manifest.json)이고,
+사용법은 [`references/README.md`](../references/README.md)에 있다.
+
+### 공개 공격 구현이 실제로 있는 것
+
+| ID | 원본(고정 커밋) | 대응 룰 | 성격 | 이번 상태 |
+|---|---|---|---|---|
+| `ref-rrc-storm` | [5gattacks/5g-rrc-storm](https://github.com/5gattacks/5g-rrc-storm/tree/0e71f7aee24999b66d44e10db4612f96b5219d98) + OAI `92980ce` | L3-01-V | OAI NR UE 패치: RRCSetup 수신 뒤 T300을 멈추고 `RRCSetupComplete`를 보내지 않은 채 반복 RA | 빌드 성공, 셀 sync 미달 |
+| `ref-blind-dos` | [5GSEC/OAI-5G](https://github.com/5GSEC/OAI-5G/tree/b631b577cc00929e50947a453dc5d4c2dcdfa887) | L3-20 | `--blind-dos-attack`·`--RRC-TMSI` | 빌드 미완료, rfsim 가드로 공격 분기 비활성 |
+
+5G-Spector는 공격 구현이 아니라 O-RAN nRT-RIC 기반 L3 탐지 서비스다. 고정 커밋
+[`63e94b9a`](https://github.com/5GSEC/5G-Spector/tree/63e94b9ad8860298894ed7a94e52f00faea02719)의
+공개 저장소에는 README·Vagrantfile·그림만 있고 공격 코드가 없다. 따라서 **공개 공격
+구현 없음**으로 기록한다.
+
+5GSEC/OAI-5G의 다른 플래그(`bts-attack`, `dnlink-dos`, `uplink-dos`, `rep-conn`,
+`auth-sync`, `null-cipher-integ`, `dnlink-imsi-extr`, `uplink-imsi-extr`, `rrc-911`)는
+LTE EMM/RRC 경로이거나 NR RRC에서 rfsim 가드로 막혀 있어, 우리 5G L3 룰(L3-06·L3-14·
+L3-21·L3-24 등)에 그대로 대응하는 5G 구현은 없다. 있는 것만 위 표에 올렸다.
+
+### 그대로 쓴 것과 붙이기 위해 바꾼 것
+
+- 원본 소스는 수정하지 않았다. `ref-rrc-storm`은 원본 커밋과 원본 `storm-attack.patch`를
+  그대로 적용해 `nr-uesoftmodem`만 빌드한다. control은 같은 OAI 커밋을 패치 없이 빌드한
+  바이너리다(원본에는 공격 on/off 노브가 없다).
+- 원본 UE는 rfsim(TCP, int16 complex)만 말하고 우리 DU는 ZMQ(complex float)만 말한다.
+  외부 브리지 `reproducers/rrc-signaling-storm/reference/bin/oai-rfsim-zmq-bridge`가 두
+  RF 인터페이스만 변환한다. 2026-11-20에 순수 파이썬 샘플 루프가 23.04 Msps를 따라가지
+  못하는 문제를 numpy 변환으로 바꾸고, 상향을 UE가 보낸 0.5 ms 블록 단위로 넘기도록
+  고쳤다. 공격 로직·메시지 내용은 건드리지 않았다.
+- 실행·기록은 `reproducers/rrc-signaling-storm/reference/bin/reference-run`이 맡고,
+  `run.json`·`verdict.json`에 UE 로그 마커와 바이너리·설정 SHA-256만 남긴다.
+
+### p1 결과 (2026-11-20)
+
+- 빌드: 성공. 원본 패치 UE `5814a864…`, 무패치 control `9a268619…`.
+- 셀 접속: 브리지가 DU ZMQ에서 DL 샘플을 받아 rfsim UE로 전달하는 단계까지 확인했다.
+  UE는 45초 안에 초기 sync에 실패했고(`synch Failed` 반복), 변환·상향 블록 수정 뒤에도
+  같은 지점에서 막혔다.
+- 따라서 **control 1 + attack 1의 production detector 판정은 실행하지 못했다.**
+  2026-11-19 p1hold의 우리 도구 7종 RAISE 1·CLEAR 1과의 비교표도 만들지 않았다.
+  이 결과를 p4·OTA 자격으로 쓰지 않는다.
+
+실행 명령은 아래와 같다(레퍼런스 전용, 우리 자격 경로와 무관).
+
+```bash
+./ctl.sh reference list
+./ctl.sh reference build ref-rrc-storm --profile p1
+./ctl.sh reference doctor ref-rrc-storm --profile p1
+./ctl.sh reference run ref-rrc-storm --profile p1 --mode control
+./ctl.sh reference run ref-rrc-storm --profile p1 --mode attack --enable
+```

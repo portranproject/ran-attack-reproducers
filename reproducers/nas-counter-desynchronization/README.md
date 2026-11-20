@@ -58,7 +58,7 @@ NAS_DESYNC_CONF=conf/nas-counter-desync.conf bin/nas-counter-desync-campaign -n 
 
 ## dashboard 전송 시점
 
-기본값 `CU_DASHBOARD_FOLLOW=0`은 지금과 같이 실행이 끝난 뒤 `dashboard_sender.py --once` 한 번만 전송한다. `CU_DASHBOARD_FOLLOW=1`이면 `start_live()` 끝에서 같은 `sender.json`·같은 `sudo -u` 사용자로 전송기를 따라가기 모드로 띄우고(`sender.pid`), 종료 시 telemetry·detector를 내린 뒤 SIGTERM·최대 10초 대기로 멈추고 `--once`로 나머지 줄을 이어 보낸다(`sender.stdout`·`sender.log` 이어쓰기). 합격 기준은 두 모드 모두 같다.
+기본값 `CU_DASHBOARD_FOLLOW=1`은 `start_live()` 끝에서 같은 `sender.json`·같은 `sudo -u` 사용자로 전송기를 따라가기 모드로 띄워 경보·KPM을 실행 중에 실시간으로 보내고(`sender.pid`), 종료 시 telemetry·detector를 내린 뒤 SIGTERM·최대 10초 대기로 멈추고 `--once`로 나머지 줄을 이어 보낸다(`sender.stdout`·`sender.log` 이어쓰기). `CU_DASHBOARD_FOLLOW=0`이면 실행이 끝난 뒤 `dashboard_sender.py --once` 한 번만 전송한다. 합격 기준은 두 모드 모두 같다.
 
 ## 합격 기준
 

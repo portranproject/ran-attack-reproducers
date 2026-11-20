@@ -36,7 +36,7 @@ POST_CHILD_S=${LIVE_E2E_POST_CHILD_S:-4}
 REQUIRE_SAME_CELL=${LIVE_E2E_REQUIRE_SAME_CELL:-0}
 WAIT_FOR_BASELINE=${LIVE_E2E_WAIT_FOR_BASELINE:-0}
 BASELINE_TIMEOUT_S=${LIVE_E2E_BASELINE_TIMEOUT_S:-180}
-CU_DASHBOARD_FOLLOW=${CU_DASHBOARD_FOLLOW:-0}
+CU_DASHBOARD_FOLLOW=${CU_DASHBOARD_FOLLOW:-1}
 DETECTOR_COMMIT=766f5569d0ddb425c14bf210a31c38ac60eceef9
 
 fail() { echo "p5-live-e2e: $*" >&2; exit 2; }
@@ -49,8 +49,6 @@ fail() { echo "p5-live-e2e: $*" >&2; exit 2; }
 [[ $BASELINE_TIMEOUT_S =~ ^[1-9][0-9]*$ && $BASELINE_TIMEOUT_S -le 600 ]] \
   || fail "LIVE_E2E_BASELINE_TIMEOUT_S는 1..600초여야 합니다"
 [[ $CU_DASHBOARD_FOLLOW == 0 || $CU_DASHBOARD_FOLLOW == 1 ]] || fail "CU_DASHBOARD_FOLLOW는 0 또는 1이어야 합니다"
-[[ $CU_DASHBOARD_FOLLOW == 0 ]] || (( WAIT_FOR_BASELINE )) \
-  || fail "CU_DASHBOARD_FOLLOW=1은 웜업 구간을 건너뛰는 LIVE_E2E_WAIT_FOR_BASELINE=1에서만 쓸 수 있습니다"
 [[ $CHILD_DIR == auto || $CHILD_DIR == /* && $CHILD_DIR != / ]] \
   || fail "CHILD_DIR은 auto 또는 안전한 절대 경로여야 합니다"
 [[ $RUN_ROOT == /* && $RUN_ROOT != / && $CU_LIVE_RUN_ROOT == /* && $CU_LIVE_RUN_ROOT != / ]] || fail "run root가 안전하지 않습니다"
@@ -133,9 +131,9 @@ REMOTE
 }
 
 reset_detector_after_baseline() {
-  ssh "${ssh_args[@]}" "$CU_HOST" sudo bash -s -- "$CU_OUT" "$CU_OWNER" "$CU_PLATFORM_ROOT" "$CU_DASHBOARD_FOLLOW" <<'REMOTE'
+  ssh "${ssh_args[@]}" "$CU_HOST" sudo bash -s -- "$CU_OUT" "$CU_OWNER" "$CU_PLATFORM_ROOT" <<'REMOTE'
 set -euo pipefail
-out=$1 owner=$2 platform=$3 follow=$4
+out=$1 owner=$2 platform=$3
 sock=/run/ran-detect/$(basename "$out").sock
 pid=$(cat "$out/detector.pid")
 kill -INT -- "-$pid" 2>/dev/null || kill -INT "$pid" 2>/dev/null || true
@@ -164,11 +162,24 @@ done
 grep -q '"type":"hello"' "$out/detector-input.jsonl" 2>/dev/null \
   || { echo "telemetry reconnect hello timeout" >&2; exit 2; }
 chown -R "$owner:$owner" "$out"
-if (( follow )); then
-  setsid sudo -u "$owner" python3 "$platform/detection/tools/dashboard_sender.py" \
-    --config "$out/sender.json" >>"$out/sender.stdout" 2>>"$out/sender.log" </dev/null &
-  echo $! >"$out/sender.pid"
-fi
+REMOTE
+}
+
+# 관측이 시작되는 지점(detector 재기동 직후 또는 baseline 대기가 없을 때 start_live 직후)에
+# 전송기를 따라가기 모드로 띄운다. telemetry hello를 기다려 detector 입력 파일 생성을 확인한다.
+start_follow_sender() {
+  ssh "${ssh_args[@]}" "$CU_HOST" sudo bash -s -- "$CU_OUT" "$CU_OWNER" "$CU_PLATFORM_ROOT" <<'REMOTE'
+set -euo pipefail
+out=$1 owner=$2 platform=$3
+for _ in {1..200}; do
+  grep -q '"type":"hello"' "$out/detector-input.jsonl" 2>/dev/null && break
+  sleep .1
+done
+grep -q '"type":"hello"' "$out/detector-input.jsonl" 2>/dev/null \
+  || { echo "telemetry hello가 없어 실시간 전송을 시작하지 못했습니다" >&2; exit 2; }
+setsid sudo -u "$owner" python3 "$platform/detection/tools/dashboard_sender.py" \
+  --config "$out/sender.json" >>"$out/sender.stdout" 2>>"$out/sender.log" </dev/null &
+echo $! >"$out/sender.pid"
 REMOTE
 }
 
@@ -240,6 +251,9 @@ if (( WAIT_FOR_BASELINE )); then
     sleep .2
   done
   reset_detector_after_baseline
+fi
+if (( CU_DASHBOARD_FOLLOW )); then
+  start_follow_sender
 fi
 (( PRE_CHILD_S == 0 )) || sleep "$PRE_CHILD_S"
 if (( WAIT_FOR_BASELINE )); then

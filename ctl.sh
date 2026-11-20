@@ -11,6 +11,8 @@ ATTACKS=(
 REPROCTL="$ROOT/tools/reproctl.py"
 NORMAL_UE="$ROOT/workloads/normal-ue/bin/normal-ue"
 SAME_CELL="$ROOT/workloads/normal-ue/bin/same-cell-run"
+SAME_CELL_HOUR_GUARD=${SAME_CELL_HOUR_GUARD:-1}
+SAME_CELL_HOUR_GUARD_MARGIN_S=${SAME_CELL_HOUR_GUARD_MARGIN_S:-360}
 
 fail() { echo "ctl.sh: $*" >&2; exit 2; }
 require_qualified_checkout() { python3 "$REPROCTL" checkout >/dev/null; }
@@ -383,6 +385,25 @@ print_command() {
   printf '\n'
 }
 
+# 탐지 엔진 입력 기록이 매시 정각에 회전하면 정각을 걸친 실행은 러너 검증에서 실패한다.
+# 남은 시간이 예상 실행 시간(전 유지+후 유지+여유) 이하면 다음 정각+10초까지 기다린다.
+hour_guard_wait() {
+  local expected=$1 now remaining target
+  (( SAME_CELL_HOUR_GUARD )) || return 0
+  now=$(date +%s)
+  remaining=$(( 3600 - now % 3600 ))
+  (( remaining <= expected )) || return 0
+  target=$(( now + remaining + 10 ))
+  HOUR_GUARD_WAIT_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  HOUR_GUARD_WAIT_S=$(( target - now ))
+  export HOUR_GUARD_WAIT_STARTED_AT HOUR_GUARD_WAIT_S
+  echo "same-cell: 정각 회전 회피 대기 시작 (남은 ${remaining}초 <= 예상 ${expected}초, ${HOUR_GUARD_WAIT_S}초) ${HOUR_GUARD_WAIT_STARTED_AT}" >&2
+  sleep "$HOUR_GUARD_WAIT_S"
+  HOUR_GUARD_WAIT_ENDED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  export HOUR_GUARD_WAIT_ENDED_AT
+  echo "same-cell: 정각 회전 회피 대기 끝 ${HOUR_GUARD_WAIT_ENDED_AT}" >&2
+}
+
 run_one() {
   local attack=$1 mode=$2 run_id=$3 enabled=$4 dry_run=$5 profile=${6:-p5}
   local expected config env_name runner enable_value
@@ -497,6 +518,7 @@ same_cell_metadata() {
 same_cell_run_one() {
   local attack=$1 mode=$2 run_id=$3 count=$4 enabled=$5 dry_run=$6
   local expected config env_name runner scenario rule alias normal_conf run_root enable_value child_dir phase_timeout
+  local pre_hold post_hold hour_guard_expected broker_deadline
   local -a inner command
   attack=$(attack_id "$attack") || fail "알 수 없는 공격 ID: $1"
   read -r scenario rule alias < <(same_cell_metadata "$attack") \
@@ -505,6 +527,20 @@ same_cell_run_one() {
   [[ $mode == control || $mode == "$expected" ]] \
     || fail "$attack 모드는 control 또는 $expected 이어야 합니다"
   valid_run_id "$run_id" || fail "RUN_ID는 영문·숫자로 시작하고 ._-만 사용해야 합니다"
+  [[ $SAME_CELL_HOUR_GUARD == 0 || $SAME_CELL_HOUR_GUARD == 1 ]] \
+    || fail "SAME_CELL_HOUR_GUARD는 0 또는 1이어야 합니다"
+  if [[ $attack == rrc-storm ]]; then
+    pre_hold=${BROKER_NORMAL_PRE_HOLD_S:-30}
+    post_hold=${BROKER_NORMAL_POST_HOLD_S:-90}
+  else
+    pre_hold=${SAME_CELL_NORMAL_PRE_HOLD_S:-30}
+    post_hold=${SAME_CELL_NORMAL_POST_HOLD_S:-90}
+  fi
+  for value in "$pre_hold" "$post_hold" "$SAME_CELL_HOUR_GUARD_MARGIN_S"; do
+    [[ $value =~ ^[0-9]+$ ]] || fail "유지·여유 시간은 0 이상의 정수여야 합니다: $value"
+  done
+  hour_guard_expected=$((pre_hold + post_hold + SAME_CELL_HOUR_GUARD_MARGIN_S))
+  broker_deadline=$((240 + pre_hold + post_hold + 10))
   if [[ $mode == control ]]; then
     [[ $enabled == 0 ]] || fail "control에는 --enable을 붙이지 않습니다"
     enable_value=0
@@ -524,7 +560,7 @@ same_cell_run_one() {
       BROKER_START_GNB_LAST=1 BROKER_NORMAL_POOL_QUALIFICATION=1 BROKER_NORMAL_ATTACK_DURATION_S=30
       BROKER_PY="$ROOT/workloads/normal-ue/tools/same_cell_broker.py"
       "BROKER_CMD=exec env NORMAL_UE_BROKER_ENDPOINTS=11 QT_QPA_PLATFORM=offscreen python3 '$ROOT/workloads/normal-ue/tools/same_cell_broker.py'"
-      "$runner" "$mode" -n "$run_id" -d 240)
+      "$runner" "$mode" -n "$run_id" -d "$broker_deadline")
     command=(env LIVE_E2E_REQUIRE_SAME_CELL=1 LIVE_E2E_WAIT_FOR_BASELINE=1
       "$ROOT/tools/p5-live-e2e" "$scenario" "$mode" "$run_id" "$rule" "$child_dir" -- "${inner[@]}")
   else
@@ -547,6 +583,11 @@ same_cell_run_one() {
   [[ -f $config && ! -L $config ]] || fail "설정이 없습니다. 먼저 실행: ./ctl.sh setup $attack"
   [[ -f $normal_conf && ! -L $normal_conf ]] || fail "normal UE 설정이 없습니다: $normal_conf"
   [[ -x $runner ]] || fail "runner가 없습니다: $runner"
+  HOUR_GUARD_WAIT_STARTED_AT=
+  HOUR_GUARD_WAIT_ENDED_AT=
+  HOUR_GUARD_WAIT_S=
+  export HOUR_GUARD_WAIT_STARTED_AT HOUR_GUARD_WAIT_ENDED_AT HOUR_GUARD_WAIT_S
+  hour_guard_wait "$hour_guard_expected"
   "${command[@]}"
 }
 

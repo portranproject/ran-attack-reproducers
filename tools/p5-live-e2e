@@ -256,6 +256,11 @@ PY
     [[ -f $SAME_CELL_OUTPUT/$item && ! -L $SAME_CELL_OUTPUT/$item ]] || fail "same-cell 증거가 없습니다: $item"
     install -m 600 "$SAME_CELL_OUTPUT/$item" "$OUT/same-cell-$item"
   done
+  if [[ -e $SAME_CELL_OUTPUT/normal-hold.tsv || -L $SAME_CELL_OUTPUT/normal-hold.tsv ]]; then
+    [[ -f $SAME_CELL_OUTPUT/normal-hold.tsv && ! -L $SAME_CELL_OUTPUT/normal-hold.tsv ]] \
+      || fail "same-cell 유지 기록이 안전하지 않습니다: normal-hold.tsv"
+    install -m 600 "$SAME_CELL_OUTPUT/normal-hold.tsv" "$OUT/same-cell-normal-hold.tsv"
+  fi
 elif [[ -f $CHILD_DIR/same-cell-run.json && ! -L $CHILD_DIR/same-cell-run.json ]]; then
   SAME_CELL_OUTPUT=$CHILD_DIR
   for item in run.json session.json; do
@@ -266,6 +271,11 @@ elif [[ -f $CHILD_DIR/same-cell-run.json && ! -L $CHILD_DIR/same-cell-run.json ]
     [[ -f $CHILD_DIR/$item && ! -L $CHILD_DIR/$item ]] || fail "same-cell 증거가 없습니다: $item"
     install -m 600 "$CHILD_DIR/$item" "$OUT/same-cell-$item"
   done
+  if [[ -e $CHILD_DIR/normal-hold.tsv || -L $CHILD_DIR/normal-hold.tsv ]]; then
+    [[ -f $CHILD_DIR/normal-hold.tsv && ! -L $CHILD_DIR/normal-hold.tsv ]] \
+      || fail "same-cell 유지 기록이 안전하지 않습니다: normal-hold.tsv"
+    install -m 600 "$CHILD_DIR/normal-hold.tsv" "$OUT/same-cell-normal-hold.tsv"
+  fi
 fi
 [[ $REQUIRE_SAME_CELL == 0 || -n $SAME_CELL_OUTPUT ]] || fail "필수 same-cell 증거가 없습니다"
 (( POST_CHILD_S == 0 )) || sleep "$POST_CHILD_S"

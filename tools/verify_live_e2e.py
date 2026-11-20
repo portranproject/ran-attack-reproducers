@@ -214,6 +214,16 @@ def verify(root: Path, scenario: str, mode: str, run_id: str, child: Path,
            "clock": {"source": "same-host-monotonic", "detector_and_telemetry_same_host": True},
            "claims": {"live_protocol_path_observed": True, "rf_cause_observed": False,
                       "service_denial_observed": False}}
+    guard_started = os.environ.get("HOUR_GUARD_WAIT_STARTED_AT", "")
+    if guard_started:
+        stamp = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
+        guard_ended = os.environ.get("HOUR_GUARD_WAIT_ENDED_AT", "")
+        guard_waited = os.environ.get("HOUR_GUARD_WAIT_S", "")
+        if (stamp.fullmatch(guard_started) is None or stamp.fullmatch(guard_ended) is None
+                or not guard_waited.isdigit()):
+            raise ValueError("정각 대기 기록이 잘못됐습니다")
+        run["hour_guard"] = {"wait_started_at": guard_started, "wait_ended_at": guard_ended,
+                             "waited_s": int(guard_waited)}
     (root / "run.json").write_text(json.dumps(run, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     oracle = {"schema": "ran-reproducer.oracle.v1", "run_id": run_id, "mode": mode,
               "expected_rule": rule, "expected_raise": active, "checks": checks}

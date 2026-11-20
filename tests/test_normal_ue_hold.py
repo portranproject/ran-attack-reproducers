@@ -37,7 +37,6 @@ class NormalUeHoldTests(unittest.TestCase):
             "export SAME_CELL_NORMAL_POST_HOLD_S=${SAME_CELL_NORMAL_POST_HOLD_S:-90}",
             "export BROKER_NORMAL_PRE_HOLD_S=${BROKER_NORMAL_PRE_HOLD_S:-30}",
             "export BROKER_NORMAL_POST_HOLD_S=${BROKER_NORMAL_POST_HOLD_S:-90}",
-            "export NORMAL_UE_STOP_GAP_S=${NORMAL_UE_STOP_GAP_S:-3}",
         ):
             self.assertIn(line, campaign)
 
@@ -157,10 +156,42 @@ normal_hold {seconds} pre
         self.assertLess(stop.index('targets+=("$i")'), stop.index('targets+=("$BROKER_INDEX")'))
         self.assertLess(stop.index("kill -INT"), stop.index("kill -TERM"))
         self.assertLess(stop.index("kill -TERM"), stop.index("kill -KILL"))
-        self.assertIn("NORMAL_UE_STOP_GAP_S=${NORMAL_UE_STOP_GAP_S:-0}", source)
+        self.assertIn("NORMAL_UE_STOP_GAP_S=${NORMAL_UE_STOP_GAP_S:-3}", source)
         self.assertIn("sleep 0.2", stop)
         self.assertNotIn("sleep 0.2\n  for i in \"${UE_CHILD_INDEXES[@]}\"; do", stop)
 
+    def test_broker_stop_staggers_targets_by_default_gap(self):
+        source = BROKER.read_text()
+        default = re.search(r"^NORMAL_UE_STOP_GAP_S=\$\{NORMAL_UE_STOP_GAP_S:-[0-9]+\}$",
+                            source, re.M)
+        self.assertIsNotNone(default)
+        script = (
+            "set -uo pipefail\n"
+            "PING_PID=\nSTOPPED=0\n"
+            "PIDS=(101 102 103)\nGROUPED=(0 0 0)\nCHILD_REAPED=()\n"
+            "UE_CHILD_INDEXES=(0 1)\nBROKER_INDEX=2\n"
+            "declare -A INTED=()\n"
+            "is_running() { [[ -z ${INTED[$1]:-} ]]; }\n"
+            "kill() { local signal=$1; local target=${@: -1};"
+            " case $signal in -INT) INTED[${target#-}]=1; echo \"INT ${target#-}\";;"
+            " *) echo \"SIG $signal\";; esac; }\n"
+            "sleep() { echo \"SLEEP $1\"; }\n"
+            "wait() { return 0; }\n"
+            + default.group(0) + "\n"
+            + function_text(BROKER, "stop_children") + "\n"
+            "stop_children\n"
+        )
+        env = {key: value for key, value in os.environ.items()
+               if key != "NORMAL_UE_STOP_GAP_S"}
+        result = subprocess.run(["bash", "-c", script], text=True, env=env,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rows = [line.split() for line in result.stdout.splitlines()]
+        self.assertEqual([row[1] for row in rows if row[0] == "INT"],
+                         ["101", "102", "103"])
+        self.assertEqual([row[1] for row in rows if row[0] == "SLEEP"],
+                         ["3", "3", "3"])
+        self.assertNotIn("SIG", result.stdout)
 
     def test_hour_guard_waits_only_when_the_run_could_cross_the_hour(self):
         ctl = CTL.read_text()

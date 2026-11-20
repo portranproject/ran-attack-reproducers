@@ -108,7 +108,7 @@ BROKER_NORMAL_ATTACK_DURATION_S=${BROKER_NORMAL_ATTACK_DURATION_S:-30}
 BROKER_NORMAL_PDU_SESSION_ID=${BROKER_NORMAL_PDU_SESSION_ID:-}
 BROKER_NORMAL_PRE_HOLD_S=${BROKER_NORMAL_PRE_HOLD_S:-0}
 BROKER_NORMAL_POST_HOLD_S=${BROKER_NORMAL_POST_HOLD_S:-0}
-NORMAL_UE_STOP_GAP_S=${NORMAL_UE_STOP_GAP_S:-0}
+NORMAL_UE_STOP_GAP_S=${NORMAL_UE_STOP_GAP_S:-3}
 BROKER_WITNESS_PHASE_MS=${BROKER_WITNESS_PHASE_MS:-0}
 BROKER_WITNESS_RETRY_MS=${BROKER_WITNESS_RETRY_MS:-1000}
 BROKER_WITNESS_HONOR_REJECT=${BROKER_WITNESS_HONOR_REJECT:-0}
@@ -1477,7 +1477,7 @@ cat >"$OUT/result.json" <<EOF
             "ping":{"transmitted":$PING_TX,"received":$PING_RX,"loss_pct":$PING_LOSS_PCT,"rtt_avg_ms":$PING_RTT_AVG_MS},
             "service_ok":$(bool "$SERVICE")$ATTACK_WINDOW_RESULT_JSON}$RECOVERY_RESULT_JSON$SAME_WITNESS_RESULT_JSON$CONTROL_EXTRA_RESULT_JSON$NORMAL_POOL_RESULT_JSON,
  "teardown":{"ue_exit_statuses":$UE_EXIT_JSON,"broker_exit_status":$BROKER_EXIT_STATUS,
-             "ue_stop_signal":"INTx2","broker_stop_signal":"INT","grace_s":5,
+             "ue_stop_signal":"INT","broker_stop_signal":"INT","grace_s":10,
              "ue_sigsegv_count":$UE_SIGSEGV_COUNT,"broker_sigsegv":$(bool "$BROKER_SIGSEGV"),
              "forced_kill_count":$FORCED_KILL_COUNT},
  "t_stop_utc":"$(date -u +%FT%TZ)"}

@@ -28,6 +28,8 @@
 - **attack** (`-e 1`): 기본 모드(`MSG4_WAIT=1`, `MSG4_ACK=1`)는 Msg5를 생략하는 **RRCSetupComplete 미전송형**이다. 선택 변종으로 `MSG4_WAIT=0`(MAC 확인 Msg3 뒤 즉시 중단)과 `MSG4_ACK=0`(Msg4 HARQ-ACK DTX 억제)이 있다.
 - **OAI UE-only 패치**: 기준 커밋 `1c2f4d3c2e68181cdef9f426d161163147ad4b77`(OAI `2026.w38`)에 `bin/rss-build`가 4개 패치(`rss-ue-curated.patch`, `oai-stale-rnti-dci.patch`, `oai-msg4-ack-rnti.patch`, `oai-broker-control-gate.patch`)를 적용한다. OCUDU·Open5GS 소스, timer, capacity는 수정하지 않는다.
 
+- **UE 종료**: 정상 UE 프로세스를 한꺼번에 끄지 않는다. `NORMAL_UE_STOP_GAP_S`(전역 기본 3초) 간격으로 하나씩 INT하고, 10초 뒤 TERM, 다시 10초 뒤 KILL로 올린다. 공격 전 30초·후 90초 유지는 `ctl.sh same-cell campaign` 전용이며 단일 run은 0이다. verdict의 `teardown`에 `ue_stop_signal`·`grace_s`로 남는다.
+
 ## 실행 방법
 
 ### 통합 컨트롤러 (`ctl.sh`)

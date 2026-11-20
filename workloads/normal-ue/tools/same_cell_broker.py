@@ -31,6 +31,24 @@ def endpoint_indices(spec):
     return frozenset(values)
 
 
+def endpoint_hosts(spec):
+    """슬롯 범위별 원격 호스트를 "1-45=172.31.1.12,46-90=172.31.1.13" 형태에서 읽는다."""
+    hosts = {}
+    for part in spec.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "=" not in part:
+            raise ValueError("원격 슬롯 매핑은 슬롯=호스트 형식이어야 합니다")
+        slot_spec, host = part.split("=", 1)
+        _address(host.strip(), "NORMAL_UE_BROKER_REMOTE_HOSTS")
+        for slot in endpoint_indices(slot_spec):
+            if slot in hosts:
+                raise ValueError("원격 슬롯이 중복됐습니다")
+            hosts[slot] = host.strip()
+    return hosts
+
+
 def _address(value, label):
     try:
         ipaddress.IPv4Address(value)
@@ -41,7 +59,7 @@ def _address(value, label):
 
 class SameCellBroker(gr.top_block):
     def __init__(self, endpoint_count, attack_slots=0, persistent_attack=False,
-                 bind_addr="127.0.0.1", remote_ues=frozenset(), remote_host="127.0.0.1"):
+                 bind_addr="127.0.0.1", remote_hosts=None):
         super().__init__("normal UE same-cell broker")
         self.timeout = 100
         self.hwm = -1
@@ -64,7 +82,7 @@ class SameCellBroker(gr.top_block):
         self.connect((self.uplink, 0), (du_ul, 0))
         for index in range(endpoint_count):
             port = 2100 + 100 * index
-            ue_host = remote_host if index + 1 in remote_ues else "127.0.0.1"
+            ue_host = (remote_hosts or {}).get(index + 1, "127.0.0.1")
             ul = zeromq.req_source(gr.sizeof_gr_complex, 1, f"tcp://{ue_host}:{port + 1}", self.timeout, False, self.hwm, False)
             dl = zeromq.rep_sink(gr.sizeof_gr_complex, 1, f"tcp://{bind_addr}:{port}", self.timeout, False, self.hwm, True)
             self.ue_ul.append(ul)
@@ -152,18 +170,16 @@ def main():
     persistent_attack = os.environ.get("NORMAL_UE_BROKER_PERSISTENT_ATTACK", "0") == "1"
     max_endpoints = int(os.environ.get("NORMAL_UE_BROKER_MAX_ENDPOINTS", "15"))
     bind_addr = os.environ.get("NORMAL_UE_BROKER_BIND_ADDR", "127.0.0.1")
-    remote_host = os.environ.get("NORMAL_UE_BROKER_REMOTE_HOST", "")
-    remote_spec = os.environ.get("NORMAL_UE_BROKER_REMOTE_UES", "")
+    remote_spec = os.environ.get("NORMAL_UE_BROKER_REMOTE_HOSTS", "")
     if endpoint_count < 2 or endpoint_count > max_endpoints:
         raise SystemExit("NORMAL_UE_BROKER_ENDPOINTS must be 2..15")
     try:
         _address(bind_addr, "NORMAL_UE_BROKER_BIND_ADDR")
-        remote_ues = endpoint_indices(remote_spec) if remote_spec else frozenset()
-        if remote_ues:
+        remote_hosts = endpoint_hosts(remote_spec) if remote_spec else {}
+        if remote_hosts:
             if not persistent_attack:
                 raise ValueError("원격 UE는 persistent attack slot에서만 지원합니다")
-            _address(remote_host, "NORMAL_UE_BROKER_REMOTE_HOST")
-            if max(remote_ues) > endpoint_count:
+            if max(remote_hosts) > endpoint_count:
                 raise ValueError("원격 endpoint 번호가 전체 endpoint 수를 넘습니다")
     except ValueError as exc:
         raise SystemExit(f"broker 원격 설정 오류: {exc}")
@@ -176,7 +192,7 @@ def main():
     stopped = threading.Event()
     reset_attack = threading.Event()
     flowgraph = SameCellBroker(endpoint_count, attack_slots, persistent_attack,
-                               bind_addr, remote_ues, remote_host)
+                               bind_addr, remote_hosts)
 
     def stop(_signum=None, _frame=None):
         stopped.set()

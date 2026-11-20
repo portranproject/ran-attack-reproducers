@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# 원본 5GSEC/OAI-5G UE를 고정 커밋에서 수정 없이 빌드한다.
+set -euo pipefail
+REF_OAI=${REF_OAI:-/root/ref/oai-5gsec-b631b577}
+REF_COMMIT=${REF_COMMIT:-b631b577cc00929e50947a453dc5d4c2dcdfa887}
+fail() { echo "build-reference(blind-dos): $*" >&2; exit 1; }
+command -v git >/dev/null || fail "git이 필요합니다"
+if [[ ! -d $REF_OAI/.git ]]; then
+  mkdir -p "$(dirname "$REF_OAI")"
+  git clone https://github.com/5GSEC/OAI-5G "$REF_OAI"
+fi
+git -C "$REF_OAI" checkout -q "$REF_COMMIT"
+[[ $(git -C "$REF_OAI" rev-parse HEAD) == "$REF_COMMIT" ]] || fail "원본 커밋이 다릅니다"
+( cd "$REF_OAI/cmake_targets" && ./build_oai -I >/tmp/ref-blind-install.log 2>&1 && ./build_oai --nrUE --ninja >/tmp/ref-blind-build.log 2>&1 )
+BIN="$REF_OAI/cmake_targets/ran_build/build/nr-uesoftmodem"
+[[ -x $BIN ]] || fail "빌드 산출물이 없습니다: $BIN"
+grep -Faq "blind-dos-attack" "$BIN" || fail "원본 Blind DoS 옵션이 없습니다"
+sha256sum "$BIN"

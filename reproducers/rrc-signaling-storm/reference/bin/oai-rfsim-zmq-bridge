@@ -1,0 +1,145 @@
+#!/usr/bin/env python3
+"""OAI rfsim UE -> GNU Radio 같은-셀 broker ZMQ 어댑터.
+
+원본 OAI UE는 rfsim(TCP, c16)만 말하고 우리 DU는 ZMQ(cf_t)만 말한다.
+이 프로세스는 원본 바이너리를 고치지 않고 두 RF 인터페이스만 변환한다.
+공격 로직·메시지 내용은 건드리지 않는다.
+"""
+import os
+import socket
+import struct
+import sys
+import threading
+import time
+
+import zmq
+
+TCP_HOST = os.environ.get("BRIDGE_TCP_HOST", "127.0.0.1")
+TCP_PORT = int(os.environ.get("BRIDGE_TCP_PORT", "4043"))
+UL_BIND = os.environ.get("BRIDGE_UL_BIND", "tcp://127.0.0.1:2101")
+DL_CONNECT = os.environ.get("BRIDGE_DL_CONNECT", "tcp://127.0.0.1:2100")
+UL_ZERO_SAMPLES = int(os.environ.get("BRIDGE_UL_ZERO_SAMPLES", "768"))
+C16_SCALE = float(os.environ.get("BRIDGE_C16_SCALE", "32767.0"))
+HEADER = struct.Struct("<IIQII")  # size, nbAnt, timestamp, option_value, option_flag
+latest = bytearray(UL_ZERO_SAMPLES * 8)
+latest_lock = threading.Lock()
+stop = threading.Event()
+
+
+def recv_exact(sock, n):
+    buf = bytearray()
+    while len(buf) < n:
+        chunk = sock.recv(n - len(buf))
+        if not chunk:
+            return None
+        buf += chunk
+    return bytes(buf)
+
+
+def c16_to_cf(data):
+    import array
+    a = array.array("h")
+    a.frombytes(data)
+    out = array.array("f", [0.0]) * (len(a) // 2)
+    for i in range(0, len(a) - 1, 2):
+        out[i // 2 * 2] = a[i] / C16_SCALE
+        out[i // 2 * 2 + 1] = a[i + 1] / C16_SCALE
+    return out.tobytes()
+
+
+def cf_to_c16(data):
+    import array
+    a = array.array("f")
+    a.frombytes(data)
+    out = array.array("h", [0]) * len(a)
+    for i, v in enumerate(a):
+        if v > 1.0:
+            v = 1.0
+        elif v < -1.0:
+            v = -1.0
+        out[i] = int(v * C16_SCALE)
+    return out.tobytes()
+
+
+def ul_loop(sock, ctx):
+    rep = ctx.socket(zmq.REP)
+    rep.bind(UL_BIND)
+    try:
+        while not stop.is_set():
+            rep.recv()
+            with latest_lock:
+                payload = bytes(latest)
+            rep.send(payload)
+    finally:
+        rep.close(0)
+
+
+def dl_loop(sock, ctx):
+    req = ctx.socket(zmq.REQ)
+    req.setsockopt(zmq.LINGER, 0)
+    req.connect(DL_CONNECT)
+    ts = 0
+    sent = 0
+    started = time.time()
+    try:
+        while not stop.is_set():
+            req.send(b"\x00")
+            data = req.recv()
+            n = len(data) // 8
+            if sent == 0:
+                sys.stderr.write(f"bridge: first dl block n={n}\n"); sys.stderr.flush()
+            if n == 0:
+                continue
+            payload = cf_to_c16(data)
+            sock.sendall(HEADER.pack(n, 1, ts, 0, 0) + payload)
+            ts += n
+            sent += n
+            if sent >= 30720:
+                sys.stderr.write(f"bridge: dl_samples={sent} elapsed={time.time()-started:.1f}s\n")
+                sys.stderr.flush()
+                sent = 0
+    finally:
+        req.close(0)
+
+
+def main():
+    ctx = zmq.Context.instance()
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.bind((TCP_HOST, TCP_PORT))
+    srv.listen(1)
+    sys.stderr.write(f"bridge: listening {TCP_HOST}:{TCP_PORT}\n")
+    sys.stderr.flush()
+    sock, _ = srv.accept()
+    sys.stderr.write("bridge: accepted\n"); sys.stderr.flush()
+    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    # OAI rfsim client waits for the server's first block before it starts.
+    sock.sendall(HEADER.pack(1, 1, 0, 0, 0) + b"\x00" * 4)
+    threading.Thread(target=ul_loop, args=(sock, ctx), daemon=True).start()
+    threading.Thread(target=dl_loop, args=(sock, ctx), daemon=True).start()
+    try:
+        while not stop.is_set():
+            hdr = recv_exact(sock, HEADER.size)
+            if hdr is None:
+                break
+            size, nbant, ts, _ov, _of = HEADER.unpack(hdr)
+            if not globals().get("_ul_logged"):
+                sys.stderr.write(f"bridge: first ul block size={size} ant={nbant} ts={ts}\n"); sys.stderr.flush()
+                globals()["_ul_logged"] = True
+            body = recv_exact(sock, size * nbant * 4)
+            if body is None:
+                break
+            with latest_lock:
+                latest[:] = c16_to_cf(body)
+    except (ConnectionResetError, BrokenPipeError):
+        pass
+    finally:
+        stop.set()
+        sock.close()
+        srv.close()
+        ctx.term()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

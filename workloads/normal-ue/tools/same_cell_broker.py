@@ -117,7 +117,8 @@ def main():
     attack_slots = int(os.environ.get("NORMAL_UE_BROKER_ATTACK_SLOTS", "0"))
     control_path = os.environ.get("NORMAL_UE_BROKER_CONTROL", "")
     persistent_attack = os.environ.get("NORMAL_UE_BROKER_PERSISTENT_ATTACK", "0") == "1"
-    if endpoint_count < 2 or endpoint_count > 15:
+    max_endpoints = int(os.environ.get("NORMAL_UE_BROKER_MAX_ENDPOINTS", "15"))
+    if endpoint_count < 2 or endpoint_count > max_endpoints:
         raise SystemExit("NORMAL_UE_BROKER_ENDPOINTS must be 2..15")
     if attack_slots < 0 or attack_slots >= endpoint_count:
         raise SystemExit("NORMAL_UE_BROKER_ATTACK_SLOTS must be 0..endpoint_count-1")

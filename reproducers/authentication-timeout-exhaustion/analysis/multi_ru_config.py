@@ -12,8 +12,11 @@ from pathlib import Path
 def generate(source: Path, target: Path, count: int, endpoint_offset: int = 0) -> None:
     if source.is_symlink() or not source.is_file() or target.exists() or target.is_symlink():
         raise ValueError("입력은 일반 파일이고 출력은 새 파일이어야 합니다")
-    if count < 1 or count > 10 or endpoint_offset < 0 or endpoint_offset + count > 15:
-        raise ValueError("RU 수는 1..10이고 마지막 endpoint는 15 이하여야 합니다")
+    max_endpoints = int(os.environ.get("AUTH_STALL_CELL_DIAGNOSTIC_MAX_ENDPOINTS", "15"))
+    if max_endpoints < 15:
+        max_endpoints = 15
+    if count < 1 or count > max_endpoints or endpoint_offset < 0 or endpoint_offset + count > max_endpoints:
+        raise ValueError(f"RU 수는 1..{max_endpoints}이고 마지막 endpoint는 {max_endpoints} 이하여야 합니다")
     text = source.read_text(encoding="utf-8")
     if re.search(r"(?m)^\s*(RUs|cells|zmq)\s*=", text):
         raise ValueError("가입자 설정에 기존 RUs/cells/zmq가 있습니다")

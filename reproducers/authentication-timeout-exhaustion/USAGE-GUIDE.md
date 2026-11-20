@@ -183,3 +183,18 @@ detector 기본 설정의 p5 표본에서는 공격 3/3 정탐, 대조군 예상
 
 탐지 입력 계약의 결함을 수정하는 경우가 아니면 서비스 거부를 만들기 위한 추가 증설이나
 timer/capacity 변경으로 이 모듈을 다시 열지 않는다.
+
+## 10. 진단 옵션: 공격 UE만 별도 호스트
+
+서비스 거부 확장 진단에서 공격 UE가 DU의 CPU·메모리를 먼저 고갈시키는 문제를 분리하기
+위한 옵션이다. gNB·코어·timer·capacity는 그대로 두고 `same-cell-run`에 다음 세 값을 준다.
+값이 없으면 기존 127.0.0.1 경로가 그대로 동작한다.
+
+- `SAME_CELL_ATTACK_SSH`: 공격 호스트 접속 명령(예: `ssh -i KEY ubuntu@IP`)
+- `SAME_CELL_REMOTE_UE_IP`: 공격 호스트 사설 IP. UE가 UL을 bind하고 broker가 접속한다.
+- `SAME_CELL_REMOTE_BROKER_IP`: DU 사설 IP. 원격 UE가 broker DL에 접속한다.
+
+broker는 DL만 `SAME_CELL_REMOTE_BIND_ADDR`(기본 0.0.0.0)에 bind하고, 앞쪽
+`ATTACK_SLOTS` endpoint만 원격 UE로 본다. 공격 runner는 공격 호스트에서 실행되며
+marker·게이트·산출물은 ssh로 오가고, `same-cell` run 디렉터리에
+`remote-attacker.tar`로 복사된다. 진단 전용이며 자격 실행은 기존 로컬 경로만 쓴다.

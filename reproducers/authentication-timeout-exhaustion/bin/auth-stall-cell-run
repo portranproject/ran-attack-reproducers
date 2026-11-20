@@ -39,6 +39,9 @@ SAME_CELL_ATTACK_READY_FILE=${SAME_CELL_ATTACK_READY_FILE:-}
 SAME_CELL_ATTACK_DONE_FILE=${SAME_CELL_ATTACK_DONE_FILE:-}
 SAME_CELL_RELEASE_FILE=${SAME_CELL_RELEASE_FILE:-}
 SAME_CELL_UE_GATE_FILE=${SAME_CELL_UE_GATE_FILE:-}
+REMOTE_ATTACK=${SAME_CELL_REMOTE_ATTACK:-0}
+ZMQ_TX_HOST=${SAME_CELL_REMOTE_UE_IP:-127.0.0.1}
+ZMQ_RX_HOST=${SAME_CELL_REMOTE_BROKER_IP:-127.0.0.1}
 
 fail() { echo "auth-stall-cell-run: $*" >&2; exit 2; }
 [[ $DIAGNOSTIC_SCALE == 0 || $DIAGNOSTIC_SCALE == 1 ]] || fail "AUTH_STALL_CELL_DIAGNOSTIC_SCALE는 0 또는 1이어야 합니다"
@@ -58,6 +61,12 @@ if (( DIAGNOSTIC_SCALE == 0 )); then
 fi
 [[ $MANAGE_RAN == 0 || $MANAGE_RAN == 1 ]] || fail "SAME_CELL_AUTH_TIMEOUT_MANAGE_DU는 0 또는 1이어야 합니다"
 [[ $SAME_CELL_PRESTART == 0 || $SAME_CELL_PRESTART == 1 ]] || fail "SAME_CELL_PRESTART는 0 또는 1이어야 합니다"
+[[ $REMOTE_ATTACK == 0 || $REMOTE_ATTACK == 1 ]] || fail "SAME_CELL_REMOTE_ATTACK은 0 또는 1이어야 합니다"
+if (( REMOTE_ATTACK )); then
+  python3 -c 'import ipaddress,sys; [ipaddress.IPv4Address(v) for v in sys.argv[1:]]' "$ZMQ_TX_HOST" "$ZMQ_RX_HOST" \
+    || fail "원격 공격 UE/Broker 주소가 IPv4가 아닙니다"
+  export AUTH_STALL_CELL_ZMQ_TX_HOST=$ZMQ_TX_HOST AUTH_STALL_CELL_ZMQ_RX_HOST=$ZMQ_RX_HOST
+fi
 (( SAME_CELL_PRESTART == 0 || MANAGE_RAN == 0 )) || fail "same-cell prestart는 외부 RAN lifecycle이 필요합니다"
 for file in "$OAI_BIN" "$UECAP" "$ATTACKER_CONFIGS_FILE" \
             "$ROOT/analysis/multi_ru_config.py" "$ROOT/analysis/verify_cell_flood.py"; do
@@ -152,9 +161,15 @@ for ((i=0; i<PROCESS_COUNT; i++)); do
     for ((ru=0; ru<UES_PER_PROCESS; ru++)); do
       endpoint=$((endpoint_offset + ru + 1))
       read -r tx rx extra <<<"${endpoint_rows[$((i * UES_PER_PROCESS + ru))]}"
-      [[ -z ${extra:-} && $tx == "tcp://127.0.0.1:$((2001 + 100 * endpoint))" \
-         && $rx == "tcp://127.0.0.1:$((2000 + 100 * endpoint))" ]] \
-        || fail "same-cell endpoint 순서가 독립 RU 계획과 다릅니다"
+      if (( REMOTE_ATTACK )); then
+        [[ -z ${extra:-} && $tx == "tcp://$ZMQ_TX_HOST:$((2001 + 100 * endpoint))" \
+           && $rx == "tcp://$ZMQ_RX_HOST:$((2000 + 100 * endpoint))" ]] \
+          || fail "원격 same-cell endpoint 순서가 독립 RU 계획과 다릅니다"
+      else
+        [[ -z ${extra:-} && $tx == "tcp://127.0.0.1:$((2001 + 100 * endpoint))" \
+           && $rx == "tcp://127.0.0.1:$((2000 + 100 * endpoint))" ]] \
+          || fail "same-cell endpoint 순서가 독립 RU 계획과 다릅니다"
+      fi
     done
   fi
   python3 "$ROOT/analysis/multi_ru_config.py" \

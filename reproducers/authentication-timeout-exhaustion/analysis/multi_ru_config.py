@@ -3,10 +3,20 @@
 
 from __future__ import annotations
 
+import ipaddress
 import os
 import re
 import sys
 from pathlib import Path
+
+
+def _host(name: str) -> str:
+    value = os.environ.get(name, "127.0.0.1")
+    try:
+        ipaddress.IPv4Address(value)
+    except ValueError as exc:
+        raise ValueError(f"{name}는 IPv4 주소여야 합니다") from exc
+    return value
 
 
 def generate(source: Path, target: Path, count: int, endpoint_offset: int = 0) -> None:
@@ -30,9 +40,11 @@ def generate(source: Path, target: Path, count: int, endpoint_offset: int = 0) -
         "numerology = 1; N_RB_DL = 51; ssb_start = 516; }"
         for index in range(count)
     )
+    tx_host = _host("AUTH_STALL_CELL_ZMQ_TX_HOST")
+    rx_host = _host("AUTH_STALL_CELL_ZMQ_RX_HOST")
     zmq = ",\n".join(
-        f'  {{ tx_channels = ("tcp://127.0.0.1:{2001 + 100 * (endpoint_offset + index + 1)}"); '
-        f'rx_channels = ("tcp://127.0.0.1:{2000 + 100 * (endpoint_offset + index + 1)}"); }}'
+        f'  {{ tx_channels = ("tcp://{tx_host}:{2001 + 100 * (endpoint_offset + index + 1)}"); '
+        f'rx_channels = ("tcp://{rx_host}:{2000 + 100 * (endpoint_offset + index + 1)}"); }}'
         for index in range(count)
     )
     target.write_text(

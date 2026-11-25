@@ -3,7 +3,7 @@
   "reproducer": {
     "minimum_commit": "9acd6cbfac17500ffb6290e1bd14378d45fb01e5",
     "required_files": {
-      "ctl.sh": "cebf48b8ba2565230e4f98c130c9eff26f1c4e371d94d16aa06077d832de1413",
+      "ctl.sh": "58b80866fe57f7ffc6249efef5afed6491ad8a45a66a1e847ad7bc6c07d255c9",
       "references/README.md": "917f7ad997f84858090d6a593da2790f9ba687eb802bf6c11132de4a23a1db37",
       "references/bin/reference-ctl": "59bcdcaa5ffca990b86812df7620ab1e1bcb23ef9da06e86e5ebdeef968e2bf2",
       "references/manifest.json": "be9de845bb252f7f28b54812c73348fc4a5e72f7c914bf4ed9cc157e25156872",
@@ -42,7 +42,7 @@
       "tools/verify_live_e2e.py": "d931448878c3832476967460377e9c00046902926b0f320ec9100fa17448330f",
       "workloads/normal-ue/bin/normal-ue": "2fbd7dff551ec78a9b17bc5d20a1103dc6f34e5d8957f9814f43201d87ed8cb2",
       "workloads/normal-ue/bin/normal-ue-build": "bb05c53717dc3d0f2eea9033ef0b5be55970b53a5b81cc7fd04ea8c45022199e",
-      "workloads/normal-ue/bin/same-cell-run": "90694b3db0b65bbeb41c8a617b926aecad3e3319971c92e6c50ffe5306814bb6",
+      "workloads/normal-ue/bin/same-cell-run": "56c33a51111cbf4daf432ee5120d3bda61836b3445857b3d299cb133b77383d0",
       "workloads/normal-ue/conf/du-broker-default.yaml.example": "921b40aa8311809617d5284e96f1a68a54f9a64d6c94859c3f9883a3036cca75",
       "workloads/normal-ue/patch/normal-multi-ru.patch": "422c6eabcc86f7c3e2d9171ef5d08b882f0a59bccda0a4782a4acb6a6a0103fa",
       "workloads/normal-ue/patch/normal-probe-phase.patch": "011b4c1cb1c06f95810f685025582568064f8ffbc8972aeac2f93b50bf3dd6f2",

@@ -786,7 +786,7 @@ cell_cli() {
       fi
       python3 "$REPROCTL" doctor --profile "$profile" >/dev/null
       require_same_cell_dependencies
-      exec "$SAME_CELL" start "${start_args[@]}"
+      SAME_CELL_ATTACK_SLOTS=${SAME_CELL_ATTACK_SLOTS:-0} exec "$SAME_CELL" start "${start_args[@]}"
       ;;
     down|stop)
       [[ -x $SAME_CELL ]] || fail "cell runner가 없습니다: $SAME_CELL"

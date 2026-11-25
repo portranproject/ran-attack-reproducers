@@ -115,7 +115,7 @@ if [[ $ACTION == run ]]; then
     *) fail "지원하지 않는 same-cell 공격: $ATTACK" ;;
   esac
 else
-  ATTACK_SLOTS=4
+  ATTACK_SLOTS=${SAME_CELL_ATTACK_SLOTS:-4}
 fi
 if [[ -n ${SAME_CELL_DIAGNOSTIC_ATTACK_SLOTS:-} ]]; then
   [[ $ATTACK == auth-timeout && $SAME_CELL_DIAGNOSTIC_ATTACK_SLOTS =~ ^[1-9][0-9]*$ ]] \
@@ -904,7 +904,7 @@ if [[ $ACTION == start ]]; then
     export AUTH_STALL_CELL_DIAGNOSTIC_SCALE=1
   fi
   start_normal_group "$RUNTIME_CFG" "$RUN_ID"
-  start_placeholder_group 1
+  (( ATTACK_SLOTS == 0 )) || start_placeholder_group 1
   for ((i=1; i<=TOTAL_ENDPOINTS; i++)); do wait_port "$((2001 + 100 * i))" || fail "UE endpoint $i 준비가 시간 초과했습니다"; done
   setsid env NORMAL_UE_BROKER_ENDPOINTS="$TOTAL_ENDPOINTS" NORMAL_UE_BROKER_ATTACK_SLOTS="$ATTACK_SLOTS" \
     NORMAL_UE_BROKER_CONTROL="$STATE/broker-control" \
@@ -926,8 +926,8 @@ if [[ $ACTION == start ]]; then
   record_pid du "${GNB_PIDS[0]}"
   wait_healthy "$COUNT" "$SAME_CELL_HEALTH_TIMEOUT_S" || fail "normal UE $COUNT/$COUNT 준비가 시간 초과했습니다"
   ( set -o noclobber; : >"$STATE/normal.ready" )
-  printf '{"schema":"same-cell.session.v1","session_id":"%s","normal_ues":%d,"attack_slots":4,"cell_restarts":1,"cu_restarts":0}\n' \
-    "$RUN_ID" "$COUNT" >"$RUN_OUT/session.json"
+  printf '{"schema":"same-cell.session.v1","session_id":"%s","normal_ues":%d,"attack_slots":%d,"cell_restarts":1,"cu_restarts":0}\n' \
+    "$RUN_ID" "$COUNT" "$ATTACK_SLOTS" >"$RUN_OUT/session.json"
   START_COMPLETE=1
   trap - EXIT INT TERM
   echo "시작됨: session=$RUN_ID normal=$COUNT/$COUNT attack_slots=4 du_restart=initial-only"

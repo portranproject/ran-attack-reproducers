@@ -30,12 +30,23 @@ usage() {
   cat <<'EOF'
 사용법:
   same-cell-run run blind|uplink|uplink-credential-flood|auth-timeout|downlink-imsi|ue-capability|nas-counter-desync -n RUN_ID [--count 5] [--config FILE] -- COMMAND...
-  same-cell-run start -n SESSION_ID [--count 5] [--config FILE]  # 정상 UE 개발 세션
+  same-cell-run start -n SESSION_ID [--count 5] [--config FILE] [--modules m1,m2]  # 상시 셀
+  same-cell-run attack MODULE -n RUN_ID  # 예약 슬롯 공격
   same-cell-run status
   same-cell-run stop
 EOF
 }
 fail() { echo "same-cell-run: $*" >&2; exit 2; }
+module_conf() {
+  case $1 in
+    uplink-credential-flood) echo "$ROOT/reproducers/uplink-dos/conf/uplink.conf" ;;
+    downlink-imsi) echo "$ROOT/reproducers/downlink-imsi-extractor/conf/downlink-imsi.conf" ;;
+    ue-capability) echo "$ROOT/reproducers/ue-capability-hijacking/conf/ue-capability.conf" ;;
+    nas-counter-desynchronization) echo "$ROOT/reproducers/nas-counter-desynchronization/conf/nas-counter-desync.conf" ;;
+    *) return 1 ;;
+  esac
+}
+
 
 case $ACTION in
   start)
@@ -44,6 +55,16 @@ case $ACTION in
         -n|--session-id) [[ $# -ge 2 ]] || fail "session id 값이 필요합니다"; RUN_ID=$2; shift 2 ;;
         -c|--count) [[ $# -ge 2 ]] || fail "count 값이 필요합니다"; COUNT=$2; shift 2 ;;
         --config) [[ $# -ge 2 ]] || fail "config 값이 필요합니다"; CONF=$2; shift 2 ;;
+        --modules) [[ $# -ge 2 ]] || fail "modules 값이 필요합니다"; MODULES=$2; shift 2 ;;
+        *) fail "알 수 없는 옵션: $1" ;;
+      esac
+    done
+    ;;
+  attack)
+    ATTACK=${1:-}; [[ $# == 0 ]] || shift
+    while [[ $# -gt 0 ]]; do
+      case $1 in
+        -n|--run-id) [[ $# -ge 2 ]] || fail "run id 값이 필요합니다"; RUN_ID=$2; shift 2 ;;
         *) fail "알 수 없는 옵션: $1" ;;
       esac
     done
@@ -78,6 +99,17 @@ fi
 CONF=$(cd "$(dirname "$CONF")" && printf '%s/%s\n' "$PWD" "$(basename "$CONF")")
 # shellcheck source=/dev/null
 . "$CONF"
+
+MODULES=${MODULES:-}
+MODULE_LIST=()
+if [[ -n $MODULES ]]; then
+  IFS=, read -r -a MODULE_LIST <<<"$MODULES"
+  (( ${#MODULE_LIST[@]} <= 10 )) || fail "예약 슬롯 모듈은 10개 이하여야 합니다"
+  for module in "${MODULE_LIST[@]}"; do
+    module_conf "$module" >/dev/null || fail "예약 슬롯 미지원 모듈입니다(단일 UE 모듈만 지원): $module"
+    [[ $module != *","* ]] || fail "모듈 이름이 잘못됐습니다"
+  done
+fi
 
 NORMAL_UE_RUN_ROOT=${NORMAL_UE_RUN_ROOT:-/var/lib/ran-reproducer/normal-ue}
 NORMAL_UE_BROKER_PY=${NORMAL_UE_BROKER_PY:-$ROOT/workloads/normal-ue/tools/same_cell_broker.py}
@@ -115,7 +147,7 @@ if [[ $ACTION == run ]]; then
     *) fail "지원하지 않는 same-cell 공격: $ATTACK" ;;
   esac
 else
-  ATTACK_SLOTS=4
+  ATTACK_SLOTS=${SAME_CELL_ATTACK_SLOTS:-${#MODULE_LIST[@]}}
 fi
 if [[ -n ${SAME_CELL_DIAGNOSTIC_ATTACK_SLOTS:-} ]]; then
   [[ $ATTACK == auth-timeout && $SAME_CELL_DIAGNOSTIC_ATTACK_SLOTS =~ ^[1-9][0-9]*$ ]] \
@@ -202,10 +234,12 @@ record_pid() {
   printf '%s\n' "$(pid_starttime "$2")" >"$STATE/$1.starttime"
 }
 clear_state() {
-  if [[ -d $STATE/placeholders && ! -L $STATE/placeholders ]]; then
-    find "$STATE/placeholders" -xdev -mindepth 1 -maxdepth 1 -type f -delete
-    rmdir "$STATE/placeholders"
-  fi
+  local dir
+  for dir in placeholders gates agents; do
+    [[ -d $STATE/$dir && ! -L $STATE/$dir ]] || continue
+    find "$STATE/$dir" -xdev -mindepth 1 -maxdepth 1 -type f -delete
+    rmdir "$STATE/$dir" 2>/dev/null || true
+  done
   find "$STATE" -xdev -mindepth 1 -maxdepth 1 -type f -delete
   rmdir "$STATE"
 }
@@ -216,6 +250,13 @@ owned_pid() {
   is_running "$pid" || return 1
   actual=$(pid_starttime "$pid")
   [[ -n $actual && $actual == "$expected" ]] || return 1
+  echo "$pid"
+}
+owned_pid_agent() {
+  local module=$1 pid
+  [[ -f $STATE/agents/$module.pid && ! -L $STATE/agents/$module.pid ]] || return 1
+  read -r pid <"$STATE/agents/$module.pid"
+  is_running "$pid" || return 1
   echo "$pid"
 }
 stop_normal_ue() {
@@ -470,6 +511,41 @@ start_normal_group() {
     --rss.log_file "$RUN_OUT/normal.jsonl" >"$RUN_OUT/normal.log" 2>&1 </dev/null 9>&- &
   record_pid normal "$!"
 }
+start_module_agents() {
+  local module base=1 agent_conf
+  [[ ${#MODULE_LIST[@]} -gt 0 ]] || fail "선기동할 모듈이 없습니다"
+  mkdir -m 700 -p "$STATE/gates" "$STATE/agents"
+  for module in "${MODULE_LIST[@]}"; do
+    agent_conf=$(module_conf "$module") || fail "모듈 설정을 찾지 못했습니다: $module"
+    [[ -f $agent_conf && ! -L $agent_conf ]] || fail "모듈 설정이 없습니다: $agent_conf"
+    printf 'standby\n' >"$STATE/gates/$module"
+    mkdir -m 700 -p "$RUN_OUT/modules/$module"
+    setsid "$ROOT/workloads/normal-ue/bin/attack-agent" "$module" \
+      --gate "$STATE/gates/$module" \
+      --ran-ready "$STATE/ran.ready" --normal-ready "$STATE/normal.ready" \
+      --attack-ready "$STATE/agents/$module.attack-ready" \
+      --done "$STATE/agents/$module.done" --release "$STATE/agents/$module.release" \
+      --tx "tcp://127.0.0.1:$((2001 + 100 * base))" --rx "tcp://127.0.0.1:$((2000 + 100 * base))" \
+      --conf "$agent_conf" --out "$RUN_OUT/modules/$module" --run-id "$RUN_ID" \
+      --cell "p5-same-cell" >>"$RUN_OUT/modules/$module/agent.log" 2>&1 </dev/null 9>&- &
+    printf '%s\n' "$!" >"$STATE/agents/$module.pid"
+    printf '%s\n' "$base" >"$STATE/agents/$module.slot"
+    printf '%s\n' "$module" >>"$STATE/modules"
+    base=$((base + 1))
+  done
+}
+
+stop_module_agents() {
+  local pid_file pid
+  [[ -d $STATE/agents ]] || return 0
+  for pid_file in "$STATE/agents"/*.pid; do
+    [[ -f $pid_file && ! -L $pid_file ]] || continue
+    read -r pid <"$pid_file"
+    [[ $pid =~ ^[1-9][0-9]*$ ]] || continue
+    is_running "$pid" && stop_group "$pid"
+  done
+}
+
 start_persistent_broker() {
   local -a remote_broker=()
   local host first last map=""
@@ -861,6 +937,91 @@ PY
   exit 0
 fi
 
+if [[ $ACTION == attack ]]; then
+  [[ $RUN_ID =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$ ]] || fail "안전한 run id가 필요합니다"
+  read -r COUNT <"$STATE/count"
+  read -r ATTACK_SLOTS <"$STATE/attack_slots"
+  read -r RUN_OUT <"$STATE/run_root"
+  read -r NORMAL_UE_PDU_SESSION_ID <"$STATE/pdu_session_id"
+  modules=$(paste -sd, "$STATE/modules" 2>/dev/null || true)
+  [[ ,$modules, == *",$ATTACK,"* ]] || fail "세션에 없는 모듈입니다: $ATTACK (세션 모듈: ${modules:-none})"
+  AGENT_PID=$(owned_pid_agent "$ATTACK") || fail "모듈 agent가 실행 중이 아닙니다: $ATTACK"
+  read -r SLOT <"$STATE/agents/$ATTACK.slot"
+  [[ $SLOT =~ ^[1-9][0-9]*$ ]] || fail "모듈 슬롯이 잘못됐습니다: $ATTACK"
+  NORMAL_PID=$(owned_pid normal) || fail "normal UE가 실행 중이 아닙니다"
+  BROKER_PID=$(owned_pid broker) || fail "broker가 실행 중이 아닙니다"
+  DU_PID=$(owned_pid du) || fail "DU가 실행 중이 아닙니다"
+  ATTACK_RUN="$RUN_OUT/attacks/$RUN_ID"
+  [[ ! -e $ATTACK_RUN ]] || fail "attack run id가 이미 존재합니다: $ATTACK_RUN"
+  mkdir -m 700 -p "$ATTACK_RUN"
+  HEALTH="$ATTACK_RUN/normal-health.jsonl"
+
+  wait_healthy "$COUNT" "$SAME_CELL_HEALTH_TIMEOUT_S" || fail "공격 전 normal UE $COUNT/$COUNT 아님"
+  record_health before "$HEALTH" || fail "공격 전 normal UE $COUNT/$COUNT 기록 실패"
+  start_utc=$(date -u +%Y-%m-%dT%H:%M:%S.%NZ)
+  start_kst=$(TZ=Asia/Seoul date +%Y-%m-%dT%H:%M:%S%z)
+
+  before=$(grep -c '^SAME_CELL_SLOT_SELECTION ' "$RUN_OUT/broker.log" 2>/dev/null || true)
+  printf 'attack %s\n' "$SLOT" >"$STATE/broker-control"
+  kill -USR1 "$BROKER_PID" || fail "broker 제어 신호 실패"
+  started=$SECONDS
+  while :; do
+    now=$(grep -c '^SAME_CELL_SLOT_SELECTION ' "$RUN_OUT/broker.log" 2>/dev/null || true)
+    (( now > before )) && break
+    is_running "$BROKER_PID" || fail "broker가 슬롯 활성화 전에 종료됐습니다"
+    (( SECONDS - started < SAME_CELL_ENDPOINT_TIMEOUT_S )) || fail "broker 슬롯 활성화 시간 초과"
+    sleep .1
+  done
+  printf 'attack\n' >"$STATE/gates/$ATTACK"
+  record_health during "$HEALTH" || true
+  started=$SECONDS
+  while [[ ! -f $STATE/agents/$ATTACK.done ]]; do
+    is_running "$AGENT_PID" || fail "공격 agent가 완료 전에 종료됐습니다"
+    (( SECONDS - started < SAME_CELL_ATTACK_TIMEOUT_S )) || fail "공격 완료 시간 초과"
+    record_health during "$HEALTH" || true
+    sleep 1
+  done
+  # 슬롯 UE는 셀 수명 동안 유지한다. UE가 죽으면 broker의 공유 DL이 막혀 정상 UE도 멈춘다.
+  printf 'standby\n' >"$STATE/gates/$ATTACK"
+  printf 'standby\n' >"$STATE/broker-control"
+  kill -USR1 "$BROKER_PID" || true
+  started=$SECONDS
+  until record_health after "$HEALTH"; do
+    (( SECONDS - started < SAME_CELL_RECOVERY_TIMEOUT_S )) || fail "공격 후 normal UE $COUNT/$COUNT 회복 실패"
+    sleep 1
+  done
+  end_utc=$(date -u +%Y-%m-%dT%H:%M:%S.%NZ)
+  end_kst=$(TZ=Asia/Seoul date +%Y-%m-%dT%H:%M:%S%z)
+  cp "$RUN_OUT/modules/$ATTACK/label.json" "$ATTACK_RUN/agent-label.json" 2>/dev/null || true
+  python3 - "$ATTACK_RUN/label.json" "$ATTACK" "$RUN_ID" "p5-same-cell" "$SLOT" \
+    "$start_utc" "$start_kst" "$end_utc" "$end_kst" "$HEALTH" <<'LABEL_EOF'
+import json, sys
+path, module, run_id, cell, slot, start_utc, start_kst, end_utc, end_kst, health = sys.argv[1:]
+rows = [json.loads(line) for line in open(health, encoding="utf-8") if line.strip()]
+def count(phase):
+    return len({r["ue"] for r in rows if r["phase"] == phase and r.get("ping_ok") is True})
+during = [count("during") for r in rows if r["phase"] == "during"]
+data = {
+    "schema": "attack-run.label.v1",
+    "attack_id": module,
+    "run_id": run_id,
+    "cell": cell,
+    "logical_ue": int(slot),
+    "start_utc": start_utc,
+    "start_kst": start_kst,
+    "end_utc": end_utc,
+    "end_kst": end_kst,
+    "normal_ue_before": count("before"),
+    "normal_ue_during_min": min(during) if during else 0,
+    "normal_ue_after": count("after"),
+    "source": "ue-observation",
+}
+open(path, "w", encoding="utf-8").write(json.dumps(data, ensure_ascii=False, sort_keys=True) + "\n")
+LABEL_EOF
+  echo "완료됨: attack=$ATTACK slot=$SLOT normal=$COUNT label=$ATTACK_RUN/label.json"
+  exit 0
+fi
+
 if [[ $ACTION == start ]]; then
   [[ $RUN_ID =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$ ]] || fail "안전한 session id가 필요합니다"
   [[ $COUNT =~ ^[1-9][0-9]*$ && $COUNT -le 7 ]] || fail "count는 1..7이어야 합니다"
@@ -874,6 +1035,7 @@ if [[ $ACTION == start ]]; then
     local status=$? pid
     trap - EXIT INT TERM
     (( START_COMPLETE )) && return 0
+    stop_module_agents
     pid=$(owned_pid placeholder-group 2>/dev/null || true); [[ -z $pid ]] || stop_group "$pid"
     pid=$(owned_pid broker 2>/dev/null || true); [[ -z $pid ]] || stop_group "$pid"
     pid=$(owned_pid normal 2>/dev/null || true); [[ -z $pid ]] || stop_normal_ue "$pid"
@@ -884,6 +1046,7 @@ if [[ $ACTION == start ]]; then
   trap cleanup_start EXIT INT TERM
   printf '%s\n' "$CONF" >"$STATE/config.path"
   printf '%s\n' "$COUNT" >"$STATE/count"
+  printf '%s\n' "$ATTACK_SLOTS" >"$STATE/attack_slots"
   printf '%s\n' "$RUN_ID" >"$STATE/session_id"
   RUN_OUT="$NORMAL_UE_RUN_ROOT/same-cell/$RUN_ID"
   [[ ! -e $RUN_OUT ]] || fail "session id가 이미 존재합니다: $RUN_OUT"
@@ -892,8 +1055,11 @@ if [[ $ACTION == start ]]; then
   printf '%s\n' "$RUN_OUT" >"$STATE/run_root"
   RUNTIME_CFG=$(SAME_CELL_NORMAL_STATE_DIR="$STATE" NORMAL_UE_ZMQ_ENDPOINT_OFFSET="$ATTACK_SLOTS" \
     "$NORMAL_CTL" prepare --config "$CONF" --count "$COUNT")
-  PLACEHOLDER_CFG=$(SAME_CELL_NORMAL_STATE_DIR="$STATE/placeholders" NORMAL_UE_ZMQ_ENDPOINT_OFFSET=0 \
-    "$NORMAL_CTL" prepare --config "$CONF" --count "$ATTACK_SLOTS")
+  : >"$STATE/modules"
+  if (( ATTACK_SLOTS > 0 )) && [[ ${#MODULE_LIST[@]} == 0 ]]; then
+    PLACEHOLDER_CFG=$(SAME_CELL_NORMAL_STATE_DIR="$STATE/placeholders" NORMAL_UE_ZMQ_ENDPOINT_OFFSET=0 \
+      "$NORMAL_CTL" prepare --config "$CONF" --count "$ATTACK_SLOTS")
+  fi
   printf '%s\n' "$PLACEHOLDER_CFG" >"$STATE/placeholder_config"
   printf 'placeholder\n' >"$STATE/broker-control"
   resolve_pdu_session_id
@@ -903,10 +1069,17 @@ if [[ $ACTION == start ]]; then
     export AUTH_STALL_CELL_SCALE_UES_PER_PROCESS=5
     export AUTH_STALL_CELL_DIAGNOSTIC_SCALE=1
   fi
+  MODULE_BROKER_ENV=""
+  [[ ${#MODULE_LIST[@]} == 0 ]] || MODULE_BROKER_ENV="NORMAL_UE_BROKER_PERSISTENT_ATTACK=1"
   start_normal_group "$RUNTIME_CFG" "$RUN_ID"
-  start_placeholder_group 1
+  if [[ ${#MODULE_LIST[@]} -gt 0 ]]; then
+    start_module_agents
+  else
+    (( ATTACK_SLOTS == 0 )) || start_placeholder_group 1
+  fi
   for ((i=1; i<=TOTAL_ENDPOINTS; i++)); do wait_port "$((2001 + 100 * i))" || fail "UE endpoint $i 준비가 시간 초과했습니다"; done
   setsid env NORMAL_UE_BROKER_ENDPOINTS="$TOTAL_ENDPOINTS" NORMAL_UE_BROKER_ATTACK_SLOTS="$ATTACK_SLOTS" \
+    ${MODULE_BROKER_ENV:-} \
     NORMAL_UE_BROKER_CONTROL="$STATE/broker-control" \
     python3 "$NORMAL_UE_BROKER_PY" \
     >"$RUN_OUT/broker.log" 2>&1 </dev/null 9>&- &
@@ -924,17 +1097,29 @@ if [[ $ACTION == start ]]; then
   mapfile -t GNB_PIDS < <(pgrep -x odu)
   (( ${#GNB_PIDS[@]} == 1 )) || fail "세션이 소유할 DU PID를 하나로 확정하지 못했습니다"
   record_pid du "${GNB_PIDS[0]}"
+  ( set -o noclobber; : >"$STATE/ran.ready" )
   wait_healthy "$COUNT" "$SAME_CELL_HEALTH_TIMEOUT_S" || fail "normal UE $COUNT/$COUNT 준비가 시간 초과했습니다"
   ( set -o noclobber; : >"$STATE/normal.ready" )
-  printf '{"schema":"same-cell.session.v1","session_id":"%s","normal_ues":%d,"attack_slots":4,"cell_restarts":1,"cu_restarts":0}\n' \
-    "$RUN_ID" "$COUNT" >"$RUN_OUT/session.json"
+  if [[ ${#MODULE_LIST[@]} -gt 0 ]]; then
+    started=$SECONDS
+    for module in "${MODULE_LIST[@]}"; do
+      while [[ ! -f $STATE/agents/$module.attack-ready ]]; do
+        pid=$(owned_pid_agent "$module") || fail "모듈 agent가 준비 전에 종료됐습니다: $module"
+        (( SECONDS - started < SAME_CELL_HEALTH_TIMEOUT_S )) || fail "모듈 agent readiness 시간 초과: $module"
+        sleep .2
+      done
+    done
+  fi
+  printf '{"schema":"same-cell.session.v2","session_id":"%s","normal_ues":%d,"attack_slots":%d,"modules":"%s","cell_restarts":1,"cu_restarts":0}\n' \
+    "$RUN_ID" "$COUNT" "$ATTACK_SLOTS" "$MODULES" >"$RUN_OUT/session.json"
   START_COMPLETE=1
   trap - EXIT INT TERM
-  echo "시작됨: session=$RUN_ID normal=$COUNT/$COUNT attack_slots=4 du_restart=initial-only"
+  echo "시작됨: session=$RUN_ID normal=$COUNT/$COUNT attack_slots=$ATTACK_SLOTS du_restart=initial-only"
   exit 0
 fi
 
 if [[ $ACTION == stop ]]; then
+  stop_module_agents
   for role in attack placeholder-group broker normal; do
     pid=$(owned_pid "$role" 2>/dev/null || true)
     [[ -z $pid ]] || if [[ $role == normal ]]; then stop_normal_ue "$pid"; else stop_group "$pid"; fi
@@ -973,13 +1158,25 @@ BROKER_PID=$(owned_pid broker 2>/dev/null || true)
 DU_PID=$(owned_pid du 2>/dev/null || true)
 
 if [[ $ACTION == status ]]; then
+  [[ ! -f $STATE/attack_slots ]] || read -r ATTACK_SLOTS <"$STATE/attack_slots"
   placeholders=0
   owned_pid placeholder-group >/dev/null 2>&1 && placeholders=$ATTACK_SLOTS
   ok=$(health "$COUNT")
   state=degraded
   [[ -n $NORMAL_PID && -n $BROKER_PID && -n $DU_PID ]] \
     && (( ok == COUNT && placeholders == ATTACK_SLOTS )) && state=healthy
-  echo "state=$state normal=$ok/$COUNT placeholders=$placeholders/$ATTACK_SLOTS normal_pid=${NORMAL_PID:-down} broker_pid=${BROKER_PID:-down} du_pid=${DU_PID:-down}"
+  modules=""
+  [[ -f $STATE/modules ]] && modules=$(paste -sd, "$STATE/modules")
+  if [[ -n $modules ]]; then
+    agents=0
+    for module in $(printf '%s' "$modules" | tr ',' ' '); do
+      owned_pid_agent "$module" >/dev/null 2>&1 && agents=$((agents + 1))
+    done
+    placeholders=$agents
+    [[ -n $NORMAL_PID && -n $BROKER_PID && -n $DU_PID ]] \
+      && (( ok == COUNT && agents == ATTACK_SLOTS )) && state=healthy
+  fi
+  echo "state=$state normal=$ok/$COUNT placeholders=$placeholders/$ATTACK_SLOTS modules=${modules:-none} normal_pid=${NORMAL_PID:-down} broker_pid=${BROKER_PID:-down} du_pid=${DU_PID:-down}"
   exit 0
 fi
 

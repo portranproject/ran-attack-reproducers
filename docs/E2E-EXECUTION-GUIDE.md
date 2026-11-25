@@ -48,6 +48,9 @@ install -m 600 profiles/live-e2e.example.conf /root/.config/ran-reproducer/p1-li
 
 ## L3 7종 `same-cell` 통합 실행
 
+> 2026-11-24 경계 결정: 이 절의 cold-start 경로는 **옛 방식(운영 도구 결합) 기록**이다.
+> 공격 도구 범위와 새 진입점은 [BOUNDARY.md](BOUNDARY.md), [PERSISTENT-CELL.md](PERSISTENT-CELL.md)를 따른다.
+
 공개 진입점은 아래 세 명령뿐이다.
 
 ```bash

@@ -18,15 +18,21 @@ fail() { echo "ctl.sh: $*" >&2; exit 2; }
 require_qualified_checkout() { python3 "$REPROCTL" checkout >/dev/null; }
 
 attack_id() {
-  case ${1:-} in
-    rrc-storm|rrc-signaling-storm|rrc-context-exhaustion|rrc) echo rrc-storm ;;
+  local value
+  value=$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')
+  case $value in
+    rrc-storm|rrc-signaling-storm|rrc-context-exhaustion|rrc|l3-01-v) echo rrc-storm ;;
     blind-dos|blind) echo blind-dos ;;
     uplink-dos|uplink) echo uplink-dos ;;
     uplink-credential-flood|credential-flood|uplink-l3-21) echo uplink-credential-flood ;;
-    auth-timeout|authentication-timeout-exhaustion|auth) echo auth-timeout ;;
+    auth-timeout|authentication-timeout-exhaustion|auth|l3-01-o) echo auth-timeout ;;
     downlink-imsi|downlink-imsi-extractor|downlink-identifier-exposure|downlink) echo downlink-imsi ;;
     ue-capability|ue-capability-hijacking|capability) echo ue-capability ;;
     nas-counter-desynchronization|l3-06) echo nas-counter-desynchronization ;;
+    ue-capability|l3-14|capability) echo ue-capability ;;
+    downlink-imsi|l3-24) echo downlink-imsi ;;
+    uplink-credential-flood|l3-21) echo uplink-credential-flood ;;
+    blind-dos|l3-20) echo blind-dos ;;
     authentication-sync-failure|an-01) echo authentication-sync-failure ;;
     nas-counter-reset|an-06a) echo nas-counter-reset ;;
     uplink-identifier-exposure|uplink-imsi|an-02) echo uplink-identifier-exposure ;;
@@ -760,6 +766,98 @@ same_cell_cli() {
   esac
 }
 
+cell_cli() {
+  local action=${1:-help} profile=p5 dry_run=0 session_id="" option modules="" module_list=() module raw_module
+  shift || true
+  case $action in
+    up|start)
+      local -a start_args=()
+      while [[ $# -gt 0 ]]; do
+        case $1 in
+          --profile) [[ $# -ge 2 ]] || fail "--profile 값이 필요합니다"; profile=$2; shift 2 ;;
+          -n|--session-id) [[ $# -ge 2 ]] || fail "session id 값이 필요합니다"; start_args+=(-n "$2"); shift 2 ;;
+          --count) [[ $# -ge 2 ]] || fail "count 값이 필요합니다"; start_args+=(--count "$2"); shift 2 ;;
+          --config) [[ $# -ge 2 ]] || fail "config 값이 필요합니다"; start_args+=(--config "$2"); shift 2 ;;
+          --modules) [[ $# -ge 2 ]] || fail "modules 값이 필요합니다"; modules=$2; shift 2 ;;
+          --dry-run) dry_run=1; shift ;;
+          *) fail "알 수 없는 옵션: $1" ;;
+        esac
+      done
+      if [[ -n ${modules:-} ]]; then
+        local normalized="" module
+        IFS=, read -r -a module_list <<<"$modules"
+        for module in "${module_list[@]}"; do
+          raw_module=$module
+          module=$(attack_id "$raw_module") || fail "알 수 없는 모듈입니다: $raw_module"
+          case $module in
+            uplink-credential-flood|downlink-imsi|ue-capability|nas-counter-desynchronization) ;;
+            *) fail "예약 슬롯은 단일 UE 모듈만 지원합니다: $module (L3-20·L3-01-O는 아직 미배선)" ;;
+          esac
+          normalized+=${normalized:+,}$module
+        done
+        start_args+=(--modules "$normalized")
+      fi
+      if (( ${#start_args[@]} == 0 )); then
+        start_args=(-n "cell-$(date -u +%Y%m%dT%H%M%SZ)")
+      fi
+      [[ -x $SAME_CELL ]] || fail "cell runner가 없습니다: $SAME_CELL"
+      if [[ $dry_run == 1 ]]; then
+        printf 'SAME_CELL_START: same-cell-run start %s\n' "${start_args[*]}"
+        return 0
+      fi
+      python3 "$REPROCTL" doctor --profile "$profile" >/dev/null
+      require_same_cell_dependencies
+      exec "$SAME_CELL" start "${start_args[@]}"
+      ;;
+    down|stop)
+      [[ -x $SAME_CELL ]] || fail "cell runner가 없습니다: $SAME_CELL"
+      while [[ $# -gt 0 ]]; do
+        case $1 in --profile) [[ $# -ge 2 ]] || fail "--profile 값이 필요합니다"; shift 2 ;; *) fail "알 수 없는 옵션: $1" ;; esac
+      done
+      exec "$SAME_CELL" stop
+      ;;
+    status)
+      while [[ $# -gt 0 ]]; do
+        case $1 in --profile) [[ $# -ge 2 ]] || fail "--profile 값이 필요합니다"; shift 2 ;; *) fail "알 수 없는 옵션: $1" ;; esac
+      done
+      exec "$SAME_CELL" status
+      ;;
+    *) fail "cell 작업은 up, down, status 중 하나여야 합니다" ;;
+  esac
+}
+
+attack_cli() {
+  local action=${1:-help} attack="" profile=p5 enabled=0 dry_run=0 run_id=""
+  shift || true
+  [[ $action == run ]] || fail "attack 작업은 run 하나입니다"
+  attack=${1:-}; [[ $# == 0 ]] || shift
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      --profile) [[ $# -ge 2 ]] || fail "--profile 값이 필요합니다"; profile=$2; shift 2 ;;
+      -n|--run-id) [[ $# -ge 2 ]] || fail "run id 값이 필요합니다"; run_id=$2; shift 2 ;;
+      --enable) enabled=1; shift ;;
+      --dry-run) dry_run=1; shift ;;
+      *) fail "알 수 없는 옵션: $1" ;;
+    esac
+  done
+  [[ -n $attack ]] || fail "attack run에는 공격 ID가 필요합니다"
+  attack=$(attack_id "$attack") || fail "알 수 없는 공격 ID: $1"
+  [[ $enabled == 1 ]] || fail "attack run에는 명시적 --enable이 필요합니다"
+  run_id=${run_id:-atk-$attack-$(date -u +%Y%m%dT%H%M%SZ)}
+  if [[ $dry_run == 1 ]]; then
+    printf 'CELL_UP: ./ctl.sh cell up --modules <session modules>\n'
+    printf 'SLOT_GATE: %s slot 0->1 -> UE gate -> attack -> retire\n' "$attack"
+    printf 'LABEL: run_id=%s attack=%s cell=p5-same-cell\n' "$run_id" "$attack"
+    return 0
+  fi
+  [[ -x $SAME_CELL ]] || fail "same-cell runner가 없습니다: $SAME_CELL"
+  case $attack in
+    uplink-credential-flood|downlink-imsi|ue-capability|nas-counter-desynchronization) ;;
+    *) fail "예약 슬롯은 단일 UE 모듈만 지원합니다: $attack (L3-20·L3-01-O는 아직 미배선)" ;;
+  esac
+  exec "$SAME_CELL" attack "$attack" -n "$run_id"
+}
+
 usage() {
   cat <<'EOF'
 사용법:
@@ -779,7 +877,10 @@ usage() {
   ./ctl.sh same-cell doctor --profile NAME
   ./ctl.sh same-cell run ID --profile NAME --mode control|attack|emulation [--run-id ID] [--enable]
   ./ctl.sh same-cell campaign l3-live --profile NAME --sets 3 --count 5 --enable
-  ./ctl.sh same-cell start -n SESSION_ID [--count 5]  # 정상 UE 개발 세션
+  ./ctl.sh cell up [-n SESSION_ID] [--count 5] [--profile NAME]   # 셀+정상 UE 5대 상시 유지
+  ./ctl.sh cell down|status [--profile NAME]
+  ./ctl.sh attack run ID --profile NAME --enable [--run-id ID]   # 예약 슬롯 공격(배선 전, fail-closed)
+  ./ctl.sh same-cell start -n SESSION_ID [--count 5]  # 옛 개발 세션
   ./ctl.sh same-cell status|stop
   ./ctl.sh reference list
   ./ctl.sh reference build REF_ID --profile NAME
@@ -810,6 +911,12 @@ main() {
     reference)
       shift
       exec python3 "$ROOT/references/bin/reference-ctl" "$@" ;;
+    cell)
+      shift
+      cell_cli "$@" ;;
+    attack)
+      shift
+      attack_cli "$@" ;;
     same-cell)
       [[ -x $SAME_CELL ]] || fail "same-cell runner가 없습니다: $SAME_CELL"
       case ${2:-} in

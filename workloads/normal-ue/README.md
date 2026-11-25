@@ -20,7 +20,7 @@
 ```
 
 - `ctl.sh same-cell`은 공개 L3 7종(`rrc-storm`, `auth-timeout`, `blind-dos`, `uplink-credential-flood`, `downlink-imsi`, `ue-capability`, `nas-counter-desynchronization`)과 `--count 5`만 허용한다. `bin/same-cell-run`은 legacy `uplink` 별칭과 `--count 1..7`도 받지만 공식 자격에는 `./ctl.sh same-cell`만 사용한다. AN fixture 6종과 legacy `uplink-dos` MAC 변조형은 제외한다.
-- phase마다 CU 인스턴스와 DU 설정·셀 ID(`cu_restarts=0`, `cell_restarts=1`)는 유지하고 DU·broker·UE 프로세스만 cold-start한다. 종료 시 PID와 시작시각이 일치하는 소유 프로세스만 정리하고 CU·코어·dashboard는 유지한다.
+- phase마다 CU 인스턴스와 DU 설정·셀 ID(`cu_restarts=0`, `cell_restarts=1`)는 유지하고 DU·broker·UE 프로세스만 cold-start한다. 이 경로는 2026-11-24 경계 결정으로 **옛 방식(운영 도구)** 이다. 상시 셀은 `./ctl.sh cell up`을 쓴다([PERSISTENT-CELL.md](../../docs/PERSISTENT-CELL.md)). 종료 시 PID와 시작시각이 일치하는 소유 프로세스만 정리하고 CU·코어·dashboard는 유지한다.
 
 ### 2. 정상 UE 풀 단독 실행 (`normal-ue`)
 

@@ -72,16 +72,28 @@ broker를 다중 프로세스로 나누거나 RSS UE 수를 줄이는 별도 결
 
 ## 현재 구현 상태
 
-- `./ctl.sh cell up|down|status --profile p5`: broker·DU·정상 UE 5대 상시 유지. 구현됨.
-- `./ctl.sh attack run <module>`: 예약 슬롯 선기동 배선 전. 현재는 fail-closed로
-  거부하고 `cell up --modules` 설계를 안내한다.
-- `same-cell run|campaign`: 옛 cold-start 운영 경로. `docs/BOUNDARY.md`에 따라 운영
-  도구로 분류하며, 새 공격 도구의 기본 진입점이 아니다.
+- `./ctl.sh cell up|down|status --profile p5 [--modules ...]`: broker·DU·정상 UE 5대 상시 유지. `--modules`로 단일 UE 모듈(L3-06·L3-14·L3-24·L3-21) UE를 셀 시작 전에 예약 슬롯에 선기동한다. 구현·p5 실측 완료.
+- `./ctl.sh attack run <module> --enable`: 해당 슬롯 gate 0→1, 완료 뒤 1→0·standby. 공격 UE는 **셀 수명 동안 유지**한다. CU·DU 접근 없음.
+- `same-cell run|campaign`: 옛 cold-start 운영 경로. `docs/BOUNDARY.md`에 따라 운영 도구로 분류하며, 새 공격 도구의 기본 진입점이 아니다.
+
+## p5 3차 (2026-11-24 22:08~22:12 KST)
+
+공격 후 슬롯 UE를 종료하면 broker의 공유 DL `rep_sink`가 그 UE의 요청을 기다리며 멈추고,
+이 backpressure가 정상 UE 5대의 DL까지 멈춘다. DU의 `ip -br addr`·`ip rule`·
+`ip route show table all`·netns는 전·중·후 불변이었고, L3-06 공격 UE의 TUN은 생기지 않았다
+(PDU 전 SecurityModeReject). AMF release 1건(공격 UE), PDU session release 0건, 코어 healthy.
+따라서 TUN/라우팅/코어가 아니라 공격 도구의 슬롯 수명 문제다. 슬롯 UE를 셀 수명 동안
+유지하도록 고친 뒤 다음 4종이 모두 raise와 정상 UE 5/5(before/during/after)를 보였다.
+
+| 공격 | 시작 KST | raise evidence | alert_id | 종료 KST |
+|---|---|---|---|---|
+| L3-06 | 22:08:18.779 | 22:08:22.434 | `20261124T111416Z-L3-06-6733831-68844` | 22:08:26.573 |
+| L3-14 | 22:09:37.361 | 22:09:38.065 | `20261124T111416Z-L3-14-6733831-69636` | 22:09:44.988 |
+| L3-24 | 22:10:47.079 | 22:10:47.756 | `20261124T111416Z-L3-24-6733831-70357` | 22:10:53.503 |
+| L3-21 | 22:11:45.955 | 22:11:58.754 | `20261124T111416Z-L3-21-6733831-71149` | 22:12:03.889 |
 
 ## 남은 일
 
-1. `cell up --modules <m1,m2,...>`가 모듈별 runner를 예약 슬롯에 선기동하도록
-   `same-cell-run`의 `start` 경로를 확장한다.
-2. 각 runner에 슬롯 번호·gate 파일을 주입하고, `attack run`이 해당 슬롯만 0→1로 바꾼다.
-3. 정상 UE 5/5를 공격 전·중·후로 기록하고, 탐지 경보는 운영 도구가 별도로 관측한다.
-4. L3-01-V는 슬롯 예산을 넘으므로 UE 수를 줄인 변형을 별도 승인받는다.
+1. L3-01-O(10슬롯)·L3-20(2슬롯)의 다중 UE 예약 슬롯 배선.
+2. L3-01-V는 슬롯 예산을 넘으므로 UE 수를 줄인 변형을 별도 승인받는다.
+3. 같은 슬롯 재사용(2회차 공격)은 UE가 RRCRelease 뒤 재등록할 수 있는지 확인한다.

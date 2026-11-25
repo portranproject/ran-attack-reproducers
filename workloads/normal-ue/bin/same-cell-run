@@ -884,6 +884,7 @@ if [[ $ACTION == start ]]; then
   trap cleanup_start EXIT INT TERM
   printf '%s\n' "$CONF" >"$STATE/config.path"
   printf '%s\n' "$COUNT" >"$STATE/count"
+  printf '%s\n' "$ATTACK_SLOTS" >"$STATE/attack_slots"
   printf '%s\n' "$RUN_ID" >"$STATE/session_id"
   RUN_OUT="$NORMAL_UE_RUN_ROOT/same-cell/$RUN_ID"
   [[ ! -e $RUN_OUT ]] || fail "session id가 이미 존재합니다: $RUN_OUT"
@@ -932,7 +933,7 @@ if [[ $ACTION == start ]]; then
     "$RUN_ID" "$COUNT" "$ATTACK_SLOTS" >"$RUN_OUT/session.json"
   START_COMPLETE=1
   trap - EXIT INT TERM
-  echo "시작됨: session=$RUN_ID normal=$COUNT/$COUNT attack_slots=4 du_restart=initial-only"
+  echo "시작됨: session=$RUN_ID normal=$COUNT/$COUNT attack_slots=$ATTACK_SLOTS du_restart=initial-only"
   exit 0
 fi
 
@@ -975,6 +976,7 @@ BROKER_PID=$(owned_pid broker 2>/dev/null || true)
 DU_PID=$(owned_pid du 2>/dev/null || true)
 
 if [[ $ACTION == status ]]; then
+  [[ ! -f $STATE/attack_slots ]] || read -r ATTACK_SLOTS <"$STATE/attack_slots"
   placeholders=0
   owned_pid placeholder-group >/dev/null 2>&1 && placeholders=$ATTACK_SLOTS
   ok=$(health "$COUNT")

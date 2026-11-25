@@ -760,6 +760,84 @@ same_cell_cli() {
   esac
 }
 
+cell_cli() {
+  local action=${1:-help} profile=p5 dry_run=0 session_id="" option
+  shift || true
+  case $action in
+    up|start)
+      local -a start_args=()
+      while [[ $# -gt 0 ]]; do
+        case $1 in
+          --profile) [[ $# -ge 2 ]] || fail "--profile 값이 필요합니다"; profile=$2; shift 2 ;;
+          -n|--session-id) [[ $# -ge 2 ]] || fail "session id 값이 필요합니다"; start_args+=(-n "$2"); shift 2 ;;
+          --count) [[ $# -ge 2 ]] || fail "count 값이 필요합니다"; start_args+=(--count "$2"); shift 2 ;;
+          --config) [[ $# -ge 2 ]] || fail "config 값이 필요합니다"; start_args+=(--config "$2"); shift 2 ;;
+          --dry-run) dry_run=1; shift ;;
+          *) fail "알 수 없는 옵션: $1" ;;
+        esac
+      done
+      if (( ${#start_args[@]} == 0 )); then
+        start_args=(-n "cell-$(date -u +%Y%m%dT%H%M%SZ)")
+      fi
+      [[ -x $SAME_CELL ]] || fail "cell runner가 없습니다: $SAME_CELL"
+      if [[ $dry_run == 1 ]]; then
+        printf 'SAME_CELL_START: same-cell-run start %s\n' "${start_args[*]}"
+        return 0
+      fi
+      python3 "$REPROCTL" doctor --profile "$profile" >/dev/null
+      require_same_cell_dependencies
+      exec "$SAME_CELL" start "${start_args[@]}"
+      ;;
+    down|stop)
+      [[ -x $SAME_CELL ]] || fail "cell runner가 없습니다: $SAME_CELL"
+      while [[ $# -gt 0 ]]; do
+        case $1 in --profile) [[ $# -ge 2 ]] || fail "--profile 값이 필요합니다"; shift 2 ;; *) fail "알 수 없는 옵션: $1" ;; esac
+      done
+      exec "$SAME_CELL" stop
+      ;;
+    status)
+      while [[ $# -gt 0 ]]; do
+        case $1 in --profile) [[ $# -ge 2 ]] || fail "--profile 값이 필요합니다"; shift 2 ;; *) fail "알 수 없는 옵션: $1" ;; esac
+      done
+      exec "$SAME_CELL" status
+      ;;
+    *) fail "cell 작업은 up, down, status 중 하나여야 합니다" ;;
+  esac
+}
+
+attack_cli() {
+  local action=${1:-help} attack="" profile=p5 enabled=0 dry_run=0 run_id=""
+  shift || true
+  [[ $action == run ]] || fail "attack 작업은 run 하나입니다"
+  attack=${1:-}; [[ $# == 0 ]] || shift
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      --profile) [[ $# -ge 2 ]] || fail "--profile 값이 필요합니다"; profile=$2; shift 2 ;;
+      -n|--run-id) [[ $# -ge 2 ]] || fail "run id 값이 필요합니다"; run_id=$2; shift 2 ;;
+      --enable) enabled=1; shift ;;
+      --dry-run) dry_run=1; shift ;;
+      *) fail "알 수 없는 옵션: $1" ;;
+    esac
+  done
+  [[ -n $attack ]] || fail "attack run에는 공격 ID가 필요합니다"
+  attack=$(attack_id "$attack") || fail "알 수 없는 공격 ID: $1"
+  [[ $enabled == 1 ]] || fail "attack run에는 명시적 --enable이 필요합니다"
+  run_id=${run_id:-atk-$attack-$(date -u +%Y%m%dT%H%M%SZ)}
+  if [[ $dry_run == 1 ]]; then
+    printf 'CELL_UP: ./ctl.sh cell up --modules %s\n' "$attack"
+    printf 'SLOT_GATE: %s slot 0->1 -> attack runner -> 1->0\n' "$attack"
+    printf 'LABEL: run_id=%s attack=%s cell=<same-cell> start/stop=<runner oracle>\n' "$run_id" "$attack"
+    return 0
+  fi
+  cat >&2 <<EOF
+ctl.sh: 예약 슬롯 선기동이 아직 배선되지 않았습니다.
+  모듈 UE는 셀 시작 전에 미리 떠 있어야 ZMQ 샘플 시간축이 DU와 맞습니다.
+  설계와 남은 배선: docs/PERSISTENT-CELL.md
+  현재 공격 실행은 운영 경로(./ctl.sh same-cell run)로만 가능하며, 이 경로는 정상 UE를 재시작합니다.
+EOF
+  return 2
+}
+
 usage() {
   cat <<'EOF'
 사용법:
@@ -779,7 +857,10 @@ usage() {
   ./ctl.sh same-cell doctor --profile NAME
   ./ctl.sh same-cell run ID --profile NAME --mode control|attack|emulation [--run-id ID] [--enable]
   ./ctl.sh same-cell campaign l3-live --profile NAME --sets 3 --count 5 --enable
-  ./ctl.sh same-cell start -n SESSION_ID [--count 5]  # 정상 UE 개발 세션
+  ./ctl.sh cell up [-n SESSION_ID] [--count 5] [--profile NAME]   # 셀+정상 UE 5대 상시 유지
+  ./ctl.sh cell down|status [--profile NAME]
+  ./ctl.sh attack run ID --profile NAME --enable [--run-id ID]   # 예약 슬롯 공격(배선 전, fail-closed)
+  ./ctl.sh same-cell start -n SESSION_ID [--count 5]  # 옛 개발 세션
   ./ctl.sh same-cell status|stop
   ./ctl.sh reference list
   ./ctl.sh reference build REF_ID --profile NAME
@@ -810,6 +891,12 @@ main() {
     reference)
       shift
       exec python3 "$ROOT/references/bin/reference-ctl" "$@" ;;
+    cell)
+      shift
+      cell_cli "$@" ;;
+    attack)
+      shift
+      attack_cli "$@" ;;
     same-cell)
       [[ -x $SAME_CELL ]] || fail "same-cell runner가 없습니다: $SAME_CELL"
       case ${2:-} in

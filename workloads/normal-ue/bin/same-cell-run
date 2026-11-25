@@ -37,6 +37,16 @@ usage() {
 EOF
 }
 fail() { echo "same-cell-run: $*" >&2; exit 2; }
+module_conf() {
+  case $1 in
+    uplink-credential-flood) echo "$ROOT/reproducers/uplink-dos/conf/uplink.conf" ;;
+    downlink-imsi) echo "$ROOT/reproducers/downlink-imsi-extractor/conf/downlink-imsi.conf" ;;
+    ue-capability) echo "$ROOT/reproducers/ue-capability-hijacking/conf/ue-capability.conf" ;;
+    nas-counter-desynchronization) echo "$ROOT/reproducers/nas-counter-desynchronization/conf/nas-counter-desync.conf" ;;
+    *) return 1 ;;
+  esac
+}
+
 
 case $ACTION in
   start)
@@ -499,16 +509,6 @@ start_normal_group() {
     --rss.log_file "$RUN_OUT/normal.jsonl" >"$RUN_OUT/normal.log" 2>&1 </dev/null 9>&- &
   record_pid normal "$!"
 }
-module_conf() {
-  case $1 in
-    uplink-credential-flood) echo "$ROOT/reproducers/uplink-dos/conf/uplink.conf" ;;
-    downlink-imsi) echo "$ROOT/reproducers/downlink-imsi-extractor/conf/downlink-imsi.conf" ;;
-    ue-capability) echo "$ROOT/reproducers/ue-capability-hijacking/conf/ue-capability.conf" ;;
-    nas-counter-desynchronization) echo "$ROOT/reproducers/nas-counter-desynchronization/conf/nas-counter-desync.conf" ;;
-    *) return 1 ;;
-  esac
-}
-
 start_module_agents() {
   local module base=1 agent_conf
   [[ ${#MODULE_LIST[@]} -gt 0 ]] || fail "선기동할 모듈이 없습니다"

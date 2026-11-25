@@ -1172,7 +1172,7 @@ if [[ $ACTION == status ]]; then
   [[ -f $STATE/modules ]] && modules=$(paste -sd, "$STATE/modules")
   if [[ -n $modules ]]; then
     agents=0
-    for module in $modules; do
+    for module in $(printf '%s' "$modules" | tr ',' ' '); do
       owned_pid_agent "$module" >/dev/null 2>&1 && agents=$((agents + 1))
     done
     placeholders=$agents

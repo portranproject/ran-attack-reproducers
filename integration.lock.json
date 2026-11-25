@@ -42,7 +42,7 @@
       "tools/verify_live_e2e.py": "d931448878c3832476967460377e9c00046902926b0f320ec9100fa17448330f",
       "workloads/normal-ue/bin/normal-ue": "2fbd7dff551ec78a9b17bc5d20a1103dc6f34e5d8957f9814f43201d87ed8cb2",
       "workloads/normal-ue/bin/normal-ue-build": "bb05c53717dc3d0f2eea9033ef0b5be55970b53a5b81cc7fd04ea8c45022199e",
-      "workloads/normal-ue/bin/same-cell-run": "9272917a2281fec28fc991af685abd8621443595975d9b799322780de0a2d5e1",
+      "workloads/normal-ue/bin/same-cell-run": "61206698c3f49318dc4cfdb296fb9c61157e4f5fc2279a67ea31a205a70c7b0f",
       "workloads/normal-ue/conf/du-broker-default.yaml.example": "921b40aa8311809617d5284e96f1a68a54f9a64d6c94859c3f9883a3036cca75",
       "workloads/normal-ue/patch/normal-multi-ru.patch": "422c6eabcc86f7c3e2d9171ef5d08b882f0a59bccda0a4782a4acb6a6a0103fa",
       "workloads/normal-ue/patch/normal-probe-phase.patch": "011b4c1cb1c06f95810f685025582568064f8ffbc8972aeac2f93b50bf3dd6f2",

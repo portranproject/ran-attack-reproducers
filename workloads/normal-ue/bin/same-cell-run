@@ -981,15 +981,10 @@ if [[ $ACTION == attack ]]; then
     record_health during "$HEALTH" || true
     sleep 1
   done
+  # 슬롯 UE는 셀 수명 동안 유지한다. UE가 죽으면 broker의 공유 DL이 막혀 정상 UE도 멈춘다.
   printf 'standby\n' >"$STATE/gates/$ATTACK"
-  printf 'retire %s\n' "$SLOT" >"$STATE/broker-control"
+  printf 'standby\n' >"$STATE/broker-control"
   kill -USR1 "$BROKER_PID" || true
-  ( set -o noclobber; : >"$STATE/agents/$ATTACK.release" ) || true
-  ended=$SECONDS
-  while is_running "$AGENT_PID"; do
-    (( SECONDS - ended < SAME_CELL_ATTACK_TIMEOUT_S )) || fail "공격 agent 종료 시간 초과"
-    sleep .2
-  done
   started=$SECONDS
   until record_health after "$HEALTH"; do
     (( SECONDS - started < SAME_CELL_RECOVERY_TIMEOUT_S )) || fail "공격 후 normal UE $COUNT/$COUNT 회복 실패"

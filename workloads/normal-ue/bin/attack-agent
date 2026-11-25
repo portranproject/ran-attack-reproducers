@@ -123,13 +123,6 @@ sleep "$POST_S"
 end_utc=$(date -u +%Y-%m-%dT%H:%M:%S.%NZ)
 kill -0 "$UE_PID" 2>/dev/null || fail "공격 중 UE가 종료됐습니다"
 ( set -o noclobber; : >"$DONE" ) || fail "attack 완료 게시 실패"
-started=$SECONDS
-until [[ -f $RELEASE && ! -L $RELEASE ]]; do
-  kill -0 "$UE_PID" 2>/dev/null || fail "release 전에 UE가 종료됐습니다"
-  (( SECONDS - started < READY_TIMEOUT_S )) || fail "release 대기 시간 초과"
-  sleep .2
-done
-stop_ue
 
 python3 - "$OUT/label.json" "$MODULE" "$RULE" "$RUN_ID" "$CELL" "$start_utc" "$end_utc" "$count" <<'PY'
 import json, sys
@@ -149,3 +142,11 @@ data = {
 open(path, "w", encoding="utf-8").write(json.dumps(data, ensure_ascii=False, sort_keys=True) + "\n")
 PY
 echo "LABEL=$OUT/label.json"
+started=$SECONDS
+until [[ -f $RELEASE && ! -L $RELEASE ]]; do
+  kill -0 "$UE_PID" 2>/dev/null || fail "release 전에 UE가 종료됐습니다"
+  (( SECONDS - started < 86400 )) || fail "release 대기 시간 초과"
+  sleep .2
+done
+stop_ue
+

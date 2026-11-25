@@ -66,7 +66,7 @@ printf 'standby\n' >"$GATE"
 (
   cd "$(dirname "$BIN")"
   env "${MODULE_ENV[@]}" OAI_SAME_CELL_GATE_FILE="$GATE" \
-    exec setsid stdbuf -oL -eL "$BIN" -O "$CFG" --band 78 -C 3489420000 --numerology 1 \
+    setsid stdbuf -oL -eL "$BIN" -O "$CFG" --band 78 -C 3489420000 --numerology 1 \
     -r 51 -E --ue-scan-carrier --uecap_file "$CAP" --device.name oai_zmqdevif \
     --num-ues 1 '--zmq.[0].tx_channels' "$TX" '--zmq.[0].rx_channels' "$RX"
 ) >"$OUT/ue.log" 2>&1 </dev/null 9>&- &

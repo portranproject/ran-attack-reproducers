@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+# 예약 슬롯 공격 UE. 셀 시작 전에 떠서 DL clock을 맞추고, gate가 열리면 모듈 동작을 한다.
+# CU·DU에 접근하지 않는다. 출력은 UE 관측 라벨뿐이다.
+set -euo pipefail
+umask 077
+
+MODULE=${1:-}
+[[ $# == 0 ]] || shift
+GATE=""; RAN_READY=""; NORMAL_READY=""; ATTACK_READY=""; DONE=""; RELEASE=""
+TX=""; RX=""; CONF=""; OUT=""; RUN_ID=""; CELL=""
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --gate) GATE=$2; shift 2 ;;
+    --ran-ready) RAN_READY=$2; shift 2 ;;
+    --normal-ready) NORMAL_READY=$2; shift 2 ;;
+    --attack-ready) ATTACK_READY=$2; shift 2 ;;
+    --done) DONE=$2; shift 2 ;;
+    --release) RELEASE=$2; shift 2 ;;
+    --tx) TX=$2; shift 2 ;;
+    --rx) RX=$2; shift 2 ;;
+    --conf) CONF=$2; shift 2 ;;
+    --out) OUT=$2; shift 2 ;;
+    --run-id) RUN_ID=$2; shift 2 ;;
+    --cell) CELL=$2; shift 2 ;;
+    *) echo "attack-agent: 알 수 없는 옵션: $1" >&2; exit 2 ;;
+  esac
+done
+
+fail() { echo "attack-agent: $*" >&2; exit 2; }
+[[ -n $MODULE && -n $GATE && -n $OUT && -n $RUN_ID ]] || fail "필수 인자가 없습니다"
+for path in "$GATE" "$RAN_READY" "$NORMAL_READY" "$ATTACK_READY" "$DONE" "$RELEASE" "$TX" "$RX" "$CONF"; do
+  [[ $path == /* ]] || fail "절대 경로가 필요합니다: $path"
+done
+[[ -f $CONF && ! -L $CONF ]] || fail "모듈 설정이 없습니다: $CONF"
+case $MODULE in
+  nas-counter-desynchronization) RULE=L3-06; MARKER='NAS_COUNTER_DESYNC event=unsolicited_security_mode_reject'; MIN_MARKERS=1 ;;
+  ue-capability) RULE=L3-14; MARKER='UE_CAPABILITY_INJECTION event=pre_security_information_injected'; MIN_MARKERS=1 ;;
+  downlink-imsi) RULE=L3-24; MARKER='DOWNLINK_IMSI_EXTRACTOR event=identity_response_substituted'; MIN_MARKERS=1 ;;
+  uplink-credential-flood) RULE=L3-21; MARKER='UPLINK_DOS_DETECTION event=registration_failure'; MIN_MARKERS=10 ;;
+  *) fail "예약 슬롯 미지원 모듈입니다: $MODULE" ;;
+esac
+
+# shellcheck source=/dev/null
+. "$CONF"
+BIN=${OAI_BIN:-}
+CFG=${UE_CFG:-}
+CAP=${UECAP:-}
+[[ -x $BIN && -f $CFG && -f $CAP ]] || fail "OAI_BIN·UE_CFG·UECAP이 필요합니다"
+grep -Faq 'OAI_SAME_CELL_GATE_FILE' "$BIN" || fail "UE binary에 same-cell gate 패치가 없습니다"
+mkdir -m 700 -p "$OUT"
+GATE_DIR=$(cd "$(dirname "$GATE")" && pwd)
+
+module_env() {
+  case $MODULE in
+    nas-counter-desynchronization) printf '%s\n' OAI_NAS_DESYNC_TRACE=1 OAI_NAS_DESYNC_RESULT_EMULATE=1 ;;
+    ue-capability) printf '%s\n' OAI_UE_CAPABILITY_TRACE=1 OAI_UE_CAPABILITY_INJECT=1 ;;
+    downlink-imsi) printf '%s\n' OAI_DOWNLINK_IMSI_TRACE=1 OAI_DOWNLINK_IMSI_EMULATE=1 ;;
+    uplink-credential-flood) printf '%s\n' OAI_UPLINK_DOS_REGISTRATION_FAILURE_FLOOD=1 OAI_UPLINK_DOS_REGISTRATION_FAILURE_TARGET=10 ;;
+  esac
+}
+mapfile -t MODULE_ENV < <(module_env)
+
+printf 'standby\n' >"$GATE"
+(
+  cd "$(dirname "$BIN")"
+  env "${MODULE_ENV[@]}" OAI_SAME_CELL_GATE_FILE="$GATE" \
+    exec setsid stdbuf -oL -eL "$BIN" -O "$CFG" --band 78 -C 3489420000 --numerology 1 \
+    -r 51 -E --ue-scan-carrier --uecap_file "$CAP" --device.name oai_zmqdevif \
+    --num-ues 1 '--zmq.[0].tx_channels' "$TX" '--zmq.[0].rx_channels' "$RX"
+) >"$OUT/ue.log" 2>&1 </dev/null 9>&- &
+UE_PID=$!
+
+stop_ue() {
+  kill -0 "$UE_PID" 2>/dev/null || return 0
+  kill -INT -- "-$UE_PID" 2>/dev/null || true
+  for _ in {1..300}; do kill -0 "$UE_PID" 2>/dev/null || break; sleep .1; done
+  kill -0 "$UE_PID" 2>/dev/null && kill -KILL -- "-$UE_PID" 2>/dev/null || true
+  wait "$UE_PID" 2>/dev/null || true
+}
+cleanup() {
+  local status=$?
+  trap - EXIT INT TERM
+  stop_ue
+  exit "$status"
+}
+trap cleanup EXIT INT TERM
+
+READY_TIMEOUT_S=${ATTACK_AGENT_READY_TIMEOUT_S:-240}
+MARKER_TIMEOUT_S=${ATTACK_AGENT_MARKER_TIMEOUT_S:-120}
+POST_S=${ATTACK_AGENT_POST_S:-6}
+started=$SECONDS
+until [[ -f $RAN_READY && ! -L $RAN_READY ]]; do
+  kill -0 "$UE_PID" 2>/dev/null || fail "UE가 RAN 준비 전에 종료됐습니다"
+  (( SECONDS - started < READY_TIMEOUT_S )) || fail "RAN readiness 시간 초과"
+  sleep .2
+done
+started=$SECONDS
+until [[ -f $NORMAL_READY && ! -L $NORMAL_READY ]]; do
+  kill -0 "$UE_PID" 2>/dev/null || fail "UE가 정상 UE 준비 전에 종료됐습니다"
+  (( SECONDS - started < READY_TIMEOUT_S )) || fail "정상 UE readiness 시간 초과"
+  sleep .2
+done
+( set -o noclobber; : >"$ATTACK_READY" ) || fail "attack readiness 게시 실패"
+
+# gate가 열린 시각을 UE 쪽에서 기록한다. UE patch가 gate를 읽어 RA를 시작한다.
+start_utc=""
+while :; do
+  if grep -qx 'attack' "$GATE" 2>/dev/null; then start_utc=$(date -u +%Y-%m-%dT%H:%M:%S.%NZ); break; fi
+  kill -0 "$UE_PID" 2>/dev/null || fail "gate 대기 중 UE가 종료됐습니다"
+  sleep .1
+done
+started=$SECONDS
+while :; do
+  count=$(grep -Fc "$MARKER" "$OUT/ue.log" 2>/dev/null || true)
+  (( count >= MIN_MARKERS )) && break
+  kill -0 "$UE_PID" 2>/dev/null || fail "목표 이벤트 전에 UE가 종료됐습니다"
+  (( SECONDS - started < MARKER_TIMEOUT_S )) || fail "목표 이벤트 시간 초과"
+  sleep .2
+done
+sleep "$POST_S"
+end_utc=$(date -u +%Y-%m-%dT%H:%M:%S.%NZ)
+kill -0 "$UE_PID" 2>/dev/null || fail "공격 중 UE가 종료됐습니다"
+( set -o noclobber; : >"$DONE" ) || fail "attack 완료 게시 실패"
+started=$SECONDS
+until [[ -f $RELEASE && ! -L $RELEASE ]]; do
+  kill -0 "$UE_PID" 2>/dev/null || fail "release 전에 UE가 종료됐습니다"
+  (( SECONDS - started < READY_TIMEOUT_S )) || fail "release 대기 시간 초과"
+  sleep .2
+done
+stop_ue
+
+python3 - "$OUT/label.json" "$MODULE" "$RULE" "$RUN_ID" "$CELL" "$start_utc" "$end_utc" "$count" <<'PY'
+import json, sys
+path, module, rule, run_id, cell, start_utc, end_utc, markers = sys.argv[1:]
+data = {
+    "schema": "attack-agent.label.v1",
+    "attack_id": module,
+    "rule_id": rule,
+    "run_id": run_id,
+    "cell": cell,
+    "logical_ue": 1,
+    "start_utc": start_utc,
+    "end_utc": end_utc,
+    "event_markers": int(markers),
+    "device": "oai_zmqdevif",
+}
+open(path, "w", encoding="utf-8").write(json.dumps(data, ensure_ascii=False, sort_keys=True) + "\n")
+PY
+echo "LABEL=$OUT/label.json"

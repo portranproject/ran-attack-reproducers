@@ -25,13 +25,18 @@ class PersistentCellCommandTest(unittest.TestCase):
             "attack", "run", "l3-06", "--profile", "p5", "--enable", "--dry-run"
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("cell up --modules nas-counter-desynchronization", result.stdout)
+        self.assertIn("nas-counter-desynchronization", result.stdout)
+        self.assertIn("SLOT_GATE", result.stdout)
 
-    def test_attack_run_fails_closed_without_prestarted_slot(self):
+    def test_attack_run_requires_a_running_cell(self):
         result = self.run_ctl("attack", "run", "l3-06", "--profile", "p5", "--enable")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("same-cell 세션", result.stderr)
+
+    def test_cell_rejects_multi_ue_reserved_modules(self):
+        result = self.run_ctl("cell", "up", "--modules", "L3-01-O", "--dry-run")
         self.assertEqual(result.returncode, 2)
-        self.assertIn("예약 슬롯 선기동", result.stderr)
-        self.assertIn("PERSISTENT-CELL.md", result.stderr)
+        self.assertIn("단일 UE 모듈만", result.stderr)
 
     def test_attack_run_requires_enable(self):
         result = self.run_ctl("attack", "run", "l3-06", "--profile", "p5")

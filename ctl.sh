@@ -18,15 +18,21 @@ fail() { echo "ctl.sh: $*" >&2; exit 2; }
 require_qualified_checkout() { python3 "$REPROCTL" checkout >/dev/null; }
 
 attack_id() {
-  case ${1:-} in
-    rrc-storm|rrc-signaling-storm|rrc-context-exhaustion|rrc) echo rrc-storm ;;
+  local value
+  value=$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')
+  case $value in
+    rrc-storm|rrc-signaling-storm|rrc-context-exhaustion|rrc|l3-01-v) echo rrc-storm ;;
     blind-dos|blind) echo blind-dos ;;
     uplink-dos|uplink) echo uplink-dos ;;
     uplink-credential-flood|credential-flood|uplink-l3-21) echo uplink-credential-flood ;;
-    auth-timeout|authentication-timeout-exhaustion|auth) echo auth-timeout ;;
+    auth-timeout|authentication-timeout-exhaustion|auth|l3-01-o) echo auth-timeout ;;
     downlink-imsi|downlink-imsi-extractor|downlink-identifier-exposure|downlink) echo downlink-imsi ;;
     ue-capability|ue-capability-hijacking|capability) echo ue-capability ;;
     nas-counter-desynchronization|l3-06) echo nas-counter-desynchronization ;;
+    ue-capability|l3-14|capability) echo ue-capability ;;
+    downlink-imsi|l3-24) echo downlink-imsi ;;
+    uplink-credential-flood|l3-21) echo uplink-credential-flood ;;
+    blind-dos|l3-20) echo blind-dos ;;
     authentication-sync-failure|an-01) echo authentication-sync-failure ;;
     nas-counter-reset|an-06a) echo nas-counter-reset ;;
     uplink-identifier-exposure|uplink-imsi|an-02) echo uplink-identifier-exposure ;;
@@ -761,7 +767,7 @@ same_cell_cli() {
 }
 
 cell_cli() {
-  local action=${1:-help} profile=p5 dry_run=0 session_id="" option
+  local action=${1:-help} profile=p5 dry_run=0 session_id="" option modules="" module_list=() module raw_module
   shift || true
   case $action in
     up|start)
@@ -772,10 +778,25 @@ cell_cli() {
           -n|--session-id) [[ $# -ge 2 ]] || fail "session id 값이 필요합니다"; start_args+=(-n "$2"); shift 2 ;;
           --count) [[ $# -ge 2 ]] || fail "count 값이 필요합니다"; start_args+=(--count "$2"); shift 2 ;;
           --config) [[ $# -ge 2 ]] || fail "config 값이 필요합니다"; start_args+=(--config "$2"); shift 2 ;;
+          --modules) [[ $# -ge 2 ]] || fail "modules 값이 필요합니다"; modules=$2; shift 2 ;;
           --dry-run) dry_run=1; shift ;;
           *) fail "알 수 없는 옵션: $1" ;;
         esac
       done
+      if [[ -n ${modules:-} ]]; then
+        local normalized="" module
+        IFS=, read -r -a module_list <<<"$modules"
+        for module in "${module_list[@]}"; do
+          raw_module=$module
+          module=$(attack_id "$raw_module") || fail "알 수 없는 모듈입니다: $raw_module"
+          case $module in
+            uplink-credential-flood|downlink-imsi|ue-capability|nas-counter-desynchronization) ;;
+            *) fail "예약 슬롯은 단일 UE 모듈만 지원합니다: $module (L3-20·L3-01-O는 아직 미배선)" ;;
+          esac
+          normalized+=${normalized:+,}$module
+        done
+        start_args+=(--modules "$normalized")
+      fi
       if (( ${#start_args[@]} == 0 )); then
         start_args=(-n "cell-$(date -u +%Y%m%dT%H%M%SZ)")
       fi
@@ -786,7 +807,7 @@ cell_cli() {
       fi
       python3 "$REPROCTL" doctor --profile "$profile" >/dev/null
       require_same_cell_dependencies
-      SAME_CELL_ATTACK_SLOTS=${SAME_CELL_ATTACK_SLOTS:-0} exec "$SAME_CELL" start "${start_args[@]}"
+      exec "$SAME_CELL" start "${start_args[@]}"
       ;;
     down|stop)
       [[ -x $SAME_CELL ]] || fail "cell runner가 없습니다: $SAME_CELL"
@@ -824,18 +845,17 @@ attack_cli() {
   [[ $enabled == 1 ]] || fail "attack run에는 명시적 --enable이 필요합니다"
   run_id=${run_id:-atk-$attack-$(date -u +%Y%m%dT%H%M%SZ)}
   if [[ $dry_run == 1 ]]; then
-    printf 'CELL_UP: ./ctl.sh cell up --modules %s\n' "$attack"
-    printf 'SLOT_GATE: %s slot 0->1 -> attack runner -> 1->0\n' "$attack"
-    printf 'LABEL: run_id=%s attack=%s cell=<same-cell> start/stop=<runner oracle>\n' "$run_id" "$attack"
+    printf 'CELL_UP: ./ctl.sh cell up --modules <session modules>\n'
+    printf 'SLOT_GATE: %s slot 0->1 -> UE gate -> attack -> retire\n' "$attack"
+    printf 'LABEL: run_id=%s attack=%s cell=p5-same-cell\n' "$run_id" "$attack"
     return 0
   fi
-  cat >&2 <<EOF
-ctl.sh: 예약 슬롯 선기동이 아직 배선되지 않았습니다.
-  모듈 UE는 셀 시작 전에 미리 떠 있어야 ZMQ 샘플 시간축이 DU와 맞습니다.
-  설계와 남은 배선: docs/PERSISTENT-CELL.md
-  현재 공격 실행은 운영 경로(./ctl.sh same-cell run)로만 가능하며, 이 경로는 정상 UE를 재시작합니다.
-EOF
-  return 2
+  [[ -x $SAME_CELL ]] || fail "same-cell runner가 없습니다: $SAME_CELL"
+  case $attack in
+    uplink-credential-flood|downlink-imsi|ue-capability|nas-counter-desynchronization) ;;
+    *) fail "예약 슬롯은 단일 UE 모듈만 지원합니다: $attack (L3-20·L3-01-O는 아직 미배선)" ;;
+  esac
+  exec "$SAME_CELL" attack "$attack" -n "$run_id"
 }
 
 usage() {

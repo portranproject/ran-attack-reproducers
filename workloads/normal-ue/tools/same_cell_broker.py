@@ -78,6 +78,7 @@ class SameCellBroker(gr.top_block):
         self.warm_slots = set()
         self.persistent_attack = persistent_attack
         self.attack_retired = False
+        self.retired_slots = set()
         self.connect((du_dl, 0), (throttle, 0))
         self.connect((self.uplink, 0), (du_ul, 0))
         for index in range(endpoint_count):
@@ -134,12 +135,15 @@ class SameCellBroker(gr.top_block):
         if self.persistent_attack:
             if mode not in {"standby", "warmup", "attack", "retire"}:
                 raise ValueError("persistent attack slots accept standby, warmup, attack, or retire")
-            if self.attack_retired and mode != "retire":
-                raise ValueError("retired attack slots cannot be re-enabled")
             if mode == "retire":
-                for selector in self.slot_ul_retire_selectors:
-                    selector.set_input_index(1)
-                self.attack_retired = True
+                targets = slots or set(range(1, len(self.slot_ul_retire_selectors) + 1))
+                for index, selector in enumerate(self.slot_ul_retire_selectors, start=1):
+                    if index in targets:
+                        selector.set_input_index(1)
+                        self.retired_slots.add(index)
+                slots = targets
+            if (self.retired_slots & slots) and mode != "retire":
+                raise ValueError("retired attack slots cannot be re-enabled")
             for index, ul_gate in enumerate(self.slot_ul_gates, start=1):
                 gain = 1.0 if mode == "attack" and index in slots else 0.0
                 ul_gate.set_k(gain)
@@ -212,7 +216,7 @@ def main():
                 if raw in {"placeholder", "standby", "retire"}:
                     slots = set()
                     mode = raw
-                elif raw.startswith("warmup ") or raw.startswith("attack "):
+                elif raw.startswith("warmup ") or raw.startswith("attack ") or raw.startswith("retire "):
                     mode, values = raw.split(" ", 1)
                     slots = {int(value) for value in values.split(",")}
                     if not slots or min(slots) < 1 or max(slots) > attack_slots:

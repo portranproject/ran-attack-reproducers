@@ -28,9 +28,10 @@ done
 
 fail() { echo "attack-agent: $*" >&2; exit 2; }
 [[ -n $MODULE && -n $GATE && -n $OUT && -n $RUN_ID ]] || fail "필수 인자가 없습니다"
-for path in "$GATE" "$RAN_READY" "$NORMAL_READY" "$ATTACK_READY" "$DONE" "$RELEASE" "$TX" "$RX" "$CONF"; do
+for path in "$GATE" "$RAN_READY" "$NORMAL_READY" "$ATTACK_READY" "$DONE" "$RELEASE" "$CONF"; do
   [[ $path == /* ]] || fail "절대 경로가 필요합니다: $path"
 done
+[[ $TX == tcp://127.0.0.1:* && $RX == tcp://127.0.0.1:* ]] || fail "UE endpoint가 로컬 tcp 주소가 아닙니다"
 [[ -f $CONF && ! -L $CONF ]] || fail "모듈 설정이 없습니다: $CONF"
 case $MODULE in
   nas-counter-desynchronization) RULE=L3-06; MARKER='NAS_COUNTER_DESYNC event=unsolicited_security_mode_reject'; MIN_MARKERS=1 ;;

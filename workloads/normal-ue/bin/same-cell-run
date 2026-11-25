@@ -1170,6 +1170,15 @@ if [[ $ACTION == status ]]; then
     && (( ok == COUNT && placeholders == ATTACK_SLOTS )) && state=healthy
   modules=""
   [[ -f $STATE/modules ]] && modules=$(paste -sd, "$STATE/modules")
+  if [[ -n $modules ]]; then
+    agents=0
+    for module in $modules; do
+      owned_pid_agent "$module" >/dev/null 2>&1 && agents=$((agents + 1))
+    done
+    placeholders=$agents
+    [[ -n $NORMAL_PID && -n $BROKER_PID && -n $DU_PID ]] \
+      && (( ok == COUNT && agents == ATTACK_SLOTS )) && state=healthy
+  fi
   echo "state=$state normal=$ok/$COUNT placeholders=$placeholders/$ATTACK_SLOTS modules=${modules:-none} normal_pid=${NORMAL_PID:-down} broker_pid=${BROKER_PID:-down} du_pid=${DU_PID:-down}"
   exit 0
 fi

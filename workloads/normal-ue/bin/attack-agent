@@ -44,6 +44,7 @@ esac
 . "$CONF"
 BIN=${OAI_BIN:-}
 CFG=${UE_CFG:-}
+[[ $MODULE != uplink-credential-flood ]] || CFG=${CREDENTIAL_FLOOD_UE_CFG:-$CFG}
 CAP=${UECAP:-}
 [[ -x $BIN && -f $CFG && -f $CAP ]] || fail "OAI_BIN·UE_CFG·UECAP이 필요합니다"
 grep -Faq 'OAI_SAME_CELL_GATE_FILE' "$BIN" || fail "UE binary에 same-cell gate 패치가 없습니다"

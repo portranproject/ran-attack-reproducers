@@ -234,10 +234,12 @@ record_pid() {
   printf '%s\n' "$(pid_starttime "$2")" >"$STATE/$1.starttime"
 }
 clear_state() {
-  if [[ -d $STATE/placeholders && ! -L $STATE/placeholders ]]; then
-    find "$STATE/placeholders" -xdev -mindepth 1 -maxdepth 1 -type f -delete
-    rmdir "$STATE/placeholders"
-  fi
+  local dir
+  for dir in placeholders gates agents; do
+    [[ -d $STATE/$dir && ! -L $STATE/$dir ]] || continue
+    find "$STATE/$dir" -xdev -mindepth 1 -maxdepth 1 -type f -delete
+    rmdir "$STATE/$dir" 2>/dev/null || true
+  done
   find "$STATE" -xdev -mindepth 1 -maxdepth 1 -type f -delete
   rmdir "$STATE"
 }

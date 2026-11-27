@@ -515,6 +515,27 @@ same_cell_metadata() {
   esac
 }
 
+# timeout은 자체 프로세스 그룹을 만든다. 비동기 wait로 터미널 SIGINT를 즉시 받고,
+# timeout에 TERM을 전달해 기존 runner cleanup과 --kill-after 상한을 사용한다.
+run_same_cell_phase() {
+  local phase_pid= status=0 interrupted=0 saved_int saved_term
+  saved_int=$(trap -p INT)
+  saved_term=$(trap -p TERM)
+  trap 'interrupted=130; trap "" INT TERM; echo "same-cell: 중단 요청을 받았습니다. UE와 수집기를 정리합니다 (최대 60초)." >&2; [[ -z $phase_pid ]] || kill -TERM "$phase_pid" 2>/dev/null || true' INT
+  trap 'interrupted=143; trap "" INT TERM; echo "same-cell: 종료 요청을 받았습니다. UE와 수집기를 정리합니다 (최대 60초)." >&2; [[ -z $phase_pid ]] || kill -TERM "$phase_pid" 2>/dev/null || true' TERM
+  "$@" <&0 &
+  phase_pid=$!
+  if (( interrupted )); then kill -TERM "$phase_pid" 2>/dev/null || true; fi
+  wait "$phase_pid" || status=$?
+  if (( interrupted )); then
+    wait "$phase_pid" 2>/dev/null || true
+    status=$interrupted
+  fi
+  if [[ -n $saved_int ]]; then eval "$saved_int"; else trap - INT; fi
+  if [[ -n $saved_term ]]; then eval "$saved_term"; else trap - TERM; fi
+  return "$status"
+}
+
 same_cell_run_one() {
   local attack=$1 mode=$2 run_id=$3 count=$4 enabled=$5 dry_run=$6
   local expected config env_name runner scenario rule alias normal_conf run_root enable_value child_dir phase_timeout
@@ -591,7 +612,8 @@ same_cell_run_one() {
   HOUR_GUARD_WAIT_S=
   export HOUR_GUARD_WAIT_STARTED_AT HOUR_GUARD_WAIT_ENDED_AT HOUR_GUARD_WAIT_S
   hour_guard_wait "$hour_guard_expected"
-  "${command[@]}"
+  echo "same-cell: 실행 ID=$run_id · 모드=$mode · 정상 UE=$count" >&2
+  run_same_cell_phase "${command[@]}"
 }
 
 same_cell_campaign() {
@@ -722,7 +744,8 @@ same_cell_cli() {
       [[ $count == 5 ]] || fail "L3 same-cell 자격은 정상 UE --count 5로 고정합니다"
       run_id=${run_id:-sc-$attack-$mode-$(date -u +%Y%m%dT%H%M%SZ)}
       if [[ $dry_run == 0 ]]; then
-        python3 "$REPROCTL" doctor --profile "$profile" >/dev/null
+        echo "same-cell: 실행 전 환경·CU 연결을 점검합니다." >&2
+        python3 "$REPROCTL" doctor --profile "$profile"
         load_profile_env "$profile"
         require_runnable_backend
         require_same_cell_dependencies
@@ -746,7 +769,8 @@ same_cell_cli() {
       campaign_id=${campaign_id:-l3-$(date -u +%Y%m%dT%H%M%SZ)}
       (( ${#campaign_id} <= 24 )) || fail "CAMPAIGN_ID는 24자 이하여야 합니다"
       if [[ $dry_run == 0 ]]; then
-        python3 "$REPROCTL" doctor --profile "$profile" >/dev/null
+        echo "same-cell: 캠페인 전 환경·CU 연결을 점검합니다." >&2
+        python3 "$REPROCTL" doctor --profile "$profile"
         load_profile_env "$profile"
         require_runnable_backend
         require_same_cell_dependencies

@@ -236,13 +236,6 @@ choose() {
 	done
 }
 
-# ask 질문 기본값 : 한 줄을 읽어 ANSWER 에 넣음. 빈 입력이면 기본값
-ask() {
-	printf '  %s%s%s [%s]: ' "$BOLD" "$1" "$RESET" "$2"
-	IFS= read -r ANSWER || { echo; exit 1; }
-	ANSWER=${ANSWER:-$2}
-}
-
 pause() {
 	printf '\n  %sEnter 를 누르면 메뉴로 돌아감%s ' "$DIM" "$RESET"
 	IFS= read -r _ || { echo; exit 1; }
@@ -605,9 +598,13 @@ run_ctl() {
 	shift
 	[ "$DRY_RUN" = 1 ] && case " $* " in *" run "*|*" campaign "*) set -- "$@" --dry-run ;; esac
 	echo
-	printf '  %s실행:%s ./tools/ctl.sh' "$BOLD" "$RESET"
-	printf ' %q' "$@"
-	printf '\n\n'
+	if [ "$DRY_RUN" = 1 ]; then
+		printf '  %s실행:%s ./tools/ctl.sh' "$BOLD" "$RESET"
+		printf ' %q' "$@"
+		printf '\n\n'
+	else
+		printf '  실행을 시작합니다. Ctrl-C를 누르면 실행을 중단하고 정리합니다.\n\n'
+	fi
 	if [ "$DRY_RUN" = 1 ] && [ "$2" = doctor ]; then
 		echo "  (--dry-run: doctor 는 실행하지 않음)"
 		pause
@@ -631,21 +628,12 @@ run_ctl() {
 	return 0
 }
 
-# 공격 실행 전에는 ctl.sh 대화형 메뉴와 같은 확인을 받음
-confirm_enable() {
-	printf '  %s격리 테스트베드임을 확인하려면 ENABLE 입력:%s ' "$RED_BRIGHT$BOLD" "$RESET"
-	IFS= read -r ANSWER || { echo; exit 1; }
-	[ "$ANSWER" = ENABLE ] && return 0
-	echo "  취소됨"
-	pause
-	return 1
-}
-
-stamp() { date -u +%Y%m%dT%H%M%SZ; }
+# 캠페인 ID는 접두어 l3를 포함해 최대 24자. 같은 초의 연속 실행도 구분한다.
+automatic_id() { printf '%s-%s-%04x' "$1" "$(date -u +%Y%m%dT%H%M%SZ)" "$RANDOM"; }
 
 # 공격 하나에 대한 작업 메뉴
 action_menu() {
-	local profile=$1 idx=$2 attack mode label
+	local profile=$1 idx=$2 attack mode label run_id campaign_id
 	attack=${A_ID[$idx]} mode=${A_MODE[$idx]}
 	label="${A_RULE[$idx]} ${A_NAME[$idx]}"
 	while true; do
@@ -658,26 +646,21 @@ action_menu() {
 		)
 		choose "작업 선택" \
 			"same-cell doctor     정상 UE 5대·L3 7종 실행 준비 점검" \
-			"same-cell run        control (정상 대조, --enable 없음)" \
-			"same-cell run        $mode (공격 phase, ENABLE 확인)" \
+			"same-cell run        control (정상 대조 실행)" \
+			"same-cell run        $mode (공격 phase 실행)" \
 			"same-cell campaign   l3-live 7종 × control→active 3세트" || return 0
 		DETAILS=()
 		case "$CHOICE" in
 		0) run_ctl "$profile" same-cell doctor --profile "$profile" ;;
 		1)
-			ask "RUN_ID" "sc-$attack-control-$(stamp)"
-			run_ctl "$profile" same-cell run "$attack" --profile "$profile" --mode control --run-id "$ANSWER" ;;
+			run_id=$(automatic_id "sc-$attack-control")
+			run_ctl "$profile" same-cell run "$attack" --profile "$profile" --mode control --run-id "$run_id" ;;
 		2)
-			ask "RUN_ID" "sc-$attack-$mode-$(stamp)"
-			local run_id=$ANSWER
-			confirm_enable || continue
+			run_id=$(automatic_id "sc-$attack-$mode")
 			play_animation "$attack" 0
 			run_ctl "$profile" same-cell run "$attack" --profile "$profile" --mode "$mode" --run-id "$run_id" --enable ;;
 		3)
-			# ctl.sh 는 CAMPAIGN_ID 를 24자 이하로 제한함
-			ask "CAMPAIGN_ID" "l3-$(stamp)"
-			local campaign_id=$ANSWER
-			confirm_enable || continue
+			campaign_id=$(automatic_id l3)
 			play_animation "$attack" 1
 			run_ctl "$profile" same-cell campaign l3-live --profile "$profile" --campaign-id "$campaign_id" --sets 3 --count 5 --enable ;;
 		esac

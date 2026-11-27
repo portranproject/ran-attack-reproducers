@@ -98,10 +98,12 @@ install -m 600 profiles/live-e2e.example.conf /root/.config/ran-reproducer/<env>
 ```
 
 1. **가상 환경**을 고르면 이 DU의 설정을 자동으로 읽는다. 순서는 `RAN_REPRO_PROFILE_ID` → `profiles/du.json` → `backend=p5`, `configured=true`인 유일한 실제 설정이다. 설정이 없거나 여러 개라 결정할 수 없으면 안내를 표시한다. 프로필 선택 메뉴는 없다.
-2. **L3 공격**을 고른 뒤 **준비 점검 → 정상 대조 → 공격 phase** 순서로 실행한다. L3 7종 전체를 검증하려면 **3세트 캠페인**을 고른다. 공격과 캠페인은 `ENABLE` 확인을 받는다.
+2. **L3 공격**을 고른 뒤 **준비 점검 → 정상 대조 → 공격 phase** 순서로 실행한다. L3 7종 전체를 검증하려면 **3세트 캠페인**을 고른다. 작업을 선택하면 실행 ID를 자동 생성해 바로 실행하며 추가 입력은 없다.
 3. **실장비 환경**에서는 공격별 **USRP ↔ gNB 동작 설명 모션**을 볼 수 있다. OTA 실행 adapter는 미구현이며 모션은 실장비를 실행하거나 실행 결과를 표시하지 않는다.
 
 `./run.sh --dry-run`은 실제 실행 없이 생성 명령을 확인하고, `--no-anim`은 애니메이션을 끈다. `--frames <DIR>`은 ZMQ·USRP 모션의 텍스트 프레임을 저장한다. 상세 옵션은 `./run.sh --help`를 따른다.
+
+모션은 실행 전 동작 설명이다. 실제 실행 중에는 준비 점검·정상 UE 기준선·관측 경과·결과 수집 상태와 로그 경로를 표시한다. `Ctrl-C`는 runner에 중단을 전달하고 UE·수집기를 정리한 뒤 종료한다.
 
 패치 적용과 UE 바이너리 빌드는 위 설치 단계에서 `tools/ctl.sh setup/build`로 수행한다. `run.sh`는 준비된 바이너리를 공식 `same-cell` runner로 실행한다. 자동화·개별 모듈·AN fixture용 명령은 `tools/ctl.sh`에 유지한다([컨트롤러 가이드](docs/CONTROL-GUIDE.md)).
 

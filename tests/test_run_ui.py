@@ -1,6 +1,8 @@
 import json
 import os
 from pathlib import Path
+import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -95,7 +97,7 @@ class RunUITest(unittest.TestCase):
                 result = self.resolve()
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(result.stdout.strip(), str(path))
-                result = self.ui("1\n3\n2\nrelative-control\n\nq\n", "--dry-run")
+                result = self.ui("1\n3\n2\n\nq\n", "--dry-run")
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn("끝남 (종료 코드 0)", result.stdout)
                 self.assertIn("normal\\ ue.conf", result.stdout)
@@ -124,7 +126,7 @@ class RunUITest(unittest.TestCase):
 
     def test_control_uses_local_paths_without_profile_selection_or_enable(self):
         self.write_profile("du")
-        result = self.ui("1\n3\n2\nui-control\n\nq\n", "--dry-run", "--no-anim")
+        result = self.ui("1\n3\n2\n\nq\n", "--dry-run", "--no-anim")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("same-cell run blind-dos --profile du --mode control", result.stdout)
         self.assertIn("정상 대조", result.stdout)
@@ -134,6 +136,8 @@ class RunUITest(unittest.TestCase):
         command = next(line for line in result.stdout.splitlines() if "실행:" in line)
         self.assertNotIn("--enable", command)
         self.assertIn("--dry-run", command)
+        self.assertRegex(command, r"--run-id sc-blind-dos-control-\d{8}T\d{6}Z-[0-9a-f]{4}")
+        self.assertNotIn("RUN_ID [", result.stdout)
 
     def test_active_menu_delegates_all_seven_modes(self):
         self.write_profile("local")
@@ -146,18 +150,16 @@ class RunUITest(unittest.TestCase):
         for index, (attack, mode) in enumerate(attacks, 1):
             with self.subTest(attack=attack):
                 result = self.ui(
-                    f"1\n{index}\n3\nui-active\nENABLE\n\nq\n", "--dry-run")
+                    f"1\n{index}\n3\n\nq\n", "--dry-run")
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn(f"same-cell run {attack} --profile local --mode {mode}", result.stdout)
-                self.assertIn("--run-id ui-active --enable --dry-run", result.stdout)
+                self.assertRegex(result.stdout, rf"--run-id sc-{attack}-{mode}-\d{{8}}T\d{{6}}Z-[0-9a-f]{{4}} --enable --dry-run")
+                self.assertNotIn("ENABLE 입력", result.stdout)
+                self.assertNotIn("RUN_ID [", result.stdout)
                 self.assertIn("끝남 (종료 코드 0)", result.stdout)
 
-    def test_active_cancel_and_dry_doctor_do_not_invoke_runner(self):
+    def test_dry_doctor_does_not_invoke_runner(self):
         self.write_profile("du")
-        result = self.ui("1\n1\n3\nui-cancel\nno\n\nq\n", "--dry-run")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("취소됨", result.stdout)
-        self.assertNotIn("실행:", result.stdout)
         result = self.ui("1\n1\n1\n\nq\n", "--dry-run")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("same-cell doctor --profile du", result.stdout)
@@ -166,11 +168,23 @@ class RunUITest(unittest.TestCase):
 
     def test_campaign_delegates_to_official_full_campaign(self):
         self.write_profile("du")
-        result = self.ui("1\n1\n4\nui-campaign\nENABLE\n\nq\n", "--dry-run")
+        result = self.ui("1\n1\n4\n\nq\n", "--dry-run")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("same-cell campaign l3-live --profile du --campaign-id ui-campaign", result.stdout)
+        self.assertIn("same-cell campaign l3-live --profile du --campaign-id l3-", result.stdout)
         self.assertIn("--sets 3 --count 5 --enable --dry-run", result.stdout)
         self.assertIn("끝남 (종료 코드 0)", result.stdout)
+        command = shlex.split(next(line for line in result.stdout.splitlines() if "실행:" in line))
+        self.assertLessEqual(len(command[command.index("--campaign-id") + 1]), 24)
+        self.assertNotIn("ENABLE 입력", result.stdout)
+        self.assertNotIn("CAMPAIGN_ID [", result.stdout)
+
+    def test_repeated_runs_generate_distinct_ids_without_prompt(self):
+        self.write_profile("du")
+        result = self.ui("1\n3\n2\n\n2\n\nq\n", "--dry-run")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        ids = re.findall(r"--run-id (sc-blind-dos-control-\S+)", result.stdout)
+        self.assertEqual(len(ids), 2)
+        self.assertEqual(len(set(ids)), 2)
 
     def test_missing_profile_returns_to_environment_menu(self):
         result = self.ui("1\n\nq\n", "--dry-run")

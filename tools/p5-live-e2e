@@ -40,6 +40,7 @@ CU_DASHBOARD_FOLLOW=${CU_DASHBOARD_FOLLOW:-1}
 DETECTOR_COMMIT=766f5569d0ddb425c14bf210a31c38ac60eceef9
 
 fail() { echo "p5-live-e2e: $*" >&2; exit 2; }
+progress() { printf '[진행] %s\n' "$*" >&2; }
 [[ $SCENARIO =~ ^[a-z0-9][a-z0-9-]{0,63}$ ]] || fail "안전한 SCENARIO가 필요합니다"
 [[ $MODE == control || $MODE == attack || $MODE == emulation ]] || fail "mode가 잘못됐습니다"
 [[ $RUN_ID =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$ ]] || fail "안전한 RUN_ID가 필요합니다"
@@ -216,8 +217,10 @@ REMOTE
 
 cleanup() {
   local status=$?
-  trap - EXIT INT TERM
+  trap - EXIT
+  trap '' INT TERM
   set +e
+  progress "실행 정리 중 · 기록: $OUT"
   stop_child
   (( LIVE_STARTED == 0 || LIVE_COLLECTED == 1 )) || stop_live
   if [[ -n $MARKER_DIR && -d $MARKER_DIR && ! -L $MARKER_DIR ]]; then
@@ -240,16 +243,25 @@ if (( WAIT_FOR_BASELINE )); then
   export LIVE_E2E_BASELINE_READY_FILE=$MARKER_DIR/baseline.ready
   export LIVE_E2E_OBSERVATION_READY_FILE=$MARKER_DIR/observation.ready
 fi
+progress "CU 탐지 입력 수집 준비 · 기록: $OUT"
 start_live
+progress "정상 UE 5대와 runner 기동 · 상세 로그: $OUT/child.stdout, $OUT/child.stderr"
 setsid "${COMMAND[@]}" >"$OUT/child.stdout" 2>"$OUT/child.stderr" &
 CHILD_PID=$!
 if (( WAIT_FOR_BASELINE )); then
   baseline_started=$SECONDS
+  baseline_reported=-1
   until [[ -f $LIVE_E2E_BASELINE_READY_FILE && ! -L $LIVE_E2E_BASELINE_READY_FILE ]]; do
     child_running || { wait "$CHILD_PID" || true; fail "공격 runner가 정상 UE 기준선 전에 종료됐습니다"; }
     (( SECONDS - baseline_started < BASELINE_TIMEOUT_S )) || fail "정상 UE 기준선 준비가 시간 초과했습니다"
+    elapsed=$((SECONDS - baseline_started))
+    if (( elapsed / 10 > baseline_reported )); then
+      progress "정상 UE 기준선 대기 ${elapsed}/${BASELINE_TIMEOUT_S}초"
+      baseline_reported=$((elapsed / 10))
+    fi
     sleep .2
   done
+  progress "정상 UE 기준선 확인 완료 · 관측 시작 준비"
   reset_detector_after_baseline
 fi
 if (( CU_DASHBOARD_FOLLOW )); then
@@ -261,6 +273,16 @@ if (( WAIT_FOR_BASELINE )); then
     || fail "관측 시작 marker를 게시하지 못했습니다"
 fi
 set +e
+phase_started=$SECONDS
+phase_reported=-1
+while child_running; do
+  elapsed=$((SECONDS - phase_started))
+  if (( elapsed / 10 > phase_reported )); then
+    progress "$MODE phase 진행 중 · 관측 시작 후 ${elapsed}초"
+    phase_reported=$((elapsed / 10))
+  fi
+  sleep .2
+done
 wait "$CHILD_PID"
 child_status=$?
 set -e
@@ -309,11 +331,13 @@ elif [[ -f $CHILD_DIR/same-cell-run.json && ! -L $CHILD_DIR/same-cell-run.json ]
 fi
 [[ $REQUIRE_SAME_CELL == 0 || -n $SAME_CELL_OUTPUT ]] || fail "필수 same-cell 증거가 없습니다"
 (( POST_CHILD_S == 0 )) || sleep "$POST_CHILD_S"
+progress "실행 종료 · CU 기록 수집과 dashboard 전송 마무리"
 stop_live
 if (( WAIT_FOR_BASELINE )); then
   install -m 600 "$LIVE_E2E_BASELINE_READY_FILE" "$OUT/baseline.ready"
   install -m 600 "$LIVE_E2E_OBSERVATION_READY_FILE" "$OUT/observation.ready"
 fi
+progress "증거·판정 검증"
 LIVE_E2E_REQUIRE_SAME_CELL=$REQUIRE_SAME_CELL \
   python3 "$ROOT/tools/verify_live_e2e.py" "$OUT" "$SCENARIO" "$MODE" "$RUN_ID" "$CHILD_DIR" "$DETECTOR_COMMIT"
 trap - EXIT INT TERM

@@ -5,9 +5,9 @@
 ## 실행 전 필수 규칙
 
 1. 사람과 AI 모두 [docs/E2E-EXECUTION-GUIDE.md](docs/E2E-EXECUTION-GUIDE.md)의 공식 토폴로지와 runner만 사용한다.
-2. 개별 모듈은 `./ctl.sh doctor --profile <환경>`, 정상 UE 5대 통합 실행은 `./ctl.sh same-cell doctor --profile <환경>`이 실패하면 중단한다. OAI 바이너리 직접 실행이나 `/tmp` 수동 스크립트로 대체하지 않는다.
-3. L3 7종 정상 UE 통합 자격은 `./ctl.sh same-cell run` 또는 `./ctl.sh same-cell campaign l3-live --sets 3 --count 5 --enable`만 사용한다. 같은 CU·DU 인스턴스와 셀 식별자를 유지한 채 phase마다 DU·broker·UE 프로세스를 cold-start하고 CU·코어·dashboard는 유지한다.
-4. `ctl.sh`와 `tools/reproctl.py` 등 40개 핵심 파일은 `integration.lock.json`에 SHA-256이 고정돼 있다. ZIP/복사본이나 추적 파일 수정 상태에서는 자격 실행을 진행하지 않는다.
+2. 개별 모듈은 `./tools/ctl.sh doctor --profile <환경>`, 정상 UE 5대 통합 실행은 `./tools/ctl.sh same-cell doctor --profile <환경>`이 실패하면 중단한다. OAI 바이너리 직접 실행이나 `/tmp` 수동 스크립트로 대체하지 않는다.
+3. L3 7종 정상 UE 통합 자격은 `./tools/ctl.sh same-cell run` 또는 `./tools/ctl.sh same-cell campaign l3-live --sets 3 --count 5 --enable`만 사용한다. 같은 CU·DU 인스턴스와 셀 식별자를 유지한 채 phase마다 DU·broker·UE 프로세스를 cold-start하고 CU·코어·dashboard는 유지한다.
+4. `run.sh`, `tools/ctl.sh`, `tools/reproctl.py` 등 핵심 파일은 `integration.lock.json`에 SHA-256이 고정돼 있다. ZIP/복사본이나 추적 파일 수정 상태에서는 자격 실행을 진행하지 않는다.
 5. 과거 개별 자격(L3-01-O 2프로세스×5 UE, L3-20 direct 2-cell 등)을 `same-cell` 자격으로 바꿔 적지 않고, `p1`·`p5` 자격을 `p4`·`OTA` 자격으로 복사하지 않는다.
 
 ## 재현 도구 완료 기준 및 주장 경계
@@ -29,7 +29,7 @@
 |---|---|
 | 빠른 시작·전체 구조 | [README.md](README.md), [docs/README.md](docs/README.md) |
 | 공식 E2E 실행·`same-cell` 규칙 | [docs/E2E-EXECUTION-GUIDE.md](docs/E2E-EXECUTION-GUIDE.md) |
-| `ctl.sh` CLI·환경변수·`doctor` 범위 | [docs/CONTROL-GUIDE.md](docs/CONTROL-GUIDE.md) |
+| `tools/ctl.sh` CLI·환경변수·`doctor` 범위 | [docs/CONTROL-GUIDE.md](docs/CONTROL-GUIDE.md) |
 | 환경 포팅·p5/OTA 운영 | [PORTING-GUIDE.md](PORTING-GUIDE.md) ([p5 운영](PORTING-GUIDE.md#p5-운영-체크리스트), [OTA 운영](PORTING-GUIDE.md#차폐-ota-운영-체크리스트)) |
 | 공격 카탈로그·주장 한계·레퍼런스 | [docs/ATTACK-CATALOG.md](docs/ATTACK-CATALOG.md) ([주장과 한계](docs/ATTACK-CATALOG.md#주장과-한계)), [docs/ATTACK-REFERENCES.md](docs/ATTACK-REFERENCES.md) |
 | 모듈 추가·명명 규칙 | [docs/NEW-MODULE-GUIDE.md](docs/NEW-MODULE-GUIDE.md), [docs/NAMING-CONVENTIONS.md](docs/NAMING-CONVENTIONS.md) |

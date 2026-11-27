@@ -96,10 +96,10 @@ UPLINK_CONF=conf/uplink.conf ./bin/uplink-credential-flood-campaign \
 통합 컨트롤러에서는 공격 ID `uplink-credential-flood`를 사용한다. 정상 UE 5대 `same-cell` E2E는 `p5`와 `p1`(`p1q9-20261119`)에서 모두 6/6 통과했다.
 
 ```bash
-./ctl.sh run uplink-credential-flood attack l321-smoke --enable
-./ctl.sh campaign uplink-credential-flood l321-campaign --enable
-./ctl.sh same-cell run uplink-credential-flood --profile p1 --mode control --run-id l321-same-ctrl
-./ctl.sh same-cell run uplink-credential-flood --profile p1 --mode attack --run-id l321-same-atk --enable
+./tools/ctl.sh run uplink-credential-flood attack l321-smoke --enable
+./tools/ctl.sh campaign uplink-credential-flood l321-campaign --enable
+./tools/ctl.sh same-cell run uplink-credential-flood --profile p1 --mode control --run-id l321-same-ctrl
+./tools/ctl.sh same-cell run uplink-credential-flood --profile p1 --mode attack --run-id l321-same-atk --enable
 ```
 
 이 경로는 OAI UE를 실행해 실제 ZMQ→DU/CU→TeleRAN 입력을 production detector에 전달한다.

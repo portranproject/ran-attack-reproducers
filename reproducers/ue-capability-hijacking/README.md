@@ -6,7 +6,7 @@ OAI UE가 `RRCSetupComplete`를 보낸 직후, 아직 `SecurityModeCommand`와 `
 |---|---|
 | 룰 ID | `L3-14` |
 | `reproducer.json` id | `ue-capability-hijacking` |
-| `ctl.sh` ID / 별칭 | `ue-capability` (`ue-capability-hijacking`, `capability`) |
+| `tools/ctl.sh` ID / 별칭 | `ue-capability` (`ue-capability-hijacking`, `capability`) |
 | 재현 수준 (`reproduction_level`) | `protocol-observation-emulation` |
 | active 모드 (`active_mode`) | `emulation` |
 | 자격 현황 | `p1` same-cell 6/6 통과 (`p1q9-20261119`), `p5` E2E 6/6 통과, `OTA` pending |
@@ -30,25 +30,25 @@ OAI UE                       OCUDU DU/CU (F1AP)
 
 ## 실행 방법
 
-### 통합 컨트롤러 (`ctl.sh`)
+### 통합 컨트롤러 (`tools/ctl.sh`)
 
 ```bash
-./ctl.sh setup ue-capability --profile p1
-./ctl.sh doctor ue-capability --profile p1
+./tools/ctl.sh setup ue-capability --profile p1
+./tools/ctl.sh doctor ue-capability --profile p1
 
 # 단발 및 matched 3세트 캠페인 (p5 direct)
-./ctl.sh run ue-capability control cap-ctrl-01 --profile p5
-./ctl.sh run ue-capability emulation cap-emu-01 --profile p5 --enable
-./ctl.sh campaign ue-capability cap-camp-01 --profile p5 --enable
+./tools/ctl.sh run ue-capability control cap-ctrl-01 --profile p5
+./tools/ctl.sh run ue-capability emulation cap-emu-01 --profile p5 --enable
+./tools/ctl.sh campaign ue-capability cap-camp-01 --profile p5 --enable
 
 # 정상 UE 5대 same-cell E2E 실행 (p1/p5)
-./ctl.sh same-cell run ue-capability --profile p1 --mode control --run-id sc-cap-ctrl-1
-./ctl.sh same-cell run ue-capability --profile p1 --mode emulation --run-id sc-cap-emu-1 --enable
+./tools/ctl.sh same-cell run ue-capability --profile p1 --mode control --run-id sc-cap-ctrl-1
+./tools/ctl.sh same-cell run ue-capability --profile p1 --mode emulation --run-id sc-cap-emu-1 --enable
 ```
 
 ### 직접 실행 (`bin/`)
 
-설정은 `conf/p5-zmq.conf.example`을 복사한 `conf/ue-capability.conf`(`UE_CAPABILITY_CONF`)를 사용한다. 직접 빌드 전에는 `6d6782b4...` 기준 worktree가 미리 준비돼 있어야 한다(없으면 `./ctl.sh setup ue-capability` 사용).
+설정은 `conf/p5-zmq.conf.example`을 복사한 `conf/ue-capability.conf`(`UE_CAPABILITY_CONF`)를 사용한다. 직접 빌드 전에는 `6d6782b4...` 기준 worktree가 미리 준비돼 있어야 한다(없으면 `./tools/ctl.sh setup ue-capability` 사용).
 
 ```bash
 OAI=/root/OAI-ue-capability-w38 bin/ue-capability-build

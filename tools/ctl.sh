@@ -2,7 +2,7 @@
 # 격리 테스트베드의 공격 재현 모듈을 한 곳에서 준비하고 실행한다.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ATTACKS=(
   rrc-storm blind-dos uplink-dos uplink-credential-flood auth-timeout downlink-imsi ue-capability
   nas-counter-desynchronization authentication-sync-failure nas-counter-reset
@@ -437,7 +437,7 @@ run_one() {
     command=(env "$env_name=$config" "$runner" "$mode" -n "$run_id" -e "$enable_value")
   fi
   if [[ $dry_run == 1 ]]; then print_command "${command[@]}"; return; fi
-  [[ -f $config && ! -L $config ]] || fail "설정이 없습니다. 먼저 실행: ./ctl.sh setup $attack"
+  [[ -f $config && ! -L $config ]] || fail "설정이 없습니다. 먼저 실행: ./tools/ctl.sh setup $attack"
   [[ -x $runner ]] || fail "runner가 없습니다: $runner"
   exec "${command[@]}"
 }
@@ -465,7 +465,7 @@ campaign_one() {
       done
       return
     fi
-    [[ -f $config && ! -L $config ]] || fail "설정이 없습니다. 먼저 실행: ./ctl.sh setup $attack"
+    [[ -f $config && ! -L $config ]] || fail "설정이 없습니다. 먼저 실행: ./tools/ctl.sh setup $attack"
     [[ -x $runner ]] || fail "runner가 없습니다: $runner"
     local index
     for index in 1 2 3; do
@@ -483,7 +483,7 @@ campaign_one() {
       echo "위 control→attack을 set 1..3으로 반복"
       return
     fi
-    [[ -f $config && ! -L $config ]] || fail "설정이 없습니다. 먼저 실행: ./ctl.sh setup $attack"
+    [[ -f $config && ! -L $config ]] || fail "설정이 없습니다. 먼저 실행: ./tools/ctl.sh setup $attack"
     [[ -x $runner ]] || fail "runner가 없습니다: $runner"
     local index
     for index in 1 2 3; do
@@ -497,7 +497,7 @@ campaign_one() {
   runner=$(campaign_binary "$attack")
   command=(env "$env_name=$config" "$runner" -n "$campaign_id" -e 1)
   if [[ $dry_run == 1 ]]; then print_command "${command[@]}"; return; fi
-  [[ -f $config && ! -L $config ]] || fail "설정이 없습니다. 먼저 실행: ./ctl.sh setup $attack"
+  [[ -f $config && ! -L $config ]] || fail "설정이 없습니다. 먼저 실행: ./tools/ctl.sh setup $attack"
   [[ -x $runner ]] || fail "campaign runner가 없습니다: $runner"
   exec "${command[@]}"
 }
@@ -583,7 +583,7 @@ same_cell_run_one() {
   command=(timeout --signal=TERM --kill-after=60s "${phase_timeout}s" "${command[@]}")
   if [[ $dry_run == 1 ]]; then print_command "${command[@]}"; return; fi
   command -v timeout >/dev/null || fail "timeout 명령이 필요합니다"
-  [[ -f $config && ! -L $config ]] || fail "설정이 없습니다. 먼저 실행: ./ctl.sh setup $attack"
+  [[ -f $config && ! -L $config ]] || fail "설정이 없습니다. 먼저 실행: ./tools/ctl.sh setup $attack"
   [[ -f $normal_conf && ! -L $normal_conf ]] || fail "normal UE 설정이 없습니다: $normal_conf"
   [[ -x $runner ]] || fail "runner가 없습니다: $runner"
   HOUR_GUARD_WAIT_STARTED_AT=
@@ -763,31 +763,31 @@ same_cell_cli() {
 usage() {
   cat <<'EOF'
 사용법:
-  ./ctl.sh                         대화형 메뉴
-  ./ctl.sh list                    공격 목록과 재현 유형
-  ./ctl.sh doctor [ID|all]         설정·빌드 상태 확인
-  ./ctl.sh setup ID|all            설정 생성 + 전용 OAI 준비 + 빌드
-  ./ctl.sh build ID|all            이미 준비된 OAI에서 빌드
-  ./ctl.sh run ID MODE RUN_ID [--profile NAME] [--enable] [--dry-run]
-  ./ctl.sh campaign ID [CAMPAIGN_ID] [--profile NAME] --enable [--dry-run]
-  ./ctl.sh replay RUN_ID --profile NAME
-  ./ctl.sh report RUN_ID [--profile NAME]
-  ./ctl.sh verify RUN_ID [--profile NAME]
-  ./ctl.sh coverage
-  ./ctl.sh validate
-  ./ctl.sh normal-ue setup|build|doctor|start|status|stop [--profile NAME] [--count N]
-  ./ctl.sh same-cell doctor --profile NAME
-  ./ctl.sh same-cell run ID --profile NAME --mode control|attack|emulation [--run-id ID] [--enable]
-  ./ctl.sh same-cell campaign l3-live --profile NAME --sets 3 --count 5 --enable
-  ./ctl.sh same-cell start -n SESSION_ID [--count 5]  # 정상 UE 개발 세션
-  ./ctl.sh same-cell status|stop
-  ./ctl.sh reference list
-  ./ctl.sh reference build REF_ID --profile NAME
-  ./ctl.sh reference doctor REF_ID --profile NAME
-  ./ctl.sh reference run REF_ID --profile NAME --mode control|attack [--run-id ID] [--enable]
-  ./ctl.sh reference campaign REF_ID --profile NAME --sets N --enable
+  ./tools/ctl.sh                         대화형 메뉴
+  ./tools/ctl.sh list                    공격 목록과 재현 유형
+  ./tools/ctl.sh doctor [ID|all]         설정·빌드 상태 확인
+  ./tools/ctl.sh setup ID|all            설정 생성 + 전용 OAI 준비 + 빌드
+  ./tools/ctl.sh build ID|all            이미 준비된 OAI에서 빌드
+  ./tools/ctl.sh run ID MODE RUN_ID [--profile NAME] [--enable] [--dry-run]
+  ./tools/ctl.sh campaign ID [CAMPAIGN_ID] [--profile NAME] --enable [--dry-run]
+  ./tools/ctl.sh replay RUN_ID --profile NAME
+  ./tools/ctl.sh report RUN_ID [--profile NAME]
+  ./tools/ctl.sh verify RUN_ID [--profile NAME]
+  ./tools/ctl.sh coverage
+  ./tools/ctl.sh validate
+  ./tools/ctl.sh normal-ue setup|build|doctor|start|status|stop [--profile NAME] [--count N]
+  ./tools/ctl.sh same-cell doctor --profile NAME
+  ./tools/ctl.sh same-cell run ID --profile NAME --mode control|attack|emulation [--run-id ID] [--enable]
+  ./tools/ctl.sh same-cell campaign l3-live --profile NAME --sets 3 --count 5 --enable
+  ./tools/ctl.sh same-cell start -n SESSION_ID [--count 5]  # 정상 UE 개발 세션
+  ./tools/ctl.sh same-cell status|stop
+  ./tools/ctl.sh reference list
+  ./tools/ctl.sh reference build REF_ID --profile NAME
+  ./tools/ctl.sh reference doctor REF_ID --profile NAME
+  ./tools/ctl.sh reference run REF_ID --profile NAME --mode control|attack [--run-id ID] [--enable]
+  ./tools/ctl.sh reference campaign REF_ID --profile NAME --sets N --enable
 
-ID 전체 목록: ./ctl.sh list
+ID 전체 목록: ./tools/ctl.sh list
 MODE: control 또는 목록에 맞는 attack/emulation
 
 setup은 현재 p5 경로를 기본값으로 사용한다. 다른 호스트에서는 OAI_BASE와

@@ -15,4 +15,4 @@
   sync가 45초 안에 성립하지 않았다(`synch Failed`). numpy 변환·0.5 ms 상향 블록으로
   고친 뒤에도 같았다.
 - 그래서 control/attack의 production detector 판정은 실행하지 못했다.
-- 실행은 `./ctl.sh reference run ref-rrc-storm --profile p1 --mode control|attack`로 한다.
+- 실행은 `./tools/ctl.sh reference run ref-rrc-storm --profile p1 --mode control|attack`로 한다.

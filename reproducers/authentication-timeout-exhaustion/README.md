@@ -6,7 +6,7 @@
 |---|---|
 | 룰 ID | `L3-01-O` |
 | `reproducer.json` id | `authentication-timeout-exhaustion` |
-| `ctl.sh` ID / 별칭 | `auth-timeout` (`authentication-timeout-exhaustion`, `auth`) |
+| `tools/ctl.sh` ID / 별칭 | `auth-timeout` (`authentication-timeout-exhaustion`, `auth`) |
 | 재현 수준 (`reproduction_level`) | `protocol` |
 | active 모드 (`active_mode`) | `attack` |
 | 자격 현황 | `p1` same-cell 6/6 통과 (`p1q9-20261119`), `p5` E2E 6/6 통과, `OTA` pending |
@@ -31,20 +31,20 @@
 
 ## 실행 방법
 
-### 통합 컨트롤러 (`ctl.sh`)
+### 통합 컨트롤러 (`tools/ctl.sh`)
 
 ```bash
-./ctl.sh setup auth-timeout --profile p1
-./ctl.sh doctor auth-timeout --profile p1
+./tools/ctl.sh setup auth-timeout --profile p1
+./tools/ctl.sh doctor auth-timeout --profile p1
 
 # 단발 실행 (한 셀 10-UE runner: bin/auth-stall-cell-run)
-./ctl.sh run auth-timeout control auth-ctrl-01 --profile p5
-./ctl.sh run auth-timeout attack auth-atk-01 --profile p5 --enable
-./ctl.sh campaign auth-timeout auth-camp-01 --profile p5 --enable
+./tools/ctl.sh run auth-timeout control auth-ctrl-01 --profile p5
+./tools/ctl.sh run auth-timeout attack auth-atk-01 --profile p5 --enable
+./tools/ctl.sh campaign auth-timeout auth-camp-01 --profile p5 --enable
 
 # 정상 UE 5대 same-cell E2E 실행 (p1/p5)
-./ctl.sh same-cell run auth-timeout --profile p1 --mode control --run-id sc-auth-ctrl-1
-./ctl.sh same-cell run auth-timeout --profile p1 --mode attack --run-id sc-auth-atk-1 --enable
+./tools/ctl.sh same-cell run auth-timeout --profile p1 --mode control --run-id sc-auth-ctrl-1
+./tools/ctl.sh same-cell run auth-timeout --profile p1 --mode attack --run-id sc-auth-atk-1 --enable
 ```
 
 ### 직접 실행 (`bin/`)
@@ -59,7 +59,7 @@ AUTH_STALL_CELL_CONF=conf/auth-stall-cell.conf \
   bin/auth-stall-cell-run attack -n auth-cell-attack -e 1
 ```
 
-과거 direct 4-cell 서비스 영향 측정 runner(`bin/auth-timeout-run`, `bin/auth-timeout-campaign`)는 `conf/auth-timeout.conf`(`AUTH_TIMEOUT_CONF`)를 사용한다. (`reproducer.json`의 `analyze`/`verify` 항목은 direct 4-cell용 `normalize_p5.py`/`verify_evidence.py`를 가리키지만, 실제 `ctl.sh` 기본 runner인 `bin/auth-stall-cell-run`은 내부적으로 `analysis/verify_cell_flood.py`로 판정한다.)
+과거 direct 4-cell 서비스 영향 측정 runner(`bin/auth-timeout-run`, `bin/auth-timeout-campaign`)는 `conf/auth-timeout.conf`(`AUTH_TIMEOUT_CONF`)를 사용한다. (`reproducer.json`의 `analyze`/`verify` 항목은 direct 4-cell용 `normalize_p5.py`/`verify_evidence.py`를 가리키지만, 실제 `tools/ctl.sh` 기본 runner인 `bin/auth-stall-cell-run`은 내부적으로 `analysis/verify_cell_flood.py`로 판정한다.)
 
 ## 합격 기준
 

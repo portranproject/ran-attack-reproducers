@@ -6,7 +6,7 @@
 |---|---|
 | 룰 ID | `AN-07` |
 | `reproducer.json` ID | `rrc-reject-release-imprisonment` |
-| `ctl.sh` ID / 별칭 | `rrc-reject-release-imprisonment`, `an-07` |
+| `tools/ctl.sh` ID / 별칭 | `rrc-reject-release-imprisonment`, `an-07` |
 | 재현 수준 | `detector-input-emulation` (`active_mode=emulation`) |
 | 자격 범위 | 공격 플랫폼 1.0 제외, production detector 회귀 전용 (`p5: pending`, `OTA: not-applicable`) |
 
@@ -20,12 +20,12 @@
 ## 실행 방법
 
 ```bash
-./ctl.sh run an-07 control an-07-ctrl-1 --profile p5
-./ctl.sh run an-07 emulation an-07-emu-1 --profile p5 --enable
-./ctl.sh campaign an-07 an-07-matched --profile p5 --enable
-./ctl.sh replay an-07-emu-1 --profile p5
-./ctl.sh report an-07-emu-1 --profile p5
-./ctl.sh verify an-07-emu-1 --profile p5
+./tools/ctl.sh run an-07 control an-07-ctrl-1 --profile p5
+./tools/ctl.sh run an-07 emulation an-07-emu-1 --profile p5 --enable
+./tools/ctl.sh campaign an-07 an-07-matched --profile p5 --enable
+./tools/ctl.sh replay an-07-emu-1 --profile p5
+./tools/ctl.sh report an-07-emu-1 --profile p5
+./tools/ctl.sh verify an-07-emu-1 --profile p5
 ```
 
 `replay`·`report`·`verify`는 로컬의 `profile["detector"]["binary"]` 경로를 사용한다.

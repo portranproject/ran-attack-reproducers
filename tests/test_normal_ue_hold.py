@@ -11,7 +11,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 SAME_CELL = ROOT / "workloads/normal-ue/bin/same-cell-run"
 PHASE = ROOT / "reproducers/blind-dos/bin/blind-p5-phase"
 BROKER = ROOT / "reproducers/rrc-signaling-storm/bin/rss-broker-witness"
-CTL = ROOT / "ctl.sh"
+CTL = ROOT / "tools" / "ctl.sh"
 
 
 def function_text(path, name):

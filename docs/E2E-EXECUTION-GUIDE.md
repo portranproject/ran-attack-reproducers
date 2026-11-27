@@ -5,7 +5,7 @@
 ## 필수 원칙
 
 1. ZIP·파일 복사본이 아니라 Git clone을 사용한다.
-2. 개별 모듈은 `./ctl.sh doctor --profile <환경>`, 정상 UE 5대 통합 실행은 `./ctl.sh same-cell doctor --profile <환경>`을 먼저 통과한다.
+2. 개별 모듈은 `./tools/ctl.sh doctor --profile <환경>`, 정상 UE 5대 통합 실행은 `./tools/ctl.sh same-cell doctor --profile <환경>`을 먼저 통과한다.
 3. 공식 runner가 없거나 `doctor`가 실패하면 중단한다. OAI 바이너리 직접 실행이나 `/tmp` 수동 스크립트로 대체하지 않는다.
 4. `control`을 먼저 실행하고 `attack`·`emulation`에는 `--enable`을 붙인다.
 5. CU·DU 인스턴스는 그대로 재사용한다. runner가 공격별 DU **프로세스와 설정**을 시작·정리할 수 있지만 인스턴스를 새로 만들거나 삭제하지 않는다.
@@ -22,7 +22,7 @@ git status --short
 
 패킷·실행 도구 설치(`setup`은 시스템 패키지를 자동 설치하지 않는다):
 - **CU 호스트**: `tcpdump`, `tshark` (`tools/reproctl.py`가 SSH로 확인)
-- **DU 호스트**: `tshark`, `timeout` (`ctl.sh same-cell doctor`가 로컬 확인; 원문 수집 필요 시 `tcpdump` 포함)
+- **DU 호스트**: `tshark`, `timeout` (`tools/ctl.sh same-cell doctor`가 로컬 확인; 원문 수집 필요 시 `tcpdump` 포함)
 
 ```bash
 sudo apt-get update
@@ -37,24 +37,24 @@ chmod 600 profiles/p1.json
 install -m 600 profiles/live-e2e.example.conf /root/.config/ran-reproducer/p1-live-e2e.env
 # /root/.config/ran-reproducer/p1.env (credentials_file, 0600 이하)를 생성해 SSH_KEY·KNOWN_HOSTS를 기록한다.
 # p1.json의 endpoint·target_allowlist와 p1-live-e2e.env의 CU_HOST·SSH_KEY·KNOWN_HOSTS·인터페이스를 채운다.
-./ctl.sh normal-ue setup --profile p1
-./ctl.sh normal-ue build --profile p1
-./ctl.sh setup all --profile p1
-./ctl.sh doctor --profile p1
-./ctl.sh same-cell doctor --profile p1
+./tools/ctl.sh normal-ue setup --profile p1
+./tools/ctl.sh normal-ue build --profile p1
+./tools/ctl.sh setup all --profile p1
+./tools/ctl.sh doctor --profile p1
+./tools/ctl.sh same-cell doctor --profile p1
 ```
 
 `credentials_file`(`p1.env`)과 `LIVE_E2E_CONF`(`p1-live-e2e.env`)의 `SSH_KEY`·`KNOWN_HOSTS` 경로는 같아야 한다. profile의 `CU_PLATFORM_ROOT`는 CU의 detector·telemetry 상위 경로이며 `CU_DASHBOARD_ENV`와 `CU_TELEMETRY_NODE`는 환경 이름(`p1`, `p1-e2e` 등 소문자·숫자·하이픈)을 사용한다.
 
 ## L3 7종 `same-cell` 통합 실행
 
-공개 진입점은 아래 세 명령뿐이다.
+DU에서 `./run.sh`를 실행하고 가상 환경을 선택하면 아래 공식 `same-cell` 명령으로 연결된다. DU 설정은 자동으로 결정하며 선택 순서는 [컨트롤러 가이드](CONTROL-GUIDE.md#사용자-화면)를 따른다. 자동화에서는 아래 내부 CLI를 사용한다.
 
 ```bash
-./ctl.sh same-cell doctor --profile p5
-./ctl.sh same-cell run blind-dos --profile p5 --mode control --run-id blind-control-1
-./ctl.sh same-cell run blind-dos --profile p5 --mode attack --run-id blind-attack-1 --enable
-./ctl.sh same-cell campaign l3-live --profile p5 --sets 3 --count 5 --enable
+./tools/ctl.sh same-cell doctor --profile p5
+./tools/ctl.sh same-cell run blind-dos --profile p5 --mode control --run-id blind-control-1
+./tools/ctl.sh same-cell run blind-dos --profile p5 --mode attack --run-id blind-attack-1 --enable
+./tools/ctl.sh same-cell campaign l3-live --profile p5 --sets 3 --count 5 --enable
 ```
 
 - **대상 및 모드**: `l3-live`는 L3-01-V·L3-01-O·L3-20·L3-21·L3-24·L3-14·L3-06 7종만 포함한다(AN fixture와 레거시 `uplink-dos` MAC 변조형 제외). 프로토콜 재현은 `attack`, 결과·관측 에뮬레이션은 `emulation`을 사용하며 `--sets 3 --count 5`로 고정한다.
@@ -64,16 +64,16 @@ install -m 600 profiles/live-e2e.example.conf /root/.config/ran-reproducer/p1-li
 
 ## 기존 개별 자격 토폴로지 (이력 기준)
 
-모든 기존 자격도 **CU 1대 + DU 1대**를 순차 재사용했다(Blind DoS의 2-cell은 동일 DU 프로세스의 논리 셀 2개). 새 `same-cell` 자격을 만들 때는 이 runner를 직접 호출하지 않고 위 `ctl.sh same-cell`을 사용한다. 기존 개별 자격을 `same-cell` 자격으로 옮겨 적지 않는다.
+모든 기존 자격도 **CU 1대 + DU 1대**를 순차 재사용했다(Blind DoS의 2-cell은 동일 DU 프로세스의 논리 셀 2개). 새 `same-cell` 자격을 만들 때는 이 runner를 직접 호출하지 않고 위 `tools/ctl.sh same-cell`을 사용한다. 기존 개별 자격을 `same-cell` 자격으로 옮겨 적지 않는다.
 
 | 룰 | 공격 runner 진입점 | 기존 자격 토폴로지 | 당시 비승인·제외 경로 |
 |---|---|---|---|
-| L3-01-V | `ctl.sh campaign rrc-storm` | 1 DU·1 cell | 임의 timer/capacity 완화 |
-| L3-06 | `ctl.sh campaign l3-06` | direct 1-cell | 정상 UE same-cell (p5 2026-11-17 기준) |
-| L3-24 | `ctl.sh campaign downlink-imsi` | direct 1-cell | RF 원인 재현 주장 |
-| L3-14 | `ctl.sh campaign ue-capability` | direct 1-cell | MITM·내용 변조 주장 |
-| L3-21 | `ctl.sh campaign uplink-credential-flood` | 한 UE가 10개 실패 연결 생성 | 단발 MAC 변조를 L3-21로 주장 |
-| L3-01-O | `ctl.sh campaign auth-timeout` | 한 셀, 2 OAI 프로세스×5 UE, shared endpoint 2개 | 한 프로세스 `--num-ues 10` |
+| L3-01-V | `tools/ctl.sh campaign rrc-storm` | 1 DU·1 cell | 임의 timer/capacity 완화 |
+| L3-06 | `tools/ctl.sh campaign l3-06` | direct 1-cell | 정상 UE same-cell (p5 2026-11-17 기준) |
+| L3-24 | `tools/ctl.sh campaign downlink-imsi` | direct 1-cell | RF 원인 재현 주장 |
+| L3-14 | `tools/ctl.sh campaign ue-capability` | direct 1-cell | MITM·내용 변조 주장 |
+| L3-21 | `tools/ctl.sh campaign uplink-credential-flood` | 한 UE가 10개 실패 연결 생성 | 단발 MAC 변조를 L3-21로 주장 |
+| L3-01-O | `tools/ctl.sh campaign auth-timeout` | 한 셀, 2 OAI 프로세스×5 UE, shared endpoint 2개 | 한 프로세스 `--num-ues 10` |
 | L3-20 | `bin/blind-run`·`bin/blind-p5-phase` | direct 2-cell, victim·attacker 동시 실행 | 순차 재사용·직접 same-cell |
 
 ## E2E 합격 조건

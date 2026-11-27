@@ -6,7 +6,7 @@
 |---|---|
 | 룰 ID | `AN-02` |
 | `reproducer.json` ID | `uplink-identifier-exposure` (`module`: `uplink-imsi-extractor`) |
-| `ctl.sh` ID / 별칭 | `uplink-identifier-exposure`, `uplink-imsi`, `an-02` |
+| `tools/ctl.sh` ID / 별칭 | `uplink-identifier-exposure`, `uplink-imsi`, `an-02` |
 | 재현 수준 | `detector-input-emulation` (`active_mode=emulation`) |
 | 자격 범위 | 공격 플랫폼 1.0 제외, production detector 회귀 전용 (`p5: pending`, `OTA: not-applicable`) |
 
@@ -19,15 +19,15 @@
 
 ## 실행 방법
 
-`ctl.sh`는 디렉터리명 `uplink-imsi-extractor`를 거부하므로 반드시 `an-02`, `uplink-imsi`, 또는 `uplink-identifier-exposure`를 사용한다.
+`tools/ctl.sh`는 디렉터리명 `uplink-imsi-extractor`를 거부하므로 반드시 `an-02`, `uplink-imsi`, 또는 `uplink-identifier-exposure`를 사용한다.
 
 ```bash
-./ctl.sh run an-02 control an-02-ctrl-1 --profile p5
-./ctl.sh run an-02 emulation an-02-emu-1 --profile p5 --enable
-./ctl.sh campaign an-02 an-02-matched --profile p5 --enable
-./ctl.sh replay an-02-emu-1 --profile p5
-./ctl.sh report an-02-emu-1 --profile p5
-./ctl.sh verify an-02-emu-1 --profile p5
+./tools/ctl.sh run an-02 control an-02-ctrl-1 --profile p5
+./tools/ctl.sh run an-02 emulation an-02-emu-1 --profile p5 --enable
+./tools/ctl.sh campaign an-02 an-02-matched --profile p5 --enable
+./tools/ctl.sh replay an-02-emu-1 --profile p5
+./tools/ctl.sh report an-02-emu-1 --profile p5
+./tools/ctl.sh verify an-02-emu-1 --profile p5
 ```
 
 `replay`·`report`·`verify`는 로컬의 `profile["detector"]["binary"]` 경로를 사용한다.

@@ -6,7 +6,7 @@
 |---|---|
 | 룰 ID | `L3-21` |
 | `reproducer.json` id | `uplink-credential-flood` |
-| `ctl.sh` ID / 별칭 | `uplink-credential-flood` (`credential-flood`, `uplink-l3-21`) · 레거시: `uplink-dos` (`uplink`) |
+| `tools/ctl.sh` ID / 별칭 | `uplink-credential-flood` (`credential-flood`, `uplink-l3-21`) · 레거시: `uplink-dos` (`uplink`) |
 | 재현 수준 (`reproduction_level`) | `protocol` (`L3-21`) · 레거시: `protocol-result-emulation` (`uplink-dos`) |
 | active 모드 (`active_mode`) | `attack` (`L3-21`) · 레거시: `emulation` (`uplink-dos`) |
 | 자격 현황 | `p1` same-cell 6/6 통과 (`p1q9-20261119`), `p5` same-cell 6/6 통과, `OTA` pending |
@@ -30,24 +30,24 @@
 
 ## 실행 방법
 
-### 통합 컨트롤러 (`ctl.sh`)
+### 통합 컨트롤러 (`tools/ctl.sh`)
 
 ```bash
-./ctl.sh setup uplink-credential-flood --profile p1
-./ctl.sh doctor uplink-credential-flood --profile p1
+./tools/ctl.sh setup uplink-credential-flood --profile p1
+./tools/ctl.sh doctor uplink-credential-flood --profile p1
 
 # L3-21 단발 및 matched 3세트 캠페인
-./ctl.sh run uplink-credential-flood control l321-ctrl-01 --profile p5
-./ctl.sh run uplink-credential-flood attack l321-atk-01 --profile p5 --enable
-./ctl.sh campaign uplink-credential-flood l321-camp-01 --profile p5 --enable
+./tools/ctl.sh run uplink-credential-flood control l321-ctrl-01 --profile p5
+./tools/ctl.sh run uplink-credential-flood attack l321-atk-01 --profile p5 --enable
+./tools/ctl.sh campaign uplink-credential-flood l321-camp-01 --profile p5 --enable
 
 # 정상 UE 5대 same-cell E2E 실행 (p1/p5)
-./ctl.sh same-cell run uplink-credential-flood --profile p1 --mode control --run-id sc-l321-ctrl-1
-./ctl.sh same-cell run uplink-credential-flood --profile p1 --mode attack --run-id sc-l321-atk-1 --enable
+./tools/ctl.sh same-cell run uplink-credential-flood --profile p1 --mode control --run-id sc-l321-ctrl-1
+./tools/ctl.sh same-cell run uplink-credential-flood --profile p1 --mode attack --run-id sc-l321-atk-1 --enable
 
 # 레거시 단발 MAC 변조 시나리오 (p5 direct)
-./ctl.sh run uplink-dos control ul-ctrl-01 --profile p5
-./ctl.sh run uplink-dos emulation ul-emu-01 --profile p5 --enable
+./tools/ctl.sh run uplink-dos control ul-ctrl-01 --profile p5
+./tools/ctl.sh run uplink-dos emulation ul-emu-01 --profile p5 --enable
 ```
 
 ### 직접 실행 (`bin/`)

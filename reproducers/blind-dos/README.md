@@ -6,7 +6,7 @@
 |---|---|
 | 룰 ID | `L3-20` |
 | `reproducer.json` id | `blind-dos` |
-| `ctl.sh` ID / 별칭 | `blind-dos` (`blind`) |
+| `tools/ctl.sh` ID / 별칭 | `blind-dos` (`blind`) |
 | 재현 수준 (`reproduction_level`) | `protocol` |
 | active 모드 (`active_mode`) | `attack` |
 | 자격 현황 | `p1` same-cell 6/6 통과 (`p1q9-20261119`), `p5` direct 2-cell G5 3/3 + E2E 6/6 통과, `OTA` pending |
@@ -30,25 +30,25 @@
 
 ## 실행 방법
 
-### 통합 컨트롤러 (`ctl.sh`)
+### 통합 컨트롤러 (`tools/ctl.sh`)
 
 ```bash
-./ctl.sh setup blind-dos --profile p1
-./ctl.sh doctor blind-dos --profile p1
+./tools/ctl.sh setup blind-dos --profile p1
+./tools/ctl.sh doctor blind-dos --profile p1
 
 # 단발 및 matched 3세트 캠페인 (p5 direct 2-cell)
-./ctl.sh run blind-dos control blind-ctrl-01 --profile p5
-./ctl.sh run blind-dos attack blind-atk-01 --profile p5 --enable
-./ctl.sh campaign blind-dos blind-camp-01 --profile p5 --enable
+./tools/ctl.sh run blind-dos control blind-ctrl-01 --profile p5
+./tools/ctl.sh run blind-dos attack blind-atk-01 --profile p5 --enable
+./tools/ctl.sh campaign blind-dos blind-camp-01 --profile p5 --enable
 
 # 정상 UE 5대 same-cell E2E 실행 (p1/p5)
-./ctl.sh same-cell run blind-dos --profile p1 --mode control --run-id sc-blind-ctrl-1
-./ctl.sh same-cell run blind-dos --profile p1 --mode attack --run-id sc-blind-atk-1 --enable
+./tools/ctl.sh same-cell run blind-dos --profile p1 --mode control --run-id sc-blind-ctrl-1
+./tools/ctl.sh same-cell run blind-dos --profile p1 --mode attack --run-id sc-blind-atk-1 --enable
 ```
 
 ### 직접 실행 (`bin/`)
 
-`ctl.sh` 설정 예제는 `conf/p5-zmq.conf.example`을 복사한 `conf/blind.conf`(`BLIND_CONF`)를 사용한다(`conf/blind.conf.example`도 보관돼 있다).
+`tools/ctl.sh` 설정 예제는 `conf/p5-zmq.conf.example`을 복사한 `conf/blind.conf`(`BLIND_CONF`)를 사용한다(`conf/blind.conf.example`도 보관돼 있다).
 
 ```bash
 OAI=/root/OAI-blind-dos-w38 bin/blind-build

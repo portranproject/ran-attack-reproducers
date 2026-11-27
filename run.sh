@@ -664,6 +664,8 @@ live_ok() {
 # live_render 작업폴더 : 표준 입력(FIFO)의 로그를 아래 영역에, 0.1초마다 다음 모션 프레임을 위 영역에 그림
 live_render() {
 	local dir=$1 t=0 line="" part rc now last=0 r clear="" width
+	# Ctrl-C 뒤에도 ctl.sh 정리 로그를 끝까지 받아야 하므로 렌더러는 신호를 무시함
+	trap '' INT TERM
 	SCENE_HINT="실행 중 · Ctrl-C 중단"
 	for ((r = 1; r <= STAGE_H; r++)); do clear="$clear"$'\033['"$r;1H"$'\033[2K'; done
 	# tr 은 여러 바이트 글자를 못 다루므로 치환으로 선을 만듦
@@ -705,7 +707,6 @@ run_live() {
 	STTY_SAVED=$(stty -g 2>/dev/null)
 	stty -echo 2>/dev/null
 	printf '\033[?25l\033[H\033[2J\033[%d;%dr' "$((STAGE_H + 2))" "$ROWS"
-	# 백그라운드 작업은 비대화형 bash 에서 SIGINT 를 무시하므로 렌더러는 Ctrl-C 뒤에도 계속 그림
 	live_render "$dir" <"$dir/log" &
 	render_pid=$!
 	# 안내 줄도 로그 영역에 찍히도록 같은 FIFO 로 보냄

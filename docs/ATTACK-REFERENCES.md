@@ -86,7 +86,7 @@
 
 ## 레퍼런스 도구 실행 (외부 공개 구현, 2026-11-20)
 
-우리 재현 모듈과 섞지 않기 위해 `./ctl.sh reference` 네임스페이스로 분리했다. 목록·원본
+우리 재현 모듈과 섞지 않기 위해 `./tools/ctl.sh reference` 네임스페이스로 분리했다. 목록·원본
 커밋·룰 대응의 단일 출처는 [`references/manifest.json`](../references/manifest.json)이고,
 사용법은 [`references/README.md`](../references/README.md)에 있다.
 
@@ -133,9 +133,9 @@ L3-21·L3-24 등)에 그대로 대응하는 5G 구현은 없다. 있는 것만 �
 실행 명령은 아래와 같다(레퍼런스 전용, 우리 자격 경로와 무관).
 
 ```bash
-./ctl.sh reference list
-./ctl.sh reference build ref-rrc-storm --profile p1
-./ctl.sh reference doctor ref-rrc-storm --profile p1
-./ctl.sh reference run ref-rrc-storm --profile p1 --mode control
-./ctl.sh reference run ref-rrc-storm --profile p1 --mode attack --enable
+./tools/ctl.sh reference list
+./tools/ctl.sh reference build ref-rrc-storm --profile p1
+./tools/ctl.sh reference doctor ref-rrc-storm --profile p1
+./tools/ctl.sh reference run ref-rrc-storm --profile p1 --mode control
+./tools/ctl.sh reference run ref-rrc-storm --profile p1 --mode attack --enable
 ```

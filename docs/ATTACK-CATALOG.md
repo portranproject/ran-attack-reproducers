@@ -1,12 +1,12 @@
 # 공격 카탈로그
 
-공격 재현 플랫폼 1.0의 자격 기준은 아래 **L3 7종**이다. 각 모듈의 메타데이터는 `reproducers/*/reproducer.json`에 있으며(루트 `reproducer.json`은 없음), `./ctl.sh coverage`가 `reproducer.json`의 `p5`·`ota` 상태를 집계해 출력한다.
+공격 재현 플랫폼 1.0의 자격 기준은 아래 **L3 7종**이다. 각 모듈의 메타데이터는 `reproducers/*/reproducer.json`에 있으며(루트 `reproducer.json`은 없음), `./tools/ctl.sh coverage`가 `reproducer.json`의 `p5`·`ota` 상태를 집계해 출력한다.
 
 `qualified`는 해당 환경에서 기전·실측 TeleRAN 입력·production detector·dashboard를 연결한 matched 3/3 증거가 있음을 뜻한다. `pending`은 구현 또는 해당 환경 자격 검증이 남았음을 뜻한다.
 
 ## L3 공격 7종 (플랫폼 1.0 기준)
 
-| 룰 | 대표 시나리오 | 재현 수준 | `reproducer.json` ID (`ctl.sh` ID) | p5 | p1 same-cell | OTA |
+| 룰 | 대표 시나리오 | 재현 수준 | `reproducer.json` ID (`tools/ctl.sh` ID) | p5 | p1 same-cell | OTA |
 |---|---|---|---|---|---|---|
 | L3-01-V | RRC UE 컨텍스트 고갈 | `protocol` | `rrc-context-exhaustion` (`rrc-storm`) | qualified | 6/6 | pending |
 | L3-01-O | 인증 응답 미전송형 연결 컨텍스트 고갈 | `protocol` | `authentication-timeout-exhaustion` (`auth-timeout`) | qualified | 6/6 | pending |
@@ -16,14 +16,14 @@
 | L3-14 | 보안 전 UE Capability Information 주입 | `protocol-observation-emulation` | `ue-capability-hijacking` (`ue-capability`) | qualified | 6/6 | pending |
 | L3-06 | 요청되지 않은 NAS SecurityModeReject 결과 | `protocol-result-emulation` | `nas-counter-desynchronization` (`l3-06`) | qualified | 6/6 | pending |
 
-- **레거시 변형 (`uplink-dos`)**: `reproducers/uplink-dos/bin/uplink-run`은 Service Request MAC 한 비트를 변조하는 `protocol-result-emulation` 모듈이다. 별도 `reproducer.json` 없이 `./ctl.sh list`에 `legacy`로 표시되며 p5 matched 3/3을 통과했으나 `l3-live` same-cell 자격 대상에서는 제외한다.
+- **레거시 변형 (`uplink-dos`)**: `reproducers/uplink-dos/bin/uplink-run`은 Service Request MAC 한 비트를 변조하는 `protocol-result-emulation` 모듈이다. 별도 `reproducer.json` 없이 `./tools/ctl.sh list`에 `legacy`로 표시되며 p5 matched 3/3을 통과했으나 `l3-live` same-cell 자격 대상에서는 제외한다.
 - **환경별 자격 분리**: `p5` 개별/모듈별 결과([2026-11-17 5종 요약](../artifacts/p5-live-e2e-five-20261117/README.md) 및 각 모듈 `artifacts/`)와 `p1` same-cell 결과([2026-11-19 42/42 요약](../artifacts/p1-clean-origin-live-e2e-20261119/README.md))는 별도 자격이며 `p4`·`OTA`로 복사하지 않는다. 전체 아티팩트 목록은 [artifacts/README.md](../artifacts/README.md)를 따른다.
 
 ## 참고용 AN 이상탐지 fixture 6종 (1.0 자격 제외)
 
 아래 6종은 production detector 회귀용 `detector-input-emulation` fixture이며 공격 1.0 자격 범위에서 제외한다.
 
-| 룰 | 대표 시나리오 | `reproducer.json` ID (`ctl.sh` alias) | p5 | OTA |
+| 룰 | 대표 시나리오 | `reproducer.json` ID (`tools/ctl.sh` alias) | p5 | OTA |
 |---|---|---|---|---|
 | AN-01 | 인증 동기 실패 | `authentication-sync-failure` (`an-01`) | pending | not-applicable |
 | AN-06a | NAS 카운터 reset 계열 재인증 | `nas-counter-reset` (`an-06a`) | pending | not-applicable |

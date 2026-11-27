@@ -122,7 +122,7 @@ AUTH_TIMEOUT_CONF=conf/auth-timeout.conf \
 2프로세스의 총 10개 endpoint를 broker로 한 DU·셀에 합친다. 내부 판정은
 `analysis/verify_cell_flood.py`를 호출하며(`reproducer.json`의 `analyze`/`verify` 항목은
 direct 4-cell용 `normalize_p5.py`/`verify_evidence.py` 기준이다), 정상 UE 5대와 함께하는
-E2E 자격은 `./ctl.sh same-cell run auth-timeout` 또는 `./ctl.sh same-cell campaign l3-live`로
+E2E 자격은 `./tools/ctl.sh same-cell run auth-timeout` 또는 `./tools/ctl.sh same-cell campaign l3-live`로
 실행한다(`p1q9-20261119`에서 6/6 통과). 실제 가입자 설정 목록은 Git 밖에 두고 예제 설정을
 복사해 경로만 채운다.
 

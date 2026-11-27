@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# portran-attacker.sh
-# : ctl.sh 를 감싸는 대화형 화면. 환경 → profile → 공격 → 작업을 고르면 공식 명령(./ctl.sh same-cell ...)을 그대로 실행함
+# run.sh — PORTRAN ATTACKER
+# DU에서 실행하는 사용자 진입점. 환경 → 공격 → 작업 순서로 공식 runner를 호출한다.
 #
 # [1] 배너는 빨강 계열 다섯 단계로 칠해 입체로 보이게 함.
 #
@@ -10,26 +10,29 @@
 #
 # [2] 공격 목록은 ./tools/reproctl.py catalog --json 에서 L3 7종만 읽음 (ctl.sh 를 source 하지 않음)
 # [3] 실행은 ctl.sh 의 same-cell doctor / run / campaign l3-live 만 씀. 다른 실행 경로 없음
-# [4] 공격 애니메이션은 실행 전에만 돎. 실행 중에는 ctl.sh 출력을 그대로 흘려보냄
+# [4] 공격 실행 중에는 위쪽에 공격 모션을 반복하고 아래쪽에 ctl.sh 출력을 실시간으로 흘림
+#     (bash 5 이상·창 높이 31줄 이상일 때. 아니면 실행 전 인트로 모션 뒤 출력만 흘림)
 #
-# 순수 bash 3.2+ (macOS 기본 bash, Ubuntu 모두). 추가 설치 없음
+# 화면은 bash 3.2+, 카탈로그·DU 설정 검증은 기존 python3 도구를 사용함
 # 종료 코드: 0 q 로 나감, 1 입력이 끊김(EOF), 2 옵션 오류
 set -u
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CTL="$ROOT/ctl.sh"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CTL="$ROOT/tools/ctl.sh"
 
 usage() {
 	cat <<'USAGE'
-사용법: ./tools/portran-attacker.sh [옵션]
+사용법: ./run.sh [옵션]
 
-  환경(가상/실장비) → profile → L3 공격 → 작업(doctor / run / campaign)을 고르고
-  ./ctl.sh same-cell ... 공식 명령을 그대로 실행하는 대화형 화면임
+  DU에서 환경 → L3 공격 → 작업을 선택한다.
+  DU 설정은 RAN_REPRO_PROFILE_ID, profiles/du.json, 유일한 준비 완료 설정 순서로 읽는다.
+  가상 환경은 tools/ctl.sh의 공식 same-cell runner를 사용한다.
+  실장비 메뉴는 USRP ↔ gNB 동작 모션을 제공한다. OTA 실행 adapter는 준비 중이다.
 
 옵션:
-  --no-anim       공격 애니메이션 끔
+  --no-anim       공격 애니메이션 끔 (실행 중 모션 포함)
   --dry-run       run·campaign 에 --dry-run 을 붙여 생성 명령만 확인함 (doctor 는 명령만 출력)
-  --frames DIR    애니메이션 몇 프레임을 색 없이 DIR/frames-<공격>.txt 로 저장하고 끝남
+  --frames DIR    ZMQ·USRP 동작 모션의 프레임을 텍스트로 저장하고 끝남
   -h, --help      이 도움말
 
 키: ↑/↓ 또는 숫자로 고르고 Enter. b 뒤로, q 나감
@@ -38,15 +41,16 @@ USAGE
 }
 
 ANIM=1 DRY_RUN=0 FRAMES_DIR=""
+TRANSPORT=zmq
 while [ $# -gt 0 ]; do
 	case "$1" in
 	--no-anim) ANIM=0; shift ;;
 	--dry-run) DRY_RUN=1; shift ;;
 	--frames)
-		[ $# -ge 2 ] || { echo "portran-attacker: --frames 에 디렉터리가 필요함" >&2; exit 2; }
+		[ $# -ge 2 ] || { echo "run.sh: --frames 에 디렉터리가 필요함" >&2; exit 2; }
 		FRAMES_DIR=$2; shift 2 ;;
 	-h|--help) usage; exit 0 ;;
-	*) echo "portran-attacker: 알 수 없는 옵션: $1 (--help 참고)" >&2; exit 2 ;;
+	*) echo "run.sh: 알 수 없는 옵션: $1 (--help 참고)" >&2; exit 2 ;;
 	esac
 done
 
@@ -233,13 +237,6 @@ choose() {
 	done
 }
 
-# ask 질문 기본값 : 한 줄을 읽어 ANSWER 에 넣음. 빈 입력이면 기본값
-ask() {
-	printf '  %s%s%s [%s]: ' "$BOLD" "$1" "$RESET" "$2"
-	IFS= read -r ANSWER || { echo; exit 1; }
-	ANSWER=${ANSWER:-$2}
-}
-
 pause() {
 	printf '\n  %sEnter 를 누르면 메뉴로 돌아감%s ' "$DIM" "$RESET"
 	IFS= read -r _ || { echo; exit 1; }
@@ -281,7 +278,7 @@ import json, sys
 for v in json.load(sys.stdin):
     print("\t".join([v["id"], ",".join(v["rule_ids"]), v["name"], v.get("active_mode", ""),
                      v["reproduction_level"], ",".join(v.get("aliases", []))]))
-') || { echo "portran-attacker: 공격 목록을 읽지 못함 (python3 tools/reproctl.py catalog --json)" >&2; exit 2; }
+') || { echo "run.sh: 공격 목록을 읽지 못함 (python3 tools/reproctl.py catalog --json)" >&2; exit 2; }
 	A_ID=() A_RULE=() A_NAME=() A_MODE=() A_LEVEL=()
 	for ctl in "${SAME_CELL_IDS[@]}"; do
 		found=0
@@ -293,31 +290,7 @@ for v in json.load(sys.stdin):
 				break ;;
 			esac
 		done <<<"$rows"
-		[ "$found" = 1 ] || { echo "portran-attacker: catalog 에 $ctl 이 없음" >&2; exit 2; }
-	done
-}
-
-# profiles/*.json 에서 backend 가 맞는 것만 P_NAME 에 모음. 실제 profile 먼저, 예제(*.example.json)는 뒤
-load_profiles() {
-	local backend=$1 file stem info pass
-	P_NAME=() P_NOTE=()
-	for pass in real example; do
-		for file in "$ROOT"/profiles/*.json; do
-			[ -f "$file" ] || continue
-			stem=$(basename "$file" .json)
-			case "$stem" in
-			*.example) [ "$pass" = example ] || continue ;;
-			*) [ "$pass" = real ] || continue ;;
-			esac
-			info=$(python3 -c 'import json,sys; v=json.load(open(sys.argv[1])); print(v.get("backend",""), v.get("configured") is True)' "$file" 2>/dev/null) || continue
-			[ "${info%% *}" = "$backend" ] || continue
-			P_NAME+=("$stem")
-			if [ "${info#* }" = True ]; then
-				P_NOTE+=("$stem")
-			else
-				P_NOTE+=("$stem  ${DIM}(예제 · configured=false, 실제 실행은 profiles/${stem%.example}.json 필요)${RESET}")
-			fi
-		done
+		[ "$found" = 1 ] || { echo "run.sh: catalog 에 $ctl 이 없음" >&2; exit 2; }
 	done
 }
 
@@ -355,15 +328,30 @@ draw_scene() {
 	GRID=() OUT=$'\033[H\033[2J'
 	for ((r = 0; r < STAGE_H; r++)); do GRID[$r]=$BLANK_LINE; done
 	put 0 2 "▶ $rule  $name" "$BOLD$RED_HIGHLIGHT"
-	put 0 70 "아무 키나 누르면 건너뜀" "$DIM"
+	put 1 2 "동작 설명 모션" "$DIM"
+	put 1 70 "${SCENE_HINT:-아무 키나 누르면 건너뜀}" "$DIM"
 	# 공격 UE
 	put 3 2 "┌─────┐" "$RED_BRIGHT"
 	put 4 2 "│▚▞▚▞▚│" "$RED_BRIGHT"
-	put 5 2 "│ ATK │" "$RED_HIGHLIGHT$BOLD"
+	if [ "$TRANSPORT" = usrp ]; then
+		put 2 4 "╲│╱" "$YELLOW"
+		put 3 2 "┌─┴───┐" "$RED_BRIGHT"
+		put 5 2 "│USRP │" "$RED_HIGHLIGHT$BOLD"
+	else
+		put 5 2 "│ ATK │" "$RED_HIGHLIGHT$BOLD"
+	fi
 	put 6 2 "└──┬──┘" "$RED_BRIGHT"
 	put 7 1 "공격 UE" "$RED_MID"
+	if [ "$TRANSPORT" = usrp ]; then
+		put 1 2 "USRP ↔ gNB · 차폐 RF 모션" "$YELLOW"
+		put 9 2 "TX" "$RED_HIGHLIGHT"
+		put 10 2 "RX" "$CYAN"
+		put 11 2 "정상 UE 5대 (같은 셀)" "$CYAN"
+	else
+		put 9 2 "UE ↔ ZMQ broker ↔ gNB" "$DIM"
+		put 10 2 "정상 UE 5대 (같은 셀)" "$CYAN"
+	fi
 	# 정상 UE 5대. 연결선은 철탑 아래까지 이어짐
-	put 10 2 "정상 UE 5대 (같은 셀)" "$CYAN"
 	for i in 0 1 2 3 4; do
 		put "${NORMAL_ROW[$i]}" 2 "[UE$((i + 1))●]" "$CYAN"
 		put "${NORMAL_ROW[$i]}" 10 "· · · · · · · · · · · · · · · · · · · · · · · · · · ·" "$DIM"
@@ -391,6 +379,15 @@ fly() {
 	x=$((10 + t * speed))
 	[ "$x" -le $((LANE_END - ${#text})) ] || return 1
 	put "$r" "$x" "$text" "$color"
+}
+
+usrp_exchange() {
+	local t=$1 step tx_col rx_col
+	step=$((t % 12))
+	tx_col=$((12 + step * 5))
+	rx_col=$((66 - step * 5))
+	put 9 "$tx_col" "))▸" "$RED_HIGHLIGHT"
+	put 10 "$rx_col" "◂((" "$CYAN"
 }
 
 # 정상 UE 줄의 오른쪽 끝 상태 표시
@@ -534,7 +531,12 @@ render_frame() {
 		fn=frame_$(echo "$attack" | tr '-' '_')
 		"$fn" $((campaign == 1 ? (t - 6) * FRAMES / 14 : t))
 	fi
-	phase_bar "$t" "$campaign"
+	if [ "$TRANSPORT" = usrp ]; then
+		usrp_exchange "$t"
+		put 21 2 "USRP ↔ gNB 동작 설명 · OTA 실행 adapter 준비 중" "$DIM"
+	else
+		phase_bar "$t" "$campaign"
+	fi
 }
 
 # play_animation 공격 campaign : 실행 전 인트로. 키를 누르면 바로 끝남
@@ -557,45 +559,59 @@ play_animation() {
 
 # --frames: 프레임 몇 장을 색 없이 텍스트로 저장함
 dump_frames() {
-	local dir=$1 attack t file campaign
+	local dir=$1 attack t file campaign transport
 	mkdir -p "$dir" || exit 2
 	RED_HIGHLIGHT="" RED_BRIGHT="" RED_MID="" RED_DEEP="" RED_SHADOW="" CYAN="" YELLOW=""
 	DIM="" BOLD="" REV="" RESET=""
-	for attack in "${A_ID[@]}"; do
-		file="$dir/frames-$attack.txt"
-		: >"$file" || exit 2
-		for campaign in 0 1; do
-			for t in 2 8 14 20 25; do
-				render_frame "$attack" "$t" "$campaign"
-				{
-					[ "$campaign" = 1 ] && printf -- '── campaign l3-live · frame %d/%d ──\n' "$((t + 1))" "$FRAMES" \
-						|| printf -- '── same-cell run · frame %d/%d ──\n' "$((t + 1))" "$FRAMES"
-					printf '%s\n' "${GRID[@]}" | tr -d '\001' | sed 's/[[:space:]]*$//'
-					echo
-				} >>"$file"
+	for transport in zmq usrp; do
+		TRANSPORT=$transport
+		for attack in "${A_ID[@]}"; do
+			file="$dir/frames-$attack.txt"
+			[ "$transport" = zmq ] || file="$dir/frames-usrp-$attack.txt"
+			: >"$file" || exit 2
+			for campaign in 0 1; do
+				[ "$transport" = usrp ] && [ "$campaign" = 1 ] && continue
+				for t in 2 8 14 20 25; do
+					render_frame "$attack" "$t" "$campaign"
+					{
+						if [ "$transport" = usrp ]; then
+							printf -- '── USRP ↔ gNB 모션 · frame %d/%d ──\n' "$((t + 1))" "$FRAMES"
+						elif [ "$campaign" = 1 ]; then
+							printf -- '── campaign l3-live · frame %d/%d ──\n' "$((t + 1))" "$FRAMES"
+						else
+							printf -- '── same-cell run · frame %d/%d ──\n' "$((t + 1))" "$FRAMES"
+						fi
+						printf '%s\n' "${GRID[@]}" | tr -d '\001' | sed 's/[[:space:]]*$//'
+						echo
+					} >>"$file"
+				done
 			done
+			echo "$file"
 		done
-		echo "$file"
 	done
 }
 
 # ── 실행 ─────────────────────────────────────────────────────────────────
 
-# run_ctl 인자... : ./ctl.sh 공식 명령을 그대로 실행함. 출력은 가리지 않고 흘려보냄
+# run_ctl 인자... : ./tools/ctl.sh 공식 명령을 그대로 실행함. 출력은 가리지 않고 흘려보냄
 run_ctl() {
-	local rc
+	local profile=$1 rc=0 live=0
+	shift
 	[ "$DRY_RUN" = 1 ] && case " $* " in *" run "*|*" campaign "*) set -- "$@" --dry-run ;; esac
-	echo
-	printf '  %s실행:%s ./ctl.sh' "$BOLD" "$RESET"
-	printf ' %q' "$@"
-	printf '\n\n'
+	if [ -n "$LIVE_ATTACK" ]; then
+		if live_ok; then live=1; else play_animation "$LIVE_ATTACK" "$LIVE_CAMPAIGN"; fi
+	fi
+	[ "$live" = 1 ] || ctl_intro "$@"
 	if [ "$DRY_RUN" = 1 ] && [ "$2" = doctor ]; then
 		echo "  (--dry-run: doctor 는 실행하지 않음)"
 		pause
 		return 0
 	fi
-	(cd "$ROOT" && "$CTL" "$@")
-	rc=$?
+	if [ "$live" = 1 ]; then
+		run_live "$profile" "$@" || rc=$?
+	else
+		ctl_exec "$profile" "$@" || rc=$?
+	fi
 	echo
 	if [ "$rc" = 0 ]; then
 		printf '  %s끝남 (종료 코드 0)%s\n' "$CYAN" "$RESET"
@@ -606,55 +622,143 @@ run_ctl() {
 	return 0
 }
 
-# 공격 실행 전에는 ctl.sh 대화형 메뉴와 같은 확인을 받음
-confirm_enable() {
-	printf '  %s격리 테스트베드임을 확인하려면 ENABLE 입력:%s ' "$RED_BRIGHT$BOLD" "$RESET"
-	IFS= read -r ANSWER || { echo; exit 1; }
-	[ "$ANSWER" = ENABLE ] && return 0
-	echo "  취소됨"
-	pause
-	return 1
+# ctl_intro 인자... : 실행 전 안내 한두 줄
+ctl_intro() {
+	echo
+	if [ "$DRY_RUN" = 1 ]; then
+		printf '  %s실행:%s ./tools/ctl.sh' "$BOLD" "$RESET"
+		printf ' %q' "$@"
+		printf '\n\n'
+	else
+		printf '  실행을 시작합니다. Ctrl-C를 누르면 실행을 중단하고 정리합니다.\n\n'
+	fi
 }
 
-stamp() { date -u +%Y%m%dT%H%M%SZ; }
+# ctl_exec 프로필 인자... : 이 DU의 설정을 환경에 싣고 ./tools/ctl.sh 를 실행함
+ctl_exec() {
+	local profile=$1
+	shift
+	(
+		cd "$ROOT" || exit 2
+		# dry-run도 이 DU의 실제 설정 경로를 사용한다.
+		profile_env=$(python3 tools/reproctl.py env --profile "$profile") || exit 2
+		while IFS= read -r line; do export "$line"; done <<<"$profile_env"
+		# 출력이 파이프여도 python 로그가 바로 나오게 함
+		export PYTHONUNBUFFERED=1
+		"$CTL" "$@"
+	)
+}
+
+# ── 실행 중 모션 ──────────────────────────────────────────────────────────
+#   위 STAGE_H 줄은 모션, 그 아래 한 줄은 구분선, 나머지는 ctl.sh 로그 스크롤 영역
+#   화면에 쓰는 것은 live_render 하나뿐임. ctl.sh 출력은 FIFO 로 받아 live_render 가 찍음
+LIVE_ATTACK="" LIVE_CAMPAIGN=0 LIVE_INT=0
+LIVE_MIN_ROWS=$((STAGE_H + 1 + 8))
+
+# shortcut: EPOCHREALTIME·read -t 소수 초가 필요해 bash 5 이상만 실행 중 모션을 씀. 그 아래는 인트로 모션으로 대신함
+# shortcut: 실행 중 창 크기 변경은 반영하지 않음. 필요해지면 SIGWINCH 에서 영역을 다시 잡음
+live_ok() {
+	[ "$ANIM" = 1 ] && [ "$TTY" = 1 ] && [ "${BASH_VERSINFO[0]}" -ge 5 ] && [ "$ROWS" -ge "$LIVE_MIN_ROWS" ]
+}
+
+# live_render 작업폴더 : 표준 입력(FIFO)의 로그를 아래 영역에, 0.1초마다 다음 모션 프레임을 위 영역에 그림
+live_render() {
+	local dir=$1 t=0 line="" part rc now last=0 r clear="" width
+	# Ctrl-C 뒤에도 ctl.sh 정리 로그를 끝까지 받아야 하므로 렌더러는 신호를 무시함
+	trap '' INT TERM
+	SCENE_HINT="실행 중 · Ctrl-C 중단"
+	for ((r = 1; r <= STAGE_H; r++)); do clear="$clear"$'\033['"$r;1H"$'\033[2K'; done
+	# tr 은 여러 바이트 글자를 못 다루므로 치환으로 선을 만듦
+	width=${BLANK_LINE:12}
+	printf '\033[%d;1H%s── 실행 로그 %s%s' "$((STAGE_H + 1))" "$DIM" "${width// /─}" "$RESET"
+	while true; do
+		now=${EPOCHREALTIME/[.,]/}
+		if [ $((now - last)) -ge 100000 ]; then
+			render_frame "$LIVE_ATTACK" "$((t % FRAMES))" "$LIVE_CAMPAIGN"
+			printf '%s%s' "$clear" "${OUT#$'\033[H\033[2J'}"
+			t=$((t + 1)) last=$now
+		fi
+		part=""
+		IFS= read -r -t 0.1 part
+		rc=$?
+		if [ "$rc" = 0 ]; then
+			printf '\033[%d;1H\n%s%s' "$ROWS" "$line$part" "$RESET"
+			line=""
+		elif [ "$rc" -gt 128 ]; then
+			# 시간 초과: 받다 만 줄은 이어 붙임. ctl.sh 가 끝났으면 손자 프로세스가 FIFO 를 잡고 있어도 나감
+			line=$line$part
+			[ -e "$dir/done" ] && break
+		else
+			[ -n "$line$part" ] && printf '\033[%d;1H\n%s%s' "$ROWS" "$line$part" "$RESET"
+			break
+		fi
+	done
+	[ -n "$line" ] && printf '\033[%d;1H\n%s%s' "$ROWS" "$line" "$RESET"
+}
+
+# run_live 프로필 인자... : 화면을 나눠 ctl.sh 를 실행함. 종료 코드는 ctl.sh 의 것을 그대로 돌려줌
+run_live() {
+	local dir rc=0 render_pid
+	dir=$(mktemp -d "${TMPDIR:-/tmp}/run-live.XXXXXX") || return 2
+	mkfifo "$dir/log" || { rm -rf "$dir"; return 2; }
+	# Ctrl-C 는 ctl.sh 가 받아 정리함. 여기서는 표시만 해 두고 정리 로그를 끝까지 보여 준 뒤 나감
+	LIVE_INT=0
+	trap 'LIVE_INT=1' INT TERM
+	STTY_SAVED=$(stty -g 2>/dev/null)
+	stty -echo 2>/dev/null
+	printf '\033[?25l\033[H\033[2J\033[%d;%dr' "$((STAGE_H + 2))" "$ROWS"
+	live_render "$dir" <"$dir/log" &
+	render_pid=$!
+	# 안내 줄도 로그 영역에 찍히도록 같은 FIFO 로 보냄
+	{ ctl_intro "${@:2}"; ctl_exec "$@"; } >"$dir/log" 2>&1 || rc=$?
+	: >"$dir/done"
+	# 신호가 오면 wait 가 일찍 끝나므로 렌더러가 실제로 끝날 때까지 기다림
+	while kill -0 "$render_pid" 2>/dev/null; do wait "$render_pid" 2>/dev/null; done
+	printf '\033[r\033[%d;1H' "$ROWS"
+	restore_terminal
+	rm -rf "$dir"
+	trap 'restore_terminal; echo; exit 130' INT TERM
+	[ "$LIVE_INT" = 1 ] && { echo; exit 130; }
+	return "$rc"
+}
+
+# 캠페인 ID는 접두어 l3를 포함해 최대 24자. 같은 초의 연속 실행도 구분한다.
+automatic_id() { printf '%s-%s-%04x' "$1" "$(date -u +%Y%m%dT%H%M%SZ)" "$RANDOM"; }
 
 # 공격 하나에 대한 작업 메뉴
 action_menu() {
-	local profile=$1 idx=$2 attack mode label
+	local profile=$1 idx=$2 attack mode label run_id campaign_id
 	attack=${A_ID[$idx]} mode=${A_MODE[$idx]}
 	label="${A_RULE[$idx]} ${A_NAME[$idx]}"
 	while true; do
-		CRUMB="환경 $ENV_LABEL › profile $profile › $label (${A_LEVEL[$idx]})"
+		CRUMB="DU 설정 $profile › $label (${A_LEVEL[$idx]})"
 		DETAILS=(
-			"./ctl.sh same-cell doctor --profile $profile"
-			"./ctl.sh same-cell run $attack --profile $profile --mode control"
-			"./ctl.sh same-cell run $attack --profile $profile --mode $mode --enable"
-			"./ctl.sh same-cell campaign l3-live --profile $profile --sets 3 --count 5 --enable  (L3 7종 전체)"
+			"./tools/ctl.sh same-cell doctor --profile $profile"
+			"./tools/ctl.sh same-cell run $attack --profile $profile --mode control"
+			"./tools/ctl.sh same-cell run $attack --profile $profile --mode $mode --enable"
+			"./tools/ctl.sh same-cell campaign l3-live --profile $profile --sets 3 --count 5 --enable  (L3 7종 전체)"
 		)
 		choose "작업 선택" \
 			"same-cell doctor     정상 UE 5대·L3 7종 실행 준비 점검" \
-			"same-cell run        control (정상 대조, --enable 없음)" \
-			"same-cell run        $mode (공격 phase, ENABLE 확인)" \
+			"same-cell run        control (정상 대조 실행)" \
+			"same-cell run        $mode (공격 phase 실행)" \
 			"same-cell campaign   l3-live 7종 × control→active 3세트" || return 0
 		DETAILS=()
 		case "$CHOICE" in
-		0) run_ctl same-cell doctor --profile "$profile" ;;
+		0) run_ctl "$profile" same-cell doctor --profile "$profile" ;;
 		1)
-			ask "RUN_ID" "sc-$attack-control-$(stamp)"
-			run_ctl same-cell run "$attack" --profile "$profile" --mode control --run-id "$ANSWER" ;;
+			run_id=$(automatic_id "sc-$attack-control")
+			run_ctl "$profile" same-cell run "$attack" --profile "$profile" --mode control --run-id "$run_id" ;;
 		2)
-			ask "RUN_ID" "sc-$attack-$mode-$(stamp)"
-			local run_id=$ANSWER
-			confirm_enable || continue
-			play_animation "$attack" 0
-			run_ctl same-cell run "$attack" --profile "$profile" --mode "$mode" --run-id "$run_id" --enable ;;
+			run_id=$(automatic_id "sc-$attack-$mode")
+			LIVE_ATTACK=$attack LIVE_CAMPAIGN=0
+			run_ctl "$profile" same-cell run "$attack" --profile "$profile" --mode "$mode" --run-id "$run_id" --enable
+			LIVE_ATTACK="" ;;
 		3)
-			# ctl.sh 는 CAMPAIGN_ID 를 24자 이하로 제한함
-			ask "CAMPAIGN_ID" "l3-$(stamp)"
-			local campaign_id=$ANSWER
-			confirm_enable || continue
-			play_animation "$attack" 1
-			run_ctl same-cell campaign l3-live --profile "$profile" --campaign-id "$campaign_id" --sets 3 --count 5 --enable ;;
+			campaign_id=$(automatic_id l3)
+			LIVE_ATTACK=$attack LIVE_CAMPAIGN=1
+			run_ctl "$profile" same-cell campaign l3-live --profile "$profile" --campaign-id "$campaign_id" --sets 3 --count 5 --enable
+			LIVE_ATTACK="" ;;
 		esac
 	done
 }
@@ -663,56 +767,53 @@ attack_menu() {
 	local profile=$1 i
 	local -a items
 	while true; do
-		CRUMB="환경 $ENV_LABEL › profile $profile"
+		CRUMB="환경 $ENV_LABEL"
+		[ "$TRANSPORT" = usrp ] || CRUMB="$CRUMB › DU 설정 $profile"
 		items=() DETAILS=()
 		for i in "${!A_ID[@]}"; do
 			items+=("$(printf '%-8s %-24s %s' "${A_RULE[$i]}" "${A_ID[$i]}" "$(short_desc "${A_ID[$i]}")")")
 			DETAILS+=("${A_NAME[$i]} · ${A_LEVEL[$i]} · active=${A_MODE[$i]}")
 		done
-		choose "공격 선택 (L3 7종, 정상 UE 5대와 같은 셀)" "${items[@]}" || { DETAILS=(); return 0; }
+		local title="공격 선택 (L3 7종, 정상 UE 5대와 같은 셀)"
+		[ "$TRANSPORT" = zmq ] || title="USRP ↔ gNB 공격 모션 선택 (OTA 실행 adapter 준비 중)"
+		choose "$title" "${items[@]}" || { DETAILS=(); return 0; }
 		DETAILS=()
-		action_menu "$profile" "$CHOICE"
-	done
-}
-
-profile_menu() {
-	local backend=$1
-	while true; do
-		CRUMB="환경 $ENV_LABEL"
-		load_profiles "$backend"
-		if [ "${#P_NAME[@]}" = 0 ]; then
-			echo "  backend=$backend 인 profile 이 profiles/ 에 없음"
+		if [ "$TRANSPORT" = usrp ]; then
+			if [ "$ANIM" = 1 ]; then
+				play_animation "${A_ID[$CHOICE]}" 0
+			else
+				render_frame "${A_ID[$CHOICE]}" 14 0
+				printf '%s\n' "${GRID[@]}" | tr -d '\001' | sed 's/[[:space:]]*$//'
+			fi
+			echo "  USRP ↔ gNB 동작 모션입니다. OTA 실행 adapter는 준비 중입니다."
 			pause
-			return 0
+		else
+			action_menu "$profile" "$CHOICE"
 		fi
-		DETAILS=()
-		choose "profile 선택 (profiles/*.json)" "${P_NOTE[@]}" || return 0
-		attack_menu "${P_NAME[$CHOICE]}"
 	done
 }
 
 main_menu() {
+	local profile
 	while true; do
 		CRUMB=""
-		DETAILS=("ZMQ 가상 RF. 무선 송신 없음 · p5/p1/p4 profile" "차폐 박스 안 SDR 로 실제 송신 · ota profile")
+		DETAILS=("이 DU의 설정을 자동으로 읽어 정상 UE 5대와 실행" "USRP와 gNB 사이의 공격 동작 모션 · OTA 실행 adapter 준비 중")
 		choose "환경 설정" \
 			"가상    (ZMQ, 송신 없음)" \
-			"실장비  (OTA, 차폐 박스 안에서 실제 송신)" || continue
+			"실장비  (USRP ↔ gNB 모션)" || continue
 		DETAILS=()
 		case "$CHOICE" in
-		0) ENV_LABEL="가상(ZMQ)"; profile_menu p5 ;;
-		1)
-			ENV_LABEL="실장비(OTA)"
-			# ctl.sh 에 OTA adapter 가 아직 없으면 그 사실만 보여 주고 돌아감
-			if grep -Fq "OTA 실행 adapter는 아직 미구현" "$CTL"; then
-				header
-				printf '  %s실장비(OTA)는 아직 실행할 수 없음%s\n\n' "$RED_HIGHLIGHT$BOLD" "$RESET"
-				echo "  ctl.sh: OTA 실행 adapter는 아직 미구현입니다."
-				echo "  PORTING-GUIDE.md 의 OTA 포팅 절차(차폐 확인·SDR inventory)를 먼저 완료해야 함."
-				pause
+		0)
+			ENV_LABEL="가상(ZMQ)"; TRANSPORT=zmq
+			if profile=$(python3 "$ROOT/tools/reproctl.py" local-profile --backend p5); then
+				echo "  DU 설정 적용됨 ($profile)"
+				attack_menu "$profile"
 			else
-				profile_menu ota
+				pause
 			fi ;;
+		1)
+			ENV_LABEL="실장비(USRP)"; TRANSPORT=usrp
+			attack_menu "" ;;
 		esac
 	done
 }

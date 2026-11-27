@@ -11,7 +11,7 @@
 
 ## 빌드
 
-깨끗한 OAI w38(`6d6782b48484efd935c14e834832032743f9b138`) 작업 트리에서 실행한다(또는 `./ctl.sh setup downlink-imsi --profile <p1|p5>` 사용).
+깨끗한 OAI w38(`6d6782b48484efd935c14e834832032743f9b138`) 작업 트리에서 실행한다(또는 `./tools/ctl.sh setup downlink-imsi --profile <p1|p5>` 사용).
 
 ```bash
 OAI=/root/OAI-downlink-imsi-w38 bin/downlink-imsi-build
@@ -51,7 +51,7 @@ DOWNLINK_IMSI_CONF=conf/downlink-imsi.conf \
 ```
 
 순서는 `control → emulation`을 세 번 반복한다. 각 child는 독립 `verdict.json`과
-`evidence_manifest.json`으로 봉인되고, 마지막에 matched 설정 해시와 3/3을 검증한다. 정상 UE 5대 `same-cell` E2E는 `./ctl.sh same-cell run downlink-imsi --profile <p1|p5> --mode <control|emulation> --run-id <id> [--enable]`을 사용하며, `p1q9-20261119`에서 6/6 통과했다.
+`evidence_manifest.json`으로 봉인되고, 마지막에 matched 설정 해시와 3/3을 검증한다. 정상 UE 5대 `same-cell` E2E는 `./tools/ctl.sh same-cell run downlink-imsi --profile <p1|p5> --mode <control|emulation> --run-id <id> [--enable]`을 사용하며, `p1q9-20261119`에서 6/6 통과했다.
 
 ## 탐지 사용
 

@@ -6,7 +6,7 @@ OAI UE가 선행 NAS `SecurityModeCommand` 없이 상향 `SecurityModeReject`를
 |---|---|
 | 룰 ID | `L3-06` |
 | `reproducer.json` id | `nas-counter-desynchronization` |
-| `ctl.sh` ID / 별칭 | `nas-counter-desynchronization` (`l3-06`) |
+| `tools/ctl.sh` ID / 별칭 | `nas-counter-desynchronization` (`l3-06`) |
 | 재현 수준 (`reproduction_level`) | `protocol-result-emulation` |
 | active 모드 (`active_mode`) | `emulation` |
 | 자격 현황 | `p1` same-cell 6/6 통과 (`p1q9-20261119`), `p5` direct 1-cell 6/6 통과 (`p5` same-cell 미승인), `OTA` pending |
@@ -29,20 +29,20 @@ OAI UE                       OCUDU DU/CU / Open5GS          TeleRAN → detector
 
 ## 실행 방법
 
-### 통합 컨트롤러 (`ctl.sh`)
+### 통합 컨트롤러 (`tools/ctl.sh`)
 
 ```bash
-./ctl.sh setup l3-06 --profile p1
-./ctl.sh doctor l3-06 --profile p1
+./tools/ctl.sh setup l3-06 --profile p1
+./tools/ctl.sh doctor l3-06 --profile p1
 
 # 단발 및 matched 3세트 캠페인 (p5 direct 1-cell)
-./ctl.sh run l3-06 control l3-06-control --profile p5
-./ctl.sh run l3-06 emulation l3-06-emulation --profile p5 --enable
-./ctl.sh campaign l3-06 l3-06-matched --profile p5 --enable
+./tools/ctl.sh run l3-06 control l3-06-control --profile p5
+./tools/ctl.sh run l3-06 emulation l3-06-emulation --profile p5 --enable
+./tools/ctl.sh campaign l3-06 l3-06-matched --profile p5 --enable
 
 # 정상 UE 5대 same-cell E2E 실행 (p1)
-./ctl.sh same-cell run l3-06 --profile p1 --mode control --run-id sc-l306-ctrl-1
-./ctl.sh same-cell run l3-06 --profile p1 --mode emulation --run-id sc-l306-emu-1 --enable
+./tools/ctl.sh same-cell run l3-06 --profile p1 --mode control --run-id sc-l306-ctrl-1
+./tools/ctl.sh same-cell run l3-06 --profile p1 --mode emulation --run-id sc-l306-emu-1 --enable
 ```
 
 ### 직접 실행 (`bin/`)

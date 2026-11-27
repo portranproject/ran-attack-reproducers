@@ -8,7 +8,7 @@ import unittest
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-CTL = ROOT / "ctl.sh"
+CTL = ROOT / "tools" / "ctl.sh"
 
 
 class ControllerTest(unittest.TestCase):
@@ -233,7 +233,7 @@ class ControllerTest(unittest.TestCase):
         self.assertIn("빌드 준비됨", result.stdout)
 
     def test_non_upstream_oai_baseline_is_rebuilt_from_tracked_patch(self):
-        source = (ROOT / "ctl.sh").read_text()
+        source = (ROOT / "tools" / "ctl.sh").read_text()
         self.assertIn("materialize_local_oai_commit", source)
         self.assertIn("oai-pucch-null-fix.patch", source)
         self.assertIn("로컬 OAI 기준 커밋 재생성 해시가 다릅니다", source)

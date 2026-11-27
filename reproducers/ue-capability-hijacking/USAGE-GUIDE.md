@@ -2,7 +2,7 @@
 
 ## 준비와 빌드
 
-격리된 p5/p1 ZMQ 테스트베드에서만 실행한다. CU·core가 먼저 정상이어야 한다. 직접 `bin/ue-capability-build`를 실행하려면 `/root/OAI-ue-capability-w38`에 OAI 기준 커밋 `6d6782b48484efd935c14e834832032743f9b138`의 깨끗한 worktree가 미리 있어야 한다(없으면 `./ctl.sh setup ue-capability --profile <p1|p5>` 사용). `bin/ue-capability-build`는 `patch/ue-capability-injection-w38.patch`와 `../../workloads/normal-ue/patch/same-cell-ra-gate-w38.patch`를 적용한다.
+격리된 p5/p1 ZMQ 테스트베드에서만 실행한다. CU·core가 먼저 정상이어야 한다. 직접 `bin/ue-capability-build`를 실행하려면 `/root/OAI-ue-capability-w38`에 OAI 기준 커밋 `6d6782b48484efd935c14e834832032743f9b138`의 깨끗한 worktree가 미리 있어야 한다(없으면 `./tools/ctl.sh setup ue-capability --profile <p1|p5>` 사용). `bin/ue-capability-build`는 `patch/ue-capability-injection-w38.patch`와 `../../workloads/normal-ue/patch/same-cell-ra-gate-w38.patch`를 적용한다.
 
 ```bash
 cd reproducers/ue-capability-hijacking
@@ -37,7 +37,7 @@ UE_CAPABILITY_CONF=conf/ue-capability.conf \
 ```
 
 각 세트는 control 뒤 emulation 순서다. `cap-matched-3-campaign.json`이 동일 바이너리와
-설정 해시, child 봉인, 3/3 합격을 확인한다. 정상 UE 5대 `same-cell` E2E는 `./ctl.sh same-cell run ue-capability --profile <p1|p5> --mode <control|emulation> --run-id <id> [--enable]`을 사용하며, `p1q9-20261119`에서 6/6 통과했다.
+설정 해시, child 봉인, 3/3 합격을 확인한다. 정상 UE 5대 `same-cell` E2E는 `./tools/ctl.sh same-cell run ue-capability --profile <p1|p5> --mode <control|emulation> --run-id <id> [--enable]`을 사용하며, `p1q9-20261119`에서 6/6 통과했다.
 
 ## 결과 해석
 

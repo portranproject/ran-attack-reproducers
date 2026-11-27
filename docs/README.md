@@ -5,20 +5,20 @@
 ## 실행
 
 - [E2E-EXECUTION-GUIDE.md](E2E-EXECUTION-GUIDE.md) — L3 7종 `same-cell` 공식 토폴로지, 실행 진입점, E2E 합격 조건을 정의한다.
-- [CONTROL-GUIDE.md](CONTROL-GUIDE.md) — `./ctl.sh` CLI 명령, `doctor` 검증 범위, 환경변수, 산출물 구조를 정리한다.
+- [CONTROL-GUIDE.md](CONTROL-GUIDE.md) — `./tools/ctl.sh` CLI 명령, `doctor` 검증 범위, 환경변수, 산출물 구조를 정리한다.
 - [workloads/normal-ue/README.md](../workloads/normal-ue/README.md) — 정상 UE 5대 독립 virtual RU 풀과 `same-cell` broker 아키텍처를 설명한다.
 
 ## 공격 모듈
 
 - [ATTACK-CATALOG.md](ATTACK-CATALOG.md) — L3 7종·AN 6종 카탈로그, 재현 수준 4단계, [주장과 한계](ATTACK-CATALOG.md#주장과-한계)를 정리한다.
 - [ATTACK-REFERENCES.md](ATTACK-REFERENCES.md) — 13개 모듈의 3GPP·논문·공개 코드 레퍼런스와 자체 구현 범위를 구분한다.
-- [NEW-MODULE-GUIDE.md](NEW-MODULE-GUIDE.md) — 신규 모듈 추가 절차, `reproducer.json` 스키마, `ctl.sh`·lock 제약을 설명한다.
+- [NEW-MODULE-GUIDE.md](NEW-MODULE-GUIDE.md) — 신규 모듈 추가 절차, `reproducer.json` 스키마, `tools/ctl.sh`·lock 제약을 설명한다.
 - [NAMING-CONVENTIONS.md](NAMING-CONVENTIONS.md) — 문서·디렉터리·ID 명명 규칙과 코드·lock 종속 예외 목록을 기록한다.
 - [reproducers/README.md](../reproducers/README.md) — `reproducers/` 아래 L3 7종·AN 6종 모듈 인덱스와 별칭 대응표를 제공한다.
 
 ## 환경
 
-- [PORTING-GUIDE.md](../PORTING-GUIDE.md) — 호스트 포팅 절차와 p5·차폐 OTA 운영 체크리스트를 정리한다(`ctl.sh:98` 잠금으로 루트 유지).
+- [PORTING-GUIDE.md](../PORTING-GUIDE.md) — 호스트 포팅 절차와 p5·차폐 OTA 운영 체크리스트를 정리한다(`tools/ctl.sh:98` 잠금으로 루트 유지).
 
 ## 연구
 

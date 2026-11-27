@@ -810,6 +810,30 @@ def command_checkout() -> None:
     print(f"OK reproducer checkout: {check_qualified_checkout()}")
 
 
+def command_local_profile(backend: str) -> None:
+    selected = os.environ.get("RAN_REPRO_PROFILE_ID", "")
+    if not selected and (PROFILE_DIR / "du.json").exists():
+        selected = "du"
+    if not selected:
+        candidates = []
+        for path in sorted(PROFILE_DIR.glob("*.json")):
+            if path.name.endswith(".example.json"):
+                continue
+            value = load_object(path, "DU profile")
+            if value.get("configured") is True and value.get("backend") == backend:
+                candidates.append(path.stem)
+        if len(candidates) != 1:
+            if candidates:
+                raise ReproError("DU 설정이 여러 개입니다. 이 호스트의 RAN_REPRO_PROFILE_ID를 지정하거나 profiles/du.json을 준비하세요")
+            raise ReproError("DU 설정이 없습니다. profiles 예제에서 이 호스트의 설정을 준비하고 configured=true로 저장하세요. PORTING-GUIDE.md를 참고하세요")
+        selected = candidates[0]
+    path, profile = load_profile(selected)
+    if profile["backend"] != backend:
+        raise ReproError(f"DU 설정의 backend가 선택한 환경과 다릅니다: {profile['backend']}")
+    # run.sh changes to the repository directory before invoking the controller.
+    print(path.resolve() if "/" in selected or not PROFILE_DIR.is_absolute() else selected)
+
+
 def command_env(profile_name: str) -> None:
     _, profile = load_profile(profile_name)
     for key, value in sorted(profile["environment"].items()):
@@ -827,6 +851,8 @@ def main(argv: list[str] | None = None) -> int:
         child.add_argument("--json", action="store_true")
     sub.add_parser("validate")
     sub.add_parser("checkout")
+    local_profile = sub.add_parser("local-profile")
+    local_profile.add_argument("--backend", choices=("p5", "ota"), required=True)
     seal_run = sub.add_parser("seal")
     seal_run.add_argument("run_dir")
     seal_run.add_argument("run_id")
@@ -867,6 +893,8 @@ def main(argv: list[str] | None = None) -> int:
             command_seal(args.run_dir, args.run_id)
         elif args.command == "doctor":
             command_doctor(args.profile)
+        elif args.command == "local-profile":
+            command_local_profile(args.backend)
         elif args.command == "env":
             command_env(args.profile)
         elif args.command == "signal-run":

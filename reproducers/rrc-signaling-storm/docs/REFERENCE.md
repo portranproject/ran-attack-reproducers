@@ -64,7 +64,7 @@ bin/rss-build
 3. `patch/oai-msg4-ack-rnti.patch`
 4. `patch/oai-broker-control-gate.patch`
 
-그 뒤 `nr-uesoftmodem`, `oai_zmqdevif`, `zmq_radio_static` 3개 타깃을 빌드하고, 노브 문자열과 민감 로그(`UICC simulation: IMSI=`, `milenage output ik:`) 제거 여부를 검사한다. 기존 바이너리는 `.orig`로 백업한다. (`patch/oai-pucch-null-fix.patch`는 `rss-build`가 아니라 상위 `ctl.sh`가 `6d6782b4...` 기준 커밋을 재생성할 때 사용한다.)
+그 뒤 `nr-uesoftmodem`, `oai_zmqdevif`, `zmq_radio_static` 3개 타깃을 빌드하고, 노브 문자열과 민감 로그(`UICC simulation: IMSI=`, `milenage output ik:`) 제거 여부를 검사한다. 기존 바이너리는 `.orig`로 백업한다. (`patch/oai-pucch-null-fix.patch`는 `rss-build`가 아니라 상위 `tools/ctl.sh`가 `6d6782b4...` 기준 커밋을 재생성할 때 사용한다.)
 
 ### 4단계 — 진단 및 실행
 
@@ -139,7 +139,7 @@ bin/rss-report --since 2026-10-20T06:31:00 --until 2026-10-20T06:33:10 \
 
 1. **ZMQ TX 웨이크업 (`RSS_ZMQ_TX_WAIT_US=-2`)**: 업스트림 10 ms `zmq_poll` 대기를 조건 변수 웨이크업으로 바꿔 시도율을 약 3배(6.7 → 19.5~33.8/s)로 높였다.
 2. **동일 프로세스 무선 공유 및 UE별 읽기 커서**: `unitTransfer == res` 어서션 깨짐을 막기 위해 UE별 읽기 커서를 분리하고 `RSS_SHARE_LOCKSTEP=1`로 묶었다.
-3. **same-cell broker 통합 (`ctl.sh same-cell` / `bin/rss-broker-witness`)**: `BROKER_WITNESS_MULTI_RU=1`과 `workloads/normal-ue/tools/same_cell_broker.py`를 통해 공격 UE 6프로세스×2 UE와 독립 virtual RU 5개 정상 UE 풀을 한 DU·셀에 cold-start 통합한다.
+3. **same-cell broker 통합 (`tools/ctl.sh same-cell` / `bin/rss-broker-witness`)**: `BROKER_WITNESS_MULTI_RU=1`과 `workloads/normal-ue/tools/same_cell_broker.py`를 통해 공격 UE 6프로세스×2 UE와 독립 virtual RU 5개 정상 UE 풀을 한 DU·셀에 cold-start 통합한다.
 
 ## 기각된 최적화
 
@@ -170,7 +170,7 @@ bin/rss-report --since 2026-10-20T06:31:00 --until 2026-10-20T06:33:10 \
 
 - `bin/`: `rss-bootstrap`, `rss-build`, `rss-doctor`, `rss-run`, `rss-report`, `rss-gnb-profile`, `rss-cu200`, `rss-broker-witness`, `rss-broker-witness-retry`, `rss-probe`, `rss-lab-suite`
 - `conf/`: `rss.conf.example`, `ota-inventory.example.json`
-- `patch/`: `rss-ue-curated.patch`, `oai-stale-rnti-dci.patch`, `oai-msg4-ack-rnti.patch`, `oai-broker-control-gate.patch`, `oai-pucch-null-fix.patch` (상위 `ctl.sh`용) 및 과거 보관본(`rss-ue.patch`, `rss-ue-anas.patch`, `rss-ue-full-20261023.patch`, `anas-identity.c`)
+- `patch/`: `rss-ue-curated.patch`, `oai-stale-rnti-dci.patch`, `oai-msg4-ack-rnti.patch`, `oai-broker-control-gate.patch`, `oai-pucch-null-fix.patch` (상위 `tools/ctl.sh`용) 및 과거 보관본(`rss-ue.patch`, `rss-ue-anas.patch`, `rss-ue-full-20261023.patch`, `anas-identity.c`)
 - `analysis/`: `export_labels.py`, `evidence_manifest.py`, `capture_du_log.py`, `sanitize_ue_log.py`, `check_sensitive_artifacts.py`, `check_sensitive_history.py`, `validate_ota_inventory.py`, `cu_occupancy.py`, `cu_count.py`, `run_summary.py`, `compare.py`, `attempt_phases.py`, `log_window.py`, `probe_data.py`, `probe_summary.py`
 - `tools/`: `multi_ue_{2,5,6,7,8,10}ue.py`, `zmq_broker.c`
 - `tests/`: `python3 -m unittest discover -s tests` (189개 오프라인 단위 테스트)

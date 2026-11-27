@@ -16,7 +16,8 @@ jobs:
           python-version: "3.13"
       - name: Validate shell and Python
         run: |
-          bash -n ctl.sh
+          bash -n tools/ctl.sh
+          bash -n run.sh
           python3 -m py_compile tools/reproctl.py tools/generate_rule_signal.py
           python3 tools/reproctl.py validate
       - name: Run tests

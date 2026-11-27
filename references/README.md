@@ -1,16 +1,16 @@
 # 레퍼런스 도구 (외부 공개 구현)
 
 우리 공격 모듈과 **분리된 네임스페이스**다. 외부 공개 구현을 우리 셀에서 실행해
-계측·탐지가 되는지 교차 확인하는 용도이며, `./ctl.sh same-cell` 자격이나 production
+계측·탐지가 되는지 교차 확인하는 용도이며, `./tools/ctl.sh same-cell` 자격이나 production
 detector 판정을 대신하지 않는다.
 
 ```bash
-./ctl.sh reference list
-./ctl.sh reference build ref-rrc-storm --profile p1
-./ctl.sh reference doctor ref-rrc-storm --profile p1
-./ctl.sh reference run ref-rrc-storm --profile p1 --mode control
-./ctl.sh reference run ref-rrc-storm --profile p1 --mode attack --enable
-./ctl.sh reference campaign ref-rrc-storm --profile p1 --sets 3 --enable
+./tools/ctl.sh reference list
+./tools/ctl.sh reference build ref-rrc-storm --profile p1
+./tools/ctl.sh reference doctor ref-rrc-storm --profile p1
+./tools/ctl.sh reference run ref-rrc-storm --profile p1 --mode control
+./tools/ctl.sh reference run ref-rrc-storm --profile p1 --mode attack --enable
+./tools/ctl.sh reference campaign ref-rrc-storm --profile p1 --sets 3 --enable
 ```
 
 - 목록·원본 커밋·룰 대응·현재 상태의 단일 출처는 `references/manifest.json`이다.

@@ -521,8 +521,8 @@ run_same_cell_phase() {
   local phase_pid= status=0 interrupted=0 saved_int saved_term
   saved_int=$(trap -p INT)
   saved_term=$(trap -p TERM)
-  trap 'interrupted=130; trap "" INT TERM; echo "same-cell: 중단 요청을 받았습니다. UE와 수집기를 정리합니다 (최대 60초)." >&2; [[ -z $phase_pid ]] || kill -TERM "$phase_pid" 2>/dev/null || true' INT
-  trap 'interrupted=143; trap "" INT TERM; echo "same-cell: 종료 요청을 받았습니다. UE와 수집기를 정리합니다 (최대 60초)." >&2; [[ -z $phase_pid ]] || kill -TERM "$phase_pid" 2>/dev/null || true' TERM
+  trap 'interrupted=130; trap "" INT TERM; echo "same-cell: 중단 요청을 받았습니다. UE와 수집기를 정리합니다 (최대 120초)." >&2; [[ -z $phase_pid ]] || kill -TERM "$phase_pid" 2>/dev/null || true' INT
+  trap 'interrupted=143; trap "" INT TERM; echo "same-cell: 종료 요청을 받았습니다. UE와 수집기를 정리합니다 (최대 120초)." >&2; [[ -z $phase_pid ]] || kill -TERM "$phase_pid" 2>/dev/null || true' TERM
   "$@" <&0 &
   phase_pid=$!
   if (( interrupted )); then kill -TERM "$phase_pid" 2>/dev/null || true; fi
@@ -601,7 +601,7 @@ same_cell_run_one() {
   phase_timeout=${SAME_CELL_PHASE_TIMEOUT_S:-900}
   [[ $phase_timeout =~ ^[1-9][0-9]*$ && $phase_timeout -le 1800 ]] \
     || fail "SAME_CELL_PHASE_TIMEOUT_S는 1..1800초여야 합니다"
-  command=(timeout --signal=TERM --kill-after=60s "${phase_timeout}s" "${command[@]}")
+  command=(timeout --signal=TERM --kill-after=120s "${phase_timeout}s" "${command[@]}")
   if [[ $dry_run == 1 ]]; then print_command "${command[@]}"; return; fi
   command -v timeout >/dev/null || fail "timeout 명령이 필요합니다"
   [[ -f $config && ! -L $config ]] || fail "설정이 없습니다. 먼저 실행: ./tools/ctl.sh setup $attack"

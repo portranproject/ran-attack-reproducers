@@ -222,12 +222,14 @@ cleanup() {
   set +e
   progress "실행 정리 중 · 기록: $OUT"
   stop_child
-  (( LIVE_STARTED == 0 || LIVE_COLLECTED == 1 )) || stop_live
+  progress "UE와 runner 정리 완료 · CU 수집기 정리 시작"
   if [[ -n $MARKER_DIR && -d $MARKER_DIR && ! -L $MARKER_DIR ]]; then
     unlink "$MARKER_DIR/baseline.ready" 2>/dev/null || true
     unlink "$MARKER_DIR/observation.ready" 2>/dev/null || true
     rmdir "$MARKER_DIR" 2>/dev/null || true
   fi
+  (( LIVE_STARTED == 0 || LIVE_COLLECTED == 1 )) || stop_live
+  progress "정리 완료 · 기록: $OUT"
   exit "$status"
 }
 trap cleanup EXIT
